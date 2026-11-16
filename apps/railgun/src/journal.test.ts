@@ -3,7 +3,10 @@ import { CONFIG, TOKENS, registerToken, ROUTE_INTERMEDIATES } from './config'
 import { ADAPT, PRIVACY } from './execution'
 import type { WalletSession } from './wallet'
 
-const state = vi.hoisted(() => ({ record: undefined as unknown, ratchet: vi.fn(), remove: vi.fn(), history: vi.fn() }))
+const state = vi.hoisted(() => ({ record: undefined as unknown, ratchet: vi.fn(), remove: vi.fn(), history: vi.fn(), sync: vi.fn(), base: false,
+  finalized: 125, reorg: false }))
+vi.mock('./config', async original => ({ ...await original<typeof import('./config')>(), get CHAIN_ID() { return state.base ? 8453 : 1 } }))
+vi.mock('./wallet', () => ({ syncWallet: state.sync }))
 vi.mock('./storage', () => ({
   readPrivateState: async () => state.record,
   writePrivateState: async (_session: unknown, _key: string, value: unknown) => {
@@ -39,17 +42,53 @@ const balance = vi.fn()
 const session = {
   info: { id: 'test-wallet' },
   accounts: { getAccount: async () => ({ address: pending.account }) },
-  provider: { getTransactionReceipt: receipt, call: balance },
+  provider: { getTransactionReceipt: receipt, call: balance, getNetwork: async () => ({ chainId: 8453n }),
+    getBlock: async (tag: string | number) => ({ number: tag === 'finalized' ? state.finalized : tag,
+      hash: `0x${(state.reorg && tag === 125 ? '55' : '44').repeat(32)}` }) },
 } as unknown as WalletSession
 
 beforeEach(() => {
   state.record = undefined
+  state.base = false
+  state.finalized = 125; state.reorg = false
   vi.clearAllMocks()
   state.history.mockResolvedValue([])
   balance.mockResolvedValue(`0x${'00'.repeat(32)}`)
 })
 
 describe('pending swap recovery journal', () => {
+  it('retains a synchronized Base swap through inclusion and reorg until canonical finality', async () => {
+    state.base = true; state.finalized = 124
+    state.record = { ...pending, chainId: 8453 }
+    const output = PRIVACY.encodeEventLog('Shield', [0, 0,
+      [{ npk, token: { tokenAddress: TOKENS.WETH.address, tokenType: 0, tokenSubID: 0 }, value: 10n }], [], []])
+    const mined = { hash: pending.hash, blockHash: `0x${'44'.repeat(32)}`, blockNumber: 125, status: 1,
+      confirmations: async () => 2, logs: [spent, { address: CONFIG.proxyContract, ...output }] } as never
+    state.sync.mockResolvedValue(undefined)
+    await expect(reconcilePendingSwap(session, false, false, mined)).rejects.toThrow('included; awaiting Base finality')
+    expect(state.sync).toHaveBeenCalledWith(session, mined)
+    expect(state.remove).not.toHaveBeenCalled(); expect(state.ratchet).not.toHaveBeenCalled()
+    state.finalized = 125; state.reorg = true
+    await expect(reconcilePendingSwap(session, false, false, mined)).rejects.toThrow('history changed')
+    expect(state.remove).not.toHaveBeenCalled(); expect(state.ratchet).not.toHaveBeenCalled()
+    state.reorg = false
+    await expect(reconcilePendingSwap(session, false, false, mined)).resolves.toContain('Private output confirmed')
+    expect(state.remove).toHaveBeenCalledOnce(); expect(state.ratchet).toHaveBeenCalledOnce()
+  })
+  it('preserves the Base recovery record until existing-receipt history coverage succeeds', async () => {
+    state.base = true
+    state.record = { ...pending, chainId: 8453 }
+    const output = PRIVACY.encodeEventLog('Shield', [0, 0,
+      [{ npk, token: { tokenAddress: TOKENS.WETH.address, tokenType: 0, tokenSubID: 0 }, value: 10n }], [], []])
+    const mined = { hash: pending.hash, blockHash: `0x${'44'.repeat(32)}`, blockNumber: 125, status: 1,
+      confirmations: async () => 2, logs: [spent, { address: CONFIG.proxyContract, ...output }] } as never
+    state.sync.mockRejectedValueOnce(new Error('history catching up')).mockResolvedValue(undefined)
+    await expect(reconcilePendingSwap(session, false, false, mined)).rejects.toThrow('catching up')
+    expect(state.remove).not.toHaveBeenCalled(); expect(state.ratchet).not.toHaveBeenCalled()
+    expect(receipt).not.toHaveBeenCalled(); expect(state.sync).toHaveBeenLastCalledWith(session, mined)
+    await expect(reconcilePendingSwap(session, false, false, mined)).resolves.toMatch(/Private output confirmed/)
+    expect(state.remove).toHaveBeenCalledOnce()
+  })
   it.each([0n, 1n])('finds a replacement hash and checks remaining funds after cleanup failure (%s)', async (leftover) => {
     const shield = PRIVACY.getEvent('Shield')
     const failure = ADAPT.getEvent('CallError')

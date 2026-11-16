@@ -6,7 +6,7 @@ export function feeTokenFor(principal: TokenSymbol): TokenSymbol {
 }
 
 export function usesBoundWithdrawal(token: TokenSymbol, nativeOutput = false): boolean {
-  return nativeOutput || tokenFor(token).address.toLowerCase() !== tokenFor(feeTokenFor(token)).address.toLowerCase()
+  return CHAIN_ID === 8453 || nativeOutput || tokenFor(token).address.toLowerCase() !== tokenFor(feeTokenFor(token)).address.toLowerCase()
 }
 
 export function feeAddressFor(principalAddress: string): string {

@@ -13,7 +13,7 @@ import { creditBackingEvidence, type CreditBacking } from './credit-backing'
 import { finalizedCreditReceipt } from './credit-payment'
 import { ANON_COLLECTION_BASE_FEE_BPS, readAnonCollectionBaseFee } from './anon-native-collection'
 import { pooledCreditReads } from './credit-read-pool'
-import { verifyNativeDeposit, verifyNativeBacking, nativeBackingEvidence, type NativeCreditBacking } from './credit-native-payment'
+import { verifyNativeDeposit, verifyNativeBacking, type NativeCreditBacking } from './credit-native-payment'
 
 export type CreditRequest = ReturnType<typeof authenticateCreditRequest>
 export interface SecuredRequest { owner: string; sequence: number; maximumCharge: bigint; rate: bigint; collectionAllowance: bigint; expiration: number; backing: CreditBacking | NativeCreditBacking; nativeReserve?: bigint }
@@ -38,7 +38,7 @@ export class CreditService {
     return authenticateCreditRequest(this.ledger.scope, this.ledger.id, input)
   }
   private executionEnabled(): boolean {
-    if (!this.config.enabled || this.ledger.hasUnsettledNativeAttempt() || (this.ledger.isNative && !this.nativeFundingReadsReady()) || (!this.ledger.isNative && (!this.config.creditCollectionGas || !this.config.creditCollectionInputs ||
+    if (!this.config.enabled || this.ledger.nativeCapacityReached() || (this.ledger.isNative && !this.nativeFundingReadsReady()) || (!this.ledger.isNative && (!this.config.creditCollectionGas || !this.config.creditCollectionInputs ||
       !this.config.creditCollectionOutputs || !this.config.creditCollectionProofs))) return false
     try {
       this.ledger.assertOwnerJournalReady()
@@ -292,9 +292,9 @@ export class CreditService {
   async assertBacked(candidateMaximumCharge: bigint): Promise<CreditBacking | NativeCreditBacking> {
     if (this.ledger.isNative) {
       this.ledger.assertOwnerJournalReady()
-      const proof = await verifyNativeBacking(this.provider, this.ledger.scope, this.ledger.id, this.ledger.nativeDeposits(), this.ledger.nativeSettlements())
-      if (nativeBackingEvidence(proof).available < this.ledger.requiredBacking() + this.config.reserve)
-        throw new Error('Native credit liabilities and the operator reserve are not fully backed.')
+      const proof = await verifyNativeBacking(this.provider, this.ledger.scope, this.ledger.id,
+        this.ledger.nativeDeposits(), this.ledger.nativeSettlements(), this.ledger.nativePendingAttempts())
+      this.ledger.assertNativeBacked(proof, this.config.reserve)
       return proof
     }
 

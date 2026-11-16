@@ -5,9 +5,14 @@ import { PRIVACY } from './execution'
 import type { WalletSession } from './wallet'
 import { mixedWithdrawalData, mixedWithdrawalTransactions, withdrawalData } from '../tests/withdrawal.fixture'
 
-const state = vi.hoisted(() => ({ value: undefined as unknown, preserved: undefined as unknown, remove: vi.fn(), history: vi.fn(), save: vi.fn() }))
+const state = vi.hoisted(() => ({ value: undefined as unknown, preserved: undefined as unknown, remove: vi.fn(), history: vi.fn(), save: vi.fn(), sync: vi.fn(), base: false,
+  finalized: 102, reorg: false, credit: vi.fn(), live: false }))
+vi.mock('./prepaid', () => ({ pendingPrepaid: state.credit }))
 vi.mock('./config', async (original) => ({ ...await original<typeof import('./config')>(),
+  get CHAIN_ID() { return state.base ? 8453 : 1 },
+  get ENVIRONMENT() { return state.live ? 'ethereum' : 'fork' },
   PILOT_WITHDRAWAL_RECIPIENT: '0x0000000000000000000000000000000000001234' }))
+vi.mock('./wallet', () => ({ syncWallet: state.sync }))
 vi.mock('./storage', () => ({
   readPrivateState: async (_session: unknown, key: string) => key === 'preservedWithdrawal' ? state.preserved : state.value,
   writePrivateState: state.save,
@@ -22,6 +27,8 @@ import {
   pendingWithdrawal,
   reconcilePendingWithdrawal,
   resumePendingWithdrawal,
+  assertPublicWithdrawalResume,
+  publicWithdrawalResumeBlocked,
   canPreserveWethWithdrawal,
   preserveWethWithdrawal,
   restorePreservedWithdrawal,
@@ -67,7 +74,10 @@ const getReceipt = vi.fn()
 const call = vi.fn()
 const session = {
   info: { id: 'test-wallet' },
-  provider: { getTransactionReceipt: getReceipt, getBlockNumber: async () => 102, call },
+  provider: { getTransactionReceipt: getReceipt, getBlockNumber: async () => 102, call,
+    getNetwork: async () => ({ chainId: 8453n }),
+    getBlock: async (tag: string | number) => ({ number: tag === 'finalized' ? state.finalized : tag,
+      hash: `0x${(state.reorg && tag === 102 ? '88' : '77').repeat(32)}` }) },
 } as unknown as WalletSession
 
 function receipt(): TransactionReceipt {
@@ -95,12 +105,45 @@ function receipt(): TransactionReceipt {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  state.base = false
+  state.live = false
+  state.finalized = 102; state.reorg = false
   state.value = pending
   state.preserved = undefined
   state.save.mockReset()
+  state.credit.mockReset().mockResolvedValue(undefined)
   state.remove.mockReset()
   state.history.mockResolvedValue([])
   call.mockResolvedValue(PRIVACY.encodeFunctionResult('nullifiers', [false]))
+})
+
+it('retains a synchronized Base withdrawal through inclusion and reorg until canonical finality', async () => {
+  state.base = true; state.finalized = 101
+  const hash = `0x${'66'.repeat(32)}`
+  state.value = { ...pending, chainId: 8453, hash }
+  const mined = Object.assign(receipt(), { hash, blockHash: `0x${'77'.repeat(32)}` })
+  state.sync.mockResolvedValue(undefined)
+  await expect(reconcilePendingWithdrawal(session, mined)).rejects.toThrow('included; awaiting Base finality')
+  expect(state.sync).toHaveBeenCalledWith(session, mined); expect(state.remove).not.toHaveBeenCalled()
+  state.finalized = 102; state.reorg = true
+  await expect(reconcilePendingWithdrawal(session, mined)).rejects.toThrow('history changed')
+  expect(state.remove).not.toHaveBeenCalled()
+  state.reorg = false
+  await expect(reconcilePendingWithdrawal(session, mined)).resolves.toContain('Withdrawal confirmed')
+  expect(state.remove).toHaveBeenCalledOnce()
+})
+
+it('preserves the Base withdrawal journal while receipt-covered private history catches up', async () => {
+  state.base = true
+  const hash = `0x${'66'.repeat(32)}`
+  state.value = { ...pending, chainId: 8453, hash }
+  const mined = Object.assign(receipt(), { hash, blockHash: `0x${'77'.repeat(32)}` })
+  state.sync.mockRejectedValueOnce(new Error('history catching up')).mockResolvedValue(undefined)
+  await expect(reconcilePendingWithdrawal(session, mined)).rejects.toThrow('catching up')
+  expect(state.remove).not.toHaveBeenCalled(); expect(getReceipt).not.toHaveBeenCalled()
+  expect(state.sync).toHaveBeenLastCalledWith(session, mined)
+  await expect(reconcilePendingWithdrawal(session, mined)).resolves.toContain('Withdrawal confirmed')
+  expect(state.remove).toHaveBeenCalledOnce()
 })
 
 it('keeps the full unsupported WETH proof encrypted before releasing its active slot, and restores it without loss', async () => {
@@ -185,6 +228,55 @@ it('preserves an older separable-fee proof and blocks public rebroadcast before 
   expect(signer.sendTransaction).not.toHaveBeenCalled()
   expect(signer.getAddress).not.toHaveBeenCalled()
   expect(state.remove).not.toHaveBeenCalled()
+  expect(state.save).not.toHaveBeenCalled()
+})
+
+it.each([
+  { key: 'active', completed: false, reserved: false },
+  { key: 'active', completed: false, reserved: true },
+  { key: 'completed', completed: true, reserved: true, request: pending.transaction },
+  { key: 'completed', completed: true, reserved: true },
+  { key: 'completed', completed: true, reserved: true, request: { to: 'damaged', data: '0x00' } },
+])('blocks public recovery of an active or matching held prepaid proof before any signer call: %j', async (credit) => {
+  state.value = { ...pending, feeMode: 'prepaid' }
+  state.credit.mockResolvedValue(credit)
+  const signer = { sendTransaction: vi.fn(), getAddress: vi.fn(), provider: { getNetwork: vi.fn() } }
+  await expect(resumePendingWithdrawal(session, signer as unknown as Parameters<typeof resumePendingWithdrawal>[1]))
+    .rejects.toThrow('Check fee-credit transaction')
+  expect(state.credit).toHaveBeenCalledWith(session, 'native')
+  expect(signer.sendTransaction).not.toHaveBeenCalled()
+  expect(signer.provider.getNetwork).not.toHaveBeenCalled()
+  expect(signer.getAddress).not.toHaveBeenCalled()
+  expect(state.save).not.toHaveBeenCalled()
+  expect(state.remove).not.toHaveBeenCalled()
+})
+
+it('does not block unrelated settled history or an explicitly retired fee request', async () => {
+  const withdrawal = { ...pending, feeMode: 'prepaid' as const }
+  for (const credit of [undefined, { key: 'retired', completed: true, reserved: false },
+    { key: 'old', completed: true, reserved: true, request: { to: pending.transaction.to, data: '0x1234' } }]) {
+    state.credit.mockResolvedValue(credit)
+    await expect(assertPublicWithdrawalResume(session, withdrawal)).resolves.toBeUndefined()
+  }
+  state.credit.mockClear()
+  await assertPublicWithdrawalResume(session, pending)
+  expect(state.credit).not.toHaveBeenCalled()
+  expect(publicWithdrawalResumeBlocked(undefined, undefined)).toBe(false)
+})
+
+it('checks credit again after wallet network and fee reads, before requesting a transaction', async () => {
+  state.live = true
+  const data = withdrawalData(1, 1, pending.recipient, TOKENS.USDC.address)
+  const nullifiers = [...PRIVACY.decodeFunctionData('transact', data)[0][0].nullifiers]
+  state.value = { ...pending, feeMode: 'prepaid', transaction: { ...pending.transaction, data }, nullifiers }
+  state.credit.mockResolvedValueOnce(undefined).mockResolvedValue({ key: 'accepted-while-connecting', completed: false, reserved: true })
+  const signer = { sendTransaction: vi.fn(), getAddress: async () => pending.recipient,
+    provider: { getNetwork: async () => ({ chainId: 1n }), send: async () => [pending.recipient] } }
+  const online = { ...session, provider: { ...session.provider, getFeeData: async () => ({ gasPrice: 2n, maxFeePerGas: 3n, maxPriorityFeePerGas: 1n }) } }
+  await expect(resumePendingWithdrawal(online as WalletSession, signer as unknown as Parameters<typeof resumePendingWithdrawal>[1]))
+    .rejects.toThrow('Check fee-credit transaction')
+  expect(state.credit).toHaveBeenCalledTimes(2)
+  expect(signer.sendTransaction).not.toHaveBeenCalled()
   expect(state.save).not.toHaveBeenCalled()
 })
 

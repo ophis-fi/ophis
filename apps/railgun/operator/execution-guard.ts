@@ -23,7 +23,8 @@ export function assertExecutionGuardCode(operator: string, code: string, delegat
 }
 
 export function guardedExecution(transaction: ContractTransaction, nonce: bigint, guard: string): ContractTransaction {
-  if (transaction.type !== 4 || typeof transaction.to !== 'string' || typeof transaction.data !== 'string')
+  const predelegatedBase = transaction.type === 2 && BigInt(transaction.chainId ?? 0) === 8453n && !transaction.authorizationList?.length
+  if ((!predelegatedBase && transaction.type !== 4) || typeof transaction.to !== 'string' || typeof transaction.data !== 'string')
     throw new Error('Only a validated private type-4 execution can use the guard.')
   return { ...transaction, to: getAddress(guard),
     data: EXECUTION_GUARD.encodeFunctionData('execute', [transaction.to, transaction.data, nonce]) }

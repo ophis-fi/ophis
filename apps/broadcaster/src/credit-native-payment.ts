@@ -1,18 +1,20 @@
 import { createHash } from 'node:crypto'
-import { getAddress, isHexString, ZeroAddress, type JsonRpcProvider } from 'ethers'
-import { nativeCreditData, type CreditScope } from '../../railgun/credit-protocol'
+import { getAddress, isHexString, Transaction, ZeroAddress, type JsonRpcProvider } from 'ethers'
+import { NATIVE_CREDIT_CHAINS, nativeCreditData, type CreditScope } from '../../railgun/credit-protocol'
 import { CHAIN } from './config'
 import { finalizedCreditEvidence, finalizedCreditReceipt } from './credit-payment'
 import { assertTraceSuccess } from './transaction'
+import { receiptNetworkCost } from '../../railgun/network-fee'
 
 export interface NativeDepositAnchor {
   paymentId: string; owner: string; transactionHash: string; blockNumber: number; blockHash: string; amount: string
 }
 export interface NativeSettlementAnchor { transactionHash: string; blockNumber: number; blockHash: string }
+export interface NativePendingAttempt { nonce: number; raw: string; cancellations: readonly string[]; maximumCost: bigint }
 export interface VerifiedNativeDeposit { readonly kind: 'verified-native-credit-deposit' }
 export interface NativeCreditBacking { readonly kind: 'verified-native-credit-backing' }
 interface DepositDetails extends NativeDepositAnchor { ledgerId: string; scope: string; checkedAt: number }
-interface BackingDetails { available: bigint; nonce: number; blockNumber: number; blockHash: string;
+interface BackingDetails { available: bigint; pendingOutflow: bigint; nonce: number; blockNumber: number; blockHash: string;
   checkedAt: number; ledgerId: string; scope: string; catalog: string }
 const payments = new WeakMap<VerifiedNativeDeposit, Readonly<DepositDetails>>()
 const balances = new WeakMap<NativeCreditBacking, Readonly<BackingDetails>>()
@@ -22,7 +24,7 @@ const identifier = (value: string): string => {
   return value.toLowerCase()
 }
 export function nativeScope(scope: CreditScope, ledgerId: string): string {
-  if (scope.funding !== 'native' || ![1, 56].includes(scope.chainId) || BigInt(scope.chainId) !== CHAIN ||
+  if (scope.funding !== 'native' || !NATIVE_CREDIT_CHAINS.includes(scope.chainId) || BigInt(scope.chainId) !== CHAIN ||
     getAddress(scope.operator) === ZeroAddress || getAddress(scope.recipient) !== getAddress(scope.operator) ||
     getAddress(scope.token) !== ZeroAddress) throw new Error('Native credit requires an explicit native ledger scope.')
   identifier(ledgerId)
@@ -46,13 +48,38 @@ export function nativeDepositCatalog(anchors: readonly NativeDepositAnchor[]): s
   if (new Set(normalized).size !== normalized.length) throw new Error('Duplicate native deposit history.')
   return createHash('sha256').update(JSON.stringify(normalized)).digest('hex')
 }
-export function nativeHistoryCatalog(deposits: readonly NativeDepositAnchor[], settlements: readonly NativeSettlementAnchor[]): string {
+function pendingTransactions(pending: readonly NativePendingAttempt[]) {
+  if (pending.length > 20 || new Set(pending.map(item => item.nonce)).size !== pending.length)
+    throw new Error('Invalid native pending nonce catalog.')
+  return pending.map(item => {
+    if (!Number.isSafeInteger(item.nonce) || item.nonce < 0 || typeof item.maximumCost !== 'bigint' ||
+      item.maximumCost <= 0n || item.maximumCost >= 2n ** 256n || !Array.isArray(item.cancellations))
+      throw new Error('Invalid native pending attempt.')
+    const transactions = [item.raw, ...item.cancellations].map((raw, index) => {
+      if (typeof raw !== 'string' || !isHexString(raw)) throw new Error('Missing signed native pending transaction.')
+      const tx = Transaction.from(raw), price = tx.maxFeePerGas ?? tx.gasPrice ?? 0n
+      if (!tx.isSigned() || tx.serialized !== raw.toLowerCase() || ![0, 1, 2, 4].includes(tx.type ?? -1) ||
+        !tx.to || tx.nonce !== item.nonce || tx.gasLimit <= 0n || price <= 0n || tx.gasLimit * price > item.maximumCost ||
+        (tx.maxPriorityFeePerGas ?? 0n) > price || (tx.value > 0n && tx.to === tx.from) ||
+        (index > 0 && (tx.type !== 2 || tx.to !== tx.from || tx.data !== '0x' || tx.value !== 0n || tx.authorizationList?.length)))
+        throw new Error('Invalid signed native pending transaction or cancellation.')
+      return tx
+    })
+    if (new Set(transactions.map(tx => tx.hash)).size !== transactions.length)
+      throw new Error('Duplicate native pending transaction.')
+    return { nonce: item.nonce, maximumCost: item.maximumCost, transactions }
+  })
+}
+export function nativeHistoryCatalog(deposits: readonly NativeDepositAnchor[], settlements: readonly NativeSettlementAnchor[],
+  pending: readonly NativePendingAttempt[] = []): string {
   const outcomes = settlements.map(item => {
     if (!Number.isSafeInteger(item.blockNumber) || item.blockNumber < 0) throw new Error('Invalid native settlement history.')
     return JSON.stringify([identifier(item.transactionHash), item.blockNumber, identifier(item.blockHash)])
   }).sort()
   if (new Set(outcomes).size !== outcomes.length) throw new Error('Duplicate native settlement history.')
-  return createHash('sha256').update(JSON.stringify([nativeDepositCatalog(deposits), outcomes])).digest('hex')
+  const attempts = pendingTransactions(pending).map(item => JSON.stringify([item.nonce, item.maximumCost.toString(),
+    item.transactions[0].serialized, item.transactions.slice(1).map(tx => tx.serialized).sort()])).sort()
+  return createHash('sha256').update(JSON.stringify([nativeDepositCatalog(deposits), outcomes, ...(attempts.length ? [attempts] : [])])).digest('hex')
 }
 export function assertNativeRefundTrace(trace: unknown, expected: { from: string; to: string; value: bigint }): void {
   if (!trace || typeof trace !== 'object' || Array.isArray(trace)) throw new Error('Missing native refund execution trace.')
@@ -97,22 +124,36 @@ export async function verifyNativeDeposit(provider: JsonRpcProvider, scope: Cred
 }
 /** Pin current spendable native balance and recheck all credited origins through a canonical finalized checkpoint. */
 export async function verifyNativeBacking(provider: JsonRpcProvider, scope: CreditScope, ledgerId: string,
-  anchors: readonly NativeDepositAnchor[], settlements: readonly NativeSettlementAnchor[] = []): Promise<NativeCreditBacking> {
-  const scopeKey = nativeScope(scope, ledgerId), catalog = nativeHistoryCatalog(anchors, settlements)
+  anchors: readonly NativeDepositAnchor[], settlements: readonly NativeSettlementAnchor[] = [],
+  pending: readonly NativePendingAttempt[] = []): Promise<NativeCreditBacking> {
+  const scopeKey = nativeScope(scope, ledgerId), catalog = nativeHistoryCatalog(anchors, settlements, pending)
+  const attempts = pendingTransactions(pending), operator = getAddress(scope.operator)
+  if (pending.length && ![42161, 8453].includes(scope.chainId)) throw new Error('Pending native backing is available only on Arbitrum and Base.')
+  for (const attempt of attempts) for (const tx of attempt.transactions) {
+    if (tx.from !== operator || tx.chainId !== CHAIN || (scope.chainId === 8453 && tx.type !== 2) ||
+      settlements.some(item => item.transactionHash.toLowerCase() === tx.hash))
+      throw new Error('Native pending transaction does not match its unsettled operator scope.')
+  }
   if ((await read(provider.getNetwork())).chainId !== CHAIN) throw new Error('Native backing is on another chain.')
   const finalized = await read(provider.getBlock('finalized'))
   if (!finalized || !Number.isSafeInteger(finalized.number) || finalized.number < 0 || !isHexString(finalized.hash, 32))
     throw new Error('Missing native finalized history anchor.')
+  const blockReads = new Map<number, ReturnType<JsonRpcProvider['getBlock']>>()
+  const canonicalBlock = (number: number) => {
+    let result = blockReads.get(number)
+    if (!result) { result = read(provider.getBlock(number)); blockReads.set(number, result) }
+    return result
+  }
   let cache = checkpoints.get(provider)
   if (!cache) { cache = new Map(); checkpoints.set(provider, cache) }
   const cacheKey = `${scopeKey}:${identifier(ledgerId)}`, previous = cache.get(cacheKey)
   let known = new Set<string>()
   if (previous) {
-    const old = await read(provider.getBlock(previous.number))
+    const old = await canonicalBlock(previous.number)
     if (old?.hash === previous.hash && finalized.number >= previous.number) known = previous.anchors
     else cache.delete(cacheKey)
   }
-  const next = new Set<string>(), pending = new Map<number, string>()
+  const next = new Set<string>(), historyBlocks = new Map<number, string>()
   for (const { anchor, key } of [
     ...anchors.map(anchor => ({ anchor, key: nativeDepositCatalog([anchor]) })),
     ...settlements.map(anchor => ({ anchor, key: nativeHistoryCatalog([], [anchor]) })),
@@ -120,14 +161,14 @@ export async function verifyNativeBacking(provider: JsonRpcProvider, scope: Cred
     next.add(key)
     if (anchor.blockNumber > finalized.number) throw new Error('Credited native funding is no longer finalized.')
     if (!known.has(key)) {
-      const expected = pending.get(anchor.blockNumber)
+      const expected = historyBlocks.get(anchor.blockNumber)
       if (expected && expected !== anchor.blockHash) throw new Error('Conflicting native history anchors.')
-      pending.set(anchor.blockNumber, anchor.blockHash)
+      historyBlocks.set(anchor.blockNumber, anchor.blockHash)
     }
   }
-  const blocks = [...pending]
+  const blocks = [...historyBlocks]
   for (let offset = 0; offset < blocks.length; offset += 8) await Promise.all(blocks.slice(offset, offset + 8).map(async ([number, hash]) => {
-    if ((await read(provider.getBlock(number)))?.hash !== hash) throw new Error('Credited native payment changed canonical history.')
+    if ((await canonicalBlock(number))?.hash !== hash) throw new Error('Credited native payment changed canonical history.')
   }))
   if ((await read(provider.getBlock(finalized.number)))?.hash !== finalized.hash) throw new Error('Native finalized history changed during verification.')
   cache.set(cacheKey, { number: finalized.number, hash: finalized.hash!, anchors: next })
@@ -135,17 +176,51 @@ export async function verifyNativeBacking(provider: JsonRpcProvider, scope: Cred
   if (!head || !isHexString(head.hash, 32) || !Number.isSafeInteger(head.number) || head.number < finalized.number ||
     !Number.isSafeInteger(head.timestamp) || Math.abs(Date.now() - head.timestamp * 1000) > 45_000)
     throw new Error('Fresh native backing head is required.')
-  const operator = getAddress(scope.operator)
-  const [available, nonce, code, canonical] = await Promise.all([read(provider.getBalance(operator, head.number)),
-    read(provider.getTransactionCount(operator, head.number)), read(provider.getCode(operator, head.number)), read(provider.getBlock(head.number))])
+  const [available, nonce, code, canonical, finalizedNonce, finalizedCode] = await Promise.all([read(provider.getBalance(operator, head.number)),
+    read(provider.getTransactionCount(operator, head.number)), read(provider.getCode(operator, head.number)), canonicalBlock(head.number),
+    [42161, 8453].includes(scope.chainId) ? read(provider.getTransactionCount(operator, finalized.number)) : undefined,
+    [42161, 8453].includes(scope.chainId) ? read(provider.getCode(operator, finalized.number)) : undefined])
   if (available < 0n || available >= 2n ** 256n || !Number.isSafeInteger(nonce) || nonce < 0 || code !== '0x' || canonical?.hash !== head.hash)
     throw new Error('Native balance, nonce or operator code changed during verification.')
+  let pendingOutflow = 0n
+  if ([42161, 8453].includes(scope.chainId)) {
+    if (!Number.isSafeInteger(finalizedNonce) || finalizedNonce! < 0 || finalizedNonce! > nonce || finalizedCode !== '0x' ||
+      nonce - finalizedNonce! > attempts.length || attempts.some(item => item.nonce >= nonce))
+      throw new Error('Native pending catalog does not cover the operator nonce history.')
+    const nonces = new Set(attempts.map(item => item.nonce))
+    for (let value = finalizedNonce!; value < nonce; value++) if (!nonces.has(value))
+      throw new Error('Unknown native operator nonce consumption.')
+    const candidates = attempts.flatMap(attempt => attempt.transactions.map(tx => ({ attempt, tx })))
+    const included = new Set<number>()
+    for (let offset = 0; offset < candidates.length; offset += 8) {
+      const receipts = await Promise.all(candidates.slice(offset, offset + 8).map(async ({ attempt, tx }) => ({
+        attempt, tx, receipt: await read(provider.getTransactionReceipt(tx.hash!)),
+      })))
+      for (const { attempt, tx, receipt } of receipts) {
+        if (!receipt) continue
+        if (included.has(attempt.nonce) || receipt.hash !== tx.hash || receipt.from !== operator || receipt.to !== tx.to ||
+          !Number.isSafeInteger(receipt.blockNumber) || receipt.blockNumber < 0 || receipt.blockNumber > head.number ||
+          !isHexString(receipt.blockHash, 32) || (receipt.status !== 0 && receipt.status !== 1) ||
+          typeof receipt.gasUsed !== 'bigint' || receipt.gasUsed <= 0n || receipt.gasUsed > tx.gasLimit ||
+          typeof receipt.gasPrice !== 'bigint' || receipt.gasPrice <= 0n || receipt.gasPrice > (tx.maxFeePerGas ?? tx.gasPrice!) ||
+          (receipt.blockNumber <= finalized.number) !== (attempt.nonce < finalizedNonce!) ||
+          (await canonicalBlock(receipt.blockNumber))?.hash !== receipt.blockHash)
+          throw new Error('Native pending receipt does not match its canonical signed transaction.')
+        included.add(attempt.nonce)
+        const cost = await read(receiptNetworkCost(provider, receipt, scope.chainId))
+        if (cost > attempt.maximumCost) throw new Error('Native pending cost exceeds its reserved maximum.')
+        pendingOutflow += cost + (receipt.status === 1 ? tx.value : 0n)
+      }
+    }
+    if (included.size !== attempts.length || pendingOutflow >= 2n ** 256n)
+      throw new Error('Every native pending attempt must have a canonical inclusion.')
+  }
   // Block-number state reads can race a reorg; recheck both ancestry and the state head after they finish.
   if ((await read(provider.getBlock(head.number)))?.hash !== head.hash ||
     (await read(provider.getBlock(finalized.number)))?.hash !== finalized.hash)
     throw new Error('Native canonical history changed after the balance read.')
   const proof: NativeCreditBacking = Object.freeze({ kind: 'verified-native-credit-backing' })
-  balances.set(proof, Object.freeze({ available, nonce, blockNumber: head.number, blockHash: head.hash!,
+  balances.set(proof, Object.freeze({ available, pendingOutflow, nonce, blockNumber: head.number, blockHash: head.hash!,
     checkedAt: Math.min(Date.now(), head.timestamp * 1000), ledgerId: identifier(ledgerId), scope: scopeKey, catalog }))
   return proof
 }

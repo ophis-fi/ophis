@@ -16,7 +16,7 @@ const output = (Array.isArray(built) ? built[0] : built).output
 const resources = new Map(output.map(item => [`/${item.fileName}`, item.type === 'chunk' ? item.code : item.source]))
 resources.set('/incognito.svg', await readFile(join(root, 'public/incognito.svg')))
 resources.set('/logos/token-unknown.png', await readFile(join(root, 'public/logos/token-unknown.png')))
-for (const name of ['chain-ethereum.png', 'chain-arbitrum.jpg', 'chain-polygon.png', 'chain-bnb.png',
+for (const name of ['chain-ethereum.png', 'chain-arbitrum.jpg', 'chain-polygon.png', 'chain-bnb.png', 'chain-base.png',
   'token-weth.png', 'token-usdc.png', 'token-usdt.png']) {
   const bytes = await readFile(join(root, 'public/logos', name))
   assert.deepEqual(bytes, await readFile(join(root, '../frontend/apps/cowswap-frontend/public/logos', name)))
@@ -51,9 +51,9 @@ try {
   })
   await page.goto(origin, { waitUntil: 'networkidle' })
   await expect(page.locator('#quote')).toBeVisible()
-  assert.deepEqual(await page.locator('#private-network option').allTextContents(), ['Ethereum', 'Arbitrum', 'Polygon', 'BNB Chain'])
+  assert.deepEqual(await page.locator('#private-network option').allTextContents(), ['Ethereum', 'Arbitrum', 'Polygon', 'BNB Chain', 'Base'])
   await page.locator('#private-network-picker').click()
-  await expect(page.locator('#asset-options img')).toHaveCount(4)
+  await expect(page.locator('#asset-options img')).toHaveCount(5)
   await page.keyboard.press('ArrowUp')
   await expect(page.locator('#asset-options button').last()).toBeFocused()
   await page.locator('#asset-search').focus()

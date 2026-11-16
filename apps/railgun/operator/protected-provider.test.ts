@@ -5,9 +5,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { NETWORK_CONFIG, NetworkName } from '@railgun-community/shared-models'
-import { decodeRlp, encodeRlp, FetchRequest, Transaction, Wallet } from 'ethers'
+import { decodeRlp, encodeRlp, FetchRequest, toBeHex, Transaction, Wallet, type JsonRpcProvider } from 'ethers'
 import { PROTECTED_WRITE_RPC, protectedWriteRPC, ProtectedEthereumProvider } from './protected-provider'
 import { EXECUTION_GUARD, executionGuardCode } from './execution-guard'
+import { BASE_VALIDITY_RPC, submitProtected } from './protected-submission'
+import { prepareBaseValidity, type BaseValidityPlan } from './base-validity'
 
 const config = NETWORK_CONFIG[NetworkName.Ethereum]
 const operator = Wallet.createRandom()
@@ -22,17 +24,28 @@ let confirmed: bigint
 let chain: string
 let fork: boolean
 let forkError: boolean
+let rpcOverride: ((method: string) => { status: number; body: unknown } | undefined) | undefined
 let nextBlockRead: (() => Promise<void>) | undefined
 let write: ReturnType<typeof vi.fn>
 let executionGuard: string | undefined
 let guardCode: string | undefined
 let height: bigint
 let headTimestamp: number
+let finalizedHeight: bigint
+let blockHashes: Map<string, string>
+let inclusions: Map<string, { transactionHash: string; blockNumber: string; blockHash: string; status: string }>
+let nextReceiptRead: (() => Promise<void>) | undefined
+let baseOperatorCode: string
+let baseAccountCode: string
 const bundleHash = `0x${'ab'.repeat(32)}`
+const alchemyRPC: Record<number, string> = {
+  42161: 'https://arb-mainnet.g.alchemy.com/v2/test-key',
+  8453: 'https://base-mainnet.g.alchemy.com/v2/test-key',
+}
 
 async function signed(overrides = {}, chainId = 1): Promise<string> {
   const network = NETWORK_CONFIG[chainId === 56 ? NetworkName.BNBChain : chainId === 42161 ? NetworkName.Arbitrum
-    : chainId === 137 ? NetworkName.Polygon : NetworkName.Ethereum]
+    : chainId === 137 ? NetworkName.Polygon : chainId === 8453 ? NetworkName.Base : NetworkName.Ethereum]
   const auth = await ephemeral.authorize({ address: network.relayAdapt7702Contract, chainId, nonce: 0 })
   return operator.signTransaction({
     type: 4, chainId, nonce: 0, to: ephemeral.address, authorizationList: [auth],
@@ -44,7 +57,9 @@ async function signed(overrides = {}, chainId = 1): Promise<string> {
 function provider(guard?: string, chainId = 1, operatorAddress = operator.address, nativeRefunds = false): ProtectedEthereumProvider {
   const request = new FetchRequest(readURL)
   request.setHeader('Authorization', 'private-read-node-credential')
-  const result = new ProtectedEthereumProvider(request, operatorAddress, directory, guard, chainId, nativeRefunds)
+  request.retryFunc = async () => false
+  const result = new ProtectedEthereumProvider(request, operatorAddress, directory, guard, chainId, nativeRefunds,
+    chainId === 8453 ? BASE_VALIDITY_RPC : alchemyRPC[chainId])
   providers.push(result)
   return result
 }
@@ -56,7 +71,7 @@ function signedCancellation(overrides = {}, chainId = 1): Promise<string> {
 }
 
 describe('explicit native prepaid refunds', () => {
-  it.each([1, 56])('keeps chain %s refunds and cancellation in the protected durable nonce journal', async (chainId) => {
+  it.each([1, 56, 42161])('keeps chain %s refunds and cancellation in the protected durable nonce journal', async (chainId) => {
     chain = `0x${chainId.toString(16)}`
     const raw = await signedCancellation({ to: ephemeral.address, value: 100n }, chainId)
     const disabled = provider(undefined, chainId)
@@ -72,7 +87,7 @@ describe('explicit native prepaid refunds', () => {
     const cancellation = await signedCancellation({}, chainId)
     expect(await restarted.cancelPending(cancellation)).toBe(Transaction.from(cancellation).hash)
     expect(reads.some((call) => call.method.startsWith('eth_send'))).toBe(false)
-    expect(write.mock.calls.every(([url]) => url === protectedWriteRPC(chainId))).toBe(true)
+    expect(write.mock.calls.every(([url]) => url === protectedWriteRPC(chainId, alchemyRPC[chainId]))).toBe(true)
   })
   it('does not widen native refunds to arbitrary calls, authorization, self-payment or zero-value transfers', async () => {
     const current = provider(undefined, 1, operator.address, true)
@@ -165,16 +180,31 @@ describe('explicit reorg recovery staging', () => {
 beforeEach(async () => {
   directory = mkdtempSync(join(tmpdir(), 'ophis-protected-provider-'))
   providers = []; reads = []; latest = 0n; confirmed = 0n; chain = '0x1'; fork = false; forkError = false; nextBlockRead = undefined
+  rpcOverride = undefined
   executionGuard = undefined; guardCode = undefined
   height = 100n; headTimestamp = Math.floor(Date.now() / 1000)
+  finalizedHeight = 80n; blockHashes = new Map(); inclusions = new Map(); nextReceiptRead = undefined
+  baseOperatorCode = '0x'; baseAccountCode = `0xef0100${NETWORK_CONFIG[NetworkName.Base].relayAdapt7702Contract.slice(2).toLowerCase()}`
   server = createServer(async (req, res) => {
     let body = ''
     for await (const chunk of req) body += chunk
     const call = JSON.parse(body)
     reads.push({ method: call.method, params: call.params })
+    const override = rpcOverride?.(call.method)
+    if (override) {
+      res.statusCode = override.status
+      res.setHeader('Content-Type', 'application/json')
+      res.end(typeof override.body === 'string' ? override.body : JSON.stringify(override.body))
+      return
+    }
     if (call.method === 'eth_blockNumber' && nextBlockRead) {
       const pause = nextBlockRead
       nextBlockRead = undefined
+      await pause()
+    }
+    if (call.method === 'eth_getTransactionReceipt' && nextReceiptRead) {
+      const pause = nextReceiptRead
+      nextReceiptRead = undefined
       await pause()
     }
     if (forkError && call.method === 'anvil_metadata') {
@@ -185,10 +215,19 @@ beforeEach(async () => {
     switch (call.method) {
       case 'eth_chainId': result = chain; break
       case 'eth_blockNumber': result = `0x${height.toString(16)}`; break
-      case 'eth_getBlockByNumber': result = { number: `0x${height.toString(16)}`, timestamp: `0x${headTimestamp.toString(16)}`, hash: `0x${'cd'.repeat(32)}` }; break
-      case 'eth_getTransactionCount': result = `0x${(call.params[1] === 'latest' ? latest : confirmed).toString(16)}`; break
+      case 'eth_getBlockByNumber': {
+        const number = ['0xa4b1', '0x2105'].includes(chain) ? call.params[0] === 'latest' ? height : call.params[0] === 'finalized' ? finalizedHeight : BigInt(call.params[0]) : height
+        const tag = `0x${number.toString(16)}`
+        result = { number: tag, timestamp: `0x${headTimestamp.toString(16)}`, hash: blockHashes.get(tag) ?? `0x${'cd'.repeat(32)}` }
+        break
+      }
+      case 'eth_getTransactionCount': result = `0x${(call.params[1] === 'latest' ||
+        (['0xa4b1', '0x2105'].includes(chain) && call.params[1] === `0x${height.toString(16)}`) ? latest : confirmed).toString(16)}`; break
+      case 'eth_getTransactionReceipt': result = inclusions.get(call.params[0]) ?? null; break
       case 'eth_getBalance': result = '0x1'; break
-      case 'eth_getCode': result = call.params[0] === executionGuard ? guardCode : '0x6001'; break
+      case 'eth_getCode': result = call.params[0] === executionGuard ? guardCode
+        : chain === '0x2105' && call.params[0] === operator.address ? baseOperatorCode
+          : chain === '0x2105' && call.params[0] === ephemeral.address ? baseAccountCode : '0x6001'; break
       case 'anvil_metadata': if (fork) result = { forkedNetwork: { chainId: 1 } }; break
     }
     res.setHeader('Content-Type', 'application/json')
@@ -215,13 +254,351 @@ afterEach(async () => {
   vi.restoreAllMocks()
 })
 
+describe('Arbitrum native prepaid inclusion pipeline', () => {
+  const include = (raw: string, number = 90n) => {
+    const hash = Transaction.from(raw).hash!, blockNumber = `0x${number.toString(16)}`
+    inclusions.set(hash, { transactionHash: hash, blockNumber,
+      blockHash: blockHashes.get(blockNumber) ?? `0x${'cd'.repeat(32)}`, status: '0x1' })
+  }
+  const start = () => { chain = '0xa4b1'; return provider(undefined, 42161, operator.address, true) }
+
+  it('publishes successive exact nonces before finality and retains original and cancellation history', async () => {
+    const current = start(), first = await signed({}, 42161), second = await signed({ nonce: 1 }, 42161)
+    await current.broadcastTransaction(first)
+    const cancellation = await signedCancellation({}, 42161)
+    await current.cancelPending(cancellation)
+    include(cancellation); latest = 1n
+    expect((await current.broadcastTransaction(second)).hash).toBe(Transaction.from(second).hash)
+    expect(confirmed).toBe(0n)
+    expect(current.pendingTransaction()).toEqual({ hash: Transaction.from(second).hash, nonce: 1 })
+    const saved = new DatabaseSync(join(directory, 'protected-transactions.sqlite'))
+    try {
+      expect(saved.prepare('SELECT raw FROM operation_history ORDER BY nonce').all().map(row => row.raw)).toEqual([first, second])
+      expect(saved.prepare('SELECT raw FROM cancellation_history').get()?.raw).toBe(cancellation)
+    } finally { saved.close() }
+    expect(write).toHaveBeenCalledTimes(3)
+    expect(reads.some(call => call.method.startsWith('eth_send'))).toBe(false)
+  })
+
+  it.each(['missing-journal', 'unknown-receipt', 'wrong-hash', 'orphan-block', 'head-reorg'])('halts on %s without advancing the pointer or publishing', async (failure) => {
+    const current = start(), first = await signed({}, 42161), second = await signed({ nonce: 1 }, 42161)
+    if (failure !== 'missing-journal') await current.stageSigned(first)
+    if (failure !== 'unknown-receipt') include(first)
+    latest = 1n
+    if (failure === 'wrong-hash') inclusions.get(Transaction.from(first).hash!)!.transactionHash = `0x${'ab'.repeat(32)}`
+    if (failure === 'orphan-block') blockHashes.set('0x5a', `0x${'ab'.repeat(32)}`)
+    if (failure === 'head-reorg') nextReceiptRead = async () => { blockHashes.set('0x64', `0x${'ab'.repeat(32)}`) }
+    const previous = current.pendingTransaction()
+    await expect(current.broadcastTransaction(second)).rejects.toThrow(/Arbitrum/)
+    expect(current.pendingTransaction()).toEqual(previous)
+    expect(write).not.toHaveBeenCalled()
+  })
+
+  it('bounds all retained unfinalized nonces at 20 while preserving retry and recovery', async () => {
+    const current = start(), raw: string[] = []
+    for (let nonce = 0; nonce < 20; nonce++) {
+      raw.push(await signed({ nonce }, 42161))
+      await current.stageSigned(raw[nonce])
+      include(raw[nonce], 81n + BigInt(nonce)); latest++
+    }
+    await expect(current.stageSigned(await signed({ nonce: 20 }, 42161))).rejects.toThrow('20 outstanding')
+    latest = 19n; inclusions.delete(Transaction.from(raw[19]).hash!)
+    expect(await current.retryPending()).toBe(Transaction.from(raw[19]).hash)
+    latest = 1n
+    await current.stageRecovery(raw[1], current.pendingTransaction()!)
+    expect(current.pendingTransaction()?.nonce).toBe(1)
+    include(raw[19], 100n); latest = 20n; confirmed = 1n; finalizedHeight = 81n
+    await current.stageSigned(await signed({ nonce: 20 }, 42161))
+    expect(current.pendingTransaction()?.nonce).toBe(20)
+  }, 20_000)
+
+  it('recovers above the finalized nonce across restart without replacing retained bytes', async () => {
+    const current = start(), raw = await Promise.all([0, 1, 2].map(nonce => signed({ nonce }, 42161)))
+    await current.stageSigned(raw[0]); include(raw[0]); latest = 1n
+    await current.stageSigned(raw[1]); include(raw[1], 91n); latest = 2n
+    await current.stageSigned(raw[2])
+    const displaced = current.pendingTransaction()!
+    latest = 1n; inclusions.delete(Transaction.from(raw[1]).hash!)
+    await expect(current.stageRecovery(await signed({ nonce: 1, data: '0x87654321' }, 42161), displaced)).rejects.toThrow('already owns')
+    expect(current.pendingTransaction()).toEqual(displaced)
+    await current.stageRecovery(raw[1], displaced)
+    current.destroy()
+    const restarted = provider(undefined, 42161, operator.address, true)
+    expect(await restarted.retryPending()).toBe(Transaction.from(raw[1]).hash)
+    include(raw[1], 92n); latest = 2n
+    await restarted.stageSigned(raw[2])
+    expect(restarted.pendingTransaction()).toEqual(displaced)
+    const saved = new DatabaseSync(join(directory, 'protected-transactions.sqlite'))
+    try { expect(saved.prepare('SELECT raw FROM operation_history ORDER BY nonce').all().map(row => row.raw)).toEqual(raw) }
+    finally { saved.close() }
+  })
+
+  it('rejects concurrent journal mutation after canonical reads', async () => {
+    const current = start(), first = await signed({}, 42161), second = await signed({ nonce: 1 }, 42161)
+    await current.stageSigned(first); include(first); latest = 1n
+    nextReceiptRead = async () => { await current.stageSigned(second) }
+    await expect(current.broadcastTransaction(second)).rejects.toThrow('journal changed')
+    expect(current.pendingTransaction()?.hash).toBe(Transaction.from(second).hash)
+    expect(write).not.toHaveBeenCalled()
+  })
+
+  it.each([[42161, false], [56, true], [1, true]] as const)(
+    'retains the existing finality gate on chain %s with native mode %s', async (chainId, native) => {
+      chain = `0x${chainId.toString(16)}`
+      const current = provider(undefined, chainId, operator.address, native)
+      await current.stageSigned(await signed({}, chainId)); latest = 1n
+      await expect(current.stageSigned(await signed({ nonce: 1 }, chainId))).rejects.toThrow('nonce is unresolved')
+      expect(current.pendingTransaction()?.nonce).toBe(0)
+      expect(write).not.toHaveBeenCalled()
+    })
+})
+
+describe('Base fee-bound validity transport', () => {
+  const start = () => {
+    chain = '0x2105'; executionGuard = Wallet.createRandom().address
+    guardCode = executionGuardCode(operator.address, '0x6001', NETWORK_CONFIG[NetworkName.Base].relayAdapt7702Contract)
+    return provider(executionGuard, 8453, operator.address, true)
+  }
+  const rawTransaction = (overrides = {}) => operator.signTransaction({ type: 2, chainId: 8453, nonce: 0,
+    to: executionGuard!, value: 0n, data: EXECUTION_GUARD.encodeFunctionData('execute', [ephemeral.address, '0x3e12cc2e', 0n]),
+    gasLimit: 1_000_000n, maxFeePerGas: 2_000_000_000n, maxPriorityFeePerGas: 1_000_000_000n, ...overrides })
+  const planFor = async (raw: string, feeExpiryMs = Date.now() + 60_000): Promise<Readonly<BaseValidityPlan>> => {
+    const feeProvider = {
+      getNetwork: async () => ({ chainId: 8453n }),
+      getBlock: async () => ({ number: Number(height), timestamp: headTimestamp, hash: blockHashes.get(`0x${height.toString(16)}`) ?? `0x${'cd'.repeat(32)}` }),
+      send: async (_method: string, [address, slot]: string[]) => {
+        const values: Record<string, bigint> = { '0x1': 1_000_000_000n, '0x3': (1000n << 96n) | (1000n << 64n), '0x7': 1n, '0x8': 0n }
+        const value = slot.length > 10 ? address.endsWith('0015')
+          ? 0x8bde8f549f56d405f07e1aa15df9e1fc69839881n : 0x4f1db3c6abd250ba86e0928471a8f7db3afd88f1n
+          : address.endsWith('000f') ? 0x01010101n : values[slot]
+        return toBeHex(value, 32)
+      },
+    } as unknown as Pick<JsonRpcProvider, 'getNetwork' | 'getBlock' | 'send'>
+    return prepareBaseValidity(feeProvider, Transaction.from(raw).unsignedSerialized, feeExpiryMs)
+  }
+  const include = (raw: string, number = 90) => {
+    const hash = Transaction.from(raw).hash!, blockNumber = `0x${number.toString(16)}`
+    inclusions.set(hash, { transactionHash: hash, blockNumber, blockHash: `0x${'cd'.repeat(32)}`, status: '0x1' })
+  }
+
+  it.each(['timeout', 'duplicate', 'wrong-hash'])('retains the exact predicates after %s and across restart without a raw fallback', async failure => {
+    const current = start(), raw = await rawTransaction(), plan = await planFor(raw)
+    write.mockImplementationOnce(() => {
+      if (failure === 'timeout') throw new Error('sensitive sequencer diagnostics')
+      return Response.json({ jsonrpc: '2.0', id: 1, ...(failure === 'duplicate'
+        ? { error: { code: -32000, message: 'sensitive duplicate' } } : { result: `0x${'ab'.repeat(32)}` }) })
+    })
+    await expect(current.broadcastTransaction(raw, plan.feeExpiryMs, plan)).rejects.toThrow('outcome is unknown')
+    const originalBody = write.mock.calls[0][1].body
+    expect(JSON.parse(originalBody).method).toBe('base_sendRawTransactionValidity')
+    expect(JSON.parse(originalBody).params).toEqual([raw, { validity: plan.validity }])
+    expect(current.pendingTransaction()?.hash).toBe(Transaction.from(raw).hash)
+    current.destroy()
+    const restarted = provider(executionGuard, 8453, operator.address, true)
+    expect(await restarted.retryPending()).toBe(Transaction.from(raw).hash)
+    expect(write.mock.calls[1][1].body).toBe(originalBody)
+    expect(write.mock.calls.every(([url]) => url === BASE_VALIDITY_RPC)).toBe(true)
+    expect(reads.some(call => JSON.stringify(call.params).includes(raw))).toBe(false)
+  })
+
+  it('refuses unconditioned publication and cannot retrofit a new envelope onto retained raw-only bytes', async () => {
+    const current = start(), raw = await rawTransaction(), plan = await planFor(raw)
+    await expect(current.broadcastTransaction(raw)).rejects.toThrow('no saved fee-bound validity')
+    await current.stageSigned(raw)
+    await expect(current.retryPending()).rejects.toThrow('no saved fee-bound validity')
+    await expect(current.stageSigned(raw, plan)).rejects.toThrow('cannot change or acquire')
+    await expect(submitProtected(8453, JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_sendRawTransaction', params: [raw] }), Transaction.from(raw).hash!))
+      .rejects.toThrow()
+    expect(write).not.toHaveBeenCalled()
+    const cancellation = await signedCancellation({}, 8453)
+    expect(await current.cancelPending(cancellation, await planFor(cancellation))).toBe(Transaction.from(cancellation).hash)
+    expect(JSON.parse(write.mock.calls[0][1].body).method).toBe('base_sendRawTransactionValidity')
+  })
+
+  it('rejects altered predicates, altered expiry and substituted signed bytes before any further disclosure', async () => {
+    const current = start(), raw = await rawTransaction(), plan = await planFor(raw)
+    await current.broadcastTransaction(raw, plan.feeExpiryMs, plan)
+    const changed = JSON.parse(JSON.stringify(plan)) as BaseValidityPlan
+    changed.validity.splice(0, 1)
+    await expect(current.broadcastTransaction(raw, changed.feeExpiryMs, changed)).rejects.toThrow()
+    const repriced = await planFor(raw, plan.feeExpiryMs + 1000)
+    await expect(current.broadcastTransaction(raw, repriced.feeExpiryMs, repriced)).rejects.toThrow('cannot change or acquire')
+    await expect(current.broadcastTransaction(await rawTransaction({ gasLimit: 900_000n }), plan.feeExpiryMs, plan)).rejects.toThrow()
+    expect(write).toHaveBeenCalledOnce()
+    expect(current.pendingTransaction()?.hash).toBe(Transaction.from(raw).hash)
+  })
+
+  it('loads and stages expired history for cancellation while refusing expired retries or renewal', async () => {
+    const current = start(), raw = await rawTransaction(), plan = await planFor(raw)
+    await current.stageSigned(raw, plan)
+    height = BigInt(plan.expiryBlock)
+    current.destroy()
+    const restarted = provider(executionGuard, 8453, operator.address, true)
+    expect(await restarted.stageSigned(raw, plan)).toBe(Transaction.from(raw).hash)
+    await expect(restarted.retryPending()).rejects.toThrow('expired')
+    const fresh = await planFor(raw)
+    await expect(restarted.broadcastTransaction(raw, fresh.feeExpiryMs, fresh)).rejects.toThrow('cannot change or acquire')
+    expect(write).not.toHaveBeenCalled()
+    const cancellation = await signedCancellation({}, 8453), cancellationPlan = await planFor(cancellation)
+    await restarted.cancelPending(cancellation, cancellationPlan)
+    const body = write.mock.calls[0][1].body
+    restarted.destroy()
+    expect(await provider(executionGuard, 8453, operator.address, true).retryPending()).toBe(Transaction.from(cancellation).hash)
+    expect(write.mock.calls[1][1].body).toBe(body)
+  })
+
+  it('allows an expired original to be staged for the first time after a signing crash without publishing it', async () => {
+    const current = start(), raw = await rawTransaction(), plan = await planFor(raw, Date.now() + 25_000)
+    const now = Date.now(); vi.spyOn(Date, 'now').mockReturnValue(now + 26_000); headTimestamp = Math.floor((now + 26_000) / 1000)
+    await current.stageSigned(raw, plan)
+    await expect(current.retryPending()).rejects.toThrow('fee quote expired')
+    const cancellation = await signedCancellation({}, 8453)
+    await current.cancelPending(cancellation, await planFor(cancellation))
+    expect(write).toHaveBeenCalledOnce()
+    expect(JSON.parse(write.mock.calls[0][1].body).params[0]).toBe(cancellation)
+  })
+
+  it('does not publish when the quote expires during the final head read', async () => {
+    const current = start(), raw = await rawTransaction(), plan = await planFor(raw)
+    await current.stageSigned(raw, plan)
+    nextBlockRead = async () => { nextBlockRead = async () => { vi.spyOn(Date, 'now').mockReturnValue(plan.feeExpiryMs) } }
+    await expect(current.retryPending()).rejects.toThrow('fee quote expired')
+    expect(current.pendingTransaction()?.hash).toBe(Transaction.from(raw).hash)
+    expect(write).not.toHaveBeenCalled()
+  })
+
+  it('can stage an original after its recipient revokes delegation, but publishes only its cancellation', async () => {
+    const current = start(), raw = await rawTransaction(), plan = await planFor(raw)
+    baseAccountCode = '0x'
+    await current.stageSigned(raw, plan)
+    await expect(current.retryPending()).rejects.toThrow('must already delegate')
+    const cancellation = await signedCancellation({}, 8453)
+    await current.cancelPending(cancellation, await planFor(cancellation))
+    expect(write).toHaveBeenCalledOnce()
+    expect(JSON.parse(write.mock.calls[0][1].body).params[0]).toBe(cancellation)
+    expect(current.pendingTransaction()?.hash).toBe(Transaction.from(raw).hash)
+  })
+
+  it.each(['delegated-operator', 'missing-delegation', 'wrong-guard', 'type4'])('rejects %s before journaling or publishing a Base execution', async failure => {
+    const current = start(), raw = await rawTransaction(), plan = await planFor(raw)
+    if (failure === 'delegated-operator') baseOperatorCode = baseAccountCode
+    if (failure === 'missing-delegation') baseAccountCode = '0x'
+    if (failure === 'wrong-guard') guardCode = '0x6002'
+    await expect(current.broadcastTransaction(failure === 'type4' ? await signed({}, 8453) : raw, plan.feeExpiryMs, plan)).rejects.toThrow()
+    expect(current.pendingTransaction()).toBeUndefined()
+    expect(write).not.toHaveBeenCalled()
+  })
+
+  it('keeps native refunds inside the same immutable validity and cancellation policy', async () => {
+    const current = start(), raw = await rawTransaction({ to: ephemeral.address, value: 100n, data: '0x', gasLimit: 50_000n }), plan = await planFor(raw)
+    baseAccountCode = '0x'
+    await current.broadcastTransaction(raw, plan.feeExpiryMs, plan)
+    expect(await current.retryPending()).toBe(Transaction.from(raw).hash)
+    const cancellation = await signedCancellation({}, 8453)
+    await current.cancelPending(cancellation, await planFor(cancellation))
+    expect(write.mock.calls.every(([, options]) => JSON.parse(options.body).method === 'base_sendRawTransactionValidity')).toBe(true)
+    expect(current.pendingTransaction()?.cancellationHash).toBe(Transaction.from(cancellation).hash)
+  })
+
+  it('pipelines only canonical journaled Base inclusions and recovers a reorg without changing their envelopes', async () => {
+    const current = start(), raws = await Promise.all([0, 1, 2].map(nonce => rawTransaction({ nonce })))
+    const plans = await Promise.all(raws.map(raw => planFor(raw)))
+    await current.broadcastTransaction(raws[0], plans[0].feeExpiryMs, plans[0]); include(raws[0]); latest = 1n
+    await current.broadcastTransaction(raws[1], plans[1].feeExpiryMs, plans[1]); include(raws[1], 91); latest = 2n
+    await current.stageSigned(raws[2], plans[2])
+    const displaced = current.pendingTransaction()!
+    latest = 1n; inclusions.delete(Transaction.from(raws[1]).hash!)
+    await current.stageRecovery(raws[1], displaced, plans[1])
+    expect(await current.retryPending()).toBe(Transaction.from(raws[1]).hash)
+    expect(write.mock.calls[2][1].body).toBe(write.mock.calls[1][1].body)
+    blockHashes.set('0x5a', `0x${'ab'.repeat(32)}`)
+    await expect(current.retryPending()).rejects.toThrow('canonical journaled inclusion')
+    expect(write).toHaveBeenCalledTimes(3)
+    expect(current.pendingTransaction()?.hash).toBe(Transaction.from(raws[1]).hash)
+  })
+
+  it('blocks an unknown consumed Base nonce without staging or publishing its successor', async () => {
+    const current = start(), raw = await rawTransaction({ nonce: 1 }), plan = await planFor(raw)
+    latest = 1n
+    await expect(current.broadcastTransaction(raw, plan.feeExpiryMs, plan)).rejects.toThrow('missing from the protected journal')
+    expect(current.pendingTransaction()).toBeUndefined()
+    expect(write).not.toHaveBeenCalled()
+  })
+
+  it('retains the 20-operation Base bound through restart and admits a successor only after finality releases capacity', async () => {
+    const current = start()
+    for (let nonce = 0; nonce < 20; nonce++) {
+      const raw = await rawTransaction({ nonce })
+      await current.stageSigned(raw, await planFor(raw)); include(raw); latest = BigInt(nonce + 1)
+    }
+    const successor = await rawTransaction({ nonce: 20 }), plan = await planFor(successor)
+    await expect(current.stageSigned(successor, plan)).rejects.toThrow('20 outstanding')
+    current.destroy()
+    const restarted = provider(executionGuard, 8453, operator.address, true)
+    await expect(restarted.stageSigned(successor, plan)).rejects.toThrow('20 outstanding')
+    expect(restarted.pendingTransaction()?.nonce).toBe(19)
+    finalizedHeight = 90n; confirmed = 20n
+    expect(await restarted.stageSigned(successor, plan)).toBe(Transaction.from(successor).hash)
+    expect(write).not.toHaveBeenCalled()
+  })
+
+  it('never publishes when durable validity persistence fails and rejects corrupted retained predicates on restart', async () => {
+    const current = start(), raw = await rawTransaction(), plan = await planFor(raw)
+    const database = new DatabaseSync(join(directory, 'protected-transactions.sqlite'))
+    try {
+      database.exec(`CREATE TRIGGER fail_base_validity BEFORE INSERT ON base_validity BEGIN SELECT RAISE(ABORT, 'Disk failure'); END`)
+      await expect(current.broadcastTransaction(raw, plan.feeExpiryMs, plan)).rejects.toThrow('Disk failure')
+      expect(current.pendingTransaction()).toBeUndefined(); expect(write).not.toHaveBeenCalled()
+      database.exec('DROP TRIGGER fail_base_validity')
+      await current.stageSigned(raw, plan)
+      expect(() => database.exec('DELETE FROM base_validity')).toThrow('append-only')
+      database.exec('DROP TRIGGER preserve_base_validity_update')
+      const row = database.prepare('SELECT body FROM base_validity').get()!, body = JSON.parse(String(row.body))
+      body.params[1].validity.pop()
+      database.prepare('UPDATE base_validity SET body=?').run(JSON.stringify(body))
+    } finally { database.close() }
+    current.destroy()
+    expect(() => provider(executionGuard, 8453, operator.address, true)).toThrow()
+    expect(write).not.toHaveBeenCalled()
+  })
+})
+
 describe('protected operator transport', () => {
+  it.each([42161])('holds chain %s unknown outcomes and retries identical bytes only through Alchemy', async (chainId) => {
+    chain = `0x${chainId.toString(16)}`
+    const current = provider(undefined, chainId), raw = await signed({}, chainId)
+    write.mockImplementationOnce(() => { throw new Error('secret Alchemy credential') })
+    await expect(current.broadcastTransaction(raw, Date.now() + 60_000)).rejects.toThrow('outcome is unknown')
+    expect(current.pendingTransaction()?.hash).toBe(Transaction.from(raw).hash)
+    current.destroy()
+    const restarted = provider(undefined, chainId)
+    expect(await restarted.retryPending()).toBe(Transaction.from(raw).hash)
+    expect(write).toHaveBeenCalledTimes(2)
+    for (const [url, options] of write.mock.calls) {
+      expect(url).toBe(alchemyRPC[chainId])
+      expect(options.redirect).toBe('error')
+      expect(JSON.parse(options.body).params).toEqual([raw])
+    }
+    expect(reads.some(call => call.method.startsWith('eth_send'))).toBe(false)
+  })
+
   it('allows only fixed qualified endpoints and rejects unsupported chains before creating state', () => {
     expect(protectedWriteRPC()).toBe(PROTECTED_WRITE_RPC)
     expect(protectedWriteRPC(56)).toBe('https://puissant-builder.48.club/')
-    for (const chainId of [42161, 137, 8453]) expect(() => protectedWriteRPC(chainId)).toThrow('no qualified')
+    for (const chainId of [42161]) {
+      expect(protectedWriteRPC(chainId, alchemyRPC[chainId])).toBe(alchemyRPC[chainId])
+      for (const endpoint of [undefined, readURL, alchemyRPC[chainId === 42161 ? 8453 : 42161],
+        alchemyRPC[chainId] + '?key=secret', alchemyRPC[chainId].replace('https:', 'http:')])
+        expect(() => protectedWriteRPC(chainId, endpoint)).toThrow('pinned Alchemy')
+    }
+    expect(protectedWriteRPC(8453)).toBe(BASE_VALIDITY_RPC)
+    expect(protectedWriteRPC(8453, BASE_VALIDITY_RPC)).toBe(BASE_VALIDITY_RPC)
+    for (const endpoint of [alchemyRPC[8453], readURL, `${BASE_VALIDITY_RPC}/`, `${BASE_VALIDITY_RPC}?key=secret`])
+      expect(() => protectedWriteRPC(8453, endpoint)).toThrow('fixed sequencer')
+    expect(() => protectedWriteRPC(137)).toThrow('no qualified')
+    expect(() => protectedWriteRPC(1, alchemyRPC[42161])).toThrow('override')
     const rejectedDirectory = join(directory, 'unsupported')
-    expect(() => new ProtectedEthereumProvider(readURL, operator.address, rejectedDirectory, undefined, 8453))
+    expect(() => new ProtectedEthereumProvider(readURL, operator.address, rejectedDirectory, undefined, 84532))
       .toThrow('Unsupported')
     expect(existsSync(rejectedDirectory)).toBe(false)
     expect(reads).toEqual([])
@@ -231,7 +608,7 @@ describe('protected operator transport', () => {
   it.each([42161, 56, 137])('stages chain %s requests while rejecting replayed outer chains, authorizations and delegates', async (chainId) => {
     chain = `0x${chainId.toString(16)}`
     const current = provider(undefined, chainId)
-    const network = NETWORK_CONFIG[chainId === 56 ? NetworkName.BNBChain : chainId === 42161 ? NetworkName.Arbitrum : NetworkName.Polygon]
+    const network = NETWORK_CONFIG[chainId === 56 ? NetworkName.BNBChain : chainId === 42161 ? NetworkName.Arbitrum : chainId === 8453 ? NetworkName.Base : NetworkName.Polygon]
     const raw = await signed({}, chainId)
     expect(await current.stageSigned(raw)).toBe(Transaction.from(raw).hash)
     const wrongChain = await ephemeral.authorize({ address: network.relayAdapt7702Contract, chainId: 1, nonce: 0 })
@@ -246,7 +623,7 @@ describe('protected operator transport', () => {
     expect(write).not.toHaveBeenCalled()
   })
 
-  it.each([42161, 137])('keeps chain %s unpublishable without weakening its staged recovery lock', async (chainId) => {
+  it.each([137])('keeps chain %s unpublishable without weakening its staged recovery lock', async (chainId) => {
     chain = `0x${chainId.toString(16)}`
     const current = provider(undefined, chainId)
     const raw = await signed({}, chainId)
@@ -788,6 +1165,186 @@ describe('protected operator transport', () => {
     forkError = true
     await expect(provider().send('eth_sendRawTransaction', [await signed()])).rejects.toThrow('could not verify')
     expect(write).not.toHaveBeenCalled()
+  })
+
+  it('coalesces successful startup fork probes while checking the chain for every preflight', async () => {
+    const current = provider()
+    await Promise.all([current.assertReadNetwork(), current.assertReadNetwork()])
+    expect(reads.filter(call => call.method.endsWith('_metadata')).map(call => call.method))
+      .toEqual(['anvil_metadata', 'hardhat_metadata'])
+    expect(reads.filter(call => call.method === 'eth_chainId')).toHaveLength(2)
+    expect(current.pendingTransaction()).toBeUndefined()
+    expect(write).not.toHaveBeenCalled()
+    const saved = new DatabaseSync(join(directory, 'protected-transactions.sqlite'), { readOnly: true })
+    try { expect(saved.prepare('SELECT COUNT(*) AS count FROM operation_history').get()?.count).toBe(0) }
+    finally { saved.close() }
+  })
+
+  it('still rejects a changed chain at staging after a successful startup preflight', async () => {
+    const current = provider(), raw = await signed()
+    await current.assertReadNetwork()
+    chain = '0xa4b1'
+    await expect(current.stageSigned(raw)).rejects.toThrow('selected mainnet chain')
+    expect(current.pendingTransaction()).toBeUndefined()
+    chain = '0x1'
+    expect(await current.stageSigned(raw)).toBe(Transaction.from(raw).hash)
+    expect(reads.filter(call => call.method.endsWith('_metadata')).map(call => call.method))
+      .toEqual(['anvil_metadata', 'hardhat_metadata'])
+    expect(reads.filter(call => call.method === 'eth_chainId')).toHaveLength(3)
+    expect(write).not.toHaveBeenCalled()
+  })
+
+  it('does not cache a failed startup fork probe as successful', async () => {
+    const current = provider()
+    forkError = true
+    await expect(current.assertReadNetwork()).rejects.toThrow('could not verify')
+    forkError = false
+    await current.assertReadNetwork()
+    expect(reads.map(call => call.method))
+      .toEqual(['anvil_metadata', 'anvil_metadata', 'hardhat_metadata', 'eth_chainId'])
+    expect(current.pendingTransaction()).toBeUndefined()
+    expect(write).not.toHaveBeenCalled()
+  })
+
+  it('accepts Alchemy HTTP400 method-bound fork-probe refusals before staging an Arbitrum transaction', async () => {
+    chain = '0xa4b1'
+    rpcOverride = method => ['anvil_metadata', 'hardhat_metadata'].includes(method) ? { status: 400,
+      body: { jsonrpc: '2.0', id: 1, error: { code: -32600, message: `Unsupported method: ${method} on ARB_MAINNET` } } } : undefined
+    const current = provider(undefined, 42161, operator.address, true), raw = await signed({}, 42161)
+    expect(await current.stageSigned(raw)).toBe(Transaction.from(raw).hash)
+    expect(current.pendingTransaction()?.hash).toBe(Transaction.from(raw).hash)
+    expect(reads.filter(call => call.method.endsWith('_metadata')).map(call => call.method))
+      .toEqual(['anvil_metadata', 'hardhat_metadata'])
+    expect(write).not.toHaveBeenCalled()
+  })
+
+  it.each(['', '.'])('accepts the exact method-bound HTTP400 refusal with suffix %j', async suffix => {
+    rpcOverride = method => method.endsWith('_metadata') ? { status: 400,
+      body: { jsonrpc: '2.0', id: 1, error: { code: -32600, message: `Unsupported method: ${method}${suffix}` } } } : undefined
+    const current = provider(), raw = await signed()
+    expect(await current.stageSigned(raw)).toBe(Transaction.from(raw).hash)
+    expect(write).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['generic invalid request', { jsonrpc: '2.0', id: 1, error: { code: -32600, message: 'Invalid request' } }],
+    ['bare unsupported message', { jsonrpc: '2.0', id: 1, error: { code: -32600, message: 'Unsupported method' } }],
+    ['different method', { jsonrpc: '2.0', id: 1, error: { code: -32600, message: 'Unsupported method: hardhat_metadata on ARB_MAINNET' } }],
+    ['different chain', { jsonrpc: '2.0', id: 1, error: { code: -32600, message: 'Unsupported method: anvil_metadata on BASE_MAINNET' } }],
+    ['message suffix', { jsonrpc: '2.0', id: 1, error: { code: -32600, message: 'Unsupported method: anvil_metadata on ARB_MAINNET; try again' } }],
+    ['authentication error', { jsonrpc: '2.0', id: 1, error: { code: -32600, message: 'Must be authenticated!' } }],
+    ['different code', { jsonrpc: '2.0', id: 1, error: { code: -32000, message: 'Unsupported method: anvil_metadata on ARB_MAINNET' } }],
+    ['string code', { jsonrpc: '2.0', id: 1, error: { code: '-32600', message: 'Unsupported method: anvil_metadata on ARB_MAINNET' } }],
+    ['wrong protocol', { jsonrpc: '1.0', id: 1, error: { code: -32600, message: 'Unsupported method: anvil_metadata on ARB_MAINNET' } }],
+    ['missing protocol', { id: 1, error: { code: -32600, message: 'Unsupported method: anvil_metadata on ARB_MAINNET' } }],
+    ['wrong id', { jsonrpc: '2.0', id: 2, error: { code: -32600, message: 'Unsupported method: anvil_metadata on ARB_MAINNET' } }],
+    ['string id', { jsonrpc: '2.0', id: '1', error: { code: -32600, message: 'Unsupported method: anvil_metadata on ARB_MAINNET' } }],
+    ['missing id', { jsonrpc: '2.0', error: { code: -32600, message: 'Unsupported method: anvil_metadata on ARB_MAINNET' } }],
+    ['error and fork result', { jsonrpc: '2.0', id: 1, result: { forkedNetwork: { chainId: 42161 } },
+      error: { code: -32600, message: 'Unsupported method: anvil_metadata on ARB_MAINNET' } }],
+    ['error and null result', { jsonrpc: '2.0', id: 1, result: null,
+      error: { code: -32600, message: 'Unsupported method: anvil_metadata on ARB_MAINNET' } }],
+    ['array error', { jsonrpc: '2.0', id: 1, error: [{ code: -32600, message: 'Unsupported method: anvil_metadata on ARB_MAINNET' }] }],
+    ['array response', [{ jsonrpc: '2.0', id: 1, error: { code: -32600, message: 'Unsupported method: anvil_metadata on ARB_MAINNET' } }]],
+    ['null response', null],
+    ['missing error', { jsonrpc: '2.0', id: 1 }],
+    ['malformed JSON', '{'],
+    ['oversized response', { jsonrpc: '2.0', id: 1, error: { code: -32600,
+      message: 'Unsupported method: anvil_metadata on ARB_MAINNET', data: 'x'.repeat(4096) } }],
+  ])('rejects HTTP400 %s before retaining or publishing a transaction', async (_label, body) => {
+    chain = '0xa4b1'
+    rpcOverride = method => method === 'anvil_metadata' ? { status: 400, body } : undefined
+    const current = provider(undefined, 42161, operator.address, true)
+    await expect(current.stageSigned(await signed({}, 42161)))
+      .rejects.toThrow('The trusted read node could not verify submission state.')
+    expect(current.pendingTransaction()).toBeUndefined()
+    const saved = new DatabaseSync(join(directory, 'protected-transactions.sqlite'), { readOnly: true })
+    try { expect(saved.prepare('SELECT COUNT(*) AS count FROM operation_history').get()?.count).toBe(0) }
+    finally { saved.close() }
+    expect(write).not.toHaveBeenCalled()
+    expect(reads.map(call => call.method)).toEqual(['anvil_metadata'])
+  })
+
+  it.each([200, 401, 403, 429, 500, 503])('rejects HTTP%s even with a method-bound -32600 body', async status => {
+    chain = '0xa4b1'
+    rpcOverride = method => method === 'anvil_metadata' ? { status,
+      body: { jsonrpc: '2.0', id: 1, error: { code: -32600, message: 'Unsupported method: anvil_metadata on ARB_MAINNET' } } } : undefined
+    const current = provider(undefined, 42161, operator.address, true)
+    await expect(current.stageSigned(await signed({}, 42161))).rejects.toThrow('could not verify')
+    expect(current.pendingTransaction()).toBeUndefined()
+    expect(write).not.toHaveBeenCalled()
+  })
+
+  it('does not interpret an Arbitrum-specific refusal as evidence for a different chain', async () => {
+    rpcOverride = method => method === 'anvil_metadata' ? { status: 400,
+      body: { jsonrpc: '2.0', id: 1, error: { code: -32600, message: 'Unsupported method: anvil_metadata on ARB_MAINNET' } } } : undefined
+    const current = provider()
+    await expect(current.stageSigned(await signed())).rejects.toThrow('could not verify')
+    expect(current.pendingTransaction()).toBeUndefined()
+    expect(write).not.toHaveBeenCalled()
+  })
+
+  it('still checks hardhat fork metadata after an unsupported anvil probe', async () => {
+    chain = '0xa4b1'
+    rpcOverride = method => method === 'anvil_metadata' ? { status: 400,
+      body: { jsonrpc: '2.0', id: 1, error: { code: -32600, message: 'Unsupported method: anvil_metadata on ARB_MAINNET' } } }
+      : method === 'hardhat_metadata' ? { status: 200,
+        body: { jsonrpc: '2.0', id: 1, result: { forkedNetwork: { chainId: 42161 } } } } : undefined
+    const current = provider(undefined, 42161, operator.address, true)
+    await expect(current.stageSigned(await signed({}, 42161))).rejects.toThrow('disabled on local forks')
+    expect(current.pendingTransaction()).toBeUndefined()
+    expect(write).not.toHaveBeenCalled()
+    expect(reads.map(call => call.method)).toEqual(['anvil_metadata', 'hardhat_metadata'])
+  })
+
+  it('does not accept a result mixed into a legacy method-not-found fork response', async () => {
+    rpcOverride = method => method === 'anvil_metadata' ? { status: 200,
+      body: { jsonrpc: '2.0', id: 1, result: { forkedNetwork: { chainId: 1 } },
+        error: { code: -32601, message: 'Method not found' } } } : undefined
+    const current = provider()
+    await expect(current.stageSigned(await signed())).rejects.toThrow('could not verify')
+    expect(current.pendingTransaction()).toBeUndefined()
+    expect(write).not.toHaveBeenCalled()
+  })
+
+  it('does not use unsupported-method fallback for ordinary state reads', async () => {
+    rpcOverride = method => method === 'eth_blockNumber' ? { status: 400,
+      body: { jsonrpc: '2.0', id: 1, error: { code: -32600, message: 'Unsupported method: eth_blockNumber' } } } : undefined
+    const current = provider()
+    await expect(current.stageSigned(await signed())).rejects.toThrow('could not verify')
+    expect(current.pendingTransaction()).toBeUndefined()
+    expect(write).not.toHaveBeenCalled()
+  })
+
+  it('retains identical Arbitrum recovery bytes through HTTP400 probe refusals, restart and lost acknowledgement', async () => {
+    chain = '0xa4b1'
+    const refusals = (method: string) => method.endsWith('_metadata') ? { status: 400,
+      body: { jsonrpc: '2.0', id: 1, error: { code: -32600, message: `Unsupported method: ${method} on ARB_MAINNET` } } } : undefined
+    const current = provider(undefined, 42161, operator.address, true), raw = await signed({}, 42161)
+    rpcOverride = method => method === 'anvil_metadata' ? { status: 403,
+      body: { jsonrpc: '2.0', id: 1, error: { code: -32600, message: 'Invalid access key' } } } : undefined
+    await expect(current.stageSigned(raw)).rejects.toThrow('could not verify')
+    expect(current.pendingTransaction()).toBeUndefined()
+    rpcOverride = refusals
+    expect(await current.stageSigned(raw)).toBe(Transaction.from(raw).hash)
+    expect(write).not.toHaveBeenCalled()
+    current.destroy()
+    const restarted = provider(undefined, 42161, operator.address, true)
+    write.mockRejectedValueOnce(new Error('lost acknowledgement'))
+    await expect(restarted.retryPending()).rejects.toThrow('outcome is unknown')
+    expect(restarted.pendingTransaction()?.hash).toBe(Transaction.from(raw).hash)
+    expect(await restarted.retryPending()).toBe(Transaction.from(raw).hash)
+    expect(write).toHaveBeenCalledTimes(2)
+    for (const [url, options] of write.mock.calls) {
+      expect(url).toBe(alchemyRPC[42161])
+      expect(JSON.parse(options.body).params).toEqual([raw])
+    }
+    expect(reads.some(call => JSON.stringify(call.params).includes(raw))).toBe(false)
+    const saved = new DatabaseSync(join(directory, 'protected-transactions.sqlite'), { readOnly: true })
+    try {
+      expect(saved.prepare('SELECT raw FROM operation_history').all()).toEqual([{ raw }])
+      expect(saved.prepare('SELECT raw FROM pending').all()).toEqual([{ raw }])
+    } finally { saved.close() }
   })
 
   it('rejects inconsistent nonce state without discarding the pending record', async () => {

@@ -1,4 +1,4 @@
-import { CHAIN, CHAIN_ID, CHAIN_NAME, CONFIG, NETWORK, PERMIT2, PILOT_WITHDRAWAL_RECIPIENT, PROXY, ROUTER, TOKENS, tokenFor, VERSION, WRAPPED_SYMBOL, type TokenSymbol } from './config'
+import { CHAIN, CHAIN_ID, CHAIN_NAME, CONFIG, NATIVE_SYMBOL, NETWORK, PERMIT2, PILOT_WITHDRAWAL_RECIPIENT, PROXY, ROUTER, TOKENS, tokenFor, VERSION, WRAPPED_SYMBOL, type TokenSymbol } from './config'
 import { calculateGasLimit, getEVMGasTypeForTransaction, EVMGasType, type SelectedBroadcaster } from '@railgun-community/shared-models'
 import { RelayAdapt7702ExecutionType } from '@railgun-community/engine'
 import {
@@ -11,6 +11,7 @@ import {
 import { authorizationify, Contract, getAddress, ZeroAddress } from 'ethers'
 import { broadcasterFee, prepaidFee, selectBroadcaster, validateBroadcaster, type PrivateSubmitter } from './broadcaster'
 import type { PreparedCredit } from './prepaid'
+import { bufferedArbitrumGasPrice } from './prepaid-pricing'
 import { amountFromInput, unshieldAmount } from './recipe'
 import { pendingSwap } from './journal'
 import { ADAPT, assertAtomicWithdrawal, assertBoundWithdrawal, simulateRequest } from './execution'
@@ -42,8 +43,8 @@ export async function prepareUnshield(
   const feeToken = prepaid ? WRAPPED_SYMBOL : feeTokenFor(token)
   const asset = tokenFor(token), feeAsset = tokenFor(feeToken)
   const sameAsset = getAddress(asset.address) === getAddress(feeAsset.address)
-  if (nativeOutput && (CHAIN_ID !== 56 || getAddress(asset.address) !== getAddress(tokenFor('WBNB').address)))
-    throw new Error('Native BNB withdrawal requires private WBNB on BNB Chain.')
+  if (nativeOutput && getAddress(asset.address) !== getAddress(tokenFor(WRAPPED_SYMBOL).address))
+    throw new Error(`Native ${NATIVE_SYMBOL} withdrawal requires private ${WRAPPED_SYMBOL}.`)
   if (!prepaid) validateBroadcaster(selected, feeAsset.address, usesBoundWithdrawal(token, nativeOutput))
   const destination = getAddress(recipient)
   if (PILOT_WITHDRAWAL_RECIPIENT &&
@@ -62,6 +63,8 @@ export async function prepareUnshield(
     throw new Error('Review the updated Railgun broadcaster gas policy before continuing.')
   let gasPrice = (await session.provider.getFeeData()).gasPrice
   if (gasPrice == null || gasPrice <= 0n) throw new Error(`${CHAIN_NAME} gas price unavailable.`)
+  if (CHAIN_ID === 42161 && prepaid?.scope.funding === 'native')
+    gasPrice = bufferedArbitrumGasPrice(gasPrice, gasPrice, prepaid.maximumGasPrice)
   if (CHAIN_ID === 1) {
     const block = await session.provider.getBlock('latest')
     if (block?.baseFeePerGas == null) throw new Error(`${CHAIN_NAME} base fee unavailable.`)
@@ -166,7 +169,7 @@ export async function executeUnshield(
   if (!receipt || receipt.status !== 1)
     throw new Error(`Withdrawal unconfirmed: ${hash}. Check transaction status before retrying.`)
   assertWithdrawalReceipt(receipt, pending)
-  await reconcilePendingWithdrawal(session)
+  await reconcilePendingWithdrawal(session, receipt)
   return hash
 }
 
@@ -180,7 +183,7 @@ export function assertWithdrawalRecipient(recipient: string, ephemeral: string):
     PERMIT2,
     ...Object.values(TOKENS).map((token) => token.address),
     ephemeral,
-  ].map(getAddress)
+  ].filter(Boolean).map(getAddress)
   if (forbidden.includes(getAddress(recipient)))
     throw new Error('Use a public recipient wallet, not a protocol contract or temporary account.')
 }
@@ -209,7 +212,7 @@ export async function retrySavedUnshield(session: WalletSession, onProgress: (me
   const receipt = await session.provider.waitForTransaction(hash, 2, 180_000)
   if (!receipt) throw new Error(`Withdrawal unconfirmed: ${hash}. Check pending withdrawal before retrying.`)
   assertWithdrawalReceipt(receipt, pending)
-  await reconcilePendingWithdrawal(session)
+  await reconcilePendingWithdrawal(session, receipt)
   return hash
 }
 
@@ -231,13 +234,13 @@ async function retryBoundWithdrawal(session: WalletSession, pending: PendingWith
   await submitter.assertReady(session, selected, gas)
   const checkedAt = { monotonic: performance.now(), wallTime: Date.now() }
   await simulateRequest(session, request, calculateGasLimit(gas.gasEstimate))
-  const hash = await submitter.send(session, { transaction: { ...pending.transaction, value: 0n, type: 4, chainId: CHAIN,
-    authorizationList: [authorization], gasLimit: calculateGasLimit(gas.gasEstimate), maxFeePerGas: gas.maxFeePerGas,
+  const hash = await submitter.send(session, { transaction: { ...pending.transaction, value: 0n, chainId: CHAIN,
+    ...(e.predelegated ? { type: 2 } : { type: 4, authorizationList: [authorization] }), gasLimit: calculateGasLimit(gas.gasEstimate), maxFeePerGas: gas.maxFeePerGas,
     maxPriorityFeePerGas: gas.maxPriorityFeePerGas }, nullifiers: pending.nullifiers, preTransactionPOIsPerTxidLeafPerList: {} }, selected, gas, true, checkedAt)
   await savePendingWithdrawal(session, { ...pending, hash })
   const receipt = await session.provider.waitForTransaction(hash, 2, 180_000)
   if (!receipt) throw new Error(`Withdrawal unconfirmed: ${hash}. Keep the saved signed execution.`)
   assertWithdrawalReceipt(receipt, pending)
-  await reconcilePendingWithdrawal(session)
+  await reconcilePendingWithdrawal(session, receipt)
   return hash
 }

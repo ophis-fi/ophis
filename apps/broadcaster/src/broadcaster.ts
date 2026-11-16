@@ -4,7 +4,7 @@ import { getAddress, Interface, JsonRpcProvider, Transaction, type TransactionRe
 import { assertSigningNetwork, BROADCASTER_VERSION, CHAIN, CHAIN_ID, MAX_GAS, NETWORK, TOKENS, type Settings } from './config'
 import { issueFee, validateFee, ceilDiv } from './fees'
 import { Store } from './storage'
-import { ADAPT, PROXY, assertPrivateExecution, parseRequest, type ParsedRequest } from './transaction'
+import { ADAPT, PROXY, assertPrivateExecution, parseRequest, TraceValidationError, traceRpcDiagnostic, type ParsedRequest } from './transaction'
 import { encryptResponse, openRequest, responseEnvelope } from './wire'
 import type { FeeOracle } from './fees'
 import type { RailgunSDK, FeeProof } from './sdk'
@@ -13,15 +13,17 @@ import { signApprovedTransaction, type GasSigner } from './signer'
 import { readChainState } from './chain-state'
 import { CREDIT_PROTOCOL } from '../../railgun/credit-protocol'
 import { CreditService, type SecuredRequest, type CreditRequest } from './credit-service'
+import { assertConfiguredCreditLedger } from './credit'
 import { object } from './wire'
 import { finalizedCreditReceipt } from './credit-payment'
 import { CreditQueryLimit } from './credit-query-limit'
-import { assertNativeRefundTrace } from './credit-native-payment'
+import { assertNativeRefundTrace, type NativeCreditBacking } from './credit-native-payment'
+import { prepareBaseValidity, type BaseValidityPlan } from '../../railgun/operator/base-validity'
 
 const REGISTRY = new Interface(['function getContractAddress(string name) view returns (address)'])
 type SDK = Pick<RailgunSDK, 'address' | 'privateViewingKey' | 'publicViewingKey' | 'ready' | 'sign' | 'fee' | 'validate' | 'assure'> &
   Partial<Pick<RailgunSDK, 'confirmedCredits' | 'confirmedRefund' | 'accountedCreditBacking' | 'confirmedOwnerCollection' | 'validatePrepaid'>>
-type Sender = { broadcastTransaction(raw: string, validUntilMs?: number): Promise<Pick<TransactionResponse, 'hash'>> }
+type Sender = { broadcastTransaction(raw: string, validUntilMs?: number, baseValidity?: BaseValidityPlan): Promise<Pick<TransactionResponse, 'hash'>> }
 
 export class Broadcaster {
   // shortcut: one gas wallet; add independently journaled senders when measured demand needs concurrency.
@@ -42,10 +44,9 @@ export class Broadcaster {
     if (!this.sdk.ready() || !this.sdk.validatePrepaid || (this.config.creditPaymentMode !== 'public-native' &&
       (!this.sdk.confirmedCredits || !this.sdk.confirmedRefund || !this.sdk.accountedCreditBacking || !this.sdk.confirmedOwnerCollection)))
       throw new Error('The prepaid fee wallet is unavailable.')
+    const hasIdentity = assertConfiguredCreditLedger(this.store, this.config)
     if (this.creditService) return this.creditService
     const initialNonce = await this.provider.getTransactionCount(this.wallet.address, 'latest')
-    const hasIdentityTable = this.store.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='credit_identity'").get()
-    const hasIdentity = hasIdentityTable && this.store.db.prepare('SELECT 1 FROM credit_identity WHERE singleton=1').get()
     if (!hasIdentity) {
       const [pending, finalized] = await Promise.all([
         this.provider.getTransactionCount(this.wallet.address, 'pending'),
@@ -81,8 +82,9 @@ export class Broadcaster {
       !this.config.creditCollectionOutputs || !this.config.creditCollectionProofs)) return false
     if (this.creditService?.ledger.pendingOwnerIntent()) return false
     if (this.config.creditPaymentMode === 'public-native') {
-      if (!this.creditService || this.creditService.ledger.hasUnsettledNativeAttempt()) return false
-      try { await this.creditService.qualifyNativeFundingReads(); await this.creditService.assertBacked(1n) } catch { return false }
+      if (!this.creditService || this.creditService.ledger.nativeCapacityReached()) return false
+      // Discovery is not spending authority; execution and refunds verify canonical backing before signing.
+      try { this.creditService.ledger.assertOwnerJournalReady(); await this.creditService.qualifyNativeFundingReads() } catch { return false }
     }
     // Advertising availability must never create or rotate a credit identity.
     if (this.config.prepaidPilotLedgerId !== undefined && (this.config.admission !== 'pilot' ||
@@ -92,13 +94,21 @@ export class Broadcaster {
     if (this.config.admission === 'pilot' && this.config.pilotWithdrawalRecipient &&
       this.store.db.prepare('SELECT 1 FROM settings WHERE key=?').get(pilotKey)) return false
     const { nonce, confirmed, balance, minimumGasPrice } = await this.state()
-    return minimumGasPrice <= this.config.maxGasPrice && nonce === confirmed &&
+    const pipeline = this.creditService?.ledger.pipelinesNative
+    if (pipeline && this.creditService!.ledger.hasUnsettledNativeAttempt()) {
+      try {
+        const proof = await this.creditService!.assertBacked(1n)
+        this.creditService!.ledger.assertNativeBacked(proof as NativeCreditBacking, this.config.reserve, nonce)
+      } catch { return false }
+    } else if (nonce !== confirmed || (this.config.creditPaymentMode === 'public-native' &&
+      balance < this.creditService!.ledger.requiredBacking() + this.config.reserve)) return false
+    return minimumGasPrice <= this.config.maxGasPrice &&
       balance >= this.config.reserve + this.config.maxTransactionCost &&
       this.store.exposure() < this.config.dailyBudget &&
-      !this.store.nonceBlocked(confirmed)
+      !this.store.nonceBlocked(nonce)
   }
 
-  async feeAdvertisement(): Promise<Uint8Array> {
+  async feeAdvertisement(): Promise<{ available: boolean; message: Uint8Array }> {
     const available = await this.available()
     const quote = issueFee(this.store, this.config.creditPaymentMode === 'public-native'
       ? { [TOKENS[0].address]: ceilDiv(10n ** 18n * (10_000n + this.config.marginBps), 10_000n) } : await this.oracle.rates())
@@ -110,7 +120,7 @@ export class Broadcaster {
       requiredPOIListKeys: [], reliability: 0.75,
       ophisPaymentProtocol: CREDIT_PROTOCOL,
     }))
-    return Buffer.from(JSON.stringify({ data, signature: await this.sdk.sign(data) }))
+    return { available, message: Buffer.from(JSON.stringify({ data, signature: await this.sdk.sign(data) })) }
   }
 
   async handle(payload: Uint8Array): Promise<Uint8Array | undefined> {
@@ -226,7 +236,8 @@ export class Broadcaster {
       }
       if (!secured) validateFee(this.store, parsed.feesID, payment, 1n, await this.oracle.rates())
       const { nonce, confirmed, balance, block, baseFee, minimumGasPrice } = await this.state()
-      if (nonce !== confirmed || this.store.nonceBlocked(nonce))
+      const pipeline = !!secured && this.creditService!.ledger.pipelinesNative
+      if ((!pipeline && nonce !== confirmed) || this.store.nonceBlocked(nonce))
         throw new Error('The operator has an unresolved transaction.')
       phase = 'network'
       await this.validateNetworkAndAuthority(parsed, block.number)
@@ -246,7 +257,16 @@ export class Broadcaster {
       }
       const populated = { ...execution, from: this.wallet.address, nonce }
       phase = 'estimate'
-      const estimate = await this.provider.estimateGas(populated)
+      let estimate: bigint
+      if (CHAIN_ID === 42161 && !parsed.type4) {
+        // ethers estimates type-1 at latest after extra fee reads; use the head that supplied this gas price.
+        const result: unknown = await this.provider.send('eth_estimateGas', [
+          this.provider.getRpcTransaction(populated), `0x${block.number.toString(16)}`,
+        ])
+        if (typeof result !== 'string' || !/^0x[1-9a-f][0-9a-f]{0,63}$/i.test(result))
+          throw new Error('Invalid gas estimate.')
+        estimate = BigInt(result)
+      } else estimate = await this.provider.estimateGas(populated)
       phase = 'allowance'
       const allowed = parsed.type4 ? BigInt(parsed.transaction.gasLimit!) : MAX_GAS
       const gasLimit = ceilDiv(estimate * 110n, 100n)
@@ -256,14 +276,15 @@ export class Broadcaster {
       const effectivePrice = (base: bigint) => parsed.type4 && base + tip < price ? base + tip : price
       phase = 'pricing'
       if (price < baseFee + tip || effectivePrice(baseFee) < minimumGasPrice) throw new Error('Gas price exceeds the signed cap.')
-      const budget = gasLimit * price
+      let budget = gasLimit * price
       phase = 'reserve'
       if (budget > this.config.maxTransactionCost || balance < budget + this.config.reserve)
         throw new Error('Operator gas reserve is insufficient.')
       const transaction = { ...populated, gasLimit }
-      phase = 'trace'
+      phase = 'trace-first-rpc'
       const trace: unknown = await this.provider.send('debug_traceCall', [this.provider.getRpcTransaction(transaction),
         `0x${block.number.toString(16)}`, { tracer: 'callTracer', timeout: '10s' }])
+      phase = 'trace-first-validation'
       const privateCalldata = PROXY.encodeFunctionData('transact', [parsed.transactions])
       assertPrivateExecution(trace, privateCalldata)
       phase = 'fee'
@@ -273,14 +294,24 @@ export class Broadcaster {
       // Recheck fee/reserve state after commitment authentication without mutating the user's batch.
       phase = 'state'
       const fresh = await this.state()
-      if (this.store.hasPending() || fresh.nonce !== nonce || fresh.confirmed !== nonce || fresh.balance < budget + this.config.reserve ||
+      if (this.store.hasPending() || fresh.nonce !== nonce || (!pipeline && fresh.confirmed !== nonce) || fresh.balance < budget + this.config.reserve ||
         price < fresh.baseFee + tip || effectivePrice(fresh.baseFee) < fresh.minimumGasPrice) throw new Error('Execution state changed during validation.')
       phase = 'network'
       await this.validateNetworkAndAuthority(parsed, fresh.block.number)
+      phase = 'trace-fresh-rpc'
+      if (fresh.block.hash !== block.hash) {
+        const freshTrace: unknown = await this.provider.send('debug_traceCall', [
+          this.provider.getRpcTransaction(transaction), `0x${fresh.block.number.toString(16)}`, { tracer: 'callTracer', timeout: '10s' },
+        ])
+        phase = 'trace-fresh-validation'
+        assertPrivateExecution(freshTrace, privateCalldata)
+      }
       phase = 'trace'
-      if (fresh.block.hash !== block.hash) assertPrivateExecution(await this.provider.send('debug_traceCall', [
-        this.provider.getRpcTransaction(transaction), `0x${fresh.block.number.toString(16)}`, { tracer: 'callTracer', timeout: '10s' },
-      ]), privateCalldata)
+      const baseValidity = CHAIN_ID === 8453
+        ? await prepareBaseValidity(this.provider, Transaction.from({ ...transaction, from: undefined }), secured!.expiration) : undefined
+      if (baseValidity) budget = BigInt(baseValidity.maximumCost)
+      if (budget > this.config.maxTransactionCost || fresh.balance < budget + this.config.reserve)
+        throw new Error('The total network fee exceeds the approved reserve.')
       phase = 'fee'
       if (!secured) validateFee(this.store, parsed.feesID, payment, budget, await this.oracle.rates())
       else {
@@ -294,7 +325,7 @@ export class Broadcaster {
       if (secured) (await this.credits()).ledger.reserve({ key: request.key, envelope: request.envelope,
         unsigned: Transaction.from({ ...transaction, from: undefined }).unsignedSerialized, nonce, gasBudget: budget,
         dailyBudget: this.config.dailyBudget, withdrawalPilot: this.config.admission === 'pilot' && (!parsed.type4 || !!parsed.withdrawal),
-        prepaidPilotLedgerId: this.config.prepaidPilotLedgerId, ...secured })
+        prepaidPilotLedgerId: this.config.prepaidPilotLedgerId, ...secured, ...(baseValidity ? { baseValidity } : {}) })
       const raw = await signApprovedTransaction(this.wallet, transaction)
       const hash = Transaction.from(raw).hash!
       if (secured) (await this.credits()).ledger.attachSignature(request.key, raw)
@@ -305,13 +336,16 @@ export class Broadcaster {
           feeQuote.expiration, this.config.admission === 'pilot' && (!parsed.type4 || !!parsed.withdrawal))
       }
       phase = 'submit'
-      const sent = await this.sender.broadcastTransaction(raw, feeQuote.expiration)
+      const sent = await this.sender.broadcastTransaction(raw, feeQuote.expiration, baseValidity)
       if (sent.hash !== hash) throw new Error('Unexpected protected transaction hash.')
       const encrypted = reply({ txHash: hash, ...(secured?.nativeReserve !== undefined ? { nonce } : {}) })
       this.store.respond(request.key, encrypted)
       return responseEnvelope(encrypted, request.id)
-    } catch {
-      console.error(JSON.stringify({ status: 'request-rejected', phase }))
+    } catch (error) {
+      const diagnostic = phase === 'estimate' || phase === 'trace-first-rpc' || phase === 'trace-fresh-rpc' ? traceRpcDiagnostic(error)
+        : phase === 'trace-first-validation' || phase === 'trace-fresh-validation'
+          ? { category: error instanceof TraceValidationError ? error.category : 'malformed' } : undefined
+      console.error(JSON.stringify({ status: 'request-rejected', phase, ...(diagnostic && { [phase === 'estimate' ? 'estimate' : 'trace']: diagnostic }) }))
       const unknown = this.store.get(request.key)
       const errors: Record<string, string> = {
         prepaid: 'Prepaid request rejected. Check the confirmed balance and refresh the quote; retain any saved attempt.',
@@ -344,7 +378,8 @@ export class Broadcaster {
       }
       const encrypted = reply({ error: unknown
         ? 'Submission outcome is unknown. The signed transaction is retained; check recovery before retrying.'
-        : errors[phase] ?? 'Protected submission failed.' })
+        : diagnostic ? `${phase === 'estimate' ? errors.estimate : errors.trace} [${phase}:${diagnostic.category}${'rpcCode' in diagnostic ? `:${diagnostic.rpcCode}` : ''}]`
+          : errors[phase] ?? 'Protected submission failed.' })
       if (unknown) this.store.respond(request.key, encrypted)
       return responseEnvelope(encrypted, request.id)
     } finally { if (reserved) { this.busy = false; this.activeKey = undefined } }
@@ -359,18 +394,21 @@ export class Broadcaster {
       const initial = await this.state()
       const tip = initial.minimumGasPrice > initial.baseFee ? initial.minimumGasPrice - initial.baseFee : 1n
       const price = initial.baseFee * 2n + tip
-      if (initial.nonce !== initial.confirmed || this.store.nonceBlocked(initial.nonce) || price < initial.baseFee + tip ||
+      if ((!credits.ledger.pipelinesNative && initial.nonce !== initial.confirmed) || this.store.nonceBlocked(initial.nonce) || price < initial.baseFee + tip ||
         price * 5n > this.config.maxGasPrice * 4n)
         throw new Error('Native refund nonce or gas pricing is unavailable.')
       const transaction = { to: secured.recipient, value: secured.net, data: '0x', type: 2, chainId: CHAIN,
         nonce: initial.nonce, maxFeePerGas: price, maxPriorityFeePerGas: tip }
       const estimate = await this.provider.estimateGas({ ...transaction, from: this.wallet.address })
       if (typeof estimate !== 'bigint' || estimate < 21_000n) throw new Error('Invalid native refund gas estimate.')
-      const gasLimit = ceilDiv(estimate * 110n, 100n), budget = gasLimit * price
+      const gasLimit = ceilDiv(estimate * 110n, 100n)
+      let budget = gasLimit * price
       if (gasLimit > MAX_GAS || budget > this.config.maxTransactionCost ||
         initial.balance < secured.net + budget + this.config.reserve)
         throw new Error('Native refund exceeds the approved gas or balance limit.')
       const populated = { ...transaction, gasLimit }
+      const baseValidity = CHAIN_ID === 8453 ? await prepareBaseValidity(this.provider, Transaction.from(populated), secured.expiration) : undefined
+      if (baseValidity) budget = BigInt(baseValidity.maximumCost)
       const trace = async (block: number) => assertNativeRefundTrace(await this.provider.send('debug_traceCall', [
         this.provider.getRpcTransaction({ ...populated, from: this.wallet.address }),
         `0x${block.toString(16)}`, { tracer: 'callTracer', timeout: '10s' },
@@ -379,8 +417,8 @@ export class Broadcaster {
       secured.backing = await credits.assertBacked(secured.maximumCharge)
       const fresh = await this.state()
       const effectivePrice = fresh.baseFee + tip < price ? fresh.baseFee + tip : price
-      if (this.store.hasPending() || fresh.nonce !== initial.nonce || fresh.confirmed !== initial.nonce ||
-        fresh.balance < secured.net + budget + this.config.reserve || price < fresh.baseFee + tip ||
+      if (this.store.hasPending() || fresh.nonce !== initial.nonce || (!credits.ledger.pipelinesNative && fresh.confirmed !== initial.nonce) ||
+        budget > this.config.maxTransactionCost || fresh.balance < secured.net + budget + this.config.reserve || price < fresh.baseFee + tip ||
         effectivePrice < fresh.minimumGasPrice || secured.expiration <= Date.now() ||
         Math.abs(Date.now() / 1000 - fresh.block.timestamp) > 45 || this.store.exposure() + budget > this.config.dailyBudget)
         throw new Error('Native refund execution conditions changed.')
@@ -388,11 +426,12 @@ export class Broadcaster {
       // The user's net refund and worst-case gas are held atomically with the operator nonce before any signature.
       credits.ledger.reserve({ key: request.key, envelope,
         unsigned: Transaction.from(populated).unsignedSerialized, nonce: initial.nonce, gasBudget: budget,
-        dailyBudget: this.config.dailyBudget, ...secured, nativeRefund: { recipient: secured.recipient, net: secured.net } })
+        dailyBudget: this.config.dailyBudget, ...secured, nativeRefund: { recipient: secured.recipient, net: secured.net },
+        ...(baseValidity ? { baseValidity } : {}) })
       const raw = await signApprovedTransaction(this.wallet, populated)
       credits.ledger.attachSignature(request.key, raw)
       const hash = Transaction.from(raw).hash!
-      const sent = await this.sender.broadcastTransaction(raw, secured.expiration)
+      const sent = await this.sender.broadcastTransaction(raw, secured.expiration, baseValidity)
       if (sent.hash !== hash) throw new Error('Unexpected protected native refund hash.')
       return credits.read(request)
     } finally { this.busy = false; this.activeKey = undefined }
@@ -418,10 +457,13 @@ export class Broadcaster {
       data: REGISTRY.encodeFunctionData('getContractAddress', ['RelayAdapt7702']), blockTag })
     if (getAddress(REGISTRY.decodeFunctionResult('getContractAddress', registered)[0]) !== getAddress(NETWORK.relayAdapt7702Contract))
       throw new Error('The canonical privacy delegate changed.')
-    if (request.authorization) {
+    if (request.authorization || request.predelegated) {
       const to = String(request.transaction.to)
-      if (BigInt(await this.provider.getTransactionCount(to, blockTag)) !== request.authorization.nonce)
+      if (request.authorization && BigInt(await this.provider.getTransactionCount(to, blockTag)) !== request.authorization.nonce)
         throw new Error('The private authorization nonce changed.')
+      if (request.predelegated && (await this.provider.getCode(to, blockTag)).toLowerCase() !==
+        `0xef0100${NETWORK.relayAdapt7702Contract.slice(2).toLowerCase()}`)
+        throw new Error('The private execution account is not delegated to the canonical Base implementation.')
       const probe = { ...request.transaction, from: this.wallet.address,
         data: ADAPT.encodeFunctionData('adaptImplementation'), blockTag }
       const implementation = ADAPT.decodeFunctionResult('adaptImplementation', await this.provider.call(probe))[0]
@@ -433,10 +475,17 @@ export class Broadcaster {
   }
 
   async reconcile(): Promise<void> {
-    const { block: head, confirmed, settled } = await this.state()
     if (this.store.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='credit_identity'").get())
       await (await this.credits()).reconcileRefunds()
-    for (const item of this.store.pending()) {
+    const pending = this.store.pending()
+    if (!pending.length) return
+    const { block: head, confirmed, settled } = await this.state()
+    const blocks = new Map<number, Awaited<ReturnType<JsonRpcProvider['getBlock']>>>()
+    const canonicalBlock = async (number: number) => {
+      if (!blocks.has(number)) blocks.set(number, await this.provider.getBlock(number))
+      return blocks.get(number)
+    }
+    for (const item of pending) {
       if (!item.hash) continue
       this.store.checked(item.key)
       try {
@@ -445,14 +494,17 @@ export class Broadcaster {
         let included = false
         for (const hash of [item.hash, ...this.store.cancellations(item.key).map((tx) => tx.hash)]) {
           const receipt = await this.provider.getTransactionReceipt(hash)
-          if (!receipt || receipt.blockNumber > settled || (await this.provider.getBlock(receipt.blockNumber))?.hash !== receipt.blockHash) continue
+          if (!receipt || receipt.blockNumber > (credits.ledger.pipelinesNative ? head.number : settled) ||
+            (await canonicalBlock(receipt.blockNumber))?.hash !== receipt.blockHash) continue
           included = true
           credits.ledger.observeInclusion(item.key, receipt)
-          const finalized = await finalizedCreditReceipt(this.provider, hash)
-          credits.ledger.settle(item.key, finalized)
+          if (receipt.blockNumber <= settled) {
+            const finalized = await finalizedCreditReceipt(this.provider, hash)
+            credits.ledger.settle(item.key, finalized)
+          }
           break
         }
-        if (!included && item.confirmed && confirmed <= item.nonce) credits.ledger.forgetInclusion(item.key)
+        if (!included && item.confirmed && (credits.ledger.pipelinesNative || confirmed <= item.nonce)) credits.ledger.forgetInclusion(item.key)
         continue
       }
       const original = await this.provider.getTransactionReceipt(item.hash)

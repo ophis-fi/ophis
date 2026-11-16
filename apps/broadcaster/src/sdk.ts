@@ -8,7 +8,7 @@ import {
   createViewOnlyRailgunWallet, getWalletShareableViewingKey, viewOnlyWalletForID,
   setLoggers, setOnUTXOMerkletreeScanCallback,
   walletForID, parseRailgunTokenAddress,
-  getProver, refreshBalances,
+  getProver, getEngine, refreshBalances,
   unloadProvider,
   balanceForERC20Token,
   type SnarkJSGroth16,
@@ -27,6 +27,7 @@ import type { ConfirmedCredit, ConfirmedRefund, RefundPayout, OwnerIntent, Confi
 import { verifyCreditBacking, type CreditBacking } from './credit-backing'
 import { verifyOwnedFeeDebit, verifyUnrelatedOwnerPayout, ownerDebitEvidence, type AccountedNote } from './credit-owner-payment'
 import { verifyAnonNativeCollection, assertExternalOwnerTransaction } from './anon-native-collection'
+import { installBaseHistory } from '../../railgun/base-history-sdk'
 
 export interface FeeProof {
   railgunTxid: string; utxoTreeIn: number; commitment: string; notePublicKey: string
@@ -46,6 +47,8 @@ export class RailgunSDK {
   constructor(private readonly config: Settings, private readonly secrets: Secrets, private readonly store: Store) {}
 
   async start(provider?: JsonRpcProvider): Promise<void> {
+    if (CHAIN_ID === 8453 && this.config.mode === 'mainnet' && !provider)
+      throw new Error('Base mainnet requires a provider and verified public history source.')
     if (this.config.chainId !== CHAIN_ID || (provider && (await provider.getNetwork()).chainId !== BigInt(CHAIN_ID)))
       throw new Error('The fee wallet must use its bound broadcaster chain.')
     const root = join(this.config.state, 'artifacts')
@@ -70,6 +73,8 @@ export class RailgunSDK {
     this.started = true
     await startRailgunEngine('ophisrelay', new LevelDOWN(join(this.config.state, 'wallet-db')), false,
       artifacts, false, false)
+    if (CHAIN_ID === 8453 && this.config.mode === 'mainnet' && provider)
+      await installBaseHistory(getEngine(), provider, this.config.baseHistoryOrigin ?? 'https://swap.ophis.fi')
     setOnUTXOMerkletreeScanCallback((event) => {
       if (event.chain.id === CHAIN_ID && event.chain.type === NETWORK.chain.type)
         this.utxoReady = event.scanStatus === MerkletreeScanStatus.Complete
@@ -109,6 +114,13 @@ export class RailgunSDK {
   }
 
   ready(): boolean { return this.started && !!this.address && this.utxoReady }
+  async rescanBaseHistory(): Promise<void> {
+    if (CHAIN_ID !== 8453 || this.config.mode !== 'mainnet' || this.config.enabled || !this.providerLoaded)
+      throw new Error('Base history rebuild requires an explicitly disabled Base mainnet inspection.')
+    this.utxoReady = false
+    await getEngine().fullRescanUTXOMerkletreesAndWallets(NETWORK.chain, [this.walletId])
+    if (!this.ready()) throw new Error('Base history rebuild is incomplete. Preserve the wallet and retry the explicit rebuild.')
+  }
   async balances(): Promise<Record<string, string>> {
     if (!this.ready()) throw new Error('Private fee history is not synchronized.')
     return Object.fromEntries(await Promise.all(TOKENS.map(async (token) => [getAddress(token.address),
@@ -258,8 +270,9 @@ export class RailgunSDK {
   async validatePrepaid(request: ParsedRequest): Promise<void> {
     if (POI.getActiveListKeys().length) throw new Error('The Ophis wallet policy is not initialized.')
     const [withdrawal] = request.transactions
-    // A full unshield has no fee ciphertext; its spend proof is checked by the broadcaster's exact contract trace.
-    if ((!request.type4 || request.withdrawal) && request.transactions.length === 1 &&
+    // A single full unshield has no private output ciphertext, including when it funds a type-4 swap.
+    // It cannot contain an embedded private fee; the exact contract trace validates its spend proof.
+    if (request.transactions.length === 1 &&
       BigInt(withdrawal.boundParams.unshield) === 1n && withdrawal.commitments.length === 1 &&
       withdrawal.boundParams.commitmentCiphertext.length === 0 && withdrawal.nullifiers.length > 0 &&
       withdrawal.nullifiers.every((nullifier) => typeof nullifier === 'string' && BigInt(nullifier) !== 0n)) return

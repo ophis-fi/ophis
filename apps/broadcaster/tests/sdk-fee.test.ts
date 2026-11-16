@@ -105,7 +105,9 @@ it('produces an SDK-verifiable signed fee advertisement without making an unarme
     const service = new Broadcaster({ ...config, enabled: false }, store, sdk, {} as JsonRpcProvider,
       new Wallet(Wallet.createRandom().privateKey), { broadcastTransaction: async () => { throw new Error('Unarmed.') } },
       { rates: async () => ({ [TOKENS[0].address]: 10n ** 18n }) })
-    const signed = JSON.parse(Buffer.from(await service.feeAdvertisement()).toString())
+    const advertisement = await service.feeAdvertisement()
+    expect(advertisement.available).toBe(false)
+    const signed = JSON.parse(Buffer.from(advertisement.message).toString())
     expect(await verifyBroadcasterSignature(signed.signature, signed.data,
       getRailgunWalletAddressData(sdk.address).viewingPublicKey)).toBe(true)
     const value = JSON.parse(toUTF8String(signed.data))

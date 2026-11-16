@@ -83,12 +83,62 @@ it('accepts a parsed signed full bound withdrawal without requesting fee-note de
   expect(viewingWallet.isValidSpendableTransaction).not.toHaveBeenCalled()
 })
 
-it('does not apply the full-withdrawal exception to a type-4 swap without a validated withdrawal', async () => {
+it('accepts a signed type-4 full-unshield swap although the real SDK demands a nonexistent first ciphertext', async () => {
   const request = parseRequest(await signedWithdrawalRequest(feesID, publicViewingKey, recipient, TOKENS[0].address,
     id('synthetic-swap-nullifier'), (_transactions, action) => { action.requireSuccess = false; action.calls = [] }), operator, config, true)
   expect(request.withdrawal).toBeUndefined()
   expect(BigInt(request.transactions[0].boundParams.unshield)).toBe(1n)
-  await expect(sdk.validatePrepaid(request)).rejects.toThrow('could not be decoded')
+  expect(request.transactions[0].commitments).toHaveLength(1)
+  expect(request.transactions[0].boundParams.commitmentCiphertext).toHaveLength(0)
+  const decoded = await viewingWallet.isValidSpendableTransaction(VERSION, NETWORK.chain,
+    String(request.transaction.to), request.transaction, true, {}, true)
+  expect(decoded.isValid).toBe(false)
+  expect(decoded.error).toContain('No ciphertext found for commitment at index 0')
+  vi.mocked(viewingWallet.isValidSpendableTransaction).mockClear()
+  await expect(sdk.validatePrepaid(request)).resolves.toBeUndefined()
+  expect(viewingWallet.isValidSpendableTransaction).not.toHaveBeenCalled()
+})
+
+async function encryptedNote(address: string, amount: bigint, outputType: OutputType) {
+  const note = TransactNote.createTransfer(getRailgunWalletAddressData(address), sender.addressKeys, amount,
+    { tokenType: TokenType.ERC20, tokenAddress: TOKENS[0].address, tokenSubID: '0' }, false, outputType, undefined)
+  const keys = getNoteBlindingKeys(sender.viewingPublicKey, note.receiverAddressData.viewingPublicKey, note.random, note.senderRandom!)
+  const shared = await getSharedSymmetricKey(sender.viewingKeyPair.privateKey, keys.blindedReceiverViewingKey)
+  const encrypted = note.encryptV2(VERSION, shared, sender.masterPublicKey, note.senderRandom, sender.viewingKeyPair.privateKey)
+  return { commitment: ByteUtils.nToHex(note.hash, ByteLength.UINT_256, true), ciphertext: {
+    ciphertext: [`0x${encrypted.noteCiphertext.iv}${encrypted.noteCiphertext.tag}`, ...encrypted.noteCiphertext.data.map(value => `0x${value}`)] as [string, string, string, string],
+    blindedSenderViewingKey: ByteUtils.hexlify(keys.blindedSenderViewingKey, true),
+    blindedReceiverViewingKey: ByteUtils.hexlify(keys.blindedReceiverViewingKey, true),
+    annotationData: `0x${encrypted.annotationData}`, memo: `0x${encrypted.noteMemo}`,
+  } }
+}
+
+async function swapWithNote(address: string, amount: bigint, outputType: OutputType) {
+  const note = await encryptedNote(address, amount, outputType)
+  return parseRequest(await signedWithdrawalRequest(feesID, publicViewingKey, recipient, TOKENS[0].address,
+    id('synthetic-change-swap-nullifier'), (transactions, action) => {
+      action.requireSuccess = false; action.calls = []
+      transactions[0].commitments.unshift(note.commitment)
+      transactions[0].boundParams.commitmentCiphertext.push(note.ciphertext)
+    }), operator, config, true)
+}
+
+it.each([123n, 0n])('accepts real encrypted private change in a signed prepaid type-4 swap (amount %s)', async amount => {
+  const request = await swapWithNote(sender.getAddress(), amount, OutputType.Change)
+  expect(request.type4).toBe(true); expect(request.withdrawal).toBeUndefined()
+  const decoded = await viewingWallet.isValidSpendableTransaction(VERSION, NETWORK.chain,
+    String(request.transaction.to), request.transaction, true, {}, true)
+  expect(decoded.isValid).toBe(true)
+  expect(decoded.extractedRailgunTransactionData).toHaveLength(1)
+  expect(decoded.extractedRailgunTransactionData![0].firstCommitmentNotePublicKey).toBeUndefined()
+  vi.mocked(viewingWallet.isValidSpendableTransaction).mockClear()
+  await expect(sdk.validatePrepaid(request)).resolves.toBeUndefined()
+  expect(viewingWallet.isValidSpendableTransaction).toHaveBeenCalledOnce()
+})
+
+it.each([OutputType.BroadcasterFee, OutputType.Change])('rejects a real type-4 output addressed to the broadcaster, regardless of annotation (%s)', async outputType => {
+  const request = await swapWithNote(sdk.address, 123n, outputType)
+  await expect(sdk.validatePrepaid(request)).rejects.toThrow('embedded broadcaster fee')
   expect(viewingWallet.isValidSpendableTransaction).toHaveBeenCalledOnce()
 })
 

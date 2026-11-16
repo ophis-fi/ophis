@@ -15,7 +15,7 @@ let root: string, store: Store
 beforeEach(() => { root = mkdtempSync(join(tmpdir(), 'credit-accounting-')); store = new Store(root) })
 afterEach(() => { store.close(); rmSync(root, { recursive: true, force: true }) })
 
-it('separates unused customer credit from earned charges and keeps prefinality gas exposure visible', async () => {
+it.runIf([1, 56].includes(CHAIN_ID))('separates unused customer credit from earned charges and keeps prefinality gas exposure visible', async () => {
   const ledger = new CreditLedger(store, { chainId: CHAIN_ID, operator, recipient: '0zk1qycrffu7psx6udqv62vjfrx85kf9fxvzcwzjxfpj5nw59urf46c0trv7j6fe3z53lu9xnx4de52xjyewrs8me5u49mte0sc06unkwkppmyx05qyrsvjt7yqt7sm', token: TOKENS[0].address })
   const deposited = 9007199254740993n
   ledger.deposit({ owner, amount: deposited, transactionHash: id('deposit'), commitment: id('note'),
@@ -49,7 +49,7 @@ it('separates unused customer credit from earned charges and keeps prefinality g
   expect(() => accountingReport(store.db)).toThrow('settlement accounting')
 })
 
-it('keeps a refund-only deposit as customer liability until payout and exposes only the retained fee afterward', async () => {
+it.runIf([1, 56].includes(CHAIN_ID))('keeps a refund-only deposit as customer liability until payout and exposes only the retained fee afterward', async () => {
   const ledger = new CreditLedger(store, { chainId: CHAIN_ID, operator, recipient: '0zk1qycrffu7psx6udqv62vjfrx85kf9fxvzcwzjxfpj5nw59urf46c0trv7j6fe3z53lu9xnx4de52xjyewrs8me5u49mte0sc06unkwkppmyx05qyrsvjt7yqt7sm', token: TOKENS[0].address })
   ledger.deposit({ owner, amount: 1000n, transactionHash: id('refund-only-deposit'), commitment: id('refund-only-note'),
     blockNumber: 10, blockHash: id('canonical'), tree: 0, position: 0 })

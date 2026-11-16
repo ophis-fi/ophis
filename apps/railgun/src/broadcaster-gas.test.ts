@@ -2,14 +2,15 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { EVMGasType, type SelectedBroadcaster } from '@railgun-community/shared-models'
 import type { WalletSession } from './wallet'
 
-const selectedNetwork = vi.hoisted(() => ({ chainId: 1 }))
+const selectedNetwork = vi.hoisted(() => ({ chainId: 1, creditContext: vi.fn(), creditBindings: vi.fn() }))
+vi.mock('./prepaid', () => ({ assertPrepaidContext: selectedNetwork.creditContext, assertPrepaidBindings: selectedNetwork.creditBindings }))
 vi.mock('./config', async (original) => {
   const config = await original<typeof import('./config')>()
   return { ...config, get CHAIN_ID() { return selectedNetwork.chainId }, ENVIRONMENT: 'ethereum', PROTECTED_BROADCASTERS: {
     [config.CHAIN_ID]: [{ railgunAddress: config.FEE_SIGNER, expiresAt: Number.MAX_SAFE_INTEGER }],
   } }
 })
-import { assertSubmittable, broadcasterFee, capGasPrice, minimumGasPrice } from './broadcaster'
+import { assertSubmittable, broadcasterFee, capGasPrice, minimumGasPrice, submitPrivate } from './broadcaster'
 import { CONFIG, FEE_SIGNER, TOKENS } from './config'
 
 const selected = {
@@ -18,7 +19,7 @@ const selected = {
 } as SelectedBroadcaster
 const gas = { evmGasType: EVMGasType.Type4 as const, gasEstimate: 3_098_193n, maxFeePerGas: 1_000_000_000n, maxPriorityFeePerGas: 1n }
 
-afterEach(() => { selectedNetwork.chainId = 1; vi.unstubAllGlobals(); vi.resetModules() })
+afterEach(() => { selectedNetwork.chainId = 1; vi.unstubAllGlobals(); vi.resetModules(); vi.clearAllMocks() })
 
 it.each([1, 42161, 137])('normalizes a zero priority suggestion to a backend-compatible positive tip on chain %i', async (chainId) => {
   vi.resetModules()
@@ -98,4 +99,16 @@ it('checks the latest base fee plus the full quoted tip before private submissio
   block.mockClear()
   await expect(assertSubmittable(session, selected, { evmGasType: EVMGasType.Type1, gasEstimate: 3_000_000n, gasPrice: 1n })).resolves.toBeUndefined()
   expect(block).not.toHaveBeenCalled()
+})
+
+it('checks prepaid balance during readiness and only bindings after proof disclosure', async () => {
+  const session = { provider: { send: async () => undefined, getNetwork: async () => ({ chainId: 1n }) } } as unknown as WalletSession
+  const credit = {} as NonNullable<Parameters<typeof assertSubmittable>[3]>
+  const commonGas = { evmGasType: EVMGasType.Type1 as const, gasEstimate: 3_000_000n, gasPrice: 1n }
+  await assertSubmittable(session, selected, commonGas, credit)
+  expect(selectedNetwork.creditContext).toHaveBeenCalledOnce()
+  await expect(submitPrivate(session, { transaction: { to: CONFIG.proxyContract, data: '0x' }, nullifiers: [], preTransactionPOIsPerTxidLeafPerList: {} }, selected, commonGas, false, undefined, credit))
+    .rejects.toThrow('no spend nullifiers')
+  expect(selectedNetwork.creditContext).toHaveBeenCalledOnce()
+  expect(selectedNetwork.creditBindings).toHaveBeenCalledOnce()
 })

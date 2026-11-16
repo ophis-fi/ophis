@@ -1,12 +1,15 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { getAddress, hexlify, id, keccak256, toUtf8Bytes, Wallet, ZeroAddress, type JsonRpcSigner } from 'ethers'
-import { CREDIT_MAX_PAYLOAD, CREDIT_PROTOCOL, authenticateCreditRequest, creditMemo, creditRefundMemo, creditRequestKey } from '../credit-protocol'
+import { AbiCoder, getAddress, hexlify, id, Interface, JsonRpcProvider, keccak256, toUtf8Bytes, Wallet, ZeroAddress, ZeroHash, zeroPadValue, type JsonRpcSigner } from 'ethers'
+import { ABIRailgunSmartWallet } from '@railgun-community/engine'
+import { CREDIT_MAX_MESSAGE_BYTES, CREDIT_MAX_PAYLOAD, CREDIT_PROTOCOL, authenticateCreditRequest, creditMemo, creditRefundMemo, creditRequestKey } from '../credit-protocol'
 import type { WalletSession } from './wallet'
 
 const state = vi.hoisted(() => ({
+  chainId: 1, diagnose: vi.fn(), inputSpent: vi.fn(), ensureSync: vi.fn(),
   writeError: false, record: undefined as unknown, recordKey: undefined as string | undefined, records: new Map<string, unknown>(), events: [] as string[], messages: [] as Record<string, unknown>[],
   privateSwap: undefined as unknown, privateWithdrawal: undefined as unknown,
-  callback: undefined as ((value: unknown) => void) | undefined, core: {},
+  callback: undefined as ((value: unknown) => void) | undefined, core: {}, subscribe: vi.fn(),
+  subscriptions: new Map<object, { topic: string; callback: (value: unknown) => void }>(), restart: undefined as (() => void) | undefined,
   send: vi.fn(), encrypt: vi.fn(), signPublic: vi.fn(), finalized: 100, canonical: true, available: '2000000000000000',
   nextSequence: 1, executionEnabled: true, completedHash: undefined as string | undefined, publicLatest: 0, publicPending: 0, receiptStatus: 1,
   policy: { operator: '0x001486E70A0c9291f5F55c68914eE0e4E4A604d4', railgunAddress: '',
@@ -15,21 +18,34 @@ const state = vi.hoisted(() => ({
 vi.mock('./config', async (original) => {
   const config = await original<typeof import('./config')>()
   state.policy.railgunAddress = config.OPHIS_BROADCASTER
-  return { ...config, CHAIN_ID: 1, CHAIN: 1n, PREPAID_BROADCASTERS: { 1: state.policy } }
+  return { ...config, get CHAIN_ID() { return state.chainId }, get CHAIN() { return BigInt(state.chainId) },
+    PREPAID_BROADCASTERS: { 1: state.policy, 42161: state.policy } }
 })
-vi.mock('./broadcaster', () => ({ startBroadcasters: vi.fn() }))
+vi.mock('./broadcaster', () => ({ startBroadcasters: vi.fn(),
+  assertSubmittable: async (session: WalletSession, selected: unknown, gas: unknown, credit: unknown) =>
+    (await import('./prepaid')).assertPrepaidContext(session, selected as never, gas as never, credit as never) }))
+vi.mock('./prepaid-diagnostic', async original => ({ ...await original<typeof import('./prepaid-diagnostic')>(), diagnoseSavedTransaction: state.diagnose }))
 vi.mock('./storage', () => ({ readPrivateState: async (_session: unknown, key: string) => structuredClone(state.recordKey === undefined || state.recordKey === key ? state.record : state.records.get(key)),
   writePrivateState: async (_session: unknown, _key: string, value: unknown) => {
     if (state.writeError) throw new Error('Local storage quota exceeded')
     state.events.push('saved'); state.recordKey = _key; state.record = structuredClone(value); state.records.set(_key, structuredClone(value))
   } }))
-vi.mock('./wallet', () => ({ requireWalletSync: vi.fn(), refreshReceivedBalances: vi.fn() }))
+vi.mock('./wallet', () => ({ ensureWalletSync: state.ensureSync, requireWalletSync: vi.fn(), refreshReceivedBalances: vi.fn() }))
 vi.mock('./shield', () => ({ assertPublicNetwork: vi.fn() }))
 vi.mock('./journal', () => ({ pendingSwap: async () => state.privateSwap }))
-vi.mock('./withdrawal-journal', () => ({ pendingWithdrawal: async () => state.privateWithdrawal }))
+vi.mock('./withdrawal-journal', () => ({ pendingWithdrawal: async () => structuredClone(state.privateWithdrawal),
+  withdrawalInputsSpent: (...args: unknown[]) => state.inputSpent(...args),
+  savePendingWithdrawal: async (_session: unknown, withdrawal: unknown) => {
+    state.events.push('withdrawal-saved'); state.privateWithdrawal = structuredClone(withdrawal)
+  } }))
 vi.mock('@railgun-community/waku-broadcaster-client-web', () => ({ WakuBroadcasterClient: {
   getWakuCore: () => state.core,
-  addTransportSubscription: async (_core: unknown, _topic: string, callback: (value: unknown) => void) => { state.callback = callback },
+  getContentTopics: () => state.subscriptions.has(state.core) ? [state.subscriptions.get(state.core)!.topic] : [],
+  setRestartCallback: (callback: () => void) => { state.restart = callback },
+  addTransportSubscription: async (core: object, topic: string, callback: (value: unknown) => void) => {
+    await state.subscribe(core); state.callback = callback
+    state.subscriptions.set(core, { topic: `/railgun/v2/encrypted-${topic}/json`, callback })
+  },
   sendTransport: (...args: unknown[]) => state.send(...args),
 } }))
 vi.mock('@railgun-community/wallet', async (original) => ({
@@ -44,15 +60,16 @@ vi.mock('@railgun-community/wallet', async (original) => ({
   populateProvedTransfer: async () => ({ transaction: { to: proxy, data: '0xaabb', value: 0n }, nullifiers: [id('input')] }),
   getCompletedTxidFromNullifiers: async () => ({ txid: state.completedHash }),
 }))
-import { CONFIG } from './config'
-import { assertPrepaidContext, checkPrepaid, checkPrepaidRefund, claimPrepaidTopUp, pendingPrepaid, preparePrepaid, preparePrepaidRefund,
-  deferPrepaidTopUp, prepaidAttemptFee, prepaidBalance, prepaidRefundFee, requestPrepaidRefund, retryPrepaid, submitPrepaid, topUpPrepaid } from './prepaid'
+import { CONFIG, tokenFor, VERSION } from './config'
+import { assertPrepaidContext, checkPrepaid, checkPrepaidRefund, claimPrepaidTopUp, diagnosePrepaidTransaction, pendingPrepaid, preparePrepaid, preparePrepaidRefund,
+  deferPrepaidTopUp, prepaidAttemptFee, prepaidBalance, prepaidRefundFee, requestPrepaidRefund, retryPrepaid, submitPrepaid, topUpPrepaid,
+  prepareSavedPrepaidWithdrawal, confirmSavedPrepaidWithdrawal } from './prepaid'
 import { retryPrepaidTopUp } from './prepaid'
 
 const owner = new Wallet(`0x${'11'.repeat(32)}`), publicOwner = new Wallet(`0x${'22'.repeat(32)}`)
 const ledgerId = id('credit-ledger'), hash = id('transaction'), blockHash = id('block')
 const proxy = getAddress(CONFIG.proxyContract)
-const scope = () => ({ chainId: 1, operator: state.policy.operator,
+const scope = () => ({ chainId: state.chainId, operator: state.policy.operator,
   recipient: state.policy.funding === 'native' ? state.policy.operator : state.policy.railgunAddress,
   token: state.policy.funding === 'native' ? ZeroAddress : getAddress(CONFIG.baseToken.wrappedAddress),
   ...(state.policy.funding && { funding: state.policy.funding }) })
@@ -78,7 +95,7 @@ function respond(packet: { id: string; params: { pubkey: string; encryptedData: 
   request: Record<string, unknown>, body: Record<string, unknown>, key?: string) {
   const response = { ...body, protocol: CREDIT_PROTOCOL, correlation: request.correlation,
     key: key ?? keccak256(toUtf8Bytes(JSON.stringify([packet.params.pubkey.toLowerCase(), packet.params.encryptedData]))) }
-  state.callback?.({ payload: toUtf8Bytes(JSON.stringify({ id: packet.id, result: [JSON.stringify(response), packet.params.encryptedData[1]] })) })
+  state.subscriptions.get(state.core)?.callback({ payload: toUtf8Bytes(JSON.stringify({ id: packet.id, result: [JSON.stringify(response), packet.params.encryptedData[1]] })) })
 }
 async function server(packet: Parameters<typeof respond>[0]) {
   const request = JSON.parse(packet.params.encryptedData[0])
@@ -101,8 +118,12 @@ async function server(packet: Parameters<typeof respond>[0]) {
 }
 beforeEach(() => {
   vi.clearAllMocks()
+  state.ensureSync.mockReset().mockResolvedValue(undefined)
+  state.chainId = 1; state.diagnose.mockReset().mockResolvedValue('historical diagnostic')
   state.writeError = false; state.record = undefined; state.recordKey = undefined; state.records.clear(); state.events = []; state.messages = []; state.core = {}; state.finalized = 100; state.canonical = true
+  state.subscriptions.clear(); state.subscribe.mockReset(); state.subscribe.mockResolvedValue(undefined)
   state.privateSwap = undefined; state.privateWithdrawal = undefined
+  state.inputSpent.mockReset().mockResolvedValue(false)
   state.policy.expiresAt = Number.MAX_SAFE_INTEGER
   state.policy.funding = undefined
   vi.mocked(session.provider.getCode).mockResolvedValue('0x')
@@ -119,6 +140,317 @@ beforeEach(() => {
     blockNumber: 99, blockHash, hash: requested, gasUsed: 1000n, gasPrice: 1n } as Awaited<ReturnType<typeof session.provider.getTransactionReceipt>>))
 })
 afterEach(() => vi.useRealTimers())
+
+function renewalFixture(minGasPrice = '20000000') {
+  state.chainId = 42161; state.policy.funding = 'native'
+  const privacy = new Interface(ABIRailgunSmartWallet), tuple = privacy.getFunction('transact')!.inputs[0].arrayChildren!
+  const proof = Array.from(AbiCoder.defaultAbiCoder().getDefaultValue([tuple])[0])
+  const field = (name: string) => tuple.components!.findIndex(p => p.name === name)
+  const boundType = tuple.components![field('boundParams')].components!, bound = Array.from(proof[field('boundParams')] as unknown[])
+  for (const [name, value] of [['unshield', 1n], ['chainID', 42161n], ['minGasPrice', 10n]] as const)
+    bound[boundType.findIndex(p => p.name === name)] = value
+  proof[field('boundParams')] = bound
+  proof[field('nullifiers')] = [id('saved withdrawal input')]
+  proof[field('commitments')] = [ZeroHash]
+  proof[field('unshieldPreimage')] = [zeroPadValue(publicOwner.address, 32), [0, tokenFor('USDC').address, 0], 188659n]
+  const data = privacy.encodeFunctionData('transact', [[proof]])
+  const request = { txidVersion: VERSION, chainType: 0, chainID: 42161, to: proxy, data, feesID: 'cd'.repeat(32),
+    useRelayAdapt: false, minVersion: '8.0.0', maxVersion: '8.999.0', transactType: 'COMMON',
+    preTransactionPOIsPerTxidLeafPerList: {}, minGasPrice }
+  const payload = JSON.stringify({ kind: 'execute', request, sequence: 1, maximumCharge: '50000000000000', collectionAllowance: '0' })
+  const original = { payload, key: creditRequestKey(ledgerId, owner.address, payload), rate: '1100000000000000000' }
+  state.record = { scope: scope(), ledgerId, owner: owner.address, attempt: original }
+  const withdrawal = { chainId: 42161, feeMode: 'prepaid' as const, token: 'USDC' as const,
+    feeToken: 'WETH' as const, broadcaster: state.policy.railgunAddress, recipient: publicOwner.address,
+    minimum: '188188', fromBlock: 90, nullifiers: [id('saved withdrawal input')],
+    transaction: { to: proxy, data, value: '0' }, minGasPrice }
+  state.privateWithdrawal = structuredClone(withdrawal)
+  const head = { number: 100, hash: blockHash, timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: 20_000_000n }
+  const provider = { ...session.provider, getNetwork: vi.fn(async () => ({ chainId: 42161n })),
+    getBlock: vi.fn(async (_tag: string | number) => ({ ...head })), getTransactionCount: vi.fn(async () => 7),
+    getCode: vi.fn(async () => '0x'), getRpcTransaction: JsonRpcProvider.prototype.getRpcTransaction,
+    send: vi.fn(async (method: string, _params: unknown[]): Promise<unknown> => {
+      if (method !== 'eth_estimateGas') throw new Error('Forbidden RPC method')
+      return '0x79006'
+    }) }
+  const renewalSession = { ...session, provider } as unknown as WalletSession
+  state.send.mockImplementation(async packet => {
+    const envelope = JSON.parse(packet.params.encryptedData[0])
+    if (envelope.authorization) {
+      const authorized = authenticateCreditRequest(scope(), ledgerId, envelope.authorization)
+      if (authorized.payload.kind === 'recover') {
+        expect(authorized.payload).toEqual({ kind: 'recover', operation: 'execute', sequence: 1,
+          payloadHash: keccak256(toUtf8Bytes(original.payload)) })
+        state.nextSequence = 2
+        state.events.push('retired')
+        respond(packet, envelope, { kind: 'recovery', recoveredKey: original.key, operation: 'execute',
+          state: 'not-reserved', sequence: 1, retiredThrough: 1 }, authorized.key)
+        return
+      }
+      if (authorized.payload.kind === 'execute') state.events.push('execute')
+    }
+    return server(packet)
+  })
+  return { session: renewalSession, provider, original, withdrawal, request, head }
+}
+
+it('waits for browser history before retiring or quoting the saved withdrawal', async () => {
+  const f = renewalFixture(), before = structuredClone(state.record)
+  let complete!: () => void
+  state.ensureSync.mockImplementationOnce(() => new Promise<void>(resolve => { complete = resolve }))
+  const review = prepareSavedPrepaidWithdrawal(f.session)
+  await vi.waitFor(() => expect(state.ensureSync).toHaveBeenCalledExactlyOnceWith(f.session))
+  expect(state.send).not.toHaveBeenCalled()
+  expect(state.record).toEqual(before)
+  complete()
+  await review
+  expect(state.events).toEqual(['retired', 'saved'])
+  expect(state.messages.some(message => message.kind === 'execute')).toBe(false)
+})
+
+it('preserves proof and credit without contacting the broadcaster if history verification fails', async () => {
+  const f = renewalFixture(), before = structuredClone(state.record)
+  state.ensureSync.mockRejectedValueOnce(new Error('Private history verification is incomplete.'))
+  await expect(prepareSavedPrepaidWithdrawal(f.session)).rejects.toThrow('verification is incomplete')
+  expect(state.send).not.toHaveBeenCalled()
+  expect(state.record).toEqual(before)
+  expect(state.privateWithdrawal).toEqual(f.withdrawal)
+  expect(state.events).toEqual([])
+})
+
+it('reviews a retired COMMON proof with a fresh pinned estimate and submits only on explicit confirmation', async () => {
+  const f = renewalFixture(), prepared = await prepareSavedPrepaidWithdrawal(f.session)
+  expect(state.events).toEqual(['retired', 'saved'])
+  expect(state.record).toHaveProperty('completed.attempt.payload', f.original.payload)
+  expect(state.record).not.toHaveProperty('attempt')
+  expect(state.privateWithdrawal).toEqual(f.withdrawal)
+  expect(prepared.previousKey).toBe(f.original.key)
+  expect(prepared.credit.nextSequence).toBe(2)
+  expect(prepared.gas).toEqual({ evmGasType: 1, gasEstimate: 495622n, gasPrice: 22_000_001n })
+  expect(f.provider.send).toHaveBeenCalledExactlyOnceWith('eth_estimateGas', [{ chainId: '0xa4b1', type: '0x1',
+    from: state.policy.operator.toLowerCase(), to: proxy.toLowerCase(), data: f.request.data, nonce: '0x7',
+    value: '0x0', gasPrice: '0x14fb181' }, '0x64'])
+  expect(f.provider.getBlock.mock.calls).toEqual([['latest'], [100]])
+  expect(await confirmSavedPrepaidWithdrawal(f.session, prepared)).toBe(hash)
+  expect(state.events).toEqual(['retired', 'saved', 'saved', 'execute', 'saved', 'withdrawal-saved'])
+  const record = state.record as { attempt: { payload: string; hash: string }; completed: { attempt: unknown } }
+  expect(record.completed.attempt).toEqual({ ...f.original, state: 'not-reserved' })
+  const replacement = JSON.parse(record.attempt.payload)
+  expect(replacement).toMatchObject({ kind: 'execute', sequence: 2, collectionAllowance: '0',
+    maximumCharge: prepaidAttemptFee(prepared.credit, prepared.gas).toString(),
+    request: { ...f.request, feesID: prepared.credit.feesID, minGasPrice: prepared.gas.gasPrice.toString() } })
+  expect(record.attempt.hash).toBe(hash)
+  expect(state.privateWithdrawal).toEqual({ ...f.withdrawal, hash })
+  expect(state.signPublic).not.toHaveBeenCalled()
+  await expect(confirmSavedPrepaidWithdrawal(f.session, prepared)).rejects.toThrow('Review')
+})
+
+it.each(['reserved', 'unknown', 'wrong-retirement'])('does not renew on %s old request status', async mode => {
+  const f = renewalFixture(), before = structuredClone(state.record)
+  state.send.mockImplementation(async packet => {
+    const envelope = JSON.parse(packet.params.encryptedData[0]), authorized = authenticateCreditRequest(scope(), ledgerId, envelope.authorization)
+    respond(packet, envelope, mode === 'wrong-retirement'
+      ? { kind: 'recovery', recoveredKey: id('wrong'), operation: 'execute', state: 'not-reserved', sequence: 1, retiredThrough: 1 }
+      : { kind: 'attempt', state: mode === 'reserved' ? 'reserved-before-signing' : 'submitted-or-unknown', nonce: 7, charged: null }, authorized.key)
+  })
+  await expect(prepareSavedPrepaidWithdrawal(f.session)).rejects.toThrow()
+  expect(f.provider.send).not.toHaveBeenCalled()
+  expect(state.privateWithdrawal).toEqual(f.withdrawal)
+  expect(state.record).not.toHaveProperty('completed')
+  if (mode === 'wrong-retirement') expect(state.record).toEqual(before)
+  else {
+    expect(state.record).toHaveProperty('attempt.nonce', 7)
+    expect(state.record).toHaveProperty('attempt.state', mode === 'reserved' ? 'reserved-before-signing' : 'submitted-or-unknown')
+    expect(state.record).toHaveProperty('attempt.payload', f.original.payload)
+  }
+  expect(state.signPublic).not.toHaveBeenCalled()
+})
+
+it.each([{ nonce: 0 }, { nonce: 3 }, { hash }, { state: 'reserved-before-signing' },
+  { state: 'submitted-or-unknown' }, { state: 'settled' }])('exposes a held fee request without changing it and directs renewal to recovery: %j', async held => {
+  const f = renewalFixture()
+  Object.assign((state.record as { attempt: object }).attempt, held)
+  const before = structuredClone(state.record)
+  expect(await pendingPrepaid(f.session, 'native')).toMatchObject({ key: f.original.key, reserved: true })
+  await expect(prepareSavedPrepaidWithdrawal(f.session)).rejects.toThrow('Check fee-credit transaction')
+  expect(state.record).toEqual(before)
+  expect(state.privateWithdrawal).toEqual(f.withdrawal)
+  expect(state.send).not.toHaveBeenCalled()
+  expect(f.provider.send).not.toHaveBeenCalled()
+  expect(state.events).toEqual([])
+})
+
+it('keeps a never-reserved or retired fee request eligible for explicit review', async () => {
+  const f = renewalFixture()
+  expect(await pendingPrepaid(f.session, 'native')).toMatchObject({ reserved: false })
+  await prepareSavedPrepaidWithdrawal(f.session)
+  expect(await pendingPrepaid(f.session, 'native')).toMatchObject({ reserved: false, state: 'not-reserved', completed: true })
+})
+
+it.each(['recipient', 'token', 'inputs', 'data', 'hash', 'bound', 'chain', 'swap'])('rejects changed %s before retiring the old request', async change => {
+  const f = renewalFixture(), withdrawal = state.privateWithdrawal as typeof f.withdrawal & { hash?: string; execution?: object }
+  if (change === 'recipient') withdrawal.recipient = owner.address
+  if (change === 'token') withdrawal.token = 'WETH' as 'USDC'
+  if (change === 'inputs') withdrawal.nullifiers = [id('other')]
+  if (change === 'data') withdrawal.transaction.data += '00'
+  if (change === 'hash') withdrawal.hash = hash
+  if (change === 'bound') withdrawal.execution = {}
+  if (change === 'chain') state.chainId = 1
+  if (change === 'swap') state.privateSwap = { account: owner.address }
+  await expect(prepareSavedPrepaidWithdrawal(f.session)).rejects.toThrow()
+  expect(state.send).not.toHaveBeenCalled()
+  expect(f.provider.send).not.toHaveBeenCalled()
+})
+
+it.each(['0x0', '0x00', '0x01', 495622, null, `0x1${'0'.repeat(64)}`, '0x7a1200'])('retains proof and retired fee record on invalid estimate %#', async estimate => {
+  const f = renewalFixture()
+  f.provider.send.mockResolvedValue(estimate)
+  await expect(prepareSavedPrepaidWithdrawal(f.session)).rejects.toThrow('gas estimate')
+  expect(state.record).toHaveProperty('completed.attempt.payload', f.original.payload)
+  expect(state.record).not.toHaveProperty('attempt')
+  expect(state.privateWithdrawal).toEqual(f.withdrawal)
+  expect(state.events).not.toContain('execute')
+})
+
+it.each(['reorg', 'stale', 'price', 'spent', 'insufficient'])('requires a valid %s review without a new financial attempt', async failure => {
+  const f = renewalFixture()
+  if (failure === 'reorg') f.provider.getBlock.mockImplementation(async tag => ({ ...f.head, hash: tag === 'latest' ? blockHash : id('reorg') }))
+  if (failure === 'stale') f.head.timestamp -= 46
+  if (failure === 'price') f.head.baseFeePerGas = state.policy.maxGasPrice
+  if (failure === 'spent') state.inputSpent.mockResolvedValue(true)
+  if (failure === 'insufficient') state.available = '1'
+  await expect(prepareSavedPrepaidWithdrawal(f.session)).rejects.toThrow()
+  expect(state.record).toHaveProperty('completed.attempt.payload', f.original.payload)
+  expect(state.record).not.toHaveProperty('attempt')
+  expect(state.privateWithdrawal).toEqual(f.withdrawal)
+  expect(state.events).not.toContain('execute')
+})
+
+it.each([
+  ['rounding', '20000000', 20_000_001n, 22_000_003n],
+  ['saved minimum', '25000000', 20_000_000n, 25_000_000n],
+  ['operator ceiling', '20000000', 490_000_000n, 500_000_000n],
+] as const)('keeps price headroom within the %s constraint', async (_case, minimum, baseFee, expected) => {
+  const f = renewalFixture(minimum)
+  f.head.baseFeePerGas = baseFee
+  const prepared = await prepareSavedPrepaidWithdrawal(f.session)
+  expect(prepared.gas.gasPrice).toBe(expected)
+  expect(prepared.gas.gasPrice).toBeLessThanOrEqual(prepared.credit.maximumGasPrice)
+  expect(state.events).not.toContain('execute')
+})
+
+it('refuses a saved gas floor above the operator ceiling instead of lowering it', async () => {
+  const f = renewalFixture('600000000')
+  await expect(prepareSavedPrepaidWithdrawal(f.session)).rejects.toThrow('gas pricing exceeds')
+  expect(state.privateWithdrawal).toEqual(f.withdrawal)
+  expect(state.events).not.toContain('execute')
+})
+
+it.each([20_000_001n, 21_000_000n, 22_000_000n])('keeps the reviewed fee unchanged through a base fee increase to %s wei', async baseFee => {
+  const f = renewalFixture(), prepared = await prepareSavedPrepaidWithdrawal(f.session)
+  const approvedCharge = prepaidAttemptFee(prepared.credit, prepared.gas)
+  f.head.baseFeePerGas = baseFee
+  await expect(confirmSavedPrepaidWithdrawal(f.session, prepared)).resolves.toBe(hash)
+  const stored = state.record as { attempt: { payload: string } }
+  const payload = JSON.parse(stored.attempt.payload)
+  expect(payload.maximumCharge).toBe(approvedCharge.toString())
+  expect(payload.request.minGasPrice).toBe(prepared.gas.gasPrice.toString())
+  expect(state.events.filter(event => event === 'execute')).toHaveLength(1)
+})
+
+it.each(['cap', 'proof', 'journal', 'retirement', 'identity', 'spent', 'price', 'expired'])('rechecks %s on confirm and never silently renews consent', async change => {
+  const f = renewalFixture(), prepared = await prepareSavedPrepaidWithdrawal(f.session)
+  if (change === 'cap') prepared.credit.rate++
+  if (change === 'proof') prepared.withdrawal.transaction.data += '00'
+  if (change === 'journal') (state.privateWithdrawal as typeof f.withdrawal).minimum = '1'
+  if (change === 'retirement') (state.record as { completed: { attempt: { payload: string; key: string } } }).completed.attempt.key = id('changed')
+  if (change === 'identity') (state.record as { ledgerId: string }).ledgerId = id('other ledger')
+  if (change === 'spent') state.inputSpent.mockResolvedValue(true)
+  if (change === 'price') f.head.baseFeePerGas = prepared.gas.gasPrice
+  if (change === 'expired') { vi.useFakeTimers(); vi.setSystemTime(Date.now() + 200_000); f.head.timestamp = Math.floor(Date.now() / 1000) }
+  const before = structuredClone(state.record)
+  await expect(confirmSavedPrepaidWithdrawal(f.session, prepared)).rejects.toThrow()
+  expect(state.record).toEqual(before)
+  expect(state.events).not.toContain('execute')
+})
+
+it('preserves both journals and exact renewed bytes after lost acknowledgement, then retries only those bytes', async () => {
+  const f = renewalFixture(), prepared = await prepareSavedPrepaidWithdrawal(f.session), send = state.send.getMockImplementation()!
+  let droppedPayload = ''
+  state.send.mockImplementation(async packet => {
+    const envelope = JSON.parse(packet.params.encryptedData[0])
+    if (envelope.authorization && JSON.parse(envelope.authorization.payload).kind === 'execute') {
+      droppedPayload = envelope.authorization.payload
+      throw new Error('Synthetic relay failure')
+    }
+    return send(packet)
+  })
+  await expect(confirmSavedPrepaidWithdrawal(f.session, prepared)).rejects.toThrow()
+  expect(droppedPayload).not.toBe('')
+  expect(state.record).toHaveProperty('attempt.payload', droppedPayload)
+  expect(state.record).toHaveProperty('completed.attempt.payload', f.original.payload)
+  expect(state.privateWithdrawal).toEqual(f.withdrawal)
+  state.send.mockImplementation(async packet => {
+    const envelope = JSON.parse(packet.params.encryptedData[0])
+    expect(envelope.authorization.payload).toBe(droppedPayload)
+    return server(packet)
+  })
+  expect(await retryPrepaid(f.session, 'native')).toBe(hash)
+  expect(state.signPublic).not.toHaveBeenCalled()
+})
+
+it('does not send a renewed execution if persistence fails and coalesces no concurrent confirmation', async () => {
+  const f = renewalFixture(), prepared = await prepareSavedPrepaidWithdrawal(f.session)
+  const before = structuredClone(state.record)
+  let release!: () => void
+  state.inputSpent.mockImplementationOnce(() => new Promise<boolean>(resolve => { release = () => resolve(false) }))
+  const first = confirmSavedPrepaidWithdrawal(f.session, prepared)
+  await vi.waitFor(() => expect(release).toBeTypeOf('function'))
+  await expect(confirmSavedPrepaidWithdrawal(f.session, prepared)).rejects.toThrow('already running')
+  state.writeError = true; release()
+  await expect(first).rejects.toThrow('storage quota')
+  expect(state.record).toEqual(before)
+  expect(state.privateWithdrawal).toEqual(f.withdrawal)
+  expect(state.events).not.toContain('execute')
+})
+
+it('inspects the saved Arbitrum request without authorizing, signing or writing either journal', async () => {
+  state.chainId = 42161; state.policy.funding = 'native'
+  const payload = JSON.stringify({ kind: 'execute', request: { to: owner.address, data: '0xaabb' } })
+  state.record = { scope: scope(), ledgerId, owner: owner.address,
+    attempt: { payload, key: creditRequestKey(ledgerId, owner.address, payload), rate: (10n ** 18n).toString() } }
+  state.privateSwap = { account: owner.address, feeMode: 'prepaid' }
+  const before = structuredClone(state.record)
+  expect(await diagnosePrepaidTransaction(session)).toBe('historical diagnostic')
+  expect(state.diagnose).toHaveBeenCalledWith(session.provider, JSON.parse(payload).request, state.privateSwap,
+    state.policy.operator, '0x5fa18eD9d36Fe8e6e30aCD4f894Df9C05913aB5E')
+  expect(state.record).toEqual(before)
+  expect(state.events).toEqual([])
+  expect(state.send).not.toHaveBeenCalled()
+  expect(state.signPublic).not.toHaveBeenCalled()
+  state.privateSwap = { ...state.privateSwap as object, hash }
+  await expect(diagnosePrepaidTransaction(session)).rejects.toThrow('unsubmitted')
+  state.chainId = 1
+  await expect(diagnosePrepaidTransaction(session)).rejects.toThrow('Arbitrum pilot')
+  expect(state.diagnose).toHaveBeenCalledTimes(1)
+})
+
+it('inspects a saved withdrawal without authorizing, signing, submitting or changing its saved records', async () => {
+  state.chainId = 42161; state.policy.funding = 'native'
+  const payload = JSON.stringify({ kind: 'execute', request: { to: proxy, data: '0xaabb' } })
+  state.record = { scope: scope(), ledgerId, owner: owner.address,
+    attempt: { payload, key: creditRequestKey(ledgerId, owner.address, payload), rate: (10n ** 18n).toString() } }
+  state.privateWithdrawal = { feeMode: 'prepaid', transaction: { to: proxy, data: '0xaabb' } }
+  const before = structuredClone({ record: state.record, withdrawal: state.privateWithdrawal })
+  expect(await diagnosePrepaidTransaction(session)).toBe('historical diagnostic')
+  expect(state.diagnose).toHaveBeenCalledWith(session.provider, JSON.parse(payload).request, state.privateWithdrawal,
+    state.policy.operator, '0x5fa18eD9d36Fe8e6e30aCD4f894Df9C05913aB5E')
+  expect({ record: state.record, withdrawal: state.privateWithdrawal }).toEqual(before)
+  expect(state.events).toEqual([]); expect(state.send).not.toHaveBeenCalled(); expect(state.signPublic).not.toHaveBeenCalled()
+  state.privateSwap = { feeMode: 'prepaid' }
+  await expect(diagnosePrepaidTransaction(session)).rejects.toThrow('unsubmitted')
+  expect(state.diagnose).toHaveBeenCalledTimes(1)
+})
 
 it('uses opaque public native prepayment without generating a private transfer proof', async () => {
   state.policy.funding = 'native'
@@ -237,13 +569,57 @@ it('retries only the exact legacy authorization without creating new legacy cred
   expect(state.signPublic).not.toHaveBeenCalled()
 })
 
-it.each(['payer', 'operator'])('rejects delegated %s before asking for a native payment', async (role) => {
+it.each(['0x6000', '0xef0100', `0xef0100${'ab'.repeat(19)}`, `0xef0100${'ab'.repeat(21)}`,
+  `0xef0101${'ab'.repeat(20)}`, `0xef0100${'zz'.repeat(20)}`])('rejects unsupported payer code %s before asking for a native payment', async (code) => {
   state.policy.funding = 'native'
   const credit = await preparePrepaid(session)
-  vi.mocked(role === 'payer' ? publicSigner.provider.getCode : session.provider.getCode).mockResolvedValue('0xef0100')
-  await expect(topUpPrepaid(session, publicSigner, 100_000n, () => {}, credit)).rejects.toThrow('without smart-account delegation')
+  vi.mocked(publicSigner.provider.getCode).mockResolvedValue(code)
+  await expect(topUpPrepaid(session, publicSigner, 100_000n, () => {}, credit)).rejects.toThrow('This wallet cannot send the direct fee payment')
   expect(state.signPublic).not.toHaveBeenCalled()
   expect(state.record).not.toHaveProperty('topUp')
+})
+
+it('accepts an exact EIP-7702 payer designation for a direct type2 payment and same-nonce retry', async () => {
+  state.policy.funding = 'native'
+  const credit = await preparePrepaid(session)
+  vi.mocked(publicSigner.provider.getCode).mockResolvedValue(`0xef0100${'ab'.repeat(20)}`)
+  state.signPublic.mockRejectedValueOnce(new Error('Wallet result lost'))
+  await expect(topUpPrepaid(session, publicSigner, 100_000n, () => {}, credit)).rejects.toThrow('lost')
+  const original = state.signPublic.mock.calls[0][0]
+  expect(original).toMatchObject({ to: state.policy.operator, value: 100_000n, type: 2, chainId: 1n, nonce: 0 })
+  expect(original).not.toHaveProperty('authorizationList')
+  await expect(retryPrepaidTopUp(session, publicSigner, () => {})).resolves.toBe(hash)
+  expect(state.signPublic.mock.calls[1][0]).toEqual(original)
+  vi.mocked(session.provider.getTransaction).mockResolvedValue({ ...original, hash, from: publicOwner.address } as Awaited<ReturnType<typeof session.provider.getTransaction>>)
+  await expect(claimPrepaidTopUp(session)).resolves.toMatchObject({ available: 2_000_000_000_000_000n })
+})
+
+it.each(['fresh', 'retry'])('still rejects delegated operator code before a %s native payment', async (operation) => {
+  state.policy.funding = 'native'
+  const credit = await preparePrepaid(session)
+  if (operation === 'retry') {
+    state.signPublic.mockRejectedValueOnce(new Error('Unknown'))
+    await expect(topUpPrepaid(session, publicSigner, 100_000n, () => {}, credit)).rejects.toThrow('Unknown')
+    state.signPublic.mockClear()
+  }
+  vi.mocked(session.provider.getCode).mockResolvedValue(`0xef0100${'ab'.repeat(20)}`)
+  await expect(operation === 'fresh' ? topUpPrepaid(session, publicSigner, 100_000n, () => {}, credit)
+    : retryPrepaidTopUp(session, publicSigner, () => {})).rejects.toThrow('The broadcaster cannot accept this payment')
+  expect(state.signPublic).not.toHaveBeenCalled()
+  if (operation === 'fresh') expect(state.record).not.toHaveProperty('topUp')
+  else expect(state.record).toHaveProperty('topUp')
+})
+
+it('rejects changed contract payer code on retry while preserving the saved payment', async () => {
+  state.policy.funding = 'native'
+  const credit = await preparePrepaid(session)
+  state.signPublic.mockRejectedValueOnce(new Error('Unknown'))
+  await expect(topUpPrepaid(session, publicSigner, 100_000n, () => {}, credit)).rejects.toThrow('Unknown')
+  state.signPublic.mockClear()
+  vi.mocked(publicSigner.provider.getCode).mockResolvedValue('0x6000')
+  await expect(retryPrepaidTopUp(session, publicSigner, () => {})).rejects.toThrow('This wallet cannot send the direct fee payment')
+  expect(state.signPublic).not.toHaveBeenCalled()
+  expect((await pendingPrepaid(session))?.topUpPending).toBe(true)
 })
 
 it('recovers a lost native payment hash only for the saved sender and exact payment', async () => {
@@ -253,7 +629,8 @@ it('recovers a lost native payment hash only for the saved sender and exact paym
   await expect(topUpPrepaid(session, publicSigner, 100_000n, () => {}, credit)).rejects.toThrow('lost')
   const saved = (state.record as { topUp: { transaction: { to: string; data: string; value: string }; nonce: number } }).topUp
   const tx = { ...saved.transaction, value: 100_000n, from: publicOwner.address, chainId: 1n, nonce: saved.nonce, hash, type: 2 }
-  for (const change of [{ value: 99_999n }, { from: owner.address }, { data: '0x' }, { chainId: 56n }]) {
+  for (const change of [{ value: 99_999n }, { from: owner.address }, { data: '0x' }, { chainId: 56n },
+    { type: 1 }, { type: 4 }, { authorizationList: [{}] }, { to: publicOwner.address }]) {
     vi.mocked(session.provider.getTransaction).mockResolvedValue({ ...tx, ...change } as Awaited<ReturnType<typeof session.provider.getTransaction>>)
     await expect(claimPrepaidTopUp(session, hash)).rejects.toThrow('does not match')
     expect((await pendingPrepaid(session))?.topUpPending).toBe(true)
@@ -387,6 +764,139 @@ it('ignores an encrypted response with the wrong protocol, correlation or reques
   expect((await preparePrepaid(session)).ledgerId).toBe(ledgerId)
 })
 
+it('reports an authenticated pre-authorization rejection instead of timing out on the envelope key', async () => {
+  state.send.mockImplementation(async packet => {
+    const request = JSON.parse(packet.params.encryptedData[0])
+    if (request.kind === 'info') return server(packet)
+    respond(packet, request, { error: 'Prepaid request rejected. Keep the saved attempt.' })
+  })
+  await expect(preparePrepaid(session)).rejects.toThrow('Prepaid fee quote: Prepaid request rejected')
+  expect(state.signPublic).not.toHaveBeenCalled()
+})
+
+it('never accepts signed-request success under the transport key or an error under an unrelated key', async () => {
+  vi.useFakeTimers()
+  state.send.mockImplementation(async packet => {
+    const request = JSON.parse(packet.params.encryptedData[0])
+    if (request.kind === 'info') return server(packet)
+    respond(packet, request, { kind: 'quote' })
+    respond(packet, request, { error: 'Wrong-key error' }, id('unrelated-key'))
+  })
+  const failure = expect(preparePrepaid(session)).rejects.toThrow('Prepaid fee quote response timed out')
+  await vi.advanceTimersByTimeAsync(45_000); await failure
+})
+
+it('repairs a missing response topic on the same core before another request', async () => {
+  await preparePrepaid(session)
+  state.subscriptions.clear()
+  await expect(preparePrepaid(session)).resolves.toHaveProperty('ledgerId', ledgerId)
+  expect(state.subscribe).toHaveBeenCalledTimes(2)
+})
+
+it('does not reuse an old core subscription promise for a replacement core', async () => {
+  let release!: () => void
+  state.subscribe.mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve }))
+  const old = preparePrepaid(session), rejected = expect(old).rejects.toThrow('service discovery connection changed')
+  await vi.waitFor(() => expect(state.subscribe).toHaveBeenCalledTimes(1))
+  state.core = {}
+  await expect(preparePrepaid(session)).resolves.toHaveProperty('ledgerId', ledgerId)
+  release(); await rejected
+  expect(state.subscribe).toHaveBeenCalledTimes(2)
+  expect(state.messages).toHaveLength(2)
+})
+
+it('refuses disclosure when the core changes while an execution request is encrypted', async () => {
+  const credit = await preparePrepaid(session), encrypt = state.encrypt.getMockImplementation()!
+  state.encrypt.mockImplementation(async data => {
+    if (data.authorization?.payload.includes('"kind":"execute"')) state.core = {}
+    return encrypt(data)
+  })
+  await expect(submitPrepaid(session, populated, credit.selected, gas, false, undefined, credit)).rejects.toThrow('transaction submission connection changed')
+  expect((await pendingPrepaid(session))?.key).toBeTruthy()
+  expect(state.messages.some(message => (message.authorization as { payload: string } | undefined)?.payload.includes('"kind":"execute"'))).toBe(false)
+  expect(state.signPublic).not.toHaveBeenCalled()
+})
+
+it.each(['execute', 'refund'])('rejects an in-flight %s on restart, retaining exact consent without automatic replay', async operation => {
+  const executionCredit = await preparePrepaid(session)
+  const credit = operation === 'refund' ? await preparePrepaidRefund(session) : executionCredit
+  let published = 0
+  state.send.mockImplementation(async packet => {
+    const request = JSON.parse(packet.params.encryptedData[0])
+    if (!request.authorization?.payload.includes(`"kind":"${operation}"`)) return server(packet)
+    published++; state.core = {}; state.subscriptions.clear(); state.restart!()
+  })
+  await expect(operation === 'execute'
+    ? submitPrepaid(session, populated, credit.selected, gas, false, undefined, credit)
+    : requestPrepaidRefund(session, credit, 100_000n)).rejects.toThrow(`${operation === 'execute' ? 'transaction' : 'refund'} submission connection changed`)
+  expect(published).toBe(1)
+  const saved = (state.record as { attempt?: { payload: string }; refund?: { payload: string } })[operation === 'execute' ? 'attempt' : 'refund']
+  expect(JSON.parse(saved!.payload).kind).toBe(operation)
+  expect(state.signPublic).not.toHaveBeenCalled()
+  state.send.mockImplementation(server)
+  await expect(preparePrepaid(session)).resolves.toHaveProperty('ledgerId', ledgerId)
+  expect(published).toBe(1)
+})
+
+it('identifies discovery timeout without reporting private identifiers', async () => {
+  vi.useFakeTimers(); state.send.mockResolvedValue(undefined)
+  const failure = expect(preparePrepaid(session)).rejects.toThrow('Prepaid service discovery response timed out')
+  await vi.advanceTimersByTimeAsync(45_000); await failure
+  expect(state.record).toBeUndefined()
+})
+
+it.each([['balance', true], ['balance', false], ['execute', true], ['execute', false]] as const)
+('distinguishes %s timeout with relay acknowledgement %s without replaying', async (kind, delivered) => {
+  const credit = await preparePrepaid(session)
+  vi.useFakeTimers()
+  let sends = 0
+  state.send.mockImplementation(async packet => {
+    const request = JSON.parse(packet.params.encryptedData[0])
+    if (request.authorization && JSON.parse(request.authorization.payload).kind === kind) {
+      sends++
+      if (!delivered) await new Promise(() => {})
+      return
+    }
+    await server(packet)
+  })
+  const failed = expect(kind === 'balance' ? assertPrepaidContext(session, credit.selected, gas, credit)
+    : submitPrepaid(session, populated, credit.selected, gas, false, undefined, credit))
+    .rejects.toThrow(`Prepaid ${kind === 'balance' ? 'balance check' : 'transaction submission'} response timed out (${delivered ? 'relay accepted; reply missing' : 'relay acceptance unknown'})`)
+  await vi.advanceTimersByTimeAsync(45_000); await failed
+  expect(sends).toBe(1)
+  expect(!!(state.record as { attempt?: unknown }).attempt).toBe(kind === 'execute')
+  expect(state.signPublic).not.toHaveBeenCalled()
+})
+
+it.each([0, 1])('checks the encrypted wire-byte boundary before publication: %s bytes over', async over => {
+  const encoded = { randomPubKey: '02'.repeat(32), encryptedData: ['', 'nonce'], sharedKey: new Uint8Array(32) }
+  const overhead = toUtf8Bytes(JSON.stringify({ method: 'transact', id: `0x${'00'.repeat(32)}`,
+    params: { pubkey: encoded.randomPubKey, encryptedData: encoded.encryptedData } })).length
+  encoded.encryptedData[0] = 'a'.repeat(CREDIT_MAX_MESSAGE_BYTES - overhead + over)
+  state.encrypt.mockResolvedValue(encoded)
+  state.send.mockRejectedValue(new Error('Boundary packet reached transport'))
+  await expect(preparePrepaid(session)).rejects.toThrow(over ? 'encrypted message size limit' : 'Boundary packet reached transport')
+  expect(state.send).toHaveBeenCalledTimes(over ? 0 : 1)
+  expect(state.record).toBeUndefined()
+  expect(state.signPublic).not.toHaveBeenCalled()
+})
+
+it('keeps an oversized execution recoverable without publishing it or automatically retrying', async () => {
+  const credit = await preparePrepaid(session), normalEncrypt = state.encrypt.getMockImplementation()!
+  state.encrypt.mockImplementation(async data => data.authorization?.payload.includes('"kind":"execute"')
+    ? { randomPubKey: '02'.repeat(32), encryptedData: ['a'.repeat(CREDIT_MAX_MESSAGE_BYTES), 'nonce'], sharedKey: new Uint8Array(32) }
+    : normalEncrypt(data))
+  await expect(submitPrepaid(session, populated, credit.selected, gas, false, undefined, credit)).rejects.toThrow('encrypted message size limit')
+  const record = structuredClone(state.record) as { attempt: { key: string; payload: string } }
+  expect(record.attempt.key).toBe(creditRequestKey(ledgerId, owner.address, record.attempt.payload))
+  expect(JSON.parse(record.attempt.payload).kind).toBe('execute')
+  expect(state.messages.every(message => !(message.authorization as { payload?: string })?.payload?.includes('"kind":"execute"'))).toBe(true)
+  expect(state.signPublic).not.toHaveBeenCalled()
+  state.encrypt.mockImplementation(normalEncrypt)
+  await prepaidBalance(session)
+  expect(state.record).toEqual(record)
+})
+
 it('rejects a server identity mismatch and an edited quote before disclosure', async () => {
   state.send.mockImplementationOnce(async (packet) => respond(packet, JSON.parse(packet.params.encryptedData[0]), {
     scope: { ...scope(), operator: publicOwner.address }, ledgerId, confirmation: 'finalized', funding: 'user-submitted-private-transfer' }))
@@ -518,9 +1028,26 @@ it('permits read/recovery after approval expiry but forbids new execution and pr
 it('rejects insufficient confirmed credit before storing or disclosing any private proof', async () => {
   const credit = await preparePrepaid(session)
   state.available = '0'
-  await expect(submitPrepaid(session, populated, credit.selected, gas, false, undefined, credit)).rejects.toThrow('insufficient')
+  await expect(assertPrepaidContext(session, credit.selected, gas, credit)).rejects.toThrow('insufficient')
   expect((await pendingPrepaid(session))?.key).toBeUndefined()
   expect(state.messages.some((message) => (message.authorization as { payload: string } | undefined)?.payload.includes('execute'))).toBe(false)
+})
+
+it('journals execution before publication without another balance query after proof disclosure', async () => {
+  const credit = await preparePrepaid(session)
+  await assertPrepaidContext(session, credit.selected, gas, credit)
+  const afterPreflight = state.messages.length
+  state.events = []
+  state.send.mockImplementation(async packet => {
+    const request = JSON.parse(packet.params.encryptedData[0])
+    expect(JSON.parse(request.authorization.payload).kind).toBe('execute')
+    expect(state.record).toHaveProperty('attempt.payload', request.authorization.payload)
+    state.events.push('published')
+    await server(packet)
+  })
+  await expect(submitPrepaid(session, populated, credit.selected, gas, false, undefined, credit)).resolves.toBe(hash)
+  expect(state.messages.length - afterPreflight).toBe(1)
+  expect(state.events).toEqual(['saved', 'published', 'saved'])
 })
 
 

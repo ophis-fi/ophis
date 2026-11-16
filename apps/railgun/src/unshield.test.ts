@@ -62,6 +62,18 @@ it('rejects a prepared withdrawal during history synchronization before recordin
   expect(send).not.toHaveBeenCalled()
 })
 
+it('stops a prepaid balance timeout before common withdrawal proof generation or disclosure', async () => {
+  state.pending = undefined; state.proof.mockClear(); state.save.mockClear(); state.populate.mockClear()
+  const prepared = { kind: 'COMMON', prepaid: {} } as Parameters<typeof executeUnshield>[1]
+  const send = vi.fn(), assertReady = vi.fn().mockRejectedValue(new Error('Prepaid balance check response timed out'))
+  await expect(executeUnshield({} as WalletSession, prepared, () => {}, { assertReady, send }))
+    .rejects.toThrow('balance check response timed out')
+  expect(state.proof).not.toHaveBeenCalled()
+  expect(state.save).not.toHaveBeenCalled()
+  expect(state.populate).not.toHaveBeenCalled()
+  expect(send).not.toHaveBeenCalled()
+})
+
 it('retries the saved proof through the broadcaster without proving again, and blocks known or spent submissions', async () => {
   const transaction = { to: CONFIG.proxyContract, data: withdrawalData(1, 1, ZeroAddress, TOKENS.USDC.address), value: '0' }
   const saved = { transaction, token: 'USDC', minGasPrice: '100', nullifiers: [`0x${'11'.repeat(32)}`] }

@@ -28,7 +28,7 @@ vi.mock('ethers', async (original) => ({
   },
 }))
 
-import { refreshReceivedBalances, requireWalletSync, startWalletEngine, syncWallet, type WalletSession } from './wallet'
+import { ensureWalletSync, refreshReceivedBalances, requireWalletSync, startWalletEngine, syncWallet, type WalletSession } from './wallet'
 const session = { info: { id: 'test-wallet' }, accounts: { scanHistoryForEphemeralIndex: sdk.accounts } } as unknown as WalletSession
 
 function complete(status = MerkletreeScanStatus.Complete): void {
@@ -85,11 +85,12 @@ it('keeps spending blocked until the SDK completes verification and balance publ
   sdk.scan.mockImplementationOnce(async () => {})
   const pending = syncWallet(session)
   expect(syncWallet(session)).toBe(pending)
+  const reviewReady = ensureWalletSync(session)
   await vi.waitFor(() => expect(sdk.scan).toHaveBeenCalledOnce())
   expect(() => requireWalletSync()).toThrow(/not synchronized/)
   expect(sdk.publish).not.toHaveBeenCalled()
   complete()
-  await pending
+  await Promise.all([pending, reviewReady])
   expect(() => requireWalletSync()).not.toThrow()
 })
 
@@ -161,6 +162,38 @@ it('preserves the public-history progress while the unlocked wallet waits for it
     expect(() => requireWalletSync()).toThrow()
   } finally { finish?.(); complete(); await pending }
   expect(report).toHaveBeenLastCalledWith('Complete · private balances are ready.', true)
+})
+
+it('does not start another history scan when the wallet is already ready', async () => {
+  await syncWallet(session)
+  sdk.scan.mockClear()
+  await ensureWalletSync(session)
+  expect(sdk.scan).not.toHaveBeenCalled()
+})
+
+it('waits for startup history and verifies the unlocked wallet before allowing fee review', async () => {
+  complete(MerkletreeScanStatus.Incomplete)
+  sdk.scan.mockImplementationOnce(async () => {})
+  await startWalletEngine(() => {}, () => {})
+  const pending = ensureWalletSync(session)
+  expect(sdk.scan).toHaveBeenCalledExactlyOnceWith(CONFIG.chain, [])
+  expect(() => requireWalletSync()).toThrow()
+  complete()
+  await pending
+  expect(sdk.scan.mock.calls).toEqual([[CONFIG.chain, []], [CONFIG.chain, [session.info.id]]])
+  expect(() => requireWalletSync()).not.toThrow()
+})
+
+it('makes only one verification attempt when idle and refuses incomplete history', async () => {
+  complete(MerkletreeScanStatus.Incomplete)
+  sdk.scan.mockImplementationOnce(async () => { complete(MerkletreeScanStatus.Incomplete) })
+  await expect(ensureWalletSync(session)).rejects.toThrow(/verification is incomplete/)
+  expect(sdk.scan).toHaveBeenCalledOnce()
+  expect(sdk.publish).not.toHaveBeenCalled()
+  expect(() => requireWalletSync()).toThrow()
+  await ensureWalletSync(session)
+  expect(sdk.scan).toHaveBeenCalledTimes(2)
+  expect(() => requireWalletSync()).not.toThrow()
 })
 
 it('requires a reload after the scan deadline rather than overlapping a still-running SDK scan', async () => {

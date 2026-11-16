@@ -45,7 +45,7 @@ export class FeeOracle {
   private cached?: { expires: number; rates: Record<string, bigint> }
   private refreshing?: Promise<Record<string, bigint>>
   constructor(private readonly provider: JsonRpcProvider, private readonly marginBps: bigint, private readonly nativeCredit = false) {
-    if (!FEEDS[CHAIN_ID]) throw new Error('Fee pricing is unavailable for this broadcaster chain.')
+    if (!nativeCredit && !FEEDS[CHAIN_ID]) throw new Error('Fee pricing is unavailable for this broadcaster chain.')
   }
 
   async rates(): Promise<Record<string, bigint>> {

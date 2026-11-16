@@ -11,6 +11,21 @@ async function authorize(payload = JSON.stringify({ kind: 'execute', maximumChar
     CREDIT_AUTHORIZATION_TYPES, creditAuthorizationValue(scope, owner.address, payload, expires)) }
 }
 describe('prepaid request ownership', () => {
+  it.each([1, 56, 42161, 137, 8453])('binds native funding and authorization to chain %i without cross-chain replay', async (chainId) => {
+    const native = { chainId, operator, recipient: operator, token: ZeroAddress, funding: 'native' as const }
+    const paymentId = id('multichain payment'), payload = JSON.stringify({ kind: 'balance' }), expires = now + 60_000
+    const data = nativeCreditData(native, ledgerId, owner.address, paymentId)
+    const request = { owner: owner.address, payload, expires, signature: await owner.signTypedData(creditDomain(native, ledgerId),
+      CREDIT_AUTHORIZATION_TYPES, creditAuthorizationValue(native, owner.address, payload, expires)) }
+    expect(authenticateCreditRequest(native, ledgerId, request, now).owner).toBe(owner.address)
+    for (const other of [1, 56, 42161, 137, 8453].filter(value => value !== chainId)) {
+      const changed = { ...native, chainId: other }
+      expect(nativeCreditData(changed, ledgerId, owner.address, paymentId)).not.toBe(data)
+      expect(() => authenticateCreditRequest(changed, ledgerId, request, now)).toThrow('signature')
+    }
+    expect(() => creditDomain({ ...native, chainId: 10 }, ledgerId)).toThrow('identity')
+    if (![1, 56].includes(chainId)) expect(() => creditDomain({ ...scope, chainId }, ledgerId)).toThrow('identity')
+  })
   it('isolates native authorization and binds opaque funding data without publishing the claimant or payment secret', async () => {
     const native = { chainId: 1, operator, recipient: operator, token: ZeroAddress, funding: 'native' as const }
     const paymentId = id('private random payment identifier')
