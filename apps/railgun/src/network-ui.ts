@@ -1,5 +1,6 @@
 import { CHAIN_ID, CHAIN_NAME, ENVIRONMENT, NATIVE_SYMBOL, PILOT_WITHDRAWAL_RECIPIENT, PRIVATE_SLIPPAGE_BPS, PROTECTED_BROADCASTERS, TOKENS, WRAPPED_SYMBOL, tokenIdFor } from './config'
 import { PRIVATE_NETWORKS, privateNetwork } from './networks'
+import { PRODUCTION_PRIVATE_CHAIN_IDS } from '../rpc-policy'
 import { element } from './ui'
 import { getAddress } from 'ethers'
 
@@ -30,7 +31,9 @@ export function refreshTokenSelectors(holdings: readonly string[] = []): void {
 
 export function configurePrivateSelectors(): void {
   const network = element<HTMLSelectElement>('private-network')
-  network.replaceChildren(...PRIVATE_NETWORKS.map((item) => new Option(item.name, String(item.chainId))))
+  network.replaceChildren(...PRIVATE_NETWORKS
+    .filter(item => ENVIRONMENT === 'fork' || PRODUCTION_PRIVATE_CHAIN_IDS.includes(item.chainId))
+    .map((item) => new Option(item.name, String(item.chainId))))
   network.value = String(CHAIN_ID)
   network.onchange = () => {
     const selected = privateNetwork(Number(network.value))

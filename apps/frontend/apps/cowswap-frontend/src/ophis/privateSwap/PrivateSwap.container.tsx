@@ -1,5 +1,7 @@
 import { ReactNode, useEffect, useRef, useState } from 'react'
 
+import { arbitrumOne, bnb, mainnet } from '@cowprotocol/cow-sdk'
+
 import { IncognitoIcon } from 'ophis/components/IncognitoIcon.pure'
 import { useIsMobileSwap } from 'ophis/hooks/useIsMobileSwap'
 import { MobileSwapHeading } from 'ophis/mobile/MobileSwapHeading.pure'
@@ -7,7 +9,31 @@ import { MobileSwapHeading } from 'ophis/mobile/MobileSwapHeading.pure'
 import * as styledEl from './PrivateSwap.styled'
 import { PRIVATE_SWAP_DOCUMENT, privateSwapUrl } from './privateSwapSession.utils'
 
-const PRIVATE_CHAINS = new Set([1, 42161, 137, 56])
+const PRIVATE_CHAINS = new Map<number, string>([mainnet, bnb, arbitrumOne].map(({ id, label }) => [id, label]))
+
+function privateChainUrl(chainId: number): string {
+  const url = new URL(privateSwapUrl(true))
+  url.searchParams.set('privateChain', String(chainId))
+  return url.href
+}
+
+function UnavailablePrivateChain(): ReactNode {
+  return (
+    <section aria-label="Private network unavailable">
+      <h2>Private swaps and withdrawals are unavailable on this network.</h2>
+      <p>Choose a supported network to open your private wallet.</p>
+      <nav aria-label="Supported private networks">
+        <ul>
+          {Array.from(PRIVATE_CHAINS, ([chainId, label]) => (
+            <li key={chainId}>
+              <a href={privateChainUrl(chainId)}>{label}</a>
+            </li>
+          ))}
+        </ul>
+      </nav>
+    </section>
+  )
+}
 
 export function PrivateSwap({ publicSwap }: { publicSwap: ReactNode }): ReactNode {
   const isMobileSwap = useIsMobileSwap()
@@ -15,8 +41,10 @@ export function PrivateSwap({ publicSwap }: { publicSwap: ReactNode }): ReactNod
   const [height, setHeight] = useState(520)
   const [busy, setBusy] = useState(false)
   const [chainId] = useState(() => {
-    const requested = Number(new URLSearchParams(window.location.search).get('privateChain') || 1)
-    return PRIVATE_CHAINS.has(requested) ? requested : 1
+    const requested = new URLSearchParams(window.location.search).getAll('privateChain')
+    if (requested.length === 0) return mainnet.id
+    const parsed = Number(requested[0])
+    return requested.length === 1 && requested[0] === String(parsed) && PRIVATE_CHAINS.has(parsed) ? parsed : null
   })
   useEffect(() => {
     const receive = (event: MessageEvent<unknown>): void => {
@@ -60,7 +88,9 @@ export function PrivateSwap({ publicSwap }: { publicSwap: ReactNode }): ReactNod
           </button>
         </div>
       </styledEl.Mode>
-      {PRIVATE_SWAP_DOCUMENT ? (
+      {PRIVATE_SWAP_DOCUMENT && chainId === null ? (
+        <UnavailablePrivateChain />
+      ) : PRIVATE_SWAP_DOCUMENT ? (
         <styledEl.Runtime
           ref={frame}
           title="Ophis private swap wallet"
