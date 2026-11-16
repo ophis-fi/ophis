@@ -100,12 +100,12 @@ export async function createBaseHistorySource(provider: JsonRpcProvider, origin:
     }
     await verifyReceipts()
     historyAssert(logs.length + recent.length <= B.maxLogs, 'Base history event limit exceeded.')
-    const verifyAnchors = async () => {
+    const verifyAnchors = async (requireFresh: boolean) => {
       const snapshotHeader = await header(manifest.toBlock), tailHeader = await header(tail.toBlock)
-      historyAssert(matches(snapshotHeader, manifest) && matches(tailHeader, tail) && current(tailHeader.timestamp),
+      historyAssert(matches(snapshotHeader, manifest) && matches(tailHeader, tail) && (!requireFresh || current(tailHeader.timestamp)),
         'Base history anchor differs from the trusted provider or is no longer current.')
     }
-    await verifyAnchors()
+    await verifyAnchors(true)
     const at = `0x${tail.toBlock.toString(16)}`
     const [root, treeNumber, nextLeafIndex] = await Promise.all(['merkleRoot', 'treeNumber', 'nextLeafIndex'].map(async name => {
       const result = await provider.send('eth_call', [{ to: B.address, data: abi.encodeFunctionData(name) }, at])
@@ -123,7 +123,9 @@ export async function createBaseHistorySource(provider: JsonRpcProvider, origin:
         (latest.tree === tree || length === 0 && latest.tree === tree - 1 && latest.index === 65_535) &&
         await merkletree.getTreeLength(tree) === length && `0x${actualRoot.replace(/^0x/, '')}`.toLowerCase() === String(root).toLowerCase(),
         'Base history does not match the complete canonical tree.')
-      await verifyAnchors()
+      // A cold tree build or balance decryption can outlast the freshness window.
+      // Retain the acquired checkpoint's exact canonical evidence across that work.
+      await verifyAnchors(false)
       await verifyReceipts()
       covered = JSON.stringify(receipts)
     } }

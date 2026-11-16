@@ -63,11 +63,31 @@ it('rejects a stale canonical tail whose cache timestamp was forged fresh withou
   expect(f.send.mock.calls.some(([method]) => method === 'eth_call')).toBe(false)
 })
 
-it('rechecks canonical tail freshness after tree verification before declaring balances ready', async () => {
+it('allows lengthy local ingestion of a fresh acquisition while still verifying its exact canonical evidence', async () => {
   const f = await fixture(), source = await createBaseHistorySource(f.provider, 'https://swap.ophis.fi')
   const scan = await source()
-  const clock = vi.spyOn(Date, 'now').mockReturnValue((f.tail.timestamp + 91) * 1000)
-  try { await expect(scan.validate(f.tree as never)).rejects.toThrow('no longer current') }
+  const clock = vi.spyOn(Date, 'now').mockReturnValue((f.tail.timestamp + 120) * 1000)
+  try {
+    await expect(scan.validate(f.tree as never)).resolves.toBeUndefined()
+    clock.mockReturnValue((f.tail.timestamp + 600) * 1000)
+    await expect(scan.validate(f.tree as never)).resolves.toBeUndefined()
+    expect(() => source.assertReceiptCoverage()).not.toThrow()
+    await expect(source()).rejects.toThrow('not current')
+  }
+  finally { clock.mockRestore() }
+})
+
+it.each(['hash', 'timestamp'] as const)('still rejects a changed canonical %s after lengthy local ingestion', async field => {
+  const f = await fixture(), source = await createBaseHistorySource(f.provider, 'https://swap.ophis.fi')
+  const scan = await source(), original = f.send.getMockImplementation()!
+  f.send.mockImplementation(async (method, params) => {
+    const value = await original(method, params)
+    return method === 'eth_getBlockByNumber' && params[0] === hex(f.head) && typeof value !== 'string'
+      ? { ...value, ...(field === 'hash' ? { hash: id('changed after ingestion') } : { timestamp: hex(f.tail.timestamp + 1) }) }
+      : value
+  })
+  const clock = vi.spyOn(Date, 'now').mockReturnValue((f.tail.timestamp + 120) * 1000)
+  try { await expect(scan.validate(f.tree as never)).rejects.toThrow('anchor differs') }
   finally { clock.mockRestore() }
 })
 

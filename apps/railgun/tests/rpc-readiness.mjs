@@ -44,7 +44,10 @@ const extendedEndpoints = {
 }
 const reports = []
 // All three vendor-backed networks share one account's credits/second budget.
-for (const network of PRIVATE_NETWORKS) {
+// Base has a separate acceptance gate; this deployment still configures four networks.
+const deploymentNetworks = PRIVATE_NETWORKS.filter(network => Object.hasOwn(endpoints, network.chainId))
+assert.equal(deploymentNetworks.length, Object.keys(endpoints).length, 'A required deployment network is missing')
+for (const network of deploymentNetworks) {
   const endpoint = gateway ? new URL(network.chainId === 1 ? '/rpc' : `/rpc/${network.chainId}`, gateway).href : endpoints[network.chainId]
   assert(endpoint, 'Configure this network RPC or the existing server-only provider credential')
   const transport = new FetchRequest(endpoint)
