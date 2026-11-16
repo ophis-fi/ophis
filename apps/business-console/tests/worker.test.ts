@@ -7428,7 +7428,10 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     }
   })
 
-  it('B2: production seals to one recipient, the same in the bundle (pro.ophis.fi) and in the Worker (env.production), of the hybrid form or empty until the ceremony', () => {
+  // The fingerprint the security-key ceremony printed and the key holder sent (README, "The sealing key in production"):
+  // a recipient pasted from anywhere else (the local test key, say) fails here. Empty until the ceremony.
+  const PRODUCTION_FINGERPRINT = ''
+  it('B2: production seals to one recipient, the same in the bundle (pro.ophis.fi) and in the Worker (env.production), of the hybrid form or empty until the ceremony, and it is the ceremony\'s', async () => {
     const bundle = /^const PRODUCTION = '([^'\n]*)'$/m.exec(onboardingPage)?.[1]
     // env.production itself: wrangler.jsonc without its // comments and trailing commas, as for the Access values
     const json = wranglerConfig
@@ -7438,6 +7441,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect(typeof bundle).toBe('string')
     expect(worker).toBe(bundle)
     expect(bundle).toMatch(/^$|^age1pq1[a-z0-9]{1500,2500}$/)
+    expect(bundle ? await data.sha256Hex(bundle) : '').toBe(PRODUCTION_FINGERPRINT)
   })
 
   // An env whose bucket runs something just before an object is stored: after the gates of the router, before the commit.
