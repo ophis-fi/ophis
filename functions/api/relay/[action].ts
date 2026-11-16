@@ -55,7 +55,7 @@ async function boundedJson(response: Response): Promise<unknown> {
 const chainCache: { until: number; pending?: Promise<unknown> } = { until: 0 }
 async function upstream(path: string, key: string, body?: Record<string, unknown>): Promise<unknown> {
   const response = await fetch(`https://api.relay.link${path}`, {
-    method: body ? 'POST' : 'GET', redirect: 'error', signal: AbortSignal.timeout(6_000),
+    method: body ? 'POST' : 'GET', redirect: 'manual', signal: AbortSignal.timeout(6_000),
     headers: { 'x-api-key': key, 'content-type': 'application/json' },
     ...(body ? { body: JSON.stringify(body) } : {}),
   })

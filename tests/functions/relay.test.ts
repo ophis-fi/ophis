@@ -36,6 +36,7 @@ test('only server credentials reach Relay; browser cannot override fee or reques
     const response = await call('quote', { ...body(), appFees: [{ recipient: ADDRESS, fee: '9999' }], txs: [{}], usePermit: true, explicitDeposit: false });
     assert.equal(response.status, 200);
     assert.equal(calls[0].url, 'https://api.relay.link/quote/v2');
+    assert.equal(calls[0].init?.redirect, 'manual');
     assert.equal(new Headers(calls[0].init?.headers).get('x-api-key'), KEY);
     const sent = JSON.parse(String(calls[0].init?.body));
     assert.deepEqual(sent.appFees, [{ recipient: SAFE, fee: '3' }]);
@@ -162,6 +163,24 @@ test('upstream failures expose a generic error and never expose the server key',
     const response = await call();
     assert.equal(response.status, 502);
     assert.equal((await response.text()).includes(KEY), false);
+  } finally { globalThis.fetch = original; }
+});
+
+test('upstream redirects fail closed without following or exposing credentials', async () => {
+  const original = globalThis.fetch;
+  const calls: { url: string; init?: RequestInit }[] = [];
+  try {
+    for (const status of [301, 302, 303, 307, 308]) {
+      globalThis.fetch = async (url, init) => {
+        calls.push({ url: String(url), init });
+        return new Response(KEY, { status, headers: { location: 'https://attacker.example' } });
+      };
+      const response = await call();
+      assert.equal(response.status, 502);
+      assert.deepEqual(await response.json(), { error: 'Relay is temporarily unavailable' });
+    }
+    assert.equal(calls.length, 5);
+    assert.ok(calls.every(({ url, init }) => url === 'https://api.relay.link/quote/v2' && init?.redirect === 'manual'));
   } finally { globalThis.fetch = original; }
 });
 
