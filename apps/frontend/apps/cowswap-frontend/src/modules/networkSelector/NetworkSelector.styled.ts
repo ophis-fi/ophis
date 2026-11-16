@@ -1,4 +1,4 @@
-import { Media, UI } from '@cowprotocol/ui'
+import { Media, SearchInput, UI } from '@cowprotocol/ui'
 
 import { transparentize } from 'color2k'
 import { AlertTriangle, ChevronDown, X } from 'react-feather'
@@ -86,7 +86,7 @@ export const CloseIcon = styled(X)`
 export const FlyoutMenu = styled.div`
   ${Media.MediumAndUp()} {
     position: absolute;
-    width: 272px;
+    width: min(440px, calc(100vw - 32px));
     z-index: 99;
     padding-top: 10px;
     top: 38px;
@@ -115,7 +115,7 @@ export const FlyoutMenuContents = styled.div.attrs(() => ({
   font-size: 16px;
   min-width: 220px;
   z-index: 99;
-  max-height: calc(100dvh - 66px - 32px);
+  max-height: min(560px, calc(100dvh - 98px));
 
   ${Media.upToMedium()} {
     bottom: 0;
@@ -124,12 +124,12 @@ export const FlyoutMenuContents = styled.div.attrs(() => ({
     width: 100%;
     border-radius: 20px 20px 0 0;
     box-shadow: 0 -100vh 0 100vh ${transparentize('black', 0.5)};
-    max-height: calc(100vh - 16px);
-    max-height: calc(100dvh - 16px);
+    max-height: min(640px, calc(100dvh - 16px));
   }
 `
 
 export const FlyoutMenuScrollable = styled.div`
+  min-height: 0;
   overflow: auto;
   width: 100%;
 
@@ -142,11 +142,37 @@ export const FlyoutMenuScrollable = styled.div`
 `
 
 export const FlayoutMenuList = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 5px;
   padding: 0 16px 16px;
+
+  > div,
+  > p {
+    grid-column: 1 / -1;
+  }
+
+  @media (max-width: 359px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+`
+
+export const NetworkSearch = styled.div`
+  flex-shrink: 0;
+  width: 100%;
+  padding: 12px 16px;
+`
+
+export const NetworkSearchInput = styled(SearchInput)`
+  width: 100%;
+  min-height: 44px;
+  font-size: 16px;
+  background: var(${UI.COLOR_PAPER_DARKER});
+
+  &:focus-visible {
+    outline: 2px solid var(${UI.COLOR_PRIMARY});
+    outline-offset: 2px;
+  }
 `
 
 export const SelectorLabel = styled.div`

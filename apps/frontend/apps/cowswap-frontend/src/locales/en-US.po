@@ -4040,6 +4040,8 @@ msgstr "connect wallet"
 msgid "Transaction expiration"
 msgstr "Transaction expiration"
 
+#: apps/cowswap-frontend/src/modules/networkSelector/NetworkSelectorMenu.pure.tsx
+#: apps/cowswap-frontend/src/modules/networkSelector/NetworkSelectorMenu.pure.tsx
 #: apps/cowswap-frontend/src/modules/tokensList/pure/ChainPanel/index.tsx
 msgid "Search network"
 msgstr "Search network"
@@ -4421,6 +4423,10 @@ msgstr "This wallet is not yet supported"
 #: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
 msgid "Created"
 msgstr "Created"
+
+#: apps/cowswap-frontend/src/modules/networkSelector/NetworkSelectorMenu.pure.tsx
+msgid "No networks found."
+msgstr "No networks found."
 
 #: apps/cowswap-frontend/src/modules/hooksStore/dapps/ClaimGnoHookApp/index.tsx
 msgid "Update Pre-hook"
@@ -5153,7 +5159,8 @@ msgstr "Added <0/>"
 msgid "Transaction Failed"
 msgstr "Transaction Failed"
 
-#: apps/cowswap-frontend/src/modules/networkSelector/NetworkSelector.container.tsx
+#: apps/cowswap-frontend/src/modules/networkSelector/NetworkSelectorMenu.pure.tsx
+#: apps/cowswap-frontend/src/modules/networkSelector/NetworkSelectorMenu.pure.tsx
 msgid "Select a network"
 msgstr "Select a network"
 
@@ -6849,7 +6856,7 @@ msgid "Refund started"
 msgstr "Refund started"
 
 #: apps/cowswap-frontend/src/common/pure/ToggleArrow/ToggleArrow.tsx
-#: apps/cowswap-frontend/src/modules/networkSelector/NetworkSelector.container.tsx
+#: apps/cowswap-frontend/src/modules/networkSelector/NetworkSelectorMenu.pure.tsx
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/TransactionSubmittedContent/index.tsx
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/TransactionSubmittedContent/index.tsx
 #: apps/cowswap-frontend/src/modules/wallet/pure/WalletModal/index.tsx

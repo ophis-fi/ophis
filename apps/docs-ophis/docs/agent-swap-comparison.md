@@ -21,7 +21,7 @@ Ophis gives your agent quotes and orders with signed limits on the tokens, amoun
 
 ## Build an order {/* #try-it */}
 
-SDK v0.4.3 and hosted MCP cover 14 EVM mainnets, including Arc.
+SDK v0.4.5 and hosted MCP cover 14 EVM mainnets, including Arc.
 
 <Steps>
 
@@ -44,7 +44,7 @@ Use [Turnkey wallet policies](/agent-wallet-policies) to restrict the signer to 
 | Volatile-pair price improvement | 80% of reference-quote improvement, capped at 99 bps |
 | Stable-pair price improvement | 50% of reference-quote improvement, capped at 20 bps |
 
-Ophis-operated backends apply the improvement policy; CoW-hosted orders encode it in CIP-75 appData.
+Ophis-operated backends apply the improvement policy; partner-hosted orders encode it in CIP-75 appData.
 
 Keep native gas for token approvals, renewed exact allowances, wrapping, native-token placement, hard cancellation and refunds.
 

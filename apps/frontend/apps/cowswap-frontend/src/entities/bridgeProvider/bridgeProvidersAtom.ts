@@ -2,7 +2,7 @@ import { atom } from 'jotai'
 
 import { DefaultBridgeProvider } from '@cowprotocol/sdk-bridging'
 
-import { acrossBridgeProvider, nearIntentsBridgeProvider } from 'tradingSdk/bridgingSdk'
+import { defaultQuoteBridgeProviders } from 'tradingSdk/bridgingSdk'
 
 // The providers enabled for QUOTING. Ophis fork (Path A, 2026-05-20): both on
 // by default. Upstream defaulted to bungee-only and gated NEAR/Across behind
@@ -13,8 +13,6 @@ import { acrossBridgeProvider, nearIntentsBridgeProvider } from 'tradingSdk/brid
 // Unichain, Robinhood Chain, Ink and Linea. Bungee is not a quote provider any
 // more (its API is permanently 410); its decode-only registration lives in
 // tradingSdk/bridgingSdk (setQuoteBridgeProviders), not here.
-export const bridgeProvidersAtom = atom(
-  new Set<DefaultBridgeProvider>([acrossBridgeProvider, nearIntentsBridgeProvider]),
-)
+export const bridgeProvidersAtom = atom(new Set<DefaultBridgeProvider>(defaultQuoteBridgeProviders))
 
 export const hasBridgeProvidersAtom = atom((get) => get(bridgeProvidersAtom).size > 0)

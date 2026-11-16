@@ -1,5 +1,6 @@
 import { ReactNode } from 'react'
 
+import { isRelayRecoveryRequired, isRelayStatus } from '@cowprotocol/common-const'
 import { isFractionFalsy } from '@cowprotocol/common-utils'
 import { BridgeStatusResult } from '@cowprotocol/sdk-bridging'
 
@@ -45,9 +46,14 @@ export function BridgingProgressContent(props: BridgingContentProps): ReactNode 
           explorerUrl={explorerUrl}
         />
       ) : isRefunded ? (
-        <RefundedBridgingContent account={account} bridgeSendCurrencyAmount={quoteContext.sellAmount} />
+        <RefundedBridgingContent
+          account={account}
+          bridgeSendCurrencyAmount={quoteContext.sellAmount}
+          isRelay={isRelayStatus(statusResult)}
+          explorerUrl={explorerUrl}
+        />
       ) : isFailed ? (
-        <FailedBridgingContent />
+        <FailedBridgingContent needsRecovery={isRelayRecoveryRequired(statusResult)} recoveryUrl={explorerUrl} />
       ) : (
         <PendingBridgingContent sourceChainId={sourceChainId} statusResult={statusResult} explorerUrl={explorerUrl} />
       )}

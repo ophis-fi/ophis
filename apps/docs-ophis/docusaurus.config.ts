@@ -162,7 +162,7 @@ const config: Config = {
       {
         name: 'keywords',
         content:
-          'DEX aggregator, intent-based, MEV protection, batch auction, solver, NEAR Intents, CoW Protocol, intent API, AI agents',
+          'DEX aggregator, intent-based, MEV protection, batch auction, solver, NEAR Intents, private swaps, intent API, AI agents',
       },
       {property: 'og:type', content: 'website'},
     ],
@@ -233,7 +233,7 @@ const config: Config = {
       ],
       // Count-agnostic on purpose: this string is a known chain-count drift
       // source (the canonical count lives at ophis.fi/supported-chains).
-      copyright: `Best-execution, MEV-protected trading across every supported EVM chain. © Ophis ${new Date().getFullYear()}.`,
+      copyright: `Wallet-authorized swaps across supported networks. © Ophis ${new Date().getFullYear()}.`,
     },
     prism: {
       theme: prismThemes.oneLight,

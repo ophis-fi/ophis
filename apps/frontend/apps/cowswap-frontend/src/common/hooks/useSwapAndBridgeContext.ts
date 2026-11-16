@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-restricted-imports */ // TODO: Don't use 'modules' import
 import { useMemo } from 'react'
 
-import { getChainInfo, TokenWithLogo } from '@cowprotocol/common-const'
+import { getChainInfo, isRelayRecoveryRequired, TokenWithLogo } from '@cowprotocol/common-const'
 import { getAddressKey, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { CurrencyAmount } from '@cowprotocol/currency'
 import { BridgeStatus } from '@cowprotocol/sdk-bridging'
@@ -179,11 +179,16 @@ export function useSwapAndBridgeContext(
     }
 
     const status = crossChainOrder.statusResult.status
-    const bridgingStatus = status ? bridgeStatusMap[status] : SwapAndBridgeStatus.DEFAULT
+    const needsRecovery = isRelayRecoveryRequired(crossChainOrder.statusResult)
+    const bridgingStatus = needsRecovery
+      ? SwapAndBridgeStatus.FAILED
+      : status
+        ? bridgeStatusMap[status]
+        : SwapAndBridgeStatus.DEFAULT
 
     const bridgingProgressContext: BridgingProgressContext = {
       account,
-      isFailed: status === BridgeStatus.EXPIRED,
+      isFailed: status === BridgeStatus.EXPIRED || needsRecovery,
       isRefunded: status === BridgeStatus.REFUND,
       receivedAmount: status === BridgeStatus.EXECUTED ? bridgeReceiveAmount : undefined,
       receivedAmountUsd: undefined,

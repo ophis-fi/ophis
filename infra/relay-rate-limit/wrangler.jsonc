@@ -1,0 +1,10 @@
+{
+  "name": "ophis-relay-limits",
+  "main": "worker.ts",
+  "compatibility_date": "2026-11-13",
+  "workers_dev": false,
+  "durable_objects": {
+    "bindings": [{ "name": "OPHIS_RELAY_RATE_LIMITER", "class_name": "RelayRateLimiter" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RelayRateLimiter"] }]
+}

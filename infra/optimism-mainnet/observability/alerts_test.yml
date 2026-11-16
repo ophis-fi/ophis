@@ -954,3 +954,119 @@ tests:
   - eval_time: 3h
     alertname: OphisOpErpcUpstreamCredentialFailing
     exp_alerts: []
+
+# OFAC freshness, service prefixes and missing-metric regressions.
+- name: OFAC fresh data keeps both service alerts silent
+  interval: 1m
+  input_series:
+  - series: gp_v2_api_sanctions_snapshot_fetched_at{job="orderbook"}
+    values: 0+60x140
+  - series: gp_v2_api_sanctions_snapshot_max_age_seconds{job="orderbook"}
+    values: 86400+0x140
+  - series: gp_v2_autopilot_sanctions_snapshot_fetched_at{job="autopilot"}
+    values: 0+60x140
+  - series: gp_v2_autopilot_sanctions_snapshot_max_age_seconds{job="autopilot"}
+    values: 86400+0x140
+  alert_rule_test:
+  - eval_time: 120m
+    alertname: OphisOpOfacRefreshDelayed
+    exp_alerts: []
+  - eval_time: 120m
+    alertname: OphisOpOfacScreeningUnavailable
+    exp_alerts: []
+- name: OFAC expiry is detected for orderbook
+  interval: 1m
+  input_series:
+  - series: gp_v2_api_sanctions_snapshot_fetched_at{job="orderbook"}
+    values: 0+0x140
+  - series: gp_v2_api_sanctions_snapshot_max_age_seconds{job="orderbook"}
+    values: 120+0x140
+  - series: gp_v2_autopilot_sanctions_snapshot_fetched_at{job="autopilot"}
+    values: 0+60x140
+  - series: gp_v2_autopilot_sanctions_snapshot_max_age_seconds{job="autopilot"}
+    values: 120+0x140
+  alert_rule_test:
+  - eval_time: 2m
+    alertname: OphisOpOfacScreeningUnavailable
+    exp_alerts: []
+  - eval_time: 4m
+    alertname: OphisOpOfacScreeningUnavailable
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        chain: optimism
+        job: orderbook
+      exp_annotations: &ofac_critical
+        summary: Fresh OFAC screening data is unavailable
+        description: New submissions return 503 and auctions are withheld when the
+          snapshot is stale. Check the ofac service and the sanctions volume before
+          resuming.
+- name: OFAC expiry is detected for autopilot
+  interval: 1m
+  input_series:
+  - series: gp_v2_api_sanctions_snapshot_fetched_at{job="orderbook"}
+    values: 0+60x140
+  - series: gp_v2_api_sanctions_snapshot_max_age_seconds{job="orderbook"}
+    values: 120+0x140
+  - series: gp_v2_autopilot_sanctions_snapshot_fetched_at{job="autopilot"}
+    values: 0+0x140
+  - series: gp_v2_autopilot_sanctions_snapshot_max_age_seconds{job="autopilot"}
+    values: 120+0x140
+  alert_rule_test:
+  - eval_time: 2m
+    alertname: OphisOpOfacScreeningUnavailable
+    exp_alerts: []
+  - eval_time: 4m
+    alertname: OphisOpOfacScreeningUnavailable
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        chain: optimism
+        job: autopilot
+      exp_annotations: *ofac_critical
+- name: OFAC missing metrics are critical for both services
+  interval: 1m
+  input_series: []
+  alert_rule_test:
+  - eval_time: 2m
+    alertname: OphisOpOfacScreeningUnavailable
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        chain: optimism
+        job: orderbook
+      exp_annotations: *ofac_critical
+    - exp_labels:
+        severity: critical
+        chain: optimism
+        job: autopilot
+      exp_annotations: *ofac_critical
+- name: OFAC delayed refresh warns before expiry
+  interval: 1m
+  input_series:
+  - series: gp_v2_api_sanctions_snapshot_fetched_at{job="orderbook"}
+    values: 0+0x140
+  - series: gp_v2_api_sanctions_snapshot_max_age_seconds{job="orderbook"}
+    values: 86400+0x140
+  - series: gp_v2_autopilot_sanctions_snapshot_fetched_at{job="autopilot"}
+    values: 0+60x140
+  - series: gp_v2_autopilot_sanctions_snapshot_max_age_seconds{job="autopilot"}
+    values: 86400+0x140
+  alert_rule_test:
+  - eval_time: 60m
+    alertname: OphisOpOfacRefreshDelayed
+    exp_alerts: []
+  - eval_time: 67m
+    alertname: OphisOpOfacRefreshDelayed
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+        chain: optimism
+        job: orderbook
+      exp_annotations:
+        summary: OFAC download has not succeeded for over an hour
+        description: Inspect the ofac service. Last validated data remains in use
+          until its configured 24-hour expiry.
+  - eval_time: 67m
+    alertname: OphisOpOfacScreeningUnavailable
+    exp_alerts: []

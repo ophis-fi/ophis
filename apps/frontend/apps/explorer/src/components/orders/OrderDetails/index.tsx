@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
-import type { BridgeProviderType, CrossChainOrder } from '@cowprotocol/sdk-bridging'
+import type { BridgeProviderType } from '@cowprotocol/sdk-bridging'
 import { Command } from '@cowprotocol/types'
 import { TruncatedText } from '@cowprotocol/ui'
 
@@ -19,7 +19,6 @@ import { useSolversFeatureFlag } from 'hooks/useSolversFeatureFlag'
 import { useLocation } from 'react-router'
 import { knownBridgeProviders } from 'sdk/cowSdk'
 import { useNetworkId } from 'state/network'
-import { SWRResponse } from 'swr'
 import { Errors } from 'types'
 import { formatPercentage } from 'utils'
 
@@ -68,7 +67,7 @@ function useQueryViewParams(): string {
 const tabItems = (
   chainId: SupportedChainId,
   _order: Order | null,
-  crossChainOrderResponse: SWRResponse<CrossChainOrder | null | undefined>,
+  crossChainOrderResponse: ReturnType<typeof useCrossChainOrder>,
   trades: Trade[],
   areTradesLoading: boolean,
   isOrderLoading: boolean,

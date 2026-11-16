@@ -17,7 +17,7 @@ import { loadHooks, saveHooks } from './ophisAcrossPlacedHooks'
  */
 export async function assertNoOpenBridge(
   chainId: SupportedChainId,
-  terms: GuardedHookTerms,
+  terms: Pick<GuardedHookTerms, 'owner' | 'shed'>,
   ordersOf: OrdersOf | undefined,
   now: bigint,
 ): Promise<void> {

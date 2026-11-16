@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 
+import { isRelayRecoveryRequired } from '@cowprotocol/common-const'
 import { BridgeOrderData } from '@cowprotocol/types'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
@@ -29,7 +30,7 @@ export function usePendingBridgeOrders(): BridgeOrderData[] | null {
             const status = regularOrder?.order.status
             const isSwapWontHappen = status ? NOT_PENDING_ORDER_STATUSES.includes(status) : false
 
-            if (isSwapWontHappen) return false
+            if (isSwapWontHappen || isRelayRecoveryRequired(order.statusResult)) return false
 
             return order.statusResult ? !BRIDGING_FINAL_STATUSES.includes(order.statusResult.status) : true
           })

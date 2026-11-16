@@ -1245,6 +1245,31 @@ mod tests {
     use super::*;
 
     #[test]
+    fn optimism_baseline_config_derives_the_deployed_sushi_pair() {
+        use alloy::primitives::address;
+
+        let config: toml::Value = toml::from_str(include_str!(
+            "../../../../../../../../infra/optimism-mainnet/configs/driver.toml.tmpl"
+        ))
+        .unwrap();
+        let pool: UniswapV2Config = config["liquidity"]["uniswap-v2"][0].clone().try_into().unwrap();
+        let UniswapV2Config::Manual { router, pool_code, .. } = pool else {
+            panic!("expected the pinned Sushi deployment");
+        };
+        assert_eq!(router, address!("2abf469074dc0b54d793850807e6eb5faf2625b1"));
+        let provider = liquidity_sources::uniswap_v2::pair_provider::PairProvider {
+            factory: address!("fbc12984689e5f15626bad03ad60160fe98b303c"),
+            init_code_digest: pool_code.0,
+        };
+        let pair = model::TokenPair::new(
+            address!("4200000000000000000000000000000000000006"),
+            address!("7f5c764cbc14f9669b88837ca1490cca17c31607"),
+        ).unwrap();
+        // factory.getPair(WETH, USDC.e), independently read on Optimism.
+        assert_eq!(provider.pair_address(&pair), address!("db6bf3544860449d435baa9111358c33808bcf9d"));
+    }
+
+    #[test]
     fn production_inline_account_keeps_the_signing_policy() {
         let account: Account = toml::from_str(&format!(
             r#"

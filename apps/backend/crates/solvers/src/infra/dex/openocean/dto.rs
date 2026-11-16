@@ -1,18 +1,14 @@
 //! DTOs for the OpenOcean v4 aggregator API.
 //!
-//! Full documentation: <https://docs.openocean.finance/dev/aggregator-api-and-sdk/aggregator-api-v4>.
+//! Full documentation: <https://docs.openocean.finance/docs/overview/fetching-quote>.
 //!
 //! A single endpoint is used per swap:
 //! - `GET /v4/{chainId}/swap` — returns the best route as encoded calldata
 //!   together with the router (`to`), the optimistic quote (`outAmount`) and
 //!   the GUARANTEED slippage-floored output (`minOutAmount`).
 //!
-//! Unlike KyberSwap (which works in wei via `DisplayFromStr` over `U256`),
-//! OpenOcean's `amount` query parameter is in **human-readable decimal token
-//! units** (e.g. `"1.5"` for 1.5 USDC), so the caller converts the order's wei
-//! amount using the sell-token decimals before building the request. The
-//! amounts inside the RESPONSE (`outAmount`, `minOutAmount`) are returned in
-//! wei (base units) and are parsed as `U256`.
+//! The `amountDecimals` request and `outAmount` / `minOutAmount` response fields
+//! use token base units, parsed as `U256` without human-decimal conversion.
 
 use {
     crate::domain::eth, alloy::primitives::U256, bytes_hex::BytesHex, serde::Deserialize,

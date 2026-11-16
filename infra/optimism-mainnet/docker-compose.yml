@@ -38,6 +38,25 @@ x-default-logging: &default-logging
 
 
 services:
+  ofac:
+    logging: *default-logging
+    image: python:3.13-alpine@sha256:9ef1a599f863231c3d91e941389bfdc4a2d6070557243d54df1a4e57015b960e
+    restart: unless-stopped
+    mem_limit: 128m
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command: [python, /app/refresh.py, /data/addresses.json]
+    volumes:
+      - ../shared/sanctions/refresh.py:/app/refresh.py:ro
+      - sanctions:/data
+    healthcheck:
+      test: [CMD, python, /app/refresh.py, --check, /data/addresses.json]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+
   # Jaeger all-in-one — OTLP/gRPC collector + UI + in-memory storage in
   # a single distroless image (~120 MB). Phase 4 audit M-6 (Sprint 6).
   #
@@ -167,6 +186,7 @@ services:
     restart: always
     mem_limit: 2g
     depends_on:
+      ofac: { condition: service_healthy }
       db: { condition: service_healthy }
       migrations: { condition: service_completed_successfully }
       # Wait for eRPC to actually be answering before booting — without this
@@ -193,6 +213,7 @@ services:
       # autopilot) must carry the SAME value (constant-time compare = exact).
       OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:?inter-service auth token must be set}
     volumes:
+      - sanctions:/sanctions:ro
       - ./configs/orderbook.toml:/orderbook.toml:ro
       # pathviz venue registry ([pathviz].venues-file). Read-only; a missing or
       # unparseable file degrades venue labels to bare addresses, never fails
@@ -225,6 +246,7 @@ services:
     restart: always
     mem_limit: 1g
     depends_on:
+      ofac: { condition: service_healthy }
       db: { condition: service_healthy }
       migrations: { condition: service_completed_successfully }
       orderbook: { condition: service_healthy }
@@ -249,6 +271,7 @@ services:
       # (service=ophis-inter-service-auth-token, account=$USER).
       OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:?inter-service auth token must be set}
     volumes:
+      - sanctions:/sanctions:ro
       - ./configs/autopilot.toml:/autopilot.toml:ro
     command: ["--config", "/autopilot.toml"]
     # autopilot is a worker (no HTTP listener), so only restart-on-failure
@@ -822,6 +845,7 @@ services:
       LOOKBACK_TIME: "30d"
 
 volumes:
+  sanctions:
   postgres:
   prometheus-data:
   alertmanager-data:

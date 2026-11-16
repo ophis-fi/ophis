@@ -113,7 +113,9 @@ paths:
             A retryable upstream failure while quoting the order during
             validation (`UpstreamRateLimited` code 3100, or
             `InternalServiceError` code 3000). The response carries a
-            `Retry-After` header (seconds); retry after that delay.
+            `Retry-After` header (seconds); retry after that delay. Also returns
+            `SanctionsScreeningUnavailable` (code 3000) when fresh address-screening
+            data is unavailable, with `Retry-After: 60`. Retry after that delay.
           headers:
             X-Trace-Id:
               $ref: "#/components/headers/TraceId"
@@ -600,6 +602,9 @@ paths:
 
         **Note: This endpoint is currently permissioned. Reach out in discord if
         you need access.**
+
+        Returns no active auction while address screening is unavailable or the
+        stored auction contains a currently listed owner or receiver.
       responses:
         "200":
           headers:
@@ -610,6 +615,11 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Auction"
+        "404":
+          description: There is no active auction passing current address screening.
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
   "/api/v1/account/{owner}/orders":
     get:
       operationId: getUserOrdersPaginated
@@ -782,7 +792,9 @@ paths:
           description: >
             A retryable upstream failure (`UpstreamRateLimited` code 3100,
             or `InternalServiceError` code 3000). The response carries a
-            `Retry-After` header (seconds); retry after that delay.
+            `Retry-After` header (seconds); retry after that delay. Also returns
+            `SanctionsScreeningUnavailable` (code 3000) when fresh address-screening
+            data is unavailable, with `Retry-After: 60`. Retry after that delay.
           headers:
             X-Trace-Id:
               $ref: "#/components/headers/TraceId"
@@ -888,7 +900,9 @@ paths:
           description: >
             A retryable upstream failure (`UpstreamRateLimited` code 3100,
             or `InternalServiceError` code 3000). The response carries a
-            `Retry-After` header (seconds); retry after that delay.
+            `Retry-After` header (seconds); retry after that delay. Also returns
+            `SanctionsScreeningUnavailable` (code 3000) when fresh address-screening
+            data is unavailable, with `Retry-After: 60`. Retry after that delay.
           headers:
             X-Trace-Id:
               $ref: "#/components/headers/TraceId"
@@ -2739,6 +2753,7 @@ components:
             - OldOrderActivelyBidOn
             - UpstreamRateLimited
             - InternalServiceError
+            - SanctionsScreeningUnavailable
         description:
           type: string
         code:
@@ -2792,6 +2807,7 @@ components:
             - CustomSolverError
             - UpstreamRateLimited
             - InternalServiceError
+            - SanctionsScreeningUnavailable
         description:
           type: string
         code:

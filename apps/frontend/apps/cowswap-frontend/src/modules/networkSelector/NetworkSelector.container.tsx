@@ -1,4 +1,4 @@
-import { ReactNode, useRef, type MouseEvent } from 'react'
+import { ReactNode, useRef } from 'react'
 
 import { getChainInfo } from '@cowprotocol/common-const'
 import { useAvailableChains, useBodyScrollbarLocker, useMediaQuery, useOnClickOutside } from '@cowprotocol/common-hooks'
@@ -7,7 +7,7 @@ import { TargetChainId } from '@cowprotocol/cow-sdk'
 import { Media } from '@cowprotocol/ui'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
-import { Trans, useLingui } from '@lingui/react/macro'
+import { Trans } from '@lingui/react/macro'
 import { createPortal } from 'react-dom'
 import { useTheme } from 'styled-components/macro'
 
@@ -17,9 +17,9 @@ import { ApplicationModal } from 'legacy/state/application/reducer'
 import { useIsProviderNetworkUnsupported } from 'common/hooks/useIsProviderNetworkUnsupported'
 import { useOnSelectNetwork } from 'common/hooks/useOnSelectNetwork'
 import { useShouldHideNetworkSelector } from 'common/hooks/useShouldHideNetworkSelector'
-import { NetworksList } from 'common/pure/NetworksList/NetworksList.pure'
 
 import * as styledEl from './NetworkSelector.styled'
+import { NetworkSelectorMenu } from './NetworkSelectorMenu.pure'
 
 interface NetworkSelectorProps {
   selectedChainId?: TargetChainId
@@ -28,19 +28,6 @@ interface NetworkSelectorProps {
   disabled?: boolean
   tokenPickerTrigger?: boolean
 }
-
-const stopPropagation = (event: MouseEvent<HTMLDivElement>): void => {
-  event.stopPropagation()
-}
-
-const createCloseHandler =
-  (isOpen: boolean, toggleModal: () => void) =>
-  (event: MouseEvent<HTMLButtonElement>): void => {
-    event.stopPropagation()
-    if (isOpen) {
-      toggleModal()
-    }
-  }
 
 export function NetworkSelector({
   selectedChainId,
@@ -73,9 +60,10 @@ export function NetworkSelector({
   const { darkMode: isDarkMode } = useTheme()
   const logoUrl = isDarkMode ? info.logo.dark : info.logo.light
   const availableChains = useAvailableChains()
-  const { t } = useLingui()
-
-  const handleClose = createCloseHandler(isOpen, toggleModal)
+  const handleClose = (): void => {
+    if (isOpen) toggleModal()
+    nodeSelector.current?.focus()
+  }
   const handleSelectChain = (targetChainId: TargetChainId): void => {
     if (disabled) return
     if (isOpen) toggleModal()
@@ -88,28 +76,14 @@ export function NetworkSelector({
   }
 
   const flyoutMenu = (
-    <styledEl.FlyoutMenu>
-      <styledEl.FlyoutMenuContents ref={nodeMobile} onClick={stopPropagation}>
-        <styledEl.FlyoutMenuScrollable>
-          <styledEl.FlyoutHeader>
-            <styledEl.FlyoutHeaderTitle>
-              <Trans>Select a network</Trans>
-            </styledEl.FlyoutHeaderTitle>
-            <styledEl.CloseButton type="button" aria-label={t`Close`} onClick={handleClose}>
-              <styledEl.CloseIcon aria-hidden="true" />
-            </styledEl.CloseButton>
-          </styledEl.FlyoutHeader>
-          <styledEl.FlayoutMenuList>
-            <NetworksList
-              currentChainId={isChainIdUnsupported ? null : chainId}
-              isDarkMode={isDarkMode}
-              onSelectChain={handleSelectChain}
-              availableChains={[...new Set([...availableChains, ...additionalChainIds])]}
-            />
-          </styledEl.FlayoutMenuList>
-        </styledEl.FlyoutMenuScrollable>
-      </styledEl.FlyoutMenuContents>
-    </styledEl.FlyoutMenu>
+    <NetworkSelectorMenu
+      menuRef={nodeMobile}
+      currentChainId={isChainIdUnsupported ? null : chainId}
+      availableChains={[...new Set([...availableChains, ...additionalChainIds])]}
+      isDarkMode={isDarkMode}
+      onSelectChain={handleSelectChain}
+      onClose={handleClose}
+    />
   )
 
   return (

@@ -13,14 +13,9 @@
 //!
 //! Differences vs. KyberSwap that mattered during integration:
 //!
-//! - **`amount` is in human-decimal token units**, NOT wei. OpenOcean expects
-//!   e.g. `amount=1.5` for 1.5 USDC. We convert the order's wei amount using
-//!   the sell-token decimals (sourced from `auction::Tokens`, like Bitget),
-//!   so this solver's `swap` takes `tokens` unlike kyberswap/velora. The
-//!   amounts INSIDE the response (`outAmount`, `minOutAmount`) are wei.
-//! - **`gasPrice` is a REQUIRED query param**, expressed in GWei. We send a
-//!   nominal value; it only affects OpenOcean's internal gas-vs-output route
-//!   ranking, not the calldata's correctness.
+//! - **`amountDecimals` and `gasPriceDecimals` use atomic units** (token atoms
+//!   and wei respectively). The human-readable `amount` / `gasPrice` parameters
+//!   are deprecated. Gas price only affects internal gas-vs-output route ranking.
 //! - **No two-call /quote + /swap race.** The `/swap` endpoint returns quote
 //!   data AND calldata together, so there is no intra-request router-mismatch
 //!   window to defend against (unlike kyberswap's /routes vs /route/build).
@@ -28,7 +23,7 @@
 //!   `referrer` field exists for fee attribution but is left unset here.
 //!
 //! Full upstream docs:
-//! <https://docs.openocean.finance/dev/aggregator-api-and-sdk/aggregator-api-v4>.
+//! <https://docs.openocean.finance/docs/overview/fetching-quote>.
 
 use {
     crate::{
@@ -38,7 +33,6 @@ use {
     alloy::primitives::{Address, U256},
     bigdecimal::BigDecimal,
     ethrpc::block_stream::CurrentBlockWatcher,
-    number::conversions::u256_to_big_uint,
     reqwest::StatusCode,
     std::sync::atomic::{self, AtomicU64},
     tracing::Instrument,
@@ -51,11 +45,8 @@ mod dto;
 /// certainly a misconfiguration on our side rather than a real route.
 const MAX_SLIPPAGE_BPS: u16 = 2000;
 
-/// Nominal `gasPrice` (GWei, decimal) sent on every request. OpenOcean
-/// REQUIRES this param; it only nudges the gas-vs-output route ranking and
-/// does not affect the calldata's correctness. Unichain gas is sub-gwei, so a
-/// small value is realistic.
-const DEFAULT_GAS_PRICE_GWEI: &str = "0.01";
+/// Nominal gas price in wei (0.01 GWei), used only for route ranking.
+const DEFAULT_GAS_PRICE_WEI: &str = "10000000";
 
 /// Allowlist of OpenOcean router addresses that can be approved as ERC-20
 /// spender for the Settlement contract.
@@ -109,14 +100,6 @@ fn validate_router_allowlist(router: &Address) -> Result<(), Error> {
             ),
         })
     }
-}
-
-/// Convert a U256 wei amount to a decimal string for OpenOcean's `amount`
-/// query parameter. e.g. `1500000` with 6 decimals -> `"1.5"`.
-fn wei_to_decimal_string(amount: U256, decimals: u8) -> String {
-    BigDecimal::new(u256_to_big_uint(&amount).into(), i64::from(decimals))
-        .normalized()
-        .to_string()
 }
 
 /// Bindings to the OpenOcean v4 aggregator API.
@@ -191,10 +174,8 @@ impl OpenOcean {
             return Err(Error::OrderNotSupported);
         }
 
-        // OpenOcean takes the sell amount in human-decimal units, so we need
-        // the sell-token decimals (same requirement as Bitget). Reject early
-        // if the auction didn't carry decimals for the token.
-        let sell_decimals = tokens
+        // Keep rejecting incomplete auction metadata before requesting a route.
+        tokens
             .get(&order.sell)
             .and_then(|t| t.decimals)
             .ok_or(Error::MissingDecimals)?;
@@ -204,7 +185,7 @@ impl OpenOcean {
         let id = ID.fetch_add(1, atomic::Ordering::Relaxed);
 
         async move {
-            let data = self.get_swap(order, slippage, sell_decimals).await?;
+            let data = self.get_swap(order, slippage).await?;
 
             // Validate the router address against the static allowlist BEFORE
             // using it as the call target / allowance spender. This is the
@@ -323,7 +304,6 @@ impl OpenOcean {
         &self,
         order: &dex::Order,
         slippage: &dex::Slippage,
-        sell_decimals: u8,
     ) -> Result<dto::SwapData, Error> {
         // OpenOcean's `slippage` query param is a PERCENT (e.g. `1` = 1%). We
         // route it through the shared clamp so the same metric/cap discipline
@@ -339,14 +319,11 @@ impl OpenOcean {
             .normalized()
             .to_string();
 
-        let amount_decimal = wei_to_decimal_string(order.amount.get(), sell_decimals);
-
         let query = [
             ("inTokenAddress", format!("{:#x}", order.sell.0)),
             ("outTokenAddress", format!("{:#x}", order.buy.0)),
-            // Human-decimal token units, NOT wei.
-            ("amount", amount_decimal),
-            ("gasPrice", DEFAULT_GAS_PRICE_GWEI.to_string()),
+            ("amountDecimals", order.amount.get().to_string()),
+            ("gasPriceDecimals", DEFAULT_GAS_PRICE_WEI.to_string()),
             ("slippage", slippage_percent),
             // RFQ EXCLUSION: OpenOcean can route through signed RFQ quotes that
             // carry an off-chain `rfqDeadline`. Under CoW's DEFERRED settlement
@@ -494,18 +471,76 @@ mod tests {
         assert!(reported < out_amount);
     }
 
-    /// wei -> human-decimal conversion for OpenOcean's `amount` query param.
-    #[test]
-    fn wei_to_decimal_string_matches_token_decimals() {
-        // 1.5 USDC (6 decimals).
-        assert_eq!(wei_to_decimal_string(U256::from(1_500_000_u128), 6), "1.5");
-        // 1 WETH (18 decimals).
-        assert_eq!(
-            wei_to_decimal_string(U256::from(1_000_000_000_000_000_000_u128), 18),
-            "1"
-        );
-        // Sub-unit dust.
-        assert_eq!(wei_to_decimal_string(U256::from(1_u128), 6), "0.000001");
+    #[tokio::test]
+    async fn swap_request_uses_atomic_units_without_legacy_parameters() {
+        use std::collections::HashMap;
+
+        for amount in [
+            U256::ONE,
+            U256::from(1_500_000),
+            U256::from(10).pow(U256::from(18)),
+            U256::MAX,
+        ] {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let app = axum::Router::new().route(
+                "/swap",
+                axum::routing::get(
+                    move |axum::extract::Query(query): axum::extract::Query<
+                        HashMap<String, String>,
+                    >| async move {
+                        let expected = [
+                            (
+                                "inTokenAddress",
+                                "0x1111111111111111111111111111111111111111".to_string(),
+                            ),
+                            (
+                                "outTokenAddress",
+                                "0x2222222222222222222222222222222222222222".to_string(),
+                            ),
+                            ("amountDecimals", amount.to_string()),
+                            ("gasPriceDecimals", "10000000".to_string()),
+                            ("slippage", "1".to_string()),
+                            ("disableRfq", "true".to_string()),
+                            (
+                                "account",
+                                "0x3333333333333333333333333333333333333333".to_string(),
+                            ),
+                        ]
+                        .into_iter()
+                        .map(|(key, value)| (key.to_string(), value))
+                        .collect();
+                        assert_eq!(query, expected);
+                        axum::Json(serde_json::json!({"code": 200}))
+                    },
+                ),
+            );
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let api_client = OpenOcean::try_new(Config {
+                base_url: format!("http://{address}/").parse().unwrap(),
+                chain_id: eth::ChainId::Optimism,
+                settlement_contract: Address::new([0x33; 20]),
+                referrer: None,
+                block_stream: None,
+            })
+            .unwrap();
+            let order = dex::Order {
+                sell: eth::TokenAddress(Address::new([0x11; 20])),
+                buy: eth::TokenAddress(Address::new([0x22; 20])),
+                side: order::Side::Sell,
+                amount: dex::Amount::new(amount),
+                buy_limit: U256::ZERO,
+                owner: Address::ZERO,
+                solve_fee: Default::default(),
+            };
+            assert!(matches!(
+                api_client
+                    .get_swap(&order, &dex::Slippage::one_percent())
+                    .await,
+                Err(Error::NotFound)
+            ));
+            server.abort();
+        }
     }
 
     /// A zero `minOutAmount` is a degenerate route and must not be modeled as

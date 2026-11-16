@@ -41,7 +41,7 @@ Use wrapped tokens such as WETH. Native-token inputs or outputs using `0xEeee…
 | 130 | Unichain | `https://unichain-mainnet.ophis.fi` | [Version endpoint](https://unichain-mainnet.ophis.fi/api/v1/version) |
 | 4663 | Robinhood Chain | `https://robinhood-mainnet.ophis.fi` | [Version endpoint](https://robinhood-mainnet.ophis.fi/api/v1/version) |
 
-Other chains return `UNSUPPORTED_CHAIN` (4903). Use the SDK for Arc and CoW-hosted chains.
+Other chains return `UNSUPPORTED_CHAIN` (4903). Use the [SDK](/partners) for Arc and the other supported mainnets.
 
 ## Swap fees
 
@@ -167,7 +167,7 @@ The receiver defaults to your signing account. To send proceeds elsewhere, set `
 
 :::tip[Choose the signed limit]
 
-`slippageLimitPercent` sets the order's limit price for its full lifetime. An order fills at that price or better, or expires. Cancel through the chain's orderbook API if you need to stop an open order.
+`slippageLimitPercent` sets the order's limit price for its full lifetime. An order fills at that price or better, or expires. An orderbook cancellation can race an in-flight settlement. Use an onchain invalidation when you need an enforceable cancellation, and check its confirmation and the order status.
 
 :::
 
@@ -277,7 +277,7 @@ Report issues at [github.com/ophis-fi/ophis](https://github.com/ophis-fi/ophis/i
 ## Next
 
 <Cards>
-<Card icon="code" title="Partner integration" href="/partners">Use the SDK for contract wallets and CoW-hosted chains.</Card>
+<Card icon="code" title="Partner integration" href="/partners">Use the SDK for contract wallets and additional networks.</Card>
 <Card icon="braces" title="Intent API" href="/intent-api">Parse natural-language swap requests.</Card>
 <Card icon="bot" title="AI agents" href="/ai-agents">Connect an agent through the Ophis MCP server.</Card>
 </Cards>

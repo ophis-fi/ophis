@@ -9,7 +9,7 @@ sidebar_position: 1
 
 # Ophis
 
-Ophis is a token swap service built on CoW Protocol that finds routes for the trade you approve in your wallet.
+Ophis is a multichain DEX aggregator that brings token swaps, cross-chain transfers and private trading into one interface.
 
 ## Make a swap
 
@@ -17,20 +17,20 @@ Ophis is a token swap service built on CoW Protocol that finds routes for the tr
 
 1. **Choose your tokens.** Open [the swap app](https://swap.ophis.fi), select the networks and tokens, and enter an amount.
 2. **Review the quote.** Check the fees, destination address and minimum amount you will receive.
-3. **Authorize the trade.** Sign the order in your wallet, or fund the quoted deposit for an external-source swap.
+3. **Authorize the trade.** Sign the order or confirm the transaction in your wallet, or fund the quoted deposit for an external-source swap.
 
 </Steps>
 
 ## How trading works
 
 <Cards>
-<Card icon="wallet" title="Wallet approval">You approve each order in your own wallet.</Card>
+<Card icon="wallet" title="Wallet authorization">Review and authorize the order, transaction or deposit required by your route.</Card>
 <Card icon="scale" title="Signed limits">The settlement contract enforces the minimum amount you accept.</Card>
-<Card icon="layers" title="Batch auctions">Solvers find routes and settle trades at a uniform price per token pair.</Card>
+<Card icon="layers" title="Batch auctions">For batch-auction orders, solvers find routes and settle at uniform clearing prices.</Card>
 <Card icon="globe" title="Cross-chain swaps" href="/networks-assets">Use NEAR Intents, Circle or Across routes in the swap app.</Card>
 </Cards>
 
-Standard ERC-20 orders keep funds in your wallet until settlement; native-token and bridge routes use onchain deposits.
+Standard signed ERC-20 orders keep funds in your wallet until settlement. Direct swaps use wallet transactions; native-token and bridge routes have their own funding steps. Private mode uses a separate shielded wallet; see [Networks & assets](/networks-assets#private-swaps).
 
 ## Swap fees
 
@@ -39,9 +39,9 @@ Standard ERC-20 orders keep funds in your wallet until settlement; native-token 
 | Ophis base fee | 1 bp |
 | Volatile-pair improvement capture | 80% of reference-quote improvement, capped at 99 bps of volume |
 | Stable-pair improvement capture | 50% of reference-quote improvement, capped at 20 bps of volume |
-| CoW-hosted chains | CoW Protocol's own fees apply in addition |
+| Partner-hosted batch auctions | Upstream settlement fees also apply |
 
-See [Fees](/fees) for order eligibility and bridge costs.
+This table describes public batch-auction orders. See [Fees](/fees) for order eligibility, direct routes, private swaps and bridge costs.
 
 ## Build with Ophis
 

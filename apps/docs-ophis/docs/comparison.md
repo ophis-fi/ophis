@@ -19,7 +19,7 @@ Compare the amount you receive, wallet requirements and available routes for the
 
 </Steps>
 
-See [CoW fees](https://docs.cow.fi/governance/fees), [Matcha help](https://help.matcha.xyz/) and [Velora documentation](https://docs.velora.xyz/docs) for their current terms.
+See [Matcha help](https://help.matcha.xyz/) and [Velora documentation](https://docs.velora.xyz/docs) for their current terms.
 
 ## Intent-based settlement {/* #what-intent-based-means */}
 
@@ -33,21 +33,21 @@ In an Ophis batch-auction swap, you sign the sell amount, receiver, minimum buy 
 
 Offchain orders and batch auctions reduce front-running and sandwich opportunities. Native-token and bridge deposits use the route's funding and recovery flow.
 
-## CoW Protocol foundation {/* #ophis-is-built-on-cow-protocol */}
+## Settlement operators {/* #ophis-is-built-on-cow-protocol */}
 
-Ophis builds on CoW Protocol's settlement contracts.
+The orderbook and solver operator depend on the network. Use the chain-specific SDK helpers to select the matching host and signing domain.
 
 | Stack | Networks | Operator |
 | --- | --- | --- |
 | Ophis-operated | Optimism, Unichain, Robinhood Chain, Arc | Ophis runs the orderbook and solver |
-| CoW-hosted | Ten other mainnets | CoW runs the orderbooks and solver network |
+| Partner-hosted | Ten other mainnets; see [network coverage](/networks-assets) | Partner-operated orderbooks and solver network |
 
 ## Available interfaces {/* #core-differences */}
 
 | Interface | Use |
 | --- | --- |
 | Swap app | Select tokens, review quotes and authorize trades |
-| SDK v0.4.3 / hosted MCP | Build batch-auction orders on 14 EVM mainnets, including Arc |
+| SDK v0.4.5 / hosted MCP | Build batch-auction orders on 14 EVM mainnets, including Arc |
 | Intent API | Parse natural-language requests into structured fields for your app or agent |
 | Standalone NEAR Intents flow | Fund external deposits and track destination delivery |
 
@@ -55,11 +55,11 @@ Ophis builds on CoW Protocol's settlement contracts.
 | --- |
 | Bitcoin, Solana, Monad, X Layer, Sui, Tron, Hyperliquid (Hypercore), Starknet, Zcash |
 
-Circle and Across connect their supported networks through separate bridge flows. See [Networks & assets](/networks-assets) for source, asset and wallet requirements.
+Direct wallet routes and [private mode](/networks-assets#private-swaps) have different execution and fee rules. Circle and Across connect their supported networks through separate bridge flows. See [Networks & assets](/networks-assets) for source, asset and wallet requirements.
 
 ## Fee comparison
 
-Ophis charges a 1 bp (0.01%) base fee plus a capped share of price improvement: 80% up to 99 bps on volatile pairs, 50% up to 20 bps on stable pairs. CoW-hosted chains add CoW Protocol's fees, and bridge routes add provider costs and gas. See [Fees](/fees) for the full table.
+Ophis charges a 1 bp (0.01%) base fee plus a capped share of price improvement: 80% up to 99 bps on volatile pairs, 50% up to 20 bps on stable pairs. Partner-hosted batch auctions add upstream fees, and bridge routes add provider costs and gas. See [Fees](/fees) for the full table.
 
 To compare venues, compare the final amount received for the same token pair and trade size.
 
