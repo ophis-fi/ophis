@@ -41,6 +41,8 @@ if online || online -inet6; then stop "This laptop is online. Turn Wi-Fi off (an
 [[ ! -e "$HERE/ophis-recipient-g1.txt" ]] || stop "A key was made before: its public half, ophis-recipient-g1.txt, is next to this script, and the console may seal to it. To make another key on purpose, move that file away first."
 mkdir "$WORK" 2>/dev/null || stop "Another run is going on (or one was killed: then delete the folder $WORK and run this again)."
 CLAIMED=1
+# Again, now the folder is held (Codex): a run that waited while another ended must not replace the key it published.
+[[ ! -e "$HERE/ophis-recipient-g1.txt" ]] || stop "A key was made meanwhile by another run: its public half is next to this script. Nothing was kept."
 cd "$WORK"
 
 # The key: in this shell's memory only, never on a disk in clear; shown once for the papers.

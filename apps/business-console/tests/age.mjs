@@ -46,8 +46,10 @@ try {
   const stubs = join(dir, 'stubs')
   if (stubs.includes(':')) throw new Error('a ":" in the folder would split PATH')
   mkdirSync(stubs)
-  for (const tool of ['age', 'dirname', 'mkdir', 'sed', 'rm', 'cmp', 'cut', 'shasum', 'cat', 'grep', 'tr', 'stty']) symlinkSync(real(tool), join(stubs, tool))
+  for (const tool of ['age', 'dirname', 'sed', 'rm', 'cmp', 'cut', 'shasum', 'cat', 'grep', 'tr', 'stty']) symlinkSync(real(tool), join(stubs, tool))
   const stub = (name, body) => { writeFileSync(join(stubs, name), `#!/bin/bash\n${body}\n`); chmodSync(join(stubs, name), 0o755) }
+  // The real mkdir, except with RACE set to a file: it is written first, as another run that ended just before this claim.
+  stub('mkdir', `[[ -n $RACE ]] && printf 'age1pq1other\\n' > "$RACE"\nexec ${real('mkdir')} "$@"`)
   // The real cp, except with CP_FAIL set: the copy of the public half next to the script fails (the README copy before it does not).
   stub('cp', `[[ -n $CP_FAIL && $2 == */ophis-recipient-g1.txt && $2 != "$PWD/"* ]] && exit 1\nexec ${real('cp')} "$@"`)
   stub('pbcopy', 'cat > /dev/null; : > "$HOME/.clipboard-emptied"') // records that the clipboard was emptied
@@ -182,6 +184,10 @@ try {
   check('if the public half cannot be put next to the script, it stops and keeps nothing', blocked.status !== 0 && blocked.stdout.includes('Nothing was kept') && nothingKept(readonly))
   const half = ceremony('half', { env: { CP_FAIL: '1' } })
   check('if the public half fails after the README copy, it takes the README copy back too, and keeps nothing', half.status !== 0 && nothingKept(half))
+  const raceHome = join(dir, 'race')
+  const race = ceremony('race', { env: { RACE: join(raceHome, 'icloud', 'ophis-recipient-g1.txt') } })
+  check('a run that waited while another published its key stops after its claim, and replaces nothing (Codex)', race.status !== 0 && race.stdout.includes('made meanwhile')
+    && readFileSync(join(race.here, 'ophis-recipient-g1.txt'), 'utf8') === 'age1pq1other\n' && !existsSync(race.work) && !existsSync(join(race.here, 'ophis-seal-g1-README.txt')))
   // Another run going on: the work folder is claimed at the start; the run stops and leaves it as it was.
   const busy = join(dir, 'busy')
   mkdirSync(join(busy, 'icloud'), { recursive: true })
