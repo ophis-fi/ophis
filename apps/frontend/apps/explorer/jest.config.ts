@@ -11,4 +11,8 @@ export default {
   coverageDirectory: '../../coverage/explorer',
   setupFilesAfterEnv: ['../../jest.setup.ts'],
   setupFiles: ['dotenv/config'],
+  transformIgnorePatterns: [
+    '/node_modules/.pnpm/(?!.*(jotai-tanstack-query|wagmi|@wagmi|viem))',
+    '/node_modules/(?!(\\.pnpm|jotai-tanstack-query|wagmi|@wagmi|viem))',
+  ],
 }
