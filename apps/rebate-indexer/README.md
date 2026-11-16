@@ -50,7 +50,10 @@ and traders, so it is a secret: at least 32 characters, and different from
 `REBATE_INDEXER_ADMIN_TOKEN`. Unset, too short, or equal to the admin token
 means the route is off (404 for every caller).
 
-The body is `{ wallets, contract }`. `contract` names each wallet the console
+The body is `{ wallets, contract, listed }`, all three required. `listed` holds
+the addresses on the sanctions lists the console has loaded (`[]` when none is
+loaded): each wallet's answer names those of them that traded through its
+integration. `contract` names each wallet the console
 proved by a contract signature (a Safe), with the chains it proved it on. Such
 a wallet is read only when one of those chains is its pinned chain in
 `CONTRACT_WALLET_AUTH_CHAINS`, the rule `POST /partner` applies: the same

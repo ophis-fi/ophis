@@ -541,7 +541,7 @@ function InstitutionDesk({ onSignedOut }: { onSignedOut: () => void }) {
           </>,
         ])} /> : <p className="muted">No order yet.</p>}
       </Section>
-      {record && <OrderRecord o={record} v={v} onClose={() => setPicked('')} onChanged={load} onSignedOut={onSignedOut} />}
+      {record && <OrderRecord key={record.id} o={record}v={v} onClose={() => setPicked('')} onChanged={load} onSignedOut={onSignedOut} />}
     </>
   )
 }

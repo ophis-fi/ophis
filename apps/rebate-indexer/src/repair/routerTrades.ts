@@ -149,11 +149,14 @@ export async function repairRouterTrades(): Promise<RouterRepairResult> {
         if (updated.count > 0) {
           // Keep reporting identity synchronized with the aggregate ledger. In
           // particular, overwrite a router copied by migration 0038 rather than
-          // preserving it forever through the fill upsert's null-only repair.
+          // preserving it forever through the fill upsert's null-only repair. A verified payer
+          // stays, as upsertDefillamaFills' keepPayer: an answer that does not name the payer
+          // knows less (CodeRabbit, PR #1646). A router copy is never 'onchain_user'.
           await tx`
             UPDATE defillama_fills
             SET user_address = decode(${trader.slice(2)}, 'hex'), user_source = ${found.source}
             WHERE chain_id = ${r.chain_id} AND trade_uid = ${r.trade_uid}
+              AND NOT (${found.source !== 'onchain_user'} AND fee_verified AND user_source IS NOT DISTINCT FROM 'onchain_user')
           `;
         }
         return updated.count > 0;

@@ -35,7 +35,7 @@ import { homedir } from 'node:os'
 import { request as plain } from 'node:http'
 import { request as tls } from 'node:https'
 import { parseArgs } from 'node:util'
-import { addressesIn, publishedIn } from './ofac-list.mjs' // the one address rule and the one reader of the publish date, shared with the maker of the list file
+import { addressesIn, build, publishedIn } from './ofac-list.mjs' // the one address rule and the one reader of the publish date, shared with the maker of the list file
 
 const { positionals: [command, id, decision], values } = parseArgs({
   allowPositionals: true,
@@ -165,6 +165,15 @@ let load
 if (command === 'addresses') {
   const [list, bytes] = fileOf(id)
   const text = bytes.toString('latin1')
+  // An official SDN.XML must be whole (the maker's checks): a cut download would replace the loaded list with part of it (CodeRabbit, PR #1646).
+  if (list === 'ofac' && text.includes('<sdnList')) {
+    try {
+      build(bytes, id)
+    } catch (error) {
+      console.error(`Refused: ${error.message}. Nothing was sent: the loaded list stays as it is.`)
+      process.exit(1)
+    }
+  }
   const addresses = addressesIn(text)
   if (!addresses.length) {
     console.error('Refused: no address (0x and 40 hex characters) was found in that file. Nothing was sent: the loaded list stays as it is.')
@@ -265,6 +274,6 @@ else {
   for (const l of answer.body.lists) {
     console.log(`LIST  ${l.list}  ${count(l.entries)}  published ${l.published ?? 'not known'}  loaded ${day(l.loadedAt)}  last good read of the list file ${day(l.checkedAt)}  file made ${day(l.madeAt)}`)
     if (l.held) console.log(`WARNING  held (${l.held}): a list file read since the last load was not loaded: ${HELD[l.held]}.${l.heldAdds === 0 ? ' It only removes addresses: the desk goes on with the loaded list.' : ' It has addresses the loaded list lacks: the desk sends no order meanwhile.'}`)
-    if (l.stale) console.log('WARNING  no good read of the list file for 3 days or more, or the file read was made 3 days ago or more: the loaded list may be out of date. Run "sync", and check that the maker still runs.')
+    if (l.stale) console.log('WARNING  the loaded list may be out of date, and the desk sends no order. With no list file (production): no list was loaded, or the last load is 35 days old or more: load OFAC\'s SDN.XML again, with "addresses ofac=<SDN.XML>". With a list file: no good read of it for 3 days or more, or the file read was made 3 days ago or more: run "sync", and check that the maker still runs.')
   }
 }

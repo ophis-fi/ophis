@@ -21,6 +21,7 @@
 // the passkey, which is active at once (Ophis approved the person: no second person, no wait).
 // Starts and stops its own local server on a throwaway database. Run: pnpm test:e2e
 import { execFileSync, spawn } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer, request as httpRequest } from 'node:http'
@@ -34,7 +35,7 @@ import { start as startTurnstile } from '../scripts/turnstile-stub.mjs' // the l
 import { hear, verdict } from './operator-live.mjs' // the operator's command with --production, heard locally
 import { PORT as ORDERBOOK_PORT, start as startOrderbook, TEST_BALANCES } from '../scripts/orderbook-stub.mjs' // the real desk: the local stand-in for the public orderbooks and the chains' endpoints
 
-process.chdir(new URL('..', import.meta.url).pathname)
+process.chdir(fileURLToPath(new URL('..', import.meta.url))) // a path, not a URL: a space or a Windows drive survives (CodeRabbit, PR #1646)
 const ORIGIN = 'http://localhost:8787'
 const SIGN = 'http://127.0.0.1:8787' // the signing page's own hostname
 const STATE = '.wrangler/e2e'
@@ -77,6 +78,16 @@ const stopServer = async () => {
   }
 }
 let server = serve()
+// A stand-in whose port is taken fails after the detached server started: its whole group is stopped, never left running (CodeRabbit, PR #1646).
+process.on('uncaughtException', (error) => {
+  try {
+    process.kill(-server.pid, 'SIGKILL')
+  } catch {
+    // already gone
+  }
+  console.error(error)
+  process.exit(1)
+})
 let browser
 try {
   for (let i = 0; i < 60 && !(await reachable()); i++) await new Promise((resolve) => setTimeout(resolve, 500))
@@ -99,19 +110,22 @@ try {
     spawn('node', ['scripts/operator.mjs', ...args], { env: { ...env, E2E_PORT: String(listener.address().port) }, stdio: ['ignore', 'ignore', 'pipe'] }).on('close', (code) => resolve(`${code} ${said}`)).stderr.on('data', (chunk) => (said += chunk))
   })
   const anId = 'ab'.repeat(16)
+  const cut = `${STATE}/sdn-cut.xml` // a cut download of the official XML, its addresses all there: never loaded by hand either (CodeRabbit, PR #1646)
+  writeFileSync(cut, readFileSync(LIST.xml, 'utf8').replace('</sdnList>', ''))
   const unsent = [await tell('addresses', 'ofac=tests/fixtures/sanctions-no-address.txt'), await tell('addresses', 'ofac=tests/fixtures/none.txt'), await tell('screen', anId, '--outcome', 'clear', '--list', `eu=${LIST.eu}`, '--list', `eu=${LIST.un}`, '--next-review', '2031-01-01'),
     // F5: what the server would refuse or drop is said by the command itself.
     await tell('screen', anId, '--outcome', 'clear', '--list', `un=${LIST.un}`, '--next-review', '2031-01-01'), await tell('screen', anId, '--outcome', 'ok', '--list', `eu=${LIST.eu}`, '--next-review', '2031-01-01'),
-    await tell('decide', anId, 'more', '--reason', 'details_differ', '--tier', 'standard', '--source', 'registry', '--list', `eu=${LIST.eu}`)]
+    await tell('decide', anId, 'more', '--reason', 'details_differ', '--tier', 'standard', '--source', 'registry', '--list', `eu=${LIST.eu}`), await tell('addresses', `ofac=${cut}`)]
   const sentByThose = heard.length
   await tell('screen', anId, '--outcome', 'review', '--list', `un=${LIST.un}`, '--list', `eu=${LIST.eu}`, '--next-review', '2031-01-01')
   await tell('decide', anId, 'approve', '--submission', '0'.repeat(16), '--tier', 'standard', '--source', 'registry', '--evidence', 'x', '--sha256', 'ab'.repeat(32), '--next-review', '2030-01-01', '--screening', 'clear', '--list', `eu=${LIST.eu}`)
   await tell('addresses', `ofac=${LIST.addresses}`)
   await tell('addresses', `ofac=${LIST.xml}`) // M10: an official XML carries its publish day
   listener.close() // before the checks: a failed check must end the run
-  check('a list file that names no address, a file that is not there and a list code given twice are refused by the command before anything is sent',
+  check('a list file that names no address, a file that is not there, a list code given twice and a cut official XML are refused by the command before anything is sent',
     sentByThose === 0 && unsent[0].startsWith('1 Refused: no address') && unsent[1].startsWith('1 Refused: the file could not be read') && unsent[2].startsWith('1 Refused: a list code is given twice')
-    && unsent[3].startsWith('1 Refused: "screen" needs --list eu=<file>') && unsent[4].startsWith('1 Refused: "screen" needs --outcome clear, review or hit') && unsent[5].startsWith('1 Refused: --list needs --screening'))
+    && unsent[3].startsWith('1 Refused: "screen" needs --list eu=<file>') && unsent[4].startsWith('1 Refused: "screen" needs --outcome clear, review or hit') && unsent[5].startsWith('1 Refused: --list needs --screening')
+    && unsent[6].startsWith('1 Refused: the file does not end with </sdnList>'))
   check('the command sends the SHA-256 of each list file and, for "addresses", the addresses in it (lower case, each once, 40 hex characters exactly): nothing else of a file leaves this machine', JSON.stringify(heard.slice(sentByThose)) === JSON.stringify([
     `POST /api/operator/organisations/${anId}/screening ${JSON.stringify({ outcome: 'review', lists: { un: fileSha(LIST.un), eu: fileSha(LIST.eu) }, nextReview: '2031-01-01' })}`,
     `POST /api/operator/organisations/${anId}/decision ${JSON.stringify({ decision: 'approve', tier: 'standard', source: 'registry', evidenceRef: 'x', evidenceSha256: 'ab'.repeat(32), nextReview: '2030-01-01', submission: '0'.repeat(16), screening: { outcome: 'clear', lists: { eu: fileSha(LIST.eu) } } })}`,

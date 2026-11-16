@@ -16,6 +16,7 @@ export interface Me {
 
 const passkeysWork = () => typeof PublicKeyCredential !== 'undefined' && 'parseRequestOptionsFromJSON' in PublicKeyCredential
 const NO_PASSKEYS = 'This browser cannot use passkeys. Use a current version of Chrome, Edge, Firefox or Safari.'
+const RETRY = 'Your enrolment link could not be checked just now. It still works: try again in a minute.'
 const KEY_ROLES = ['owner', 'admin', 'approver', 'compliance']
 export const Problem = ({ children }: { children: string }) => <p className="note bad" role="alert"><Icon name="triangle-alert" /><span className="grow">{children}</span></p>
 
@@ -180,7 +181,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
           <button className="btn primary" type="button" onClick={signIn} disabled={busy || !passkeysWork()}><Icon name="fingerprint" />Sign in with a passkey</button>
           {problem && <Problem>{problem}</Problem>}
           <p className="fine"><Icon name="info" size={16} />No username is asked. Your passkey tells us which organisation and seat you hold.</p>
-          <p className="fine"><Icon name="building-2" size={16} /><span>New organisation? Access is by application, after business verification.</span></p>
+          <p className="fine"><Icon name="building-2" size={16} /><span>New organisation? Access is by <a href="/apply">application</a>, after business verification. <a href="/#/security">Security and data</a>.</span></p>
           <p className="fine"><Icon name="life-buoy" size={16} /><span>No Owner can sign in any more? <a href="/recover">Recover access with the recovery wallet</a>.</span></p>
         </div>
       </div>
@@ -198,10 +199,12 @@ export function Enrol({ ticket }: { ticket: string }) {
   const [stored, setStored] = useState(false)
   const [problem, setProblem] = useState(passkeysWork() ? '' : NO_PASSKEYS)
 
+  // Only a refusal of the ticket (404) ends the link: a lost answer or a rate limit keeps it, as the address no longer holds it (CodeRabbit, PR #1646).
+  const [tries, setTries] = useState(0)
   useEffect(() => {
     if (!ticket) return setInvitation(null)
-    api<Invitation>('/api/enrol/start', { ticket }).then((start) => setInvitation(start.status === 200 ? start.data : null))
-  }, [ticket])
+    api<Invitation>('/api/enrol/start', { ticket }).then((start) => start.status === 200 ? setInvitation(start.data) : start.status === 404 ? setInvitation(null) : setProblem(RETRY))
+  }, [ticket, tries])
 
   async function create() {
     if (!invitation) return
@@ -210,7 +213,8 @@ export function Enrol({ ticket }: { ticket: string }) {
     try {
       // A fresh challenge for each attempt: the first one may have aged while the page was open.
       const start = await api<Invitation>('/api/enrol/start', { ticket })
-      if (start.status !== 200) return setInvitation(null)
+      if (start.status === 404) return setInvitation(null)
+      if (start.status !== 200) return setProblem(RETRY)
       const passkey = (await navigator.credentials.create({ publicKey: PublicKeyCredential.parseCreationOptionsFromJSON(start.data.options) })) as PublicKeyCredential
       const finish = await api<{ error?: string }>('/api/enrol/finish', { ticket, label, response: passkey.toJSON() })
       if (finish.status === 200) return setStored(true)
@@ -235,7 +239,8 @@ export function Enrol({ ticket }: { ticket: string }) {
     <section className="signin">
       <div>
         <span className="cap eyebrow rise">Enrolment</span>
-        {invitation === undefined ? <><h1 className="h-hero">Create <em>your passkey</em>.</h1><p className="lede">Checking your enrolment link.</p></>
+        {invitation === undefined ? <><h1 className="h-hero">Create <em>your passkey</em>.</h1><p className="lede">Checking your enrolment link.</p>
+          {problem === RETRY && <div className="methods"><Problem>{problem}</Problem><button className="btn primary" type="button" onClick={() => (setProblem(''), setTries(tries + 1))}>Try again</button></div>}</>
         : invitation === null ? (
           <>
             <h1 className="h-hero rise d1">Create <em>your passkey</em>.</h1>
@@ -677,14 +682,20 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
   }, [onSignedOut])
   useEffect(() => void load(), [load])
 
-  // Every action goes through here: run it, say what went wrong, then show the new state.
+  // Every action goes through here: run it, say what went wrong, then show the new state. One at a time: a second click
+  // meanwhile would open a second passkey prompt, which the browser refuses, and hide the first one's success (CodeRabbit, PR #1646).
+  const running = useRef(false)
   const act: Act = async (action) => {
+    if (running.current) return
+    running.current = true
     setProblem('')
     try {
       const result = await action()
       if (result.status !== 200 && result.status !== 401) setProblem(say(result.data))
     } catch {
       setProblem(CANCELLED)
+    } finally {
+      running.current = false
     }
     await load() // a 401 here returns the app to sign-in: ending your own session, or revoking its passkey
     onChanged()
@@ -1103,8 +1114,11 @@ export function Compliance({ onSignedOut }: { onSignedOut: () => void }) {
   }, [before, onSignedOut])
   useEffect(() => void load(), [load])
 
+  // One export at a time: each asks for a passkey and is a row of the log (CodeRabbit, PR #1646).
+  const [exporting, setExporting] = useState(false)
   async function exportCsv() {
     setProblem('')
+    setExporting(true)
     try {
       // The export comes in pages, fetched in order and saved as one file.
       const parts: string[] = []
@@ -1120,6 +1134,8 @@ export function Compliance({ onSignedOut }: { onSignedOut: () => void }) {
       await load() // the export is itself a row of the log
     } catch {
       setProblem(CANCELLED)
+    } finally {
+      setExporting(false)
     }
   }
 
@@ -1133,7 +1149,7 @@ export function Compliance({ onSignedOut }: { onSignedOut: () => void }) {
       {problem && <div className="stack"><Problem>{problem}</Problem></div>}
       {page && (
         <Section icon="scroll-text" title="Audit log" hint="Each row carries the hash of the row before it. A changed row breaks the chain."
-          action={<button className="btn ghost sm" type="button" title="Asks for your passkey, writes a row in this log, then downloads every row with both hashes in full." onClick={exportCsv}><Icon name="download" size={16} />Export CSV</button>}>
+          action={<button className="btn ghost sm" type="button" title="Asks for your passkey, writes a row in this log, then downloads every row with both hashes in full." disabled={exporting} onClick={exportCsv}><Icon name="download" size={16} />{exporting ? 'Exporting...' : 'Export CSV'}</button>}>
           <p className="chain" role="status">
             <Status>{page.chain.ok ? 'Chain verified' : 'Chain broken'}</Status>
             {page.chain.ok ? checked(page.chain) : `The chain does not hold at row ${page.chain.seq}. Keep your last export and tell Ophis.`}
@@ -1220,7 +1236,7 @@ const SECURITY: [group: string, icon: string, summary: string, rows: Row[]][] = 
   ['What we store', 'database', 'Results and records.', [
     ['globe', 'Stored in the EU', 'The account database is restricted to the European Union and encrypted at rest.'],
     ['key-square', 'No decryption key in the cloud', 'Our servers and our cloud provider hold no key that can open sealed records.'],
-    ['lock-keyhole', 'Sealed in your browser', 'Owner names, signatories, contact persons and signed declarations are encrypted in your browser before upload. Two offline hardware keys unlock them, and the key fingerprint is printed in your contract.'],
+    ['lock-keyhole', 'Sealed in your browser', 'Owner names, signatories, contact persons and signed declarations are encrypted in your browser before upload. One offline key opens them, kept on paper in two places. The key fingerprint is printed in your contract.'],
     ['eye', 'Readable by design', 'Member names, roles, linked wallets and company details are stored readable, because the service uses them on every request.'],
     ['clipboard-check', 'Results, not documents', 'We keep a verification result and a fingerprint of the evidence, not copies of identity documents.'],
     ['scroll-text', 'Tamper-evident audit log', 'Every action, including ours, is written to a hash-chained log that you can export.'],

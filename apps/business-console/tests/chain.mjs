@@ -7,6 +7,7 @@
 // of orders.ts against the contracts themselves, the order id of a signed order as the settlement derives it in a real
 // settle, a presignature for the order id the server computed, Multicall3, and Overview's balances read through it.
 import { execFileSync, spawn } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import { randomBytes } from 'node:crypto'
 import { rmSync } from 'node:fs'
 import { concat, createPublicClient, createTestClient, createWalletClient, decodeEventLog, domainSeparator, encodeAbiParameters, encodeFunctionData, hashTypedData, http, keccak256, parseAbi, zeroAddress } from 'viem'
@@ -22,7 +23,7 @@ import { configFor, fromBase64Url } from '../src/server/passkeys.ts'
 import { softwareAuthenticator } from './authenticator.ts'
 import { PORT as TURNSTILE_PORT, start as startTurnstile, TEST_SECRET as TURNSTILE_TEST, token as humanToken } from '../scripts/turnstile-stub.mjs'
 
-process.chdir(new URL('..', import.meta.url).pathname)
+process.chdir(fileURLToPath(new URL('..', import.meta.url))) // a path, not a URL: a space or a Windows drive survives (CodeRabbit, PR #1646)
 
 const FORK = 'https://mainnet.optimism.io'
 const RPC = 'http://127.0.0.1:8546'

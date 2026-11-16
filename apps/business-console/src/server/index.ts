@@ -884,14 +884,15 @@ async function orderSend(c: Context) {
 /** Reads the orderbook's state of sent orders that may still change: of one organisation (the desk, at most 10) or of all (the daily run). */
 async function refresh(env: Env, orgId: string | null, now: number, limit: number) {
   const read = []
+  const tried = []
   let moved = 0
   for (const o of await data.openOrders(env.DB, orgId, limit)) {
     const state = await orders.status(env, o.chainId, o.uid, o.sellToken)
-    if (!state) continue
+    if (!state) { tried.push(o); continue }
     // ponytail: a hold leaves by one commit (3 D1 queries), one per read: the next on the next read.
-    if (o.held) { if (!moved++) await (state === 'missing' ? data.holdGone(env.DB, o, now) : data.holdFound(env.DB, o, state, now)) } else if (state !== 'missing') read.push({ ...o, ...state })
+    if (o.held) { if (!moved++) await (state === 'missing' ? data.holdGone(env.DB, o, now) : data.holdFound(env.DB, o, state, now)) } else if (state !== 'missing') { read.push({ ...o, ...state }) } else { tried.push(o) }
   }
-  await data.orderStates(env.DB, read, now)
+  await data.orderStates(env.DB, read, now, tried)
 }
 const waiting = async (c: Context) => (await data.openRequests(c.env.DB, c.actor, c.now)).filter((request) => !request.mine).length
 async function overview(c: Context) {

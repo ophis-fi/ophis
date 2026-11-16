@@ -8382,6 +8382,18 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       expect([await stateOf(o.orgId), await made(), await row('SELECT actor_kind, action, subject_id FROM audit_log WHERE org_id = ? ORDER BY seq DESC', o.orgId)]).toEqual(['frozen', now + DAY, { actor_kind: 'system', action: 'screening.wallet', subject_id: expect.any(String) }])
     })
 
+    it('T2: a manual load that lands between the read of the list file and its load is kept: the read writes nothing and throws, and the next read compares again (CodeRabbit, PR #1646)', async () => {
+      feed(fileOf(numbered(10)))
+      expect((await syncNow()).body).toMatchObject({ outcome: 'loaded', entries: 10 })
+      feed(fileOf(numbered(11), { sha256: H('b'), published: '2026-11-10' })) // newer, one address more: loaded, were nothing else to land
+      const manual = async () => expect((await load('ofac', numbered(12), { published: '2026-11-11' })).status).toBe(200)
+      await expect(onboarding.sync({ ...(fed as unknown as { ENVIRONMENT: string; SANCTIONS_URL: string }), DB: racing(manual).DB }, now)).rejects.toThrow()
+      const kept = [await ofac(), await loaded()]
+      expect(kept[0]).toMatchObject({ sha256: H('f'), entries: 12, published: '2026-11-11' })
+      expect((await syncNow()).body).toEqual({ outcome: 'held', reason: 'older' })
+      expect(await loaded()).toEqual(kept[1])
+    })
+
     it('T2: the same file moves only the time of the check; an older file, one that lacks any loaded address, and one that adds more than a fifth, is held with its reason and not loaded; a manual load is the override', async () => {
       feed(fileOf(numbered(10)))
       expect((await syncNow()).body).toMatchObject({ outcome: 'loaded', entries: 10 })
@@ -10693,6 +10705,8 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     const [again, fresh] = [await orderPage(token), await orderLink(team.t, id)]
     expect([sent.body, resent.body, again.status, again.body.uid, fresh.status, fresh.body])
       .toEqual([{ state: 'presignaturePending', uid: page.body.uid }, { state: 'presignaturePending', uid: page.body.uid }, 200, page.body.uid, 404, { error: 'not_found' }])
+    // The page read again asks the Safe for the same allowance: this order is never counted twice (Codex, PR #1646).
+    expect([again.body.allowance, again.body.allowanceWords]).toEqual([page.body.allowance, page.body.allowanceWords])
     book({ state: 'presignaturePending' })
     expect((await deskOrders(team.t)).find((x) => x.id === id)!.state).toBe('Sent: waiting for the Safe transaction')
     expect((await orderSend(token)).body).toEqual({ state: 'presignaturePending', uid: page.body.uid })
@@ -10716,6 +10730,7 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     const page = await orderPage(token)
     // The hold of a send whose record was lost: its uid written, no status, older than a hold.
     await db.prepare('UPDATE orders SET uid = ?, signature = ?, sent_at = ?, checked_at = ? WHERE id = ?').bind(page.body.uid, accounts[4].address.toLowerCase(), now - 61_000, now - 61_000, id).run()
+    sent.set(page.body.uid, { from: accounts[4].address, sellAmount: TICKET.amount, buyAmount: '1', sellToken: USDC_OP }) // the orderbook took it: this test stands alone (CodeRabbit, PR #1646)
     book({ state: 'presignaturePending' })
     await deskOrders(team.t)
     expect(await row('SELECT status, link_hash IS NOT NULL AS link FROM orders WHERE id = ?', id)).toEqual({ status: 'presignaturePending', link: 1 })
@@ -10730,6 +10745,20 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     const signature = await accounts[1].signTypedData((await orderPage(token)).body.typed)
     expect((await call('POST', '/api/order/send', { sign: true, body: { token, signature } })).body.state).toBe('open')
     expect((await call('POST', '/api/order/send', { sign: true, body: { token, signature } })).body).toEqual({ error: 'link_invalid' })
+  })
+
+  it('the refresh moves an order\'s turn on when its orderbook does not answer, or does not have it: orders it cannot read never hold the window of 10 that the refresh reads (Codex, PR #1646)', async () => {
+    const team = await deskTeam()
+    book()
+    const id = await approvedOrder(team)
+    const { token } = await orderLink(team.t, id)
+    expect((await orderSend(token, await accounts[1].signTypedData((await orderPage(token)).body.typed))).body.state).toBe('open')
+    for (const answer of [new Response('down', { status: 500 }), Response.json({ errorType: 'NotFound' }, { status: 404 })]) {
+      await db.prepare('UPDATE orders SET checked_at = 0 WHERE id = ?').bind(id).run()
+      book({ twist: (a) => (a.method === 'GET' && a.url.includes('/api/v1/orders/') ? answer.clone() : undefined) })
+      await deskOrders(team.t)
+      expect(await row('SELECT status, checked_at FROM orders WHERE id = ?', id), String(answer.status)).toEqual({ status: 'open', checked_at: now })
+    }
   })
 
   it('the audit log names the wallet only where its signature was checked: the page\'s read, and a Safe\'s send and cancel, which the link alone reaches, are the system\'s rows', async () => {

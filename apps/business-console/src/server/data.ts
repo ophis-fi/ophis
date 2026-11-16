@@ -1074,12 +1074,13 @@ export const holdFound = (db: D1Database, x: { orgId: string; id: string; uid: s
         .bind(s.status, s.sold, s.bought, s.fee, s.tx, now, x.orgId, x.id, x.uid),
     ]] : null)
 /** What the organisation's other open orders of this wallet still need of the asset this order sells, on its chain, in atoms: the allowance they rely on. */
+// Never this order: a Safe's page read again while it waits for its presignature would count it twice (Codex, PR #1646).
 // ponytail: reads every order of the organisation (no index on the status). An index on (org_id, status) once a desk keeps thousands.
 export async function reserved(db: D1Database, r: Opening, now: number) {
   const { results } = await db.prepare(`SELECT json_extract(v, '$.sell.amount') AS amount FROM (SELECT json_extract(a.payload, '$.value') AS v FROM orders o JOIN approvals a ON a.org_id = o.org_id AND a.id = o.id
-                                          WHERE o.org_id = ? AND o.status IN ('open', 'presignaturePending') AND o.valid_to * 1000 > ?)
+                                          WHERE o.org_id = ? AND o.id <> ? AND o.status IN ('open', 'presignaturePending') AND o.valid_to * 1000 > ?)
                                         WHERE json_extract(v, '$.chainId') = ? AND json_extract(v, '$.wallet') = ? AND json_extract(v, '$.sell.token') = ?`)
-    .bind(r.orgId, now, r.terms.chainId, r.terms.wallet, r.terms.sell.token).all<{ amount: string }>()
+    .bind(r.orgId, r.id, now, r.terms.chainId, r.terms.wallet, r.terms.sell.token).all<{ amount: string }>()
   return results.reduce((sum, x) => sum + BigInt(x.amount), 0n)
 }
 /** The first address of these on a loaded sanctions list, or null. */
@@ -1108,9 +1109,14 @@ export async function openOrders(db: D1Database, orgId: string | null, limit: nu
  * The orderbook's state, written as read. ponytail: a copy of the public orderbook, so no audit row of its own and no
  * commit (the people's decisions are in the log: the approval, the link, the send, the cancel). One batch.
  */
-export async function orderStates(db: D1Database, read: { orgId: string; id: string; status: string; sold: string; bought: string; tx: string | null; fee: string | null }[], now: number) {
-  if (read.length) await db.batch(read.map((x) => db.prepare(`UPDATE orders SET status = ?, executed_sell = ?, executed_buy = ?, executed_fee = ?, tx_hash = COALESCE(?, tx_hash), checked_at = ? WHERE org_id = ? AND id = ? AND status IN ('open', 'presignaturePending')`)
-    .bind(x.status, x.sold, x.bought, x.fee, x.tx, now, x.orgId, x.id)))
+// `tried`: read with nothing to write (the orderbook did not answer, or does not have it): their turn moves on all the
+// same, so orders an orderbook cannot answer for never hold the refresh's window (Codex, PR #1646).
+export async function orderStates(db: D1Database, read: { orgId: string; id: string; status: string; sold: string; bought: string; tx: string | null; fee: string | null }[], now: number, tried: { orgId: string; id: string }[] = []) {
+  if (read.length || tried.length) await db.batch([
+    ...read.map((x) => db.prepare(`UPDATE orders SET status = ?, executed_sell = ?, executed_buy = ?, executed_fee = ?, tx_hash = COALESCE(?, tx_hash), checked_at = ? WHERE org_id = ? AND id = ? AND status IN ('open', 'presignaturePending')`)
+      .bind(x.status, x.sold, x.bought, x.fee, x.tx, now, x.orgId, x.id)),
+    ...tried.map((x) => db.prepare('UPDATE orders SET checked_at = ? WHERE org_id = ? AND id = ?').bind(now, x.orgId, x.id)),
+  ])
 }
 
 // ---- milestone 4a: wallets and the recovery wallet ----

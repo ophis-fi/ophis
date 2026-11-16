@@ -10,6 +10,7 @@
 //   node scripts/dev.mjs stale      ponytail: stands in for 5 minutes passing: every passkey check is stale, so the next sensitive step (sending an order) asks for the passkey
 // Option: --persist <dir>, the same value as "wrangler dev --persist-to <dir>".
 import { randomBytes } from 'node:crypto'
+import { fileURLToPath } from 'node:url'
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { generateHybridIdentity, identityToRecipient } from 'age-encryption'
 import { getPlatformProxy } from 'wrangler'
@@ -28,7 +29,7 @@ const option = (name) => (options.includes(name) ? options[options.indexOf(name)
 const directory = option('--persist')
 const demo = options.includes('--demo')
 const live = options.includes('--live')
-process.chdir(new URL('..', import.meta.url).pathname)
+process.chdir(fileURLToPath(new URL('..', import.meta.url))) // a path, not a URL: a space or a Windows drive survives (CodeRabbit, PR #1646)
 // The challenge key is made on this machine and never leaves it: .dev.vars is git-ignored.
 if (!existsSync('.dev.vars')) writeFileSync('.dev.vars', `CHALLENGE_KEY=${randomBytes(32).toString('base64url')}\n`, { mode: 0o600 })
 // Milestone 5: the token of the operator's local API (scripts/operator.mjs reads it), made the same way and never

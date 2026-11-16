@@ -343,9 +343,13 @@ async function recordScreening(db: D1Database, orgId: string, screening: Screeni
 // M10: `published` is the day of the source file: the file's own for a read of the list file (`made`, the time its maker
 // made it: the read is then a good read, checked_at and made_at), the one the command found in an official XML for a
 // manual load, or null for a list made by hand. A manual load leaves checked_at and made_at as they were. Either load clears what was held.
-async function replaceList(db: D1Database, list: string, sha256: string, addresses: string[], now: number, published: string | null = null, made: number | null = null) {
+// `read`: for the list file, the SHA-256 of the list as the sync read it (null: none was loaded). A list that changed since
+// (a manual load landed meanwhile) stops the whole batch: entries = 0 breaks its CHECK, so nothing is written and the
+// newer load stays; the sync throws, and the next one compares again (CodeRabbit, PR #1646).
+async function replaceList(db: D1Database, list: string, sha256: string, addresses: string[], now: number, published: string | null = null, made: number | null = null, read?: string | null) {
   const chunks = Array.from({ length: Math.ceil(addresses.length / CHUNK) }, (_, i) => addresses.slice(i * CHUNK, (i + 1) * CHUNK))
   await db.batch([
+    ...(read === undefined ? [] : [db.prepare('UPDATE sanctions_lists SET entries = 0 WHERE list = ? AND sha256 IS NOT ?').bind(list, read)]),
     db.prepare('DELETE FROM sanctioned_addresses WHERE list = ?').bind(list),
     db.prepare(`INSERT INTO sanctions_lists (list, sha256, entries, loaded_at, published, checked_at, made_at) VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (list) DO UPDATE SET sha256 = excluded.sha256, entries = excluded.entries, loaded_at = excluded.loaded_at, published = excluded.published,
@@ -651,7 +655,7 @@ async function readList(env: { DB: D1Database; ENVIRONMENT: string; SANCTIONS_UR
   const reason = !loaded || same ? null
     : loaded.published === null ? 'manual' : file.published <= loaded.published ? 'older'
     : missing > 0 ? 'shrunk' : added > loaded.entries * FEED.hold ? 'grown' : null
-  if (!loaded || (!same && !reason)) return { outcome: 'loaded', entries: file.addresses.length, published: file.published, hits: await replaceList(env.DB, 'ofac', file.sha256, file.addresses, now, file.published, file.made) }
+  if (!loaded || (!same && !reason)) return { outcome: 'loaded', entries: file.addresses.length, published: file.published, hits: await replaceList(env.DB, 'ofac', file.sha256, file.addresses, now, file.published, file.made, loaded?.sha256 ?? null) }
   // A hold that saw new addresses (or an unknown count) stays until a load: a later file that adds nothing, or the
   // loaded list again, does not lower it, so names once seen missing keep the desk stopped until a person loads a list.
   // Merged in the statement, against the row as it is when written (SQLite reads the old row in every SET): two syncs

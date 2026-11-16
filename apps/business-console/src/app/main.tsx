@@ -129,7 +129,7 @@ function App() {
         </nav>
         <div className="col">
           <main id="main" tabIndex={-1}>
-            {me && stillOpen && <Problem>Sign-out did not work. Your session is still open. Try again.</Problem>}
+            {(me || closed) && stillOpen && <Problem>Sign-out did not work. Your session is still open. Try again.</Problem>}
             {me && recovery && <RecoveryBanner alert={recovery} organisationId={me.organisation.id} onChanged={loadMe} />}
             {page === 'apply' ? <Apply />
             : page === 'recover' ? <Recover />

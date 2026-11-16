@@ -7,6 +7,7 @@
 // Then it waits: Ctrl+C, or closing Chrome, stops everything. TOUR_CHECK=1: no window; the Owner sends an order, the
 // Approver approves it, Compliance shows the screening, and it ends. TOUR_CHECK=window: the same check with the windows.
 import { execFileSync, spawn } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import { rmSync } from 'node:fs'
 import { chromium } from 'playwright-core'
 import { start as startDnsStubs } from './dns-stub.mjs'
@@ -15,7 +16,7 @@ import { start as startLists } from './list-stub.mjs'
 import { start as startTurnstile } from './turnstile-stub.mjs'
 import { start as startOrderbook } from './orderbook-stub.mjs'
 
-process.chdir(new URL('..', import.meta.url).pathname)
+process.chdir(fileURLToPath(new URL('..', import.meta.url))) // a path, not a URL: a space or a Windows drive survives (CodeRabbit, PR #1646)
 const ORIGIN = 'http://localhost:8787'
 const STATE = '.wrangler/tour'
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
@@ -60,6 +61,8 @@ async function stop(code) {
 }
 process.on('SIGINT', () => void stop(0))
 process.on('SIGTERM', () => void stop(0))
+// A stand-in whose port is taken fails after the detached server started: stopped with it, never left running (CodeRabbit, PR #1646).
+process.on('uncaughtException', (error) => (console.error(error), void stop(1)))
 
 try {
   for (let i = 0; i < 60 && !(await reachable()); i++) await wait(500)
