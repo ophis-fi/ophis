@@ -269,9 +269,12 @@ const Step = ({ icon, title, done, later, children }: { icon: string; title: str
 // ---- milestone 5b: sealing in the browser (key-custody.md section 3) ----
 // The recipient (the public key a file is sealed to) is a constant of this bundle, per hostname: never fetched, never
 // read from the API. localhost: the test recipient that "pnpm seed" made, compiled in by the build from .env.local (its
-// identity file stays on the developer's machine). No other hostname has a recipient yet: there the page says so and
-// seals nothing. The key's fingerprint is the SHA-256 of the recipient string.
-const RECIPIENTS: Record<string, string | undefined> = { localhost: import.meta.env.VITE_SEAL_LOCAL }
+// identity file stays on the developer's machine). pro.ophis.fi: PRODUCTION, the recipient the security-key ceremony
+// printed (key-custody.md section 4, scripts/seal-ceremony.sh); wrangler.jsonc env.production SEAL_RECIPIENT holds the
+// same string (a unit test compares them). Empty until the ceremony; a hostname with no recipient says so and seals
+// nothing. The key's fingerprint is the SHA-256 of the recipient string.
+const PRODUCTION = ''
+const RECIPIENTS: Record<string, string | undefined> = { localhost: import.meta.env.VITE_SEAL_LOCAL, 'pro.ophis.fi': PRODUCTION }
 const CLEAR_MAX = 10 * 1024 * 1024
 // PDF, PNG or JPEG, by the first bytes of the file. Only this page can check it: the server never sees the clear file.
 const MAGIC = [[0x25, 0x50, 0x44, 0x46, 0x2d], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], [0xff, 0xd8, 0xff]]

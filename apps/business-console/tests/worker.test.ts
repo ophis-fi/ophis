@@ -7415,14 +7415,29 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect(onboardingPage).toMatch(/await import\('age-encryption'\)/)
     expect(Object.values(builtConsole).filter((chunk) => chunk.includes('mlkem768x25519')), 'the built console holds the library, in one chunk').toHaveLength(1)
     // The recipient is a constant of the bundle, by hostname: never fetched, never taken from an answer of the API.
-    expect(onboardingPage).toContain('const RECIPIENTS: Record<string, string | undefined> = { localhost: import.meta.env.VITE_SEAL_LOCAL }')
+    expect(onboardingPage).toContain(`const RECIPIENTS: Record<string, string | undefined> = { localhost: import.meta.env.VITE_SEAL_LOCAL, 'pro.ophis.fi': PRODUCTION }`)
     expect(onboardingPage).not.toMatch(/recipient\s*[:=]\s*(view|result|out|data)\b|\.recipient\b/)
     expect(onboardingPage).toContain('Sealed to key')
-    // The Worker knows the key by its fingerprint: the SHA-256 of the recipient string. Local only; anything else, or no recipient, or something that is none: not configured.
+    // The Worker knows the key by its fingerprint: the SHA-256 of the recipient string. Local and production only; any other environment, or no recipient, or something that is none: not configured.
     expect(await onboarding.sealKey(sealEnv)).toBe(await data.sha256Hex(RECIPIENT))
     expect(await onboarding.sealKey(sealEnv)).toMatch(/^[0-9a-f]{64}$/)
-    for (const ENVIRONMENT of ['production', 'staging', '']) expect(await onboarding.sealKey({ ...sealEnv, ENVIRONMENT }), ENVIRONMENT).toBeNull()
-    for (const SEAL_RECIPIENT of [undefined, '', 'age1pq1', await age.identityToRecipient(await age.generateX25519Identity()), `${RECIPIENT} `, IDENTITY]) expect(await onboarding.sealKey({ ENVIRONMENT: 'local', SEAL_RECIPIENT })).toBeNull()
+    expect(await onboarding.sealKey({ ...sealEnv, ENVIRONMENT: 'production' })).toBe(await data.sha256Hex(RECIPIENT))
+    for (const ENVIRONMENT of ['staging', 'Production', '']) expect(await onboarding.sealKey({ ...sealEnv, ENVIRONMENT }), ENVIRONMENT).toBeNull()
+    for (const ENVIRONMENT of ['local', 'production']) {
+      for (const SEAL_RECIPIENT of [undefined, '', 'age1pq1', await age.identityToRecipient(await age.generateX25519Identity()), `${RECIPIENT} `, IDENTITY]) expect(await onboarding.sealKey({ ENVIRONMENT, SEAL_RECIPIENT }), ENVIRONMENT).toBeNull()
+    }
+  })
+
+  it('B2: production seals to one recipient, the same in the bundle (pro.ophis.fi) and in the Worker (env.production), of the hybrid form or empty until the ceremony', () => {
+    const bundle = /^const PRODUCTION = '([^'\n]*)'$/m.exec(onboardingPage)?.[1]
+    // env.production itself: wrangler.jsonc without its // comments and trailing commas, as for the Access values
+    const json = wranglerConfig
+      .replace(/("(?:[^"\\]|\\.)*")|\/\/[^\n]*/g, (_, str?: string) => str ?? '')
+      .replace(/("(?:[^"\\]|\\.)*")|,(\s*[}\]])/g, (_, str?: string, end?: string) => str ?? end ?? '')
+    const worker = JSON.parse(json).env.production.vars.SEAL_RECIPIENT
+    expect(typeof bundle).toBe('string')
+    expect(worker).toBe(bundle)
+    expect(bundle).toMatch(/^$|^age1pq1[a-z0-9]{1500,2500}$/)
   })
 
   // An env whose bucket runs something just before an object is stored: after the gates of the router, before the commit.

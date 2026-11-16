@@ -385,8 +385,9 @@ async function freezeHits(db: D1Database, now: number, actorKind: 'operator' | '
 // hybrid ML-KEM-768 + X25519 key, "age1pq1..."). The Worker holds no key and never sees the clear file.
 // The sealing key of an environment is named by its fingerprint, the SHA-256 of the recipient string. It is a constant
 // per environment, never read from a request. local: the test recipient that "pnpm seed" made (SEAL_RECIPIENT in
-// .dev.vars; public, its identity file stays on the developer's machine). No other environment has a key yet: null
-// there, and an upload answers "not configured".
+// .dev.vars; public, its identity file stays on the developer's machine). production: the recipient of the
+// security-key ceremony (SEAL_RECIPIENT in wrangler.jsonc env.production, equal to PRODUCTION in onboarding.tsx; empty
+// until the ceremony). Any other environment, or no recipient of the form: null, and an upload answers "not configured".
 export const SEAL = { maxBytes: 10 * 1024 * 1024 + 8192, generation: 'g1' } // 10 MB of clear file, and room for the age header and the tag of each 64 KiB
 // Why the operator takes a sealed item: a code of this list goes into the client's audit log with every download.
 export const DOWNLOAD_REASONS: Record<string, string> = {
@@ -395,7 +396,7 @@ export const DOWNLOAD_REASONS: Record<string, string> = {
 }
 const RECIPIENT = /^age1pq1[a-z0-9]{1500,2500}$/
 export const sealKey = async (env: { ENVIRONMENT: string; SEAL_RECIPIENT?: string }) =>
-  env.ENVIRONMENT === 'local' && RECIPIENT.test(env.SEAL_RECIPIENT ?? '') ? sha256Hex(env.SEAL_RECIPIENT!) : null
+  (env.ENVIRONMENT === 'local' || env.ENVIRONMENT === 'production') && RECIPIENT.test(env.SEAL_RECIPIENT ?? '') ? sha256Hex(env.SEAL_RECIPIENT!) : null
 /**
  * What the Worker can check without a key (key-custody.md section 3): an age v1 file whose header is exactly the one
  * of a single hybrid stanza (1,627 bytes: the share of 1,120 bytes, the wrapped file key of 32, the header MAC), and a

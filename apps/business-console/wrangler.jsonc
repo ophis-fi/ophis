@@ -47,11 +47,13 @@
       "r2_buckets": [{ "binding": "SEALED", "bucket_name": "ophis-business-sealed", "jurisdiction": "eu" }],
       // SANCTIONS_URL stays unset: the OFAC list is loaded by hand once a month (README, "The OFAC list file").
       // Secrets: CHALLENGE_KEY, INDEXER_TOKEN, TYPESAFE_API_KEY, TURNSTILE_SECRET, OPERATOR_TOKEN (wrangler secret put --env production).
-      // SEAL_RECIPIENT waits for the security-key ceremony. TURNSTILE (src/server/index.ts) gets the widget's public site key.
+      // SEAL_RECIPIENT: the public recipient the security-key ceremony prints (scripts/seal-ceremony.sh), the same string
+      // as PRODUCTION in src/app/onboarding.tsx; empty until then, and an upload answers "not configured".
+      // TURNSTILE (src/server/index.ts) gets the widget's public site key.
       // ACCESS_TEAM (the team's domain) and ACCESS_AUD (the AUD tag) are those of the Access application of
       // operator.ophis.fi. Both are public: the AUD is in every Access token. A renamed team or a recreated application
       // changes them; until they match it again, the operator's address refuses every request (onboarding.ts, accessOk).
-      "vars": { "ENVIRONMENT": "production", "INDEXER_URL": "https://rebates.ophis.fi", "ACCESS_TEAM": "oclawd.cloudflareaccess.com", "ACCESS_AUD": "2390d7bef31c3a72b31f432568855e693ce97bc2fc0aca8020c5448e0c269e3e" },
+      "vars": { "ENVIRONMENT": "production", "INDEXER_URL": "https://rebates.ophis.fi", "ACCESS_TEAM": "oclawd.cloudflareaccess.com", "ACCESS_AUD": "2390d7bef31c3a72b31f432568855e693ce97bc2fc0aca8020c5448e0c269e3e", "SEAL_RECIPIENT": "" },
     },
   },
 }
