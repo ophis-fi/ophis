@@ -7,7 +7,8 @@
 #                                          and slot) and README.txt. Copy the folder to a USB stick, then delete it from
 #                                          the laptop before Wi-Fi goes on. Never into iCloud, GitHub or Cloudflare.
 #   the paper                              the key itself, written by hand like a wallet's seed phrase, kept in a safe.
-# Next to this script (the iCloud folder): ophis-recipient-g1.txt, the PUBLIC half, for the console, and README.txt.
+# Next to this script (the iCloud folder): ophis-recipient-g1.txt, the PUBLIC half, for the console, and a copy of README.txt
+# (ophis-seal-g1-README.txt).
 # Needs: brew install age age-plugin-yubikey (age 1.3 or later, the plugin 0.5), done before Wi-Fi goes off.
 # Tested with a stand-in YubiKey by tests/age.mjs (pnpm test:age); the YubiKey steps themselves are the plugin's own.
 set +x # never trace: the key passes through variables of this shell
@@ -17,15 +18,17 @@ OUT="$HOME/ophis-seal-g1"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 CLAIMED=0
 DONE=0
+WROTE=()
 
 stop() { printf '\nSTOPPED: %s\n' "$1" >&2; exit 1; }
 step() { printf '\n%s\nThen press Enter. ' "$1"; read -r _; }
 serial() { sed -n 's/^# *Serial: \([0-9][0-9]*\),.*/\1/p' "$1"; }
 # What macOS sees plugged in: a YubiKey that can hold the key has CCID (its smart-card part) in its name.
 seen() { ioreg -p IOUSB -l -w0 2>/dev/null | sed -n 's/.*"USB Product Name" = "\(.*\)"/\1/p' | grep -i -E 'yubi|security key' | tr '\n' ' ' || true; }
-# Until the very end, a run that stops takes back what it made (the key folder it claimed, the public half), so it keeps
+# Until the very end, a run that stops takes back what it made (the key folder it claimed, the files it wrote next to
+# this script, and nothing else there), so it keeps
 # nothing but what it did on the YubiKey (a slot, its PIN) and can simply be run again.
-undo() { if [[ $DONE == 0 && $CLAIMED == 1 ]]; then rm -rf "$OUT"; rm -f "$HERE/ophis-recipient-g1.txt" "$HERE/README.txt"; fi; }
+undo() { if [[ $DONE == 0 && $CLAIMED == 1 ]]; then rm -rf "$OUT"; if (( ${#WROTE[@]} )); then rm -f "${WROTE[@]}"; fi; fi; }
 trap undo EXIT
 trap 'printf "\nSTOPPED: the step above failed. Nothing was kept: run this again.\n" >&2' ERR
 
@@ -69,10 +72,11 @@ step "Now the paper: the key itself, like a wallet's seed phrase. Whoever holds 
 printf '\nWrite this on paper exactly (capital letters and digits; the spaces only help you copy it):\n\n   AGE-SECRET-KEY-PQ-1 %s\n' "$(printf '%s' "$key" | sed 's/.\{4\}/& /g')"
 step "When it is on paper, the screen will be cleared."
 printf '\033[2J\033[3J\033[H'
+pbcopy < /dev/null 2>/dev/null || true # in case the key was copied from the screen: the clipboard is emptied
 
 # The paper must give back the key: typed from it, unseen, then checked against the public half. Three tries.
 for try in 1 2 3; do
-  printf '\nCheck 1 of 2, the paper: type the key from your paper (it is not shown; spaces do not matter), then Enter.\n'
+  printf '\nCheck 1 of 2, the paper: type the key from your paper, by hand (it is not shown; spaces do not matter), then Enter.\n'
   read -rs typed
   typed=$(printf '%s' "$typed" | tr -d ' ' | tr '[:lower:]' '[:upper:]')
   if printf '%s\n' "$typed" | age-keygen -y 2>/dev/null | cmp -s - ophis-recipient-g1.txt; then break; fi
@@ -96,8 +100,8 @@ cat <<'EOF'
 
 Keep: seal-identity-g1.age (the YubiKey opens it) and yk.txt (which YubiKey and slot) on a USB stick; the paper, the
 key itself, in a safe: whoever holds it can open every sealed file. README.txt and ophis-recipient-g1.txt (the public
-half) are also in the iCloud folder "Ophis seal ceremony". Never type the key on a computer that is online, and never
-put it in iCloud, GitHub or Cloudflare. Typed keys below: capital letters, spaces ignored; Enter, then Control-D.
+half) are also in the iCloud folder "Ophis seal ceremony" (README.txt as ophis-seal-g1-README.txt). Never type the key on a computer that is online, and never
+put it in iCloud, GitHub or Cloudflare. Typed keys below: spaces and small letters are fine; Enter, then Control-D.
 
 Open a sealed item. Wi-Fi off, in a folder with item.age. This must print the SHA-256 "operator get" printed:
   shasum -a 256 item.age
@@ -106,20 +110,22 @@ Then make the RAM disk (/Volumes/OphisRAM, 100 MB, in memory; a name only this u
 Then, in this folder with the YubiKey plugged in (its PIN, a touch):
   age -d -i yk.txt seal-identity-g1.age | age -d -i - -o /Volumes/OphisRAM/item.pdf item.age
 Or, without the YubiKey: type the key from the paper (not shown), Enter, then Control-D:
-  stty -echo; tr -d ' ' | age -d -i - -o /Volumes/OphisRAM/item.pdf item.age; stty echo
+  stty -echo; tr -d ' ' | tr '[:lower:]' '[:upper:]' | age -d -i - -o /Volumes/OphisRAM/item.pdf item.age; stty echo
 Treat /Volumes/OphisRAM/item.pdf as a file from a stranger. After use:
   diskutil eject OphisRAM
 
 The YubiKey or the USB stick lost or broken: make a new YubiKey copy from the paper. Nothing changes in the console.
-Wi-Fi off, in a folder with ophis-recipient-g1.txt (the iCloud folder has it), the YubiKey plugged in:
+Wi-Fi off, in this folder on the stick; the stick lost: in a new folder on the laptop, NEVER the iCloud folder (the
+new copy must not reach iCloud), with ophis-recipient-g1.txt copied into it from the iCloud folder. The YubiKey plugged in:
   age-plugin-yubikey --generate --name ophis-seal-g1 --pin-policy once --touch-policy always > yk-new.txt
 This must print "go on". If it prints "STOP", go no further:
   grep -q '^# *Recipient: age1yubikey1' yk-new.txt && echo "go on" || echo "STOP"
 Then type the key from the paper (not shown), Enter, then Control-D:
-  stty -echo; tr -d ' ' | age -r "$(sed -n 's/^# *Recipient: //p' yk-new.txt)" -o seal-identity-g1.new.age; stty echo
+  stty -echo; tr -d ' ' | tr '[:lower:]' '[:upper:]' | age -r "$(sed -n 's/^# *Recipient: //p' yk-new.txt)" -o seal-identity-g1.new.age; stty echo
 This must print "the new YubiKey opens it" (its PIN, a touch):
   age -d -i yk-new.txt seal-identity-g1.new.age | age-keygen -y | cmp - ophis-recipient-g1.txt && echo "the new YubiKey opens it"
-Then: seal-identity-g1.new.age becomes seal-identity-g1.age, yk-new.txt becomes yk.txt, on a USB stick again.
+Then: seal-identity-g1.new.age becomes seal-identity-g1.age, yk-new.txt becomes yk.txt, on a USB stick again; a
+folder made on the laptop for this is deleted from it before Wi-Fi goes back on.
 
 The paper lost: write a new one from the YubiKey copy. Wi-Fi off, in this folder, the YubiKey plugged in (its PIN, a touch):
   age -d -i yk.txt seal-identity-g1.age | grep '^AGE-SECRET-KEY-PQ-1'
@@ -128,7 +134,9 @@ Write it on paper, then clear the screen:
 If the lost paper may be in someone's hands, everything sealed to this key is open to them: make a new key (g2).
 EOF
 } > README.txt
-cp README.txt "$HERE/README.txt"
+WROTE+=("$HERE/ophis-seal-g1-README.txt")
+cp README.txt "$HERE/ophis-seal-g1-README.txt"
+WROTE+=("$HERE/ophis-recipient-g1.txt")
 cp ophis-recipient-g1.txt "$HERE/ophis-recipient-g1.txt"
 DONE=1
 printf '\nDone. Fingerprint of the sealing key:\n%s\n\n' "$fingerprint"

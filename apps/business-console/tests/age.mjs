@@ -51,6 +51,7 @@ try {
   const stub = (name, body) => { writeFileSync(join(stubs, name), `#!/bin/bash\n${body}\n`); chmodSync(join(stubs, name), 0o755) }
   // As macOS route answers (seen 2026-11-16): a default route prints its "interface:" line; none prints "not in table"
   // on standard error, and the status is 0 either way. ROUTE4 or ROUTE6 set: that family has a default route.
+  stub('pbcopy', 'cat > /dev/null; : > "$HOME/.clipboard-emptied"') // records that the clipboard was emptied
   stub('route', [
     `if [[ " $* " == *" -inet6 "* ]]; then up=$ROUTE6; else up=$ROUTE4; fi`,
     `if [[ -n $up ]]; then printf '   route to: default\\n  interface: en0\\n'; else echo 'route: writing to routing socket: not in table' >&2; fi`,
@@ -84,15 +85,18 @@ try {
   // a terminal ends lines with \r\n
   const inPty = (rules, args, env) => { const run = spawnSync('/usr/bin/python3', ['-I', PTY, JSON.stringify(rules), ...args], { env, encoding: 'utf8' }); return { ...run, stdout: run.stdout.replaceAll('\r\n', '\n') } }
   // The stand-in's key is a software key: this copy widens the one hardware check, and nothing else.
-  const ceremony = (name, { script = original.replace(HARDWARE, '^age1[02-9ac-hj-np-z]+$'), env = {}, typed, bash = ['/bin/bash'] } = {}) => {
+  // mine: a README.txt of the operator's own is already next to the script; the run must leave it as it is (ToB).
+  const ceremony = (name, { script = original.replace(HARDWARE, '^age1[02-9ac-hj-np-z]+$'), env = {}, typed, bash = ['/bin/bash'], mine = false } = {}) => {
     const home = join(dir, name), here = join(home, 'icloud')
     mkdirSync(here, { recursive: true })
     writeFileSync(join(here, 'seal-ceremony.sh'), script)
+    if (mine) writeFileSync(join(here, 'README.txt'), 'MINE')
     const run = inPty(answers(typed), [...bash, join(here, 'seal-ceremony.sh')], { HOME: home, PATH: stubs, ...env })
-    return { ...run, home, here, out: join(home, 'ophis-seal-g1') }
+    return { ...run, home, here, mine, out: join(home, 'ophis-seal-g1') }
   }
   const all = (folder) => readdirSync(folder, { recursive: true }).map((f) => join(folder, f)).filter((f) => statSync(f).isFile())
-  const nothingKept = (run) => !existsSync(run.out) && JSON.stringify(readdirSync(run.here)) === JSON.stringify(['seal-ceremony.sh'])
+  const nothingKept = (run) => !existsSync(run.out) && JSON.stringify(readdirSync(run.here).sort()) === JSON.stringify(run.mine ? ['README.txt', 'seal-ceremony.sh'] : ['seal-ceremony.sh'])
+    && (!run.mine || readFileSync(join(run.here, 'README.txt'), 'utf8') === 'MINE')
   const PQ_KEY = /AGE-SECRET-KEY-PQ-1[0-9A-Z]{40,}/ // a key itself (README.txt names the prefix in a recipe)
 
   const good = ceremony('good')
@@ -107,7 +111,8 @@ try {
   check('the public half next to the script is a hybrid recipient, the same as in the folder, and the shown key is its key',
     /^age1pq1[a-z0-9]{1500,2500}\n$/.test(published) && published === readFileSync(join(good.out, 'ophis-recipient-g1.txt'), 'utf8')
     && execFileSync(real('age-keygen'), ['-y'], { input: `${rawKey}\n`, encoding: 'utf8' }) === published)
-  check('only the public half and README.txt are put next to the script', JSON.stringify(readdirSync(good.here).sort()) === JSON.stringify(['README.txt', 'ophis-recipient-g1.txt', 'seal-ceremony.sh']))
+  check('only the public half and a copy of README.txt, by a name of its own, are put next to the script', JSON.stringify(readdirSync(good.here).sort()) === JSON.stringify(['ophis-recipient-g1.txt', 'ophis-seal-g1-README.txt', 'seal-ceremony.sh']))
+  check('the clipboard is emptied after the screen, in case the key was copied from it', existsSync(join(good.home, '.clipboard-emptied')))
   const fingerprint = createHash('sha256').update(pq).digest('hex')
   check('the printed fingerprint is the SHA-256 of the recipient string, as the console computes it, and README.txt has it',
     good.stdout.includes(`\n${fingerprint}\n`) && readFileSync(join(good.out, 'README.txt'), 'utf8').includes(fingerprint))
@@ -144,10 +149,14 @@ try {
   const grouped = `AGE-SECRET-KEY-PQ-1 ${shown.replace(/.{4}/g, '$& ')}`
   const byPaper = typing(openWith[1].replace('/Volumes/OphisRAM/item.pdf', join(ram, 'paper.pdf')), grouped)
   check('README.txt opens what the console sealed, with the key typed from the paper (in its groups)', byPaper.status === 0 && readFileSync(join(ram, 'paper.pdf')).equals(item))
+  const byLower = typing(openWith[1].replace('/Volumes/OphisRAM/item.pdf', join(ram, 'lower.pdf')), grouped.toLowerCase())
+  check('and typed in small letters, as the ceremony\'s own check takes it (ToB)', byLower.status === 0 && readFileSync(join(ram, 'lower.pdf')).equals(item))
   // The YubiKey or the stick lost: its four lines, one at a time, as README.txt says (the check line widened as the script's).
   const lost = readme.slice(readme.indexOf('The YubiKey or the USB stick lost'), readme.indexOf('Then: seal-identity-g1.new.age')).split('\n').filter((line) => line.startsWith('  ')).map((line) => line.trim().replace(`'^# *Recipient: age1yubikey1'`, `'^# *Recipient: age1'`))
   check('README.txt has the four lines of a new YubiKey copy', lost.length === 4)
-  const said = [shell(lost[0]), shell(lost[1]), typing(lost[2], grouped), shell(lost[3])]
+  const lostText = readme.slice(readme.indexOf('The YubiKey or the USB stick lost'), readme.indexOf('The paper lost'))
+  check('the new copy is never made in the iCloud folder (ToB)', lostText.includes('NEVER the iCloud folder') && !lostText.includes('the iCloud folder has it'))
+  const said = [shell(lost[0]), shell(lost[1]), typing(lost[2], grouped.toLowerCase()), shell(lost[3])]
   check(`with them a new YubiKey opens the key, to the same recipient (${said.map((run) => run.status).join(' ')})`,
     said[0].status === 0 && said[1].stdout.trim() === 'go on' && said[2].status === 0 && said[3].stdout.trim() === 'the new YubiKey opens it')
   const wrongKey = [typing(lost[2], 'NOT THE KEY'), shell(lost[3])]
@@ -159,13 +168,15 @@ try {
 
   // What stops it, and what it leaves: until the very end a stopped run takes back all it made (Clement's laptop,
   // 2026-11-16: a folder left behind by a failed YubiKey step stopped every run after it).
-  const failed = ceremony('failed', { env: { FAIL: '1' } })
+  const failed = ceremony('failed', { env: { FAIL: '1' }, mine: true })
   check('a YubiKey that cannot be set up stops it, says what macOS sees, and keeps nothing', failed.status !== 0 && failed.stdout.includes('The YubiKey was not set up') && failed.stdout.includes('macOS sees: no YubiKey') && nothingKept(failed))
   const rerun = inPty(answers(), ['/bin/bash', join(failed.here, 'seal-ceremony.sh')], { HOME: failed.home, PATH: stubs })
   check('run again after it, it goes to the end', rerun.status === 0 && existsSync(join(failed.out, 'seal-identity-g1.age')))
   const soft = ceremony('soft', { script: original })
   check('the script as written stops on a key that is not a YubiKey, and keeps nothing', soft.status !== 0 && soft.stdout.includes('gave no hardware recipient') && nothingKept(soft))
-  const bad = ceremony('bad', { env: { BAD: '1' } })
+  const bad = ceremony('bad', { env: { BAD: '1' }, mine: true })
+  const kept = ceremony('kept', { mine: true })
+  check('a README.txt of the operator\'s own next to the script is left as it is by a run that ends (ToB)', kept.status === 0 && readFileSync(join(kept.here, 'README.txt'), 'utf8') === 'MINE')
   check('a YubiKey that cannot open the key stops it, and keeps nothing', bad.status !== 0 && bad.stdout.includes('The YubiKey did not open') && nothingKept(bad))
   const three = Array(3).fill('AGE-SECRET-KEY-PQ-1 {from}\n')
   const lie = ceremony('lie', { env: { LIE: '1' }, typed: three })
@@ -178,7 +189,7 @@ try {
   }
   const readonly = ceremony('readonly-setup')
   rmSync(readonly.out, { recursive: true })
-  for (const f of ['ophis-recipient-g1.txt', 'README.txt']) rmSync(join(readonly.here, f))
+  for (const f of ['ophis-recipient-g1.txt', 'ophis-seal-g1-README.txt']) rmSync(join(readonly.here, f))
   chmodSync(readonly.here, 0o555)
   const blocked = inPty(answers(), ['/bin/bash', join(readonly.here, 'seal-ceremony.sh')], { HOME: readonly.home, PATH: stubs })
   chmodSync(readonly.here, 0o755)
