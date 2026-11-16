@@ -101,7 +101,7 @@ it.each(['self','wrong-owner','wrong-id','wrong-ledger','wrong-chain','wrong-rec
   if(kind==='operator-code')f.state.code='0xef0100'
   await expect(p.proof()).rejects.toThrow()
 })
-it('rejects a funding-mode switch before mutating the existing private journal', () => {
+it.runIf([1, 56].includes(CHAIN_ID))('rejects a funding-mode switch before mutating the existing private journal', () => {
   const f=fixture(),root=mkdtempSync(join(tmpdir(),'ophis-private-mode-'));roots.push(root)
   const store=new Store(root);stores.push(store)
   const privateScope={chainId:CHAIN_ID,operator:f.operator.address,recipient:'0zk1qy08nqrftxezyxdegx6ca055tr65f2hf3u24j9urx04e5fnzepv6nrv7j6fe3z53luvr6qkgtjukzmkcp856gs5a6wzdd3pnesr9r6ljvym9l3a4fcepgkvek3f',token:f.recipient}
@@ -110,12 +110,18 @@ it('rejects a funding-mode switch before mutating the existing private journal',
   expect(store.db.prepare('SELECT name,sql FROM sqlite_master ORDER BY name').all()).toEqual(before)
   expect(CreditLedger.load(store).id).toBe(prior.id)
 })
-it('holds the entire nonce until finality, then backs remaining liabilities without double-counting spent gas', async () => {
+it('rejects changing a native ledger to private funding without altering its identity or journal', () => {
+  const f=fixture(),before=f.store.db.prepare('SELECT name,sql FROM sqlite_master ORDER BY name').all()
+  expect(()=>new CreditLedger(f.store,{...f.scope,funding:undefined,recipient:'0zk1qy08nqrftxezyxdegx6ca055tr65f2hf3u24j9urx04e5fnzepv6nrv7j6fe3z53luvr6qkgtjukzmkcp856gs5a6wzdd3pnesr9r6ljvym9l3a4fcepgkvek3f',token:f.recipient})).toThrow()
+  expect(f.store.db.prepare('SELECT name,sql FROM sqlite_master ORDER BY name').all()).toEqual(before)
+  expect(CreditLedger.load(f.store).id).toBe(f.ledger.id)
+})
+it('retains credit until finality and requires complete pending evidence before pipelining', async () => {
   const f=fixture(),p=await f.payment();f.ledger.depositNative(await p.proof())
   f.state.balance=100_999_999n;await expect(f.reservation().then(a=>f.ledger.reserve(a))).rejects.toThrow('liabilities')
   f.state.balance=101_000_000n;const {attempt:a,raw}=await f.reserveAndSign()
   const receipt=await f.include(raw,1,30_000n);f.ledger.observeInclusion(a.key,receipt)
-  await expect(f.reservation().then(next=>f.ledger.reserve(next))).rejects.toThrow('Finalize the outstanding')
+  await expect(f.reservation().then(next=>f.ledger.reserve(next))).rejects.toThrow(CHAIN_ID === 42161 ? 'canonical history' : 'Finalize the outstanding')
   expect(f.ledger.settle(a.key,receipt)).toBe(3_450_000n);expect(f.ledger.earned()).toBe(450_000n)
   expect(f.ledger.requiredBacking()).toBe(96_550_000n);f.ledger.reserve(await f.reservation())
 })

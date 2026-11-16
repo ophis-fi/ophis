@@ -1,5 +1,6 @@
 const logos: Record<string, string> = {
   '1': 'chain-ethereum.png', '42161': 'chain-arbitrum.jpg', '137': 'chain-polygon.png', '56': 'chain-bnb.png',
+  '8453': 'chain-base.png',
   ETH: 'chain-ethereum.png', WETH: 'token-weth.png', USDC: 'token-usdc.png', USDT: 'token-usdt.png',
   POL: 'chain-polygon.png', WPOL: 'chain-polygon.png', BNB: 'chain-bnb.png', WBNB: 'chain-bnb.png',
 }

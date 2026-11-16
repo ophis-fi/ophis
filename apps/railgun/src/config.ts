@@ -72,9 +72,11 @@ export const PREPAID_BROADCASTERS: Readonly<Partial<Record<number, {
     expiresAt: Number.POSITIVE_INFINITY, maxGasPrice: 1_000_000_000n, maxTransactionCost: 3_000_000_000_000_000n },
   56: { operator: PREPAID_OPERATOR, railgunAddress: OPHIS_BROADCASTER, funding: 'native',
     expiresAt: Number.POSITIVE_INFINITY, maxGasPrice: 100_000_000n, maxTransactionCost: 250_000_000_000_000n },
+  42161: { operator: PREPAID_OPERATOR, railgunAddress: OPHIS_BROADCASTER, funding: 'native',
+    expiresAt: Number.POSITIVE_INFINITY, maxGasPrice: 100_000_000n, maxTransactionCost: 1_000_000_000_000_000n },
 }
-// Ethereum uses the verified Ophis fee identity; other networks retain their existing discovery signer.
-export const FEE_SIGNER = CHAIN_ID === 1 ? OPHIS_BROADCASTER :
+// Arbitrum native prepayment uses the same verified Ophis identity as Ethereum.
+export const FEE_SIGNER = CHAIN_ID === 1 || CHAIN_ID === 42161 ? OPHIS_BROADCASTER :
   '0zk1qyzgh9ctuxm6d06gmax39xutjgrawdsljtv80lqnjtqp3exxayuf0rv7j6fe3z53laetcl9u3cma0q9k4npgy8c8ga4h6mx83v09m8ewctsekw4a079dcl5sw4k'
 export const MIN_SWAP_GAS = 3_000_000n
 export const PRIVATE_SLIPPAGE_BPS = 10n

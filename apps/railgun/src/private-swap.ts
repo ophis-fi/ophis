@@ -1,4 +1,4 @@
-import { CHAIN, CHAIN_NAME, tokenFor, MIN_SWAP_GAS, NETWORK, TOKENS, VERSION, WRAPPED_SYMBOL, type TokenSymbol } from './config'
+import { CHAIN, CHAIN_ID, CHAIN_NAME, tokenFor, MIN_SWAP_GAS, NETWORK, TOKENS, VERSION, WRAPPED_SYMBOL, type TokenSymbol } from './config'
 import {
   fullWalletForID,
   balanceForERC20Token,
@@ -24,6 +24,7 @@ export async function preparePrivateSwap(session: WalletSession, quote: SwapQuot
   if ((await pendingSwap(session)) || (await pendingWithdrawal(session)))
     throw new Error('Resolve the pending private transaction in recovery before preparing another.')
   const account = await unusedSwapAccount(session)
+  if (CHAIN_ID === 8453) await (await import('./base-setup')).requireBaseExecutionSetup(session, account.address)
   assertQuoteFresh(quote, account.address)
   const feeToken = prepaid ? WRAPPED_SYMBOL : feeTokenFor(quote.sell)
   const sameAsset = feeToken === quote.sell
@@ -210,6 +211,12 @@ export async function executePrivateSwap(
     0n,
     gas,
   )
+  if (CHAIN_ID === 8453) {
+    const expected = session.provider.getRpcTransaction({ authorizationList: [request.authorization] }).authorizationList
+    if (populated.transaction.type !== 4 || JSON.stringify(session.provider.getRpcTransaction(populated.transaction).authorizationList) !== JSON.stringify(expected))
+      throw new Error('The populated Base authorization differs from its signed execution.')
+    populated.transaction = { ...populated.transaction, type: 2, authorizationList: undefined }
+  }
   assertSameExecution(session, request, populated.transaction)
   if (request.executeNonce == null) throw new Error('Nonce-protected Railgun execution is required.')
   onProgress('Re-checking the selected route price…')
@@ -246,6 +253,6 @@ export async function executePrivateSwap(
   onProgress(`Waiting for two confirmations: ${hash}`)
   const receipt = await session.provider.waitForTransaction(hash, 2, 180_000)
   if (!receipt) throw new Error(`Confirmation pending: ${hash}. Check recovery before retrying.`)
-  onProgress(await reconcilePendingSwap(session))
+  onProgress(await reconcilePendingSwap(session, false, false, receipt))
   return hash
 }

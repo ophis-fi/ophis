@@ -1,6 +1,6 @@
 import './style.css'
 import { formatUnits } from 'ethers'
-import { newMnemonic, openWallet, startWalletEngine, syncWallet, type WalletSession } from './wallet'
+import { newMnemonic, openWallet, startWalletEngine, syncWallet, rebuildBaseHistory, type WalletSession } from './wallet'
 import { CHAIN_NAME, ENVIRONMENT, TOKENS, tokenIdFor } from './config'
 import { configurePrivateSelectors, refreshTokenSelectors } from './network-ui'
 import { importPrivateToken, loadTokenCatalog } from './token-catalog'
@@ -195,6 +195,10 @@ for (const id of ['open', 'unlock']) {
 
 element<HTMLButtonElement>('lock').onclick = () => location.reload()
 const refresh = element<HTMLButtonElement>('refresh')
+const rebuild = element<HTMLButtonElement>('rebuild-base-history')
+rebuild.onclick = () => run(rebuild, 'Rebuilding verified history…', async () => {
+  if (session.current) await rebuildBaseHistory(session.current)
+})
 refresh.onclick = () =>
   run(refresh, 'Refreshing…', async () => {
     element('private-wallet-error').textContent = ''

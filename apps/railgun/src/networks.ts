@@ -47,10 +47,19 @@ export const PRIVATE_NETWORKS = [
       { symbol: 'USDT' as const, address: '0x55d398326f99059ff775485246999027b3197955', decimals: 18, bridged: true },
     ],
   },
+  {
+    chainId: 8453, name: 'Base', network: NetworkName.Base, nativeSymbol: 'ETH', wrappedSymbol: 'WETH' as const,
+    router: '0x6fF5693b99212Da76ad316178A184AB56D299b43',
+    quoter: '0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a',
+    factory: '0x33128a8fC17869897dcE68Ed026d694621f6FDfD',
+    stables: [
+      { symbol: 'USDC' as const, address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', decimals: 6 },
+    ],
+  },
 ] as const
 
 export function privateNetwork(chainId: number) {
   const network = PRIVATE_NETWORKS.find((entry) => entry.chainId === chainId)
-  if (!network) throw new Error('Private swaps support Ethereum, Arbitrum, Polygon and BNB Chain.')
+  if (!network) throw new Error('Private swaps support Ethereum, Arbitrum, Polygon, BNB Chain and Base.')
   return network
 }

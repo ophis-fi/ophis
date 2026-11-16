@@ -1,12 +1,13 @@
 import { ByteLength, ByteUtils, CommitmentType, TokenType, type Commitment, type TXO } from '@railgun-community/engine'
 import { getRailgunWalletAddressData, parseRailgunTokenAddress } from '@railgun-community/wallet'
 import { getAddress, isHexString, type JsonRpcProvider, type TransactionReceipt } from 'ethers'
-import { CHAIN, NETWORK } from './config'
+import { CHAIN, CHAIN_ID, NETWORK } from './config'
 import { PROXY } from './transaction'
+import { receiptNetworkCost } from '../../railgun/network-fee'
 
-type ReceiptProvider = Pick<JsonRpcProvider, 'getNetwork' | 'getBlock' | 'getTransactionReceipt'>
+type ReceiptProvider = Pick<JsonRpcProvider, 'getNetwork' | 'getBlock' | 'getTransactionReceipt'> & Partial<Pick<JsonRpcProvider, 'send'>>
 const verifiedReceipts = new WeakMap<TransactionReceipt, Readonly<{ hash: string; blockNumber: number; blockHash: string;
-  gasUsed: bigint; gasPrice: bigint; status: number; minedAt: number }>>()
+  gasUsed: bigint; gasPrice: bigint; networkCost: bigint; status: number; minedAt: number }>>()
 
 export function finalizedCreditEvidence(receipt: TransactionReceipt) {
   const evidence = verifiedReceipts.get(receipt)
@@ -31,8 +32,9 @@ export async function finalizedCreditReceipt(provider: ReceiptProvider, transact
     (receipt.status !== 0 && receipt.status !== 1) || typeof receipt.gasUsed !== 'bigint' || receipt.gasUsed <= 0n ||
     typeof receipt.gasPrice !== 'bigint' || receipt.gasPrice < 0n)
     throw new Error('The credit receipt is not on the canonical finalized chain.')
+  const networkCost = await receiptNetworkCost(provider, receipt, CHAIN_ID)
   verifiedReceipts.set(receipt, Object.freeze({ hash: receipt.hash, blockNumber: receipt.blockNumber, blockHash: receipt.blockHash,
-    gasUsed: receipt.gasUsed, gasPrice: receipt.gasPrice, status: receipt.status, minedAt: canonical.timestamp * 1000 }))
+    gasUsed: receipt.gasUsed, gasPrice: receipt.gasPrice, networkCost, status: receipt.status, minedAt: canonical.timestamp * 1000 }))
   return receipt
 }
 

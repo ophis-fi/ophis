@@ -2,7 +2,7 @@ import { Contract, getAddress, Signature, ZeroAddress, type Authorization } from
 import { calculateGasLimit, type SelectedBroadcaster, type TransactionGasDetailsType4 } from '@railgun-community/shared-models'
 import { fullWalletForID, balanceForERC20Token, gasEstimateForUnprovenCrossContractCalls7702,
   generateCrossContractCallsProof7702, ratchetEphemeralAddress } from '@railgun-community/wallet'
-import { CHAIN, CHAIN_ID, CONFIG, MIN_SWAP_GAS, NETWORK, PROXY, tokenFor, VERSION, WRAPPED_SYMBOL, type TokenSymbol } from './config'
+import { CHAIN, CHAIN_ID, CONFIG, MIN_SWAP_GAS, NATIVE_SYMBOL, NETWORK, PROXY, tokenFor, VERSION, WRAPPED_SYMBOL, type TokenSymbol } from './config'
 import { unusedSwapAccount } from './account'
 import { broadcasterFee, capPrepaidGasPrice, gasDetails, prepaidFee, validateBroadcaster, type PrivateSubmitter } from './broadcaster'
 import type { PreparedCredit } from './prepaid'
@@ -34,7 +34,8 @@ export async function prepareBoundWithdrawal(session: WalletSession, token: Toke
   const feeToken = prepaid ? WRAPPED_SYMBOL : feeTokenFor(token)
   const asset = tokenFor(token), feeAsset = tokenFor(feeToken)
   const sameAsset = getAddress(asset.address) === getAddress(feeAsset.address)
-  if (nativeOutput && (CHAIN_ID !== 56 || !sameAsset)) throw new Error('Native BNB withdrawal requires private WBNB on BNB Chain.')
+  if (nativeOutput && getAddress(asset.address) !== getAddress(tokenFor(WRAPPED_SYMBOL).address))
+    throw new Error(`Native ${NATIVE_SYMBOL} withdrawal requires private ${WRAPPED_SYMBOL}.`)
   if (!nativeOutput && sameAsset && !prepaid) throw new Error('A same-token withdrawal uses one atomic private proof.')
   if (!prepaid) validateBroadcaster(selected, feeAsset.address, true)
   await refreshReceivedBalances(session)
@@ -43,6 +44,7 @@ export async function prepareBoundWithdrawal(session: WalletSession, token: Toke
   const reserve = prepaid ? 0n : sameAsset ? principal : await balanceForERC20Token(VERSION, wallet, NETWORK, feeAsset.address, true)
   const requested = maximum ? undefined : amountFromInput(value, token)
   const account = await unusedSwapAccount(session)
+  if (CHAIN_ID === 8453) await (await import('./base-setup')).requireBaseExecutionSetup(session, account.address)
   const feeBps: bigint = await new Contract(CONFIG.proxyContract, PROXY, session.provider).getFunction('unshieldFee')()
   let gas = await gasDetails(session)
   if (prepaid) {
@@ -100,7 +102,8 @@ export async function executeBoundWithdrawal(session: WalletSession, prepared: P
     actionData, Number(request.authorization.nonce), request, undefined, request.ephemeralAddress)
   const strict = { ...request, actionData, authorization: signed.authorization, executionSignature: signed.signature }
   const encoded = encodeRequest(strict)
-  const transaction = { to: prepared.account, data: String(encoded.data), value: 0n, type: 4, authorizationList: [strict.authorization], chainId: CHAIN, gasLimit: calculateGasLimit(gas.gasEstimate),
+  const transaction = { to: prepared.account, data: String(encoded.data), value: 0n,
+    ...(CHAIN_ID === 8453 ? { type: 2 } : { type: 4, authorizationList: [strict.authorization] }), chainId: CHAIN, gasLimit: calculateGasLimit(gas.gasEstimate),
     maxFeePerGas: gas.maxFeePerGas, maxPriorityFeePerGas: gas.maxPriorityFeePerGas }
   assertSameExecution(session, strict, transaction)
   assertBoundWithdrawal(String(transaction.data), prepared.account, token, amounts[0].recipientAddress, prepared.minimum, prepared.output, prepaid ? 'prepaid' : undefined)
@@ -115,6 +118,7 @@ export async function executeBoundWithdrawal(session: WalletSession, prepared: P
     nullifiers: strict.transactions.flatMap((tx) => tx.nullifiers.map(String)),
     transaction: { to: prepared.account, data: String(transaction.data), value: '0' }, minGasPrice: '0',
     execution: { index: prepared.index, account: prepared.account, executeNonce: strict.executeNonce!.toString(),
+      ...(CHAIN_ID === 8453 ? { predelegated: true as const } : {}),
       authorization: storedAuthorization(strict.authorization), gasEstimate: gas.gasEstimate.toString(),
       maxFeePerGas: gas.maxFeePerGas.toString(), maxPriorityFeePerGas: gas.maxPriorityFeePerGas.toString() } }
   await savePendingWithdrawal(session, pending)
@@ -127,6 +131,6 @@ export async function executeBoundWithdrawal(session: WalletSession, prepared: P
   const receipt = await session.provider.waitForTransaction(hash, 2, 180_000)
   if (!receipt) throw new Error(`Withdrawal unconfirmed: ${hash}. Keep the saved signed execution.`)
   assertWithdrawalReceipt(receipt, pending)
-  await reconcilePendingWithdrawal(session)
+  await reconcilePendingWithdrawal(session, receipt)
   return hash
 }

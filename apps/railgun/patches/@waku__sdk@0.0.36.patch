@@ -1,0 +1,55 @@
+diff --git a/dist/filter/subscription.js b/dist/filter/subscription.js
+index d758df35b34df34c561b9d10c749d1ec983454f3..8c6aa3aaa86d3d2ca28229eb94db0ba04192ad55 100644
+--- a/dist/filter/subscription.js
++++ b/dist/filter/subscription.js
+@@ -276,9 +276,11 @@ export class Subscription {
+     }
+     async attemptSubscribe(params) {
+         const { useNewContentTopics, useOnlyNewPeers = false } = params;
+-        const contentTopics = useNewContentTopics
+-            ? Array.from(this.toSubscribeContentTopics)
+-            : this.contentTopics;
++        // Qualify each peer against every desired topic, including existing ones.
++        const contentTopics = this.contentTopics;
++        for (const topic of this.toSubscribeContentTopics) {
++            if (!contentTopics.includes(topic)) this.toSubscribeContentTopics.delete(topic);
++        }
+         log.info(`Attempting to subscribe: useNewContentTopics=${useNewContentTopics}, useOnlyNewPeers=${useOnlyNewPeers}, contentTopics=${contentTopics.length}`);
+         if (!contentTopics.length) {
+             log.warn("Requested content topics is an empty array, skipping");
+@@ -301,15 +303,31 @@ export class Subscription {
+         log.info(`Subscribing with ${peersToUse.length} peers for ${contentTopics.length} content topics`);
+         if (useOnlyNewPeers && peersToUse.length === 0) {
+             log.warn(`Requested to use only new peers, but no peers found, skipping`);
++            if (this.peers.size === 0) {
++                for (const topic of contentTopics) {
++                    if (this.contentTopics.includes(topic)) this.toSubscribeContentTopics.add(topic);
++                }
++            }
+             return false;
+         }
+-        const results = await Promise.all(peersToUse.map((p) => this.requestSubscribe(p, contentTopics)));
++        const results = await Promise.all(peersToUse.map(async (p) => {
++            let accepted = false;
++            try { accepted = await this.requestSubscribe(p, contentTopics); }
++            catch { /* The peer did not acknowledge this topic set. */ }
++            if (!accepted) {
++                this.peers.delete(p.toString());
++                this.peerFailures.delete(p.toString());
++            }
++            return accepted;
++        }));
+         const successCount = results.filter((r) => r).length;
+         log.info(`Subscribe attempts completed: ${successCount}/${results.length} successful`);
+-        if (useNewContentTopics) {
+-            this.toSubscribeContentTopics = new Set();
++        const accepted = results.some((v) => v);
++        for (const topic of contentTopics) {
++            if (accepted && this.peers.size > 0) this.toSubscribeContentTopics.delete(topic);
++            else if (this.contentTopics.includes(topic)) this.toSubscribeContentTopics.add(topic);
+         }
+-        return results.some((v) => v);
++        return accepted;
+     }
+     async requestSubscribe(peerId, contentTopics) {
+         log.info(`requestSubscribe: pubsubTopic:${this.pubsubTopic}\tcontentTopics:${contentTopics.join(",")}`);

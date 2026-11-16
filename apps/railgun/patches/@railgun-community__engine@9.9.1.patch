@@ -1,8 +1,7 @@
 diff --git a/dist/merkletree/utxo-merkletree.js b/dist/merkletree/utxo-merkletree.js
-index 3daf20d1ba536b295a734511c29ababb20480194..f622b531d4178eb91f11c443b86bd29dcd89ce8c 100644
 --- a/dist/merkletree/utxo-merkletree.js
 +++ b/dist/merkletree/utxo-merkletree.js
-@@ -125,13 +125,15 @@ class UTXOMerkletree extends merkletree_1.Merkletree {
+@@ -125,13 +125,15 @@
      async addUnshieldEvents(unshields, replaceExisting = false) {
          let newUnshields = unshields;
          if (!replaceExisting) {
@@ -25,3 +24,265 @@ index 3daf20d1ba536b295a734511c29ababb20480194..f622b531d4178eb91f11c443b86bd29d
          }
          // Build write batch for nullifiers
          const writeBatch = newUnshields.map((unshield) => ({
+diff --git a/dist/railgun-engine.js b/dist/railgun-engine.js
+--- a/dist/railgun-engine.js
++++ b/dist/railgun-engine.js
+@@ -53,6 +53,10 @@
+     wallets = {};
+     deploymentBlocks = new registry_2.Registry();
+     quickSyncEvents;
++    baseHistorySource;
++    baseHistoryResetReady = false;
++    baseHistoryScanning;
++    baseHistoryComplete;
+     quickSyncRailgunTransactionsV2;
+     validateRailgunTxidMerkleroot;
+     getLatestValidatedRailgunTxid;
+@@ -363,20 +367,49 @@
+      * @param chain - chain type/id to scan
+      * @param walletIdFilter - optional list of wallet ids to decrypt balances
+      */
++    setBaseHistorySource(source) {
++        if (typeof source !== 'function') throw new Error('A Base history source is required.');
++        this.baseHistorySource = source;
++    }
++    async baseHistoryCheckpoint() {
++        try {
++            return JSON.parse(await this.db.get([database_1.DatabaseNamespace.ChainSyncInfo, 'ophis_base_history_v1'], 'utf8'));
++        } catch (error) {
++            if (error?.notFound) return undefined;
++            throw error;
++        }
++    }
+     async scanContractHistory(chain, walletIdFilter) {
+         for (const txidVersion of poi_types_1.ACTIVE_TXID_VERSIONS) {
+             if (!(0, chain_1.getChainSupportsV3)(chain) && txidVersion === poi_types_1.TXIDVersion.V3_PoseidonMerkle) {
+                 continue;
+             }
+             // eslint-disable-next-line no-await-in-loop
+-            await this.scanUTXOHistory(txidVersion, chain, walletIdFilter);
+-        }
++            const complete = await this.scanUTXOHistory(txidVersion, chain, walletIdFilter);
++            if (this.baseHistorySource && chain.type === 0 && chain.id === 8453 && complete === false) return;
++        }
++        if (this.baseHistorySource && chain.type === 0 && chain.id === 8453) return;
+         await this.scanTXIDHistoryV2(chain);
+     }
+     /**
+      * Scan (via quick sync or slow sync) on-chain data for the UTXO merkletree.
+      */
+     async scanUTXOHistory(txidVersion, chain, walletIdFilter) {
++        if (!(this.baseHistorySource && chain.type === 0 && chain.id === 8453))
++            return this.scanUTXOHistoryInternal(txidVersion, chain, walletIdFilter);
++        // An explicit reset owns the tree flag before it starts the next scan.
++        if (!this.baseHistoryScanning && this.hasUTXOMerkletree(txidVersion, chain) && this.getUTXOMerkletree(txidVersion, chain).isScanning)
++            return false;
++        // Coalesce from before history-version migration; no concurrent initial reset.
++        if (!this.baseHistoryScanning) {
++            const completion = new Promise(resolve => { this.baseHistoryComplete = resolve; });
++            this.baseHistoryScanning = this.scanUTXOHistoryInternal(txidVersion, chain, walletIdFilter)
++                .then(async complete => { if (complete === true) await completion; return complete; })
++                .finally(() => { this.baseHistoryComplete = undefined; this.baseHistoryScanning = undefined; });
++        }
++        return this.baseHistoryScanning;
++    }
++    async scanUTXOHistoryInternal(txidVersion, chain, walletIdFilter) {
+         if (this.skipMerkletreeScans) {
+             debugger_1.default.log(`Skipping merkletree scan: skipMerkletreeScans set on RAILGUN Engine.`);
+             return;
+@@ -409,23 +442,44 @@
+             // from a bad quick-sync source - would otherwise hold lastSyncedBlock for the life of
+             // the process. The cursor was not advanced past it, so this scan fetches it again.
+             utxoMerkletree.clearWriteQueue();
+-            await this.performQuickSync(txidVersion, chain, postQuickSyncProgress);
+-            this.emitUTXOMerkletreeScanUpdateEvent(txidVersion, chain, postQuickSyncProgress); // 50%
+-            // Get updated start-scanning block from new valid utxoMerkletree.
+-            const startScanningBlockSlowScan = await this.getNextStartingBlockSlowScan(txidVersion, chain);
+-            debugger_1.default.log(`[${txidVersion}] startScanningBlockSlowScan: ${startScanningBlockSlowScan}`);
+-            const railgunSmartWalletContract = contract_store_1.ContractStore.railgunSmartWalletContracts.get(null, chain);
+-            if (!railgunSmartWalletContract?.contract.runner?.provider) {
+-                throw new Error('Requires RailgunSmartWalletContract with provider');
+-            }
+-            const latestBlock = await railgunSmartWalletContract.contract.runner.provider.getBlockNumber();
+-            switch (txidVersion) {
+-                case poi_types_1.TXIDVersion.V2_PoseidonMerkle:
+-                    await this.slowSyncV2(chain, utxoMerkletree, startScanningBlockSlowScan, latestBlock, postQuickSyncProgress);
+-                    break;
+-                case poi_types_1.TXIDVersion.V3_PoseidonMerkle:
+-                    await this.slowSyncV3(chain, utxoMerkletree, startScanningBlockSlowScan, latestBlock, postQuickSyncProgress);
+-                    break;
++            const strictBase = this.baseHistorySource && chain.type === 0 && chain.id === 8453;
++            let baseScan;
++            if (strictBase) {
++                if (txidVersion !== poi_types_1.TXIDVersion.V2_PoseidonMerkle || this.hasTXIDMerkletree(txidVersion, chain))
++                    throw new Error('Strict Base public history requires V2 without a POI TXID tree.');
++                const checkpoint = await this.baseHistoryCheckpoint();
++                if (!this.baseHistoryResetReady && (!checkpoint || checkpoint.dirty))
++                    throw new Error('Base public history requires an explicit verified rescan.');
++                baseScan = await this.baseHistorySource(this.baseHistoryResetReady ? undefined : checkpoint);
++                // A failed persistent listener write must not become clean history on a later retry.
++                await this.db.put([database_1.DatabaseNamespace.ChainSyncInfo, 'ophis_base_history_v1'], JSON.stringify({ ...checkpoint, dirty: true }), 'utf8');
++                this.baseHistoryResetReady = false;
++                const { commitmentEvents, unshieldEvents, nullifierEvents } = baseScan.events;
++                await this.unshieldListener(txidVersion, chain, unshieldEvents);
++                await this.nullifierListener(txidVersion, chain, nullifierEvents);
++                await this.commitmentListener(txidVersion, chain, commitmentEvents, false, false);
++                await utxoMerkletree.updateTreesFromWriteQueue();
++                if (utxoMerkletree.hasPendingWrites() || utxoMerkletree.getFirstInvalidMerklerootTree() != null)
++                    throw new Error('Base public history did not complete its Merkle writes.');
++            } else {
++                await this.performQuickSync(txidVersion, chain, postQuickSyncProgress);
++                this.emitUTXOMerkletreeScanUpdateEvent(txidVersion, chain, postQuickSyncProgress); // 50%
++                // Get updated start-scanning block from new valid utxoMerkletree.
++                const startScanningBlockSlowScan = await this.getNextStartingBlockSlowScan(txidVersion, chain);
++                debugger_1.default.log(`[${txidVersion}] startScanningBlockSlowScan: ${startScanningBlockSlowScan}`);
++                const railgunSmartWalletContract = contract_store_1.ContractStore.railgunSmartWalletContracts.get(null, chain);
++                if (!railgunSmartWalletContract?.contract.runner?.provider) {
++                    throw new Error('Requires RailgunSmartWalletContract with provider');
++                }
++                const latestBlock = await railgunSmartWalletContract.contract.runner.provider.getBlockNumber();
++                switch (txidVersion) {
++                    case poi_types_1.TXIDVersion.V2_PoseidonMerkle:
++                        await this.slowSyncV2(chain, utxoMerkletree, startScanningBlockSlowScan, latestBlock, postQuickSyncProgress);
++                        break;
++                    case poi_types_1.TXIDVersion.V3_PoseidonMerkle:
++                        await this.slowSyncV3(chain, utxoMerkletree, startScanningBlockSlowScan, latestBlock, postQuickSyncProgress);
++                        break;
++                }
+             }
+             const { tree: latestTree } = await utxoMerkletree.getLatestTreeAndIndex();
+             // check roots for trees up to this tree on 'scan'
+@@ -441,12 +495,18 @@
+                     throw new Error(`Invalid merkleroot: ${root}. Tree: ${treeIndex}. Index: ${index}.`);
+                 }
+             }
++            if (baseScan) await baseScan.validate(utxoMerkletree);
+             // Final balance decryption after all leaves added.
+             const decryptStartingProgress = 0.7;
+             await this.decryptBalancesAllWallets(txidVersion, chain, walletIdFilter, (progress) => {
+                 const overallProgress = progress * (0.97 - decryptStartingProgress) + decryptStartingProgress;
+                 this.emitUTXOMerkletreeScanUpdateEvent(txidVersion, chain, overallProgress); // 90-97%
+             }, true);
++            if (baseScan) {
++                // One atomic value binds coverage to canonical history; never commit in the catch path.
++                await baseScan.validate(utxoMerkletree);
++                await this.db.put([database_1.DatabaseNamespace.ChainSyncInfo, 'ophis_base_history_v1'], JSON.stringify(baseScan.checkpoint), 'utf8');
++            }
+             this.emitUTXOMerkletreeScanUpdateEvent(txidVersion, chain, 0.97); // 97%
+             // The handler of EngineEvent.UTXOScanDecryptBalancesComplete will
+             // call emitScanEventHistoryComplete when it is done processing balances since that can take some time.
+@@ -457,26 +517,37 @@
+                 walletIdFilter,
+             };
+             this.emit(event_types_1.EngineEvent.UTXOScanDecryptBalancesComplete, decryptBalancesCompleteEventData);
++            return true;
+         }
+         catch (err) {
++            if (this.baseHistorySource && chain.type === 0 && chain.id === 8453 && err?.requiresBaseHistoryRescan === true) {
++                this.baseHistoryResetReady = false;
++                await this.db.put([database_1.DatabaseNamespace.ChainSyncInfo, 'ophis_base_history_v1'], JSON.stringify({ dirty: true }), 'utf8');
++            }
+             if (err instanceof Error) {
+                 debugger_1.default.log(`Scan incomplete for chain ${chain.type}:${chain.id}`);
+                 debugger_1.default.error(err);
+             }
+             await this.decryptBalancesAllWallets(txidVersion, chain, walletIdFilter, undefined, // progressCallback
+             false);
++            const strictBase = this.baseHistorySource && chain.type === 0 && chain.id === 8453;
++            const checkpoint = strictBase ? await this.baseHistoryCheckpoint().catch(() => ({ dirty: true })) : undefined;
+             const scanIncompleteData = {
+                 scanStatus: event_types_1.MerkletreeScanStatus.Incomplete,
+                 txidVersion,
+                 chain,
++                ...(strictBase ? { requiresRescan: !this.baseHistoryResetReady && (!checkpoint || checkpoint.dirty === true) } : {}),
+             };
+             this.emit(event_types_1.EngineEvent.UTXOMerkletreeHistoryScanUpdate, scanIncompleteData);
++            return false;
+         }
+         finally {
+             utxoMerkletree.isScanning = false;
+         }
+     }
+     emitScanEventHistoryComplete(txidVersion, chain) {
++        const strictBase = this.baseHistorySource && chain.type === 0 && chain.id === 8453;
++        if (strictBase && !this.baseHistoryComplete) return;
+         this.emitUTXOMerkletreeScanUpdateEvent(txidVersion, chain, 1.0); // 100%
+         const scanCompleteData = {
+             scanStatus: event_types_1.MerkletreeScanStatus.Complete,
+@@ -484,6 +555,7 @@
+             chain,
+         };
+         this.emit(event_types_1.EngineEvent.UTXOMerkletreeHistoryScanUpdate, scanCompleteData);
++        if (strictBase) { this.baseHistoryComplete(); this.baseHistoryComplete = undefined; }
+     }
+     async slowSyncV2(chain, utxoMerkletree, startScanningBlockSlowScan, latestBlock, postQuickSyncProgress) {
+         const txidVersion = poi_types_1.TXIDVersion.V2_PoseidonMerkle;
+@@ -1072,6 +1144,10 @@
+      * @param chain - chain type/id to clear
+      */
+     async clearSyncedUTXOMerkletreeLeavesAllTXIDVersions(chain) {
++        if (this.baseHistorySource && chain.type === 0 && chain.id === 8453) {
++            this.baseHistoryResetReady = false;
++            await this.db.put([database_1.DatabaseNamespace.ChainSyncInfo, 'ophis_base_history_v1'], JSON.stringify({ dirty: true }), 'utf8');
++        }
+         for (const txidVersion of Object.values(poi_types_1.TXIDVersion)) {
+             if (!(0, chain_1.getChainSupportsV3)(chain) && txidVersion === poi_types_1.TXIDVersion.V3_PoseidonMerkle) {
+                 continue;
+@@ -1086,8 +1162,11 @@
+     async clearUTXOMerkletreeAndLoadedWalletsAllTXIDVersions(chain) {
+         await this.clearSyncedUTXOMerkletreeLeavesAllTXIDVersions(chain);
+         await Promise.all(this.allWallets().map((wallet) => wallet.clearDecryptedBalancesAllTXIDVersions(chain)));
++        if (this.baseHistorySource && chain.type === 0 && chain.id === 8453) this.baseHistoryResetReady = true;
+     }
+     async clearSyncedUnshieldEvents(txidVersion, chain) {
++        if (this.baseHistorySource && chain.type === 0 && chain.id === 8453)
++            await this.db.put([database_1.DatabaseNamespace.ChainSyncInfo, 'ophis_base_history_v1'], JSON.stringify({ dirty: true }), 'utf8');
+         const utxoMerkletree = this.getUTXOMerkletree(txidVersion, chain);
+         await this.db.clearNamespace(
+         // All Unshields
+@@ -1104,6 +1183,8 @@
+      * @param forceRescanDevOnly - can corrupt an existing scan, so only recommended in extreme cases (DEV only)
+      */
+     async fullRescanUTXOMerkletreesAndWallets(chain, walletIdFilter, forceRescanDevOnly = false) {
++        if (this.baseHistorySource && chain.type === 0 && chain.id === 8453 && this.baseHistoryScanning)
++            throw new Error('Wait for the current Base history verification before rebuilding.');
+         for (const txidVersion of poi_types_1.ACTIVE_TXID_VERSIONS) {
+             if (!(0, chain_1.getChainSupportsV3)(chain) && txidVersion === poi_types_1.TXIDVersion.V3_PoseidonMerkle) {
+                 continue;
+@@ -1325,6 +1406,8 @@
+         if (this.skipMerkletreeScans) {
+             return;
+         }
++        // Strict Base reads shared verified history on demand; do not install paid live-log polling.
++        if (this.baseHistorySource && chain.type === 0 && chain.id === 8453) return;
+         // Set up listeners
+         const commitmentListener = async (txidVersion, commitmentEvents) => {
+             // Only start wallet balance decryption if utxoMerkletree is not already scanning
+diff --git a/dist/railgun-engine.d.ts b/dist/railgun-engine.d.ts
+--- a/dist/railgun-engine.d.ts
++++ b/dist/railgun-engine.d.ts
+@@ -34,6 +34,16 @@
+     };
+     readonly deploymentBlocks: Registry<number>;
+     readonly quickSyncEvents: QuickSyncEvents;
++    setBaseHistorySource(source: (checkpoint?: { blockNumber: number; blockHash: string }) => Promise<{
++        events: Awaited<ReturnType<QuickSyncEvents>>;
++        checkpoint: { blockNumber: number; blockHash: string };
++        validate: (tree: UTXOMerkletree) => Promise<void>;
++    }>): void;
++    private baseHistorySource;
++    private baseHistoryResetReady;
++    private baseHistoryScanning;
++    private baseHistoryComplete;
++    private baseHistoryCheckpoint;
+     readonly quickSyncRailgunTransactionsV2: QuickSyncRailgunTransactionsV2;
+     readonly validateRailgunTxidMerkleroot: MerklerootValidator;
+     readonly getLatestValidatedRailgunTxid: GetLatestValidatedRailgunTxid;
+@@ -98,6 +108,7 @@
+      * Scan (via quick sync or slow sync) on-chain data for the UTXO merkletree.
+      */
+     private scanUTXOHistory;
++    private scanUTXOHistoryInternal;
+     emitScanEventHistoryComplete(txidVersion: TXIDVersion, chain: Chain): void;
+     private slowSyncV2;
+     private slowSyncV3;

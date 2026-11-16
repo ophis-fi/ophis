@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { expect, it } from 'vitest'
 
-it.each([1, 56])('requires explicit fork configuration before accessing chain %i', (chainId) => {
+it.each([1, 56, 42161, 8453])('requires explicit fork configuration before accessing chain %i', (chainId) => {
   for (const upstream of [undefined, 'http://127.0.0.1:1']) {
     const result = spawnSync(process.execPath, [fileURLToPath(new URL('./prepaid-fork-roundtrip.mjs', import.meta.url))], {
       env: { OPHIS_PREPAID_TEST_CHAIN_ID: String(chainId), ...(upstream ? { OPHIS_PREPAID_TEST_UPSTREAM: upstream } : {}) },

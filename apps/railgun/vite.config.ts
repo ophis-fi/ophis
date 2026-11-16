@@ -1,15 +1,18 @@
-import { defineConfig, loadEnv, searchForWorkspaceRoot, type Connect } from 'vite'
+import { defineConfig, loadEnv, searchForWorkspaceRoot, type Connect, type ProxyOptions } from 'vite'
 import { realpathSync } from 'node:fs'
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
+import { BASE_HISTORY_PATH, baseHistoryOrigin } from './base-history'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
+  const historyOrigin = baseHistoryOrigin(env.RAILGUN_BASE_HISTORY_ORIGIN, true)
   const endpoints: Record<string, string | undefined> = {
     '/rpc': env.RAILGUN_RPC_URL,
     '/rpc/1': env.RAILGUN_RPC_URL,
     '/rpc/42161': env.RAILGUN_ARBITRUM_RPC_URL,
     '/rpc/137': env.RAILGUN_POLYGON_RPC_URL,
     '/rpc/56': env.RAILGUN_BNB_RPC_URL,
+    '/rpc/8453': env.RAILGUN_BASE_RPC_URL,
   }
   if (!Object.values(endpoints).some(Boolean))
     throw new Error('Set an explicitly trusted Railgun network RPC or local Anvil fork.')
@@ -21,13 +24,26 @@ export default defineConfig(({ mode }) => {
     'Content-Security-Policy':
       `default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' https: wss: ws://127.0.0.1:4319; worker-src 'self' blob:; img-src 'self' data:; frame-src https://verify.walletconnect.org; frame-ancestors ${env.VITE_RAILGUN_ASSET_BASE === '/private/' ? "'self'" : "'none'"}; base-uri 'none'; form-action 'none'`,
   }
+  const configure: NonNullable<ProxyOptions['configure']> = (connection) =>
+    connection.on('proxyReq', request => {
+      for (const header of ['origin', 'cookie', 'authorization']) request.removeHeader(header)
+    })
   const proxy = Object.fromEntries(Object.entries(endpoints).flatMap(([path, target]) => target ? [[`^${path}$`, {
-    target, changeOrigin: true, prependPath: false, rewrite: () => new URL(target).pathname + new URL(target).search,
+    target, changeOrigin: true, prependPath: false, configure, rewrite: () => new URL(target).pathname + new URL(target).search,
   }]] : []))
+  const historyProxy: ProxyOptions = { target: historyOrigin, changeOrigin: true, configure }
+  Object.assign(proxy, { [`^${BASE_HISTORY_PATH}/`]: historyProxy })
   const protectRPC = (server: { middlewares: Connect.Server }) => {
     server.middlewares.use((request, response, next) => {
       const path = request.url?.split('?')[0] || ''
       if (path !== '/rpc' && !path.startsWith('/rpc/')) return next()
+      if (path.startsWith(`${BASE_HISTORY_PATH}/`)) {
+        const validPath = new RegExp(`^${BASE_HISTORY_PATH}/(?:manifest|page/[0-9a-f]{64}/(?:0|[1-9][0-9]{0,3})|tail/[0-9a-f]{64})$`).test(path)
+        if (validPath && !request.url?.includes('?') && request.method === 'GET' &&
+          (!request.headers.origin || request.headers.origin === `http://${request.headers.host}`)) return next()
+        response.writeHead(403, { 'Content-Type': 'application/json' })
+        response.end(JSON.stringify({ error: 'History requires a fixed same-origin GET.' })); return
+      }
       let status = 0
       if (!endpoints[path]) status = 503
       else if (request.headers.origin && request.headers.origin !== `http://${request.headers.host}`) status = 403

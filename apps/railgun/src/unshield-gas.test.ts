@@ -3,7 +3,7 @@ import { EVMGasType, getEVMGasTypeForTransaction, type SelectedBroadcaster } fro
 import type { WalletSession } from './wallet'
 import { withdrawalData } from '../tests/withdrawal.fixture'
 
-const state = vi.hoisted(() => ({ estimate: vi.fn(), create: vi.fn(), send: vi.fn(), balance: 10_000_000n, pilot: undefined as string | undefined }))
+const state = vi.hoisted(() => ({ estimate: vi.fn(), prove: vi.fn(), create: vi.fn(), send: vi.fn(), balance: 10_000_000n, pilot: undefined as string | undefined }))
 vi.mock('./prepaid', () => ({ assertPrepaidContext: vi.fn() }))
 vi.mock('ethers', async (original) => ({
   ...await original<typeof import('ethers')>(),
@@ -11,6 +11,7 @@ vi.mock('ethers', async (original) => ({
 }))
 vi.mock('@railgun-community/wallet', async (original) => ({
   ...await original<typeof import('@railgun-community/wallet')>(), gasEstimateForUnprovenUnshield: state.estimate,
+  generateUnshieldProof: state.prove,
   fullWalletForID: () => ({}), balanceForERC20Token: async () => state.balance,
 }))
 vi.mock('@railgun-community/waku-broadcaster-client-web', () => ({
@@ -101,6 +102,57 @@ it('prepares a full USDC common withdrawal without a fee commitment using explic
   expect(state.estimate.mock.calls[0][8]).toBe(true)
 })
 
+it.each([
+  [42161, 'native', 20_046_000n, 100_000_000n, 22_050_601n],
+  [42161, 'native', 95_000_000n, 100_000_000n, 100_000_000n],
+  [42161, 'private', 20_046_000n, 100_000_000n, 20_046_000n],
+  [1, 'native', 20_046_000n, 100_000_000n, 20_046_000n],
+] as const)('reviews COMMON fee headroom only for native-prepaid Arbitrum (%s/%s/%s)', async (chainId, funding, suggested, cap, expected) => {
+  vi.stubEnv('VITE_RAILGUN_CHAIN_ID', String(chainId))
+  const { TOKENS, FEE_SIGNER } = await import('./config')
+  const { prepareUnshield, executeUnshield } = await import('./unshield')
+  const { prepaidAttemptFee } = await import('./prepaid-pricing')
+  const selected = { railgunAddress: FEE_SIGNER, tokenAddress: TOKENS.WETH.address,
+    tokenFee: { expiration: Date.now() + 600_000, feePerUnitGas: '1150000000000000000' } } as SelectedBroadcaster
+  const credit = { scope: { chainId, funding, token: TOKENS.WETH.address, recipient: FEE_SIGNER },
+    rate: 1_150_000_000_000_000_000n, collectionAllowance: 0n, maximumGasPrice: cap,
+    maximumGasCost: 1_000_000_000_000_000n, maximumCharge: 1_150_000_000_000_000n } as NonNullable<Parameters<typeof prepareUnshield>[7]>
+  const fees = vi.fn(async (): Promise<{ gasPrice: bigint }> => ({ gasPrice: suggested })), block = vi.fn(async () => ({ baseFeePerGas: 0n }))
+  const session = { info: { id: 'test' }, key: 'test',
+    accounts: { getCurrentAccount: async () => ({ address: '0x0000000000000000000000000000000000001234' }) },
+    provider: { getFeeData: fees, getBlock: block } } as unknown as WalletSession
+  const prepared = await prepareUnshield(session, 'USDC', '', '0x0000000000000000000000000000000000005678', selected, true, false, credit)
+  if (prepared.kind !== 'COMMON') throw new Error('Expected COMMON withdrawal')
+  expect(prepared.gas.gasPrice).toBe(expected)
+  expect(state.estimate.mock.calls[0][6].gasPrice).toBe(expected)
+  expect(prepared.fee.amount).toBe(prepaidAttemptFee(credit, prepared.gas))
+  expect(prepared.fee.amount).toBeLessThanOrEqual(credit.maximumCharge)
+  expect(state.prove).not.toHaveBeenCalled()
+  expect(fees).toHaveBeenCalledOnce()
+  if (chainId === 42161) expect(block).not.toHaveBeenCalled()
+  fees.mockResolvedValue({ gasPrice: cap * 2n })
+  state.prove.mockRejectedValueOnce(new Error('Synthetic proof boundary'))
+  await expect(executeUnshield(session, prepared, () => {}, { assertReady: vi.fn(), send: vi.fn() }))
+    .rejects.toThrow('Synthetic proof boundary')
+  expect(state.prove.mock.calls[0][8]).toBe(expected)
+  expect(fees).toHaveBeenCalledOnce()
+})
+
+it('refuses native-prepaid Arbitrum COMMON when the current price cannot fit under its cap', async () => {
+  vi.stubEnv('VITE_RAILGUN_CHAIN_ID', '42161')
+  const { TOKENS, FEE_SIGNER } = await import('./config')
+  const { prepareUnshield } = await import('./unshield')
+  const credit = { scope: { funding: 'native' }, maximumGasPrice: 100n } as NonNullable<Parameters<typeof prepareUnshield>[7]>
+  const selected = { railgunAddress: FEE_SIGNER, tokenAddress: TOKENS.WETH.address } as SelectedBroadcaster
+  const session = { info: { id: 'test' }, key: 'test',
+    accounts: { getCurrentAccount: async () => ({ address: '0x0000000000000000000000000000000000001234' }) },
+    provider: { getFeeData: async () => ({ gasPrice: 100n }) } } as unknown as WalletSession
+  await expect(prepareUnshield(session, 'USDC', '', '0x0000000000000000000000000000000000005678', selected, true, false, credit))
+    .rejects.toThrow('reviewed prepaid limit')
+  expect(state.estimate).not.toHaveBeenCalled()
+  expect(state.prove).not.toHaveBeenCalled()
+})
+
 it('rejects a WETH quote before proving for the USDC withdrawal pilot', async () => {
   vi.stubEnv('VITE_RAILGUN_CHAIN_ID', '1')
   const { TOKENS, FEE_SIGNER } = await import('./config')
@@ -133,6 +185,12 @@ it.each([1, 42161, 137, 56])('preserves SDK withdrawal gas policy on chain %s an
   expect(PROTECTED_BROADCASTERS[chainId]).toBeUndefined()
   state.balance = 10n ** BigInt(TOKENS.USDC.decimals + 1)
   const token = chainId === 56 ? 'WBNB' : 'USDC'
+  if (chainId === 42161) {
+    await expect(prepareUnshield(session, token, '1', '0x0000000000000000000000000000000000005678', selected))
+      .rejects.toThrow('not approved for public submissions')
+    expect(state.prove).not.toHaveBeenCalled()
+    selected.railgunAddress = '0zk1qyzgh9ctuxm6d06gmax39xutjgrawdsljtv80lqnjtqp3exxayuf0rv7j6fe3z53laetcl9u3cma0q9k4npgy8c8ga4h6mx83v09m8ewctsekw4a079dcl5sw4k'
+  }
   const prepared = await prepareUnshield(session, token, '1', '0x0000000000000000000000000000000000005678', selected)
   if (prepared.kind !== 'COMMON') throw new Error('Expected a same-asset common withdrawal')
   const expectedType = chainId === 56 ? EVMGasType.Type0 : EVMGasType.Type1

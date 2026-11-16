@@ -68,6 +68,17 @@ it('persists recovery before disclosing a signed spend and retains it after simu
   expect(send).not.toHaveBeenCalled()
 })
 
+it('stops a prepaid balance timeout before creating a proof or recovery record', async () => {
+  const prepaid = {} as NonNullable<Parameters<typeof executePrivateSwap>[1]['prepaid']>
+  const ready = vi.fn().mockRejectedValue(new Error('Prepaid balance check response timed out')), send = vi.fn()
+  await expect(executePrivateSwap(session, { ...prepared, prepaid }, () => {}, { assertReady: ready, send }))
+    .rejects.toThrow('balance check response timed out')
+  expect(state.proof).not.toHaveBeenCalled()
+  expect(state.save).not.toHaveBeenCalled()
+  expect(state.simulate).not.toHaveBeenCalled()
+  expect(send).not.toHaveBeenCalled()
+})
+
 it('omits the proof fee only for an explicit prepaid preparation and saves that recovery mode', async () => {
   const prepaid = { feesID: 'synthetic-reviewed-credit' } as NonNullable<Parameters<typeof executePrivateSwap>[1]['prepaid']>
   const ready = vi.fn(), send = vi.fn()

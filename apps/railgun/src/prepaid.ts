@@ -7,17 +7,19 @@ import { calculateGasLimit, calculateGasPrice, calculateMaximumGas, EVMGasType, 
 import { authorizationify, getAddress, hexlify, isHexString, keccak256, randomBytes, toUtf8Bytes, verifyAuthorization, ZeroAddress,
   type JsonRpcSigner, type TransactionRequest, type TransactionResponse } from 'ethers'
 import { Buffer } from 'buffer'
-import { CREDIT_AUTHORIZATION_TYPES, CREDIT_PROTOCOL, CREDIT_REQUEST_LIFETIME, creditAuthorizationValue,
-  creditDomain, creditMemo, creditRefundMemo, creditRequestKey, creditTopics, nativeCreditData, type CreditScope } from '../credit-protocol'
+import { CREDIT_AUTHORIZATION_TYPES, CREDIT_MAX_MESSAGE_BYTES, CREDIT_PROTOCOL, CREDIT_REQUEST_LIFETIME, creditAuthorizationValue,
+  creditDomain, creditMemo, creditRefundMemo, creditRequestKey, creditTopics, encryptedCreditTopic, NATIVE_CREDIT_CHAINS, nativeCreditData, type CreditScope } from '../credit-protocol'
 import { CHAIN, CHAIN_ID, CONFIG, NETWORK, PREPAID_BROADCASTERS, VERSION } from './config'
 import { startBroadcasters } from './broadcaster'
 import { assertFinalQuoteFresh, type FinalQuoteCheck } from './recipe'
 import { readPrivateState, writePrivateState } from './storage'
 import { assertPublicNetwork } from './shield'
 import { pendingSwap } from './journal'
-import { pendingWithdrawal } from './withdrawal-journal'
-import { refreshReceivedBalances, requireWalletSync, type WalletSession } from './wallet'
-import { prepaidAttemptFee } from './prepaid-pricing'
+import { pendingWithdrawal, savePendingWithdrawal, withdrawalInputsSpent, type PendingWithdrawal } from './withdrawal-journal'
+import { ensureWalletSync, refreshReceivedBalances, requireWalletSync, type WalletSession } from './wallet'
+import { bufferedArbitrumGasPrice, prepaidAttemptFee } from './prepaid-pricing'
+import { receiptNetworkCost } from '../network-fee'
+import { markBaseExecutionSetupUsed, requireBaseExecutionSetup } from './base-setup'
 import { assertExecutionGuardCode, decodeGuardedExecution } from '../operator/execution-guard'
 export { prepaidAttemptFee } from './prepaid-pricing'
 
@@ -29,7 +31,15 @@ export interface PreparedCredit extends CreditIdentity {
   refundGasAllowance?: bigint
 }
 export interface CreditBalance { owner: string; available: bigint; deposited: bigint; charged: bigint; reserved: bigint; refunds: bigint; funding?: 'native' }
+export interface PreparedSavedPrepaidWithdrawal {
+  credit: PreparedCredit
+  gas: { evmGasType: EVMGasType.Type1; gasEstimate: bigint; gasPrice: bigint }
+  withdrawal: PendingWithdrawal
+  previousKey: string
+}
 interface SavedAttempt { payload: string; key: string; hash?: string; state?: string; rate?: string; nonce?: number }
+const reservedAttempt = (attempt: SavedAttempt | undefined): boolean => !!attempt &&
+  (!!attempt.hash || attempt.nonce !== undefined || ['reserved-before-signing', 'submitted-or-unknown', 'settled'].includes(attempt.state ?? ''))
 interface SavedTopUp {
   transaction: { to: string; data: string; value: string }; nullifiers: string[]; from: string; hash?: string; nonce?: number
   previous?: { hash?: string; nonce: number }[]
@@ -46,11 +56,15 @@ const currentFunding = (): CreditFunding => PREPAID_BROADCASTERS[CHAIN_ID]?.fund
 const journalKey = (funding: CreditFunding = currentFunding()) => funding === 'native' ? 'nativePrepaidCredit' : 'prepaidCredit'
 const save = (session: WalletSession, record: CreditJournal) =>
   writePrivateState(session, journalKey(record.scope.funding === 'native' ? 'native' : 'private'), record)
-const subscribers = new Map<string, (message: unknown) => void>()
+const subscribers = new Map<string, { receive: (message: unknown) => void; disconnect: () => void }>()
 let subscribedCore: ReturnType<typeof WakuBroadcasterClient.getWakuCore>
-let subscribing: Promise<void> | undefined
+let subscribing: { core: typeof subscribedCore; promise: Promise<void> } | undefined
+let observingRestarts = false, transportGeneration = 0
 const busy = new WeakSet<WalletSession>()
+const withdrawalReviews = new WeakMap<PreparedSavedPrepaidWithdrawal, string>()
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
+// EIP-7702 permits a delegated EOA to originate a direct transaction. Its sender code is not executed.
+const directNativePaymentSender = (code: string): boolean => code === '0x' || /^0xef0100[0-9a-f]{40}$/i.test(code)
 const json = (value: unknown): string => JSON.stringify(value, (_, item) => typeof item === 'bigint' ? item.toString() : item)
 const quantity = (value: unknown, positive = false): bigint => {
   if (typeof value !== 'string' || !/^(0|[1-9][0-9]{0,77})$/.test(value)) throw new Error('Invalid prepaid quantity.')
@@ -77,7 +91,7 @@ async function exclusive<T>(session: WalletSession, action: () => Promise<T>): P
 }
 function policy(fresh = true) {
   const approved = PREPAID_BROADCASTERS[CHAIN_ID]
-  if (![1, 56].includes(CHAIN_ID) || !approved || (fresh && approved.expiresAt <= Date.now() + 15 * 60_000))
+  if (!NATIVE_CREDIT_CHAINS.includes(CHAIN_ID) || !approved || (fresh && approved.expiresAt <= Date.now() + 15 * 60_000))
     throw new Error('Prepaid execution is not approved on this network.')
   return approved
 }
@@ -159,39 +173,67 @@ function retainNativePaymentHash(topUp: SavedTopUp): void {
 }
 
 async function exchange(data: Record<string, unknown>, recipient: string, expectedKey?: string,
-  beforeSend?: () => void): Promise<Record<string, unknown>> {
-  await startBroadcasters(() => {})
-  const core = WakuBroadcasterClient.getWakuCore()
-  if (!core) throw new Error('The private broadcaster transport is unavailable.')
-  if (subscribedCore !== core) {
-    subscribing ??= WakuBroadcasterClient.addTransportSubscription(core, creditTopics(CHAIN_ID).response,
-      (message: unknown) => { for (const callback of subscribers.values()) callback(message) })
-      .then(() => { subscribedCore = core }).finally(() => { subscribing = undefined })
-    await subscribing
+  beforeSend?: () => void, stage = 'service discovery'): Promise<Record<string, unknown>> {
+  if (!observingRestarts) {
+    WakuBroadcasterClient.setRestartCallback(() => {
+      transportGeneration++; subscribedCore = undefined; subscribing = undefined
+      for (const subscriber of subscribers.values()) subscriber.disconnect()
+    })
+    observingRestarts = true
   }
+  await startBroadcasters(() => {})
+  const core = WakuBroadcasterClient.getWakuCore(), generation = transportGeneration
+  if (!core) throw new Error('The private broadcaster transport is unavailable.')
+  const topic = creditTopics(CHAIN_ID).response
+  const hasSubscription = () => WakuBroadcasterClient.getContentTopics().includes(encryptedCreditTopic(topic))
+  const connectionChanged = () => new Error(`Prepaid ${stage} connection changed. Check saved transactions before retrying.`)
+  const assertConnection = () => {
+    if (WakuBroadcasterClient.getWakuCore() !== core || generation !== transportGeneration || !hasSubscription()) throw connectionChanged()
+  }
+  if (subscribedCore !== core || !hasSubscription()) {
+    if (subscribing?.core !== core) {
+      const promise = WakuBroadcasterClient.addTransportSubscription(core, topic,
+        (message: unknown) => { for (const subscriber of subscribers.values()) subscriber.receive(message) })
+        .then(() => { if (WakuBroadcasterClient.getWakuCore() === core && generation === transportGeneration) subscribedCore = core })
+        .finally(() => { if (subscribing?.promise === promise) subscribing = undefined })
+      subscribing = { core, promise }
+    }
+    const pendingSubscription = subscribing
+    if (!pendingSubscription) throw connectionChanged()
+    await pendingSubscription.promise
+  }
+  assertConnection()
   const correlation = hexlify(randomBytes(32))
   const viewingKey = getRailgunWalletAddressData(recipient).viewingPublicKey
   const encrypted = await encryptDataWithSharedKey({ ...data, protocol: CREDIT_PROTOCOL, correlation,
     broadcasterViewingKey: Buffer.from(viewingKey).toString('hex') }, viewingKey)
   const packet = { method: 'transact', id: correlation, params: { pubkey: encrypted.randomPubKey, encryptedData: encrypted.encryptedData } }
-  const key = expectedKey ?? keccak256(toUtf8Bytes(JSON.stringify([encrypted.randomPubKey.toLowerCase(), encrypted.encryptedData])))
+  if (toUtf8Bytes(JSON.stringify(packet)).length > CREDIT_MAX_MESSAGE_BYTES)
+    throw new Error(`Prepaid ${stage} exceeds the encrypted message size limit. Nothing was sent by this call. Keep the saved attempt for recovery.`)
+  const transportKey = keccak256(toUtf8Bytes(JSON.stringify([encrypted.randomPubKey.toLowerCase(), encrypted.encryptedData])))
+  const key = expectedKey ?? transportKey
+  assertConnection()
   beforeSend?.()
   return new Promise<Record<string, unknown>>((resolve, reject) => {
-    const timeout = setTimeout(() => { subscribers.delete(correlation); reject(new Error('Prepaid response timed out. Keep the saved attempt for recovery.')) }, 45_000)
-    subscribers.set(correlation, (message) => {
+    let delivered = false
+    const timeout = setTimeout(() => { subscribers.delete(correlation); reject(new Error(`Prepaid ${stage} response timed out (${delivered ? 'relay accepted; reply missing' : 'relay acceptance unknown'}). Keep the saved attempt for recovery.`)) }, 45_000)
+    const cleanup = () => { clearTimeout(timeout); subscribers.delete(correlation) }
+    subscribers.set(correlation, { disconnect: () => { cleanup(); reject(connectionChanged()) }, receive: (message) => {
       try {
         if (!object(message) || !(message.payload instanceof Uint8Array)) return
         const envelope: unknown = JSON.parse(new TextDecoder().decode(message.payload))
         if (!object(envelope) || envelope.id !== correlation) return
         const response: unknown = tryDecryptJSONDataWithSharedKey(envelope.result as [string, string], encrypted.sharedKey)
-        if (!object(response) || response.protocol !== CREDIT_PROTOCOL || response.correlation !== correlation || response.key !== key) return
-        clearTimeout(timeout); subscribers.delete(correlation)
-        if (typeof response.error === 'string') reject(new Error(response.error.slice(0, 500)))
+        if (!object(response) || response.protocol !== CREDIT_PROTOCOL || response.correlation !== correlation) return
+        // Authentication failures retain the envelope key; it must never authorize a successful response.
+        if (response.key !== key && !(typeof response.error === 'string' && response.key === transportKey)) return
+        cleanup()
+        if (typeof response.error === 'string') reject(new Error(`Prepaid ${stage}: ${response.error.slice(0, 500)}`))
         else resolve(response)
       } catch { /* Other clients' encrypted responses are not ours. */ }
-    })
-    void WakuBroadcasterClient.sendTransport(packet, creditTopics(CHAIN_ID).request).catch((error: unknown) => {
-      clearTimeout(timeout); subscribers.delete(correlation); reject(error)
+    } })
+    void WakuBroadcasterClient.sendTransport(packet, creditTopics(CHAIN_ID).request).then(() => { delivered = true }).catch((error: unknown) => {
+      cleanup(); reject(error)
     })
   })
 }
@@ -203,8 +245,11 @@ async function authorize(session: WalletSession, identity: CreditIdentity, paylo
   const expires = Date.now() + CREDIT_REQUEST_LIFETIME
   const signature = await signer.signTypedData(creditDomain(identity.scope, identity.ledgerId), CREDIT_AUTHORIZATION_TYPES,
     creditAuthorizationValue(identity.scope, identity.owner, payload, expires))
+  const stages: Record<string, string> = { quote: 'fee quote', balance: 'balance check', execute: 'transaction submission',
+    claim: 'top-up check', recover: 'saved request recovery', refund: 'refund submission', 'refund-status': 'refund status', attempt: 'transaction status' }
   return exchange({ authorization: { owner: identity.owner, payload, expires, signature } }, policy(false).railgunAddress,
-    creditRequestKey(identity.ledgerId, identity.owner, payload), beforeSend)
+    creditRequestKey(identity.ledgerId, identity.owner, payload), beforeSend,
+    stages[JSON.parse(payload).kind] ?? 'authorized request')
 }
 async function identity(session: WalletSession, funding: CreditFunding = currentFunding()): Promise<CreditIdentity> {
   const approved = policy(false)
@@ -272,7 +317,7 @@ export async function preparePrepaidRefund(session: WalletSession, onStatus: (me
   if (!await saved(session, funding)) throw new Error('Load the balance of the pinned prepaid ledger before requesting a refund.')
   return prepareQuote(session, onStatus, false, funding)
 }
-export async function assertPrepaidContext(session: WalletSession, selected: SelectedBroadcaster,
+export async function assertPrepaidBindings(session: WalletSession, selected: SelectedBroadcaster,
   gas: TransactionGasDetails, credit: PreparedCredit): Promise<void> {
   validateIdentity(credit, true)
   if (!credit.executionEnabled || (await session.provider.getNetwork()).chainId !== CHAIN ||
@@ -288,6 +333,10 @@ export async function assertPrepaidContext(session: WalletSession, selected: Sel
   if (!previous || previous.ledgerId !== credit.ledgerId || previous.owner !== credit.owner)
     throw new Error('The prepaid quote differs from the saved credit identity.')
   if (previous.attempt || previous.topUp || previous.refund) throw new Error('Reconcile the saved prepaid operation before preparing another proof.')
+}
+export async function assertPrepaidContext(session: WalletSession, selected: SelectedBroadcaster,
+  gas: TransactionGasDetails, credit: PreparedCredit): Promise<void> {
+  await assertPrepaidBindings(session, selected, gas, credit)
   const available = balance(await authorize(session, credit, json({ kind: 'balance' })), credit).available
   if (available < prepaidAttemptFee(credit, gas))
     throw new Error('Confirmed prepaid credit is insufficient. Add credit before preparing a private proof.')
@@ -296,29 +345,37 @@ export async function assertPrepaidContext(session: WalletSession, selected: Sel
 export async function submitPrepaid(session: WalletSession, populated: RailgunPopulateTransactionResponse,
   selected: SelectedBroadcaster, gas: TransactionGasDetails, use7702: boolean,
   checkedAt: FinalQuoteCheck | undefined, credit: PreparedCredit): Promise<string> {
-  return exclusive(session, async () => {
-    await assertPrepaidContext(session, selected, gas, credit)
+  return exclusive(session, () => submitPrepaidLocked(session, populated, selected, gas, use7702, checkedAt, credit))
+}
+async function submitPrepaidLocked(session: WalletSession, populated: RailgunPopulateTransactionResponse,
+  selected: SelectedBroadcaster, gas: TransactionGasDetails, use7702: boolean,
+  checkedAt: FinalQuoteCheck | undefined, credit: PreparedCredit): Promise<string> {
+    // Balance reads precede proof disclosure; the server reserves credit before signing.
+    await assertPrepaidBindings(session, selected, gas, credit)
     const previous = await saved(session)
     if (previous?.attempt || previous?.topUp || previous?.refund) throw new Error('Reconcile the saved prepaid operation before submitting another.')
     if (use7702) assertFinalQuoteFresh(checkedAt)
     const tx = populated.transaction as TransactionRequest
+    const predelegated = use7702 && CHAIN_ID === 8453
     if (!populated.nullifiers?.length || typeof tx.to !== 'string' || typeof tx.data !== 'string' || BigInt(tx.value ?? 0) !== 0n ||
-      (use7702 ? gas.evmGasType !== EVMGasType.Type4 || tx.authorizationList?.length !== 1
+      (use7702 ? gas.evmGasType !== EVMGasType.Type4 || (predelegated ? tx.type !== 2 || !!tx.authorizationList?.length : tx.authorizationList?.length !== 1)
         : gas.evmGasType !== getEVMGasTypeForTransaction(NETWORK, false) || getAddress(tx.to) !== getAddress(CONFIG.proxyContract) || !!tx.authorizationList?.length))
       throw new Error('Invalid prepaid private execution.')
-    const authorization = use7702 ? authorizationify(tx.authorizationList![0]) : undefined
+    if (predelegated) await requireBaseExecutionSetup(session, tx.to)
+    const authorization = use7702 && !predelegated ? authorizationify(tx.authorizationList![0]) : undefined
     if (authorization && (authorization.chainId !== CHAIN || getAddress(authorization.address) !== getAddress(CONFIG.relayAdapt7702Contract) ||
       getAddress(verifyAuthorization(authorization, authorization.signature)) !== getAddress(tx.to)))
       throw new Error('The prepaid authorization does not match the selected account or delegate.')
     const request = { txidVersion: VERSION, chainType: 0, chainID: CHAIN_ID, to: tx.to, data: tx.data,
       feesID: credit.feesID, useRelayAdapt: use7702, minVersion: '8.0.0', maxVersion: '8.999.0',
       transactType: use7702 ? 'TX7702' : 'COMMON', preTransactionPOIsPerTxidLeafPerList: populated.preTransactionPOIsPerTxidLeafPerList ?? {},
-      ...(gas.evmGasType === EVMGasType.Type4 ? { authorization,
+      ...(gas.evmGasType === EVMGasType.Type4 ? { ...(predelegated ? { predelegated: true } : { authorization }),
         gasLimit: calculateGasLimit(gas.gasEstimate).toString(), maxFeePerGas: gas.maxFeePerGas.toString(),
         maxPriorityFeePerGas: gas.maxPriorityFeePerGas.toString() } : { minGasPrice: calculateGasPrice(gas).toString() }) }
     const payload = json({ kind: 'execute', request, sequence: requestSequence(credit.nextSequence), maximumCharge: prepaidAttemptFee(credit, gas).toString(),
       collectionAllowance: credit.collectionAllowance.toString() })
     creditAuthorizationValue(credit.scope, credit.owner, payload, Date.now() + CREDIT_REQUEST_LIFETIME)
+    if (predelegated) await markBaseExecutionSetupUsed(session, tx.to)
     const record: CreditJournal = { ...previous, scope: credit.scope, ledgerId: credit.ledgerId, owner: credit.owner,
       attempt: { payload, key: creditRequestKey(credit.ledgerId, credit.owner, payload),
         ...(credit.scope.funding === 'native' && { rate: credit.rate.toString() }) } }
@@ -329,7 +386,6 @@ export async function submitPrepaid(session: WalletSession, populated: RailgunPo
       if (credit.expires <= Date.now() + 60_000) throw new Error('The prepaid quote expired before submission.')
       if (use7702) assertFinalQuoteFresh(checkedAt)
     })
-  })
 }
 async function sendSaved(session: WalletSession, record: CreditJournal, beforeSend?: () => void): Promise<string> {
   const attempt = record.attempt!
@@ -349,18 +405,142 @@ export async function retryPrepaid(session: WalletSession, funding?: CreditFundi
     return sendSaved(session, record)
   })
 }
+
+async function savedCommonWithdrawal(session: WalletSession, retired: boolean) {
+  if (CHAIN_ID !== 42161 || currentFunding() !== 'native') throw new Error('Saved fee renewal is available only for Arbitrum native credit.')
+  const record = await saved(session, 'native'), withdrawal = await pendingWithdrawal(session)
+  const attempt = record?.attempt ?? record?.completed?.attempt
+  if (reservedAttempt(attempt))
+    throw new Error('This fee request is already reserved or submitted. Use Check fee-credit transaction before continuing. Your saved withdrawal proof is preserved.')
+  if (!record || record.scope.funding !== 'native' || record.topUp || record.refund || await pendingSwap(session) ||
+    !withdrawal || !attempt ||
+    (retired && (record.attempt || record.completed?.state !== 'not-reserved')))
+    throw new Error('Only a saved, unsubmitted COMMON withdrawal with a retired fee request can be renewed.')
+  let payload: unknown
+  try { payload = JSON.parse(attempt.payload) } catch { throw new Error('Keep the damaged saved fee request for recovery.') }
+  if (!object(payload) || payload.kind !== 'execute' || !object(payload.request) ||
+    !object(payload.request.preTransactionPOIsPerTxidLeafPerList) || Object.keys(payload.request.preTransactionPOIsPerTxidLeafPerList).length)
+    throw new Error('The saved withdrawal fee request does not match COMMON execution.')
+  const sequence = requestSequence(payload.sequence)
+  const { bindSavedCommonWithdrawal } = await import('./prepaid-diagnostic')
+  let bound
+  try { bound = bindSavedCommonWithdrawal(payload.request, withdrawal, record.scope.operator) }
+  catch { throw new Error('The saved withdrawal proof, recipient or inputs changed. Keep both recovery records.') }
+  if (withdrawal.broadcaster && withdrawal.broadcaster !== policy(false).railgunAddress)
+    throw new Error('The saved withdrawal broadcaster changed.')
+  return { record, withdrawal, attempt, request: payload.request, sequence, bound }
+}
+
+function assertRenewalHead(block: Awaited<ReturnType<WalletSession['provider']['getBlock']>>) {
+  if (!block || !Number.isSafeInteger(block.number) || block.number < 0 || !isHexString(block.hash, 32) ||
+    !Number.isSafeInteger(block.timestamp) || Math.abs(Date.now() / 1000 - block.timestamp) > 45 ||
+    typeof block.baseFeePerGas !== 'bigint' || block.baseFeePerGas <= 0n)
+    throw new Error('A fresh Arbitrum block and gas price are required to review the saved withdrawal.')
+  return block as typeof block & { hash: string; baseFeePerGas: bigint }
+}
+
+export async function prepareSavedPrepaidWithdrawal(session: WalletSession,
+  onStatus: (message: string) => void = () => {}): Promise<PreparedSavedPrepaidWithdrawal> {
+  return exclusive(session, async () => {
+    onStatus('Checking private history before reviewing the saved withdrawal…')
+    await ensureWalletSync(session)
+    const original = await savedCommonWithdrawal(session, false)
+    onStatus('Checking that the old fee request was never reserved…')
+    const recovery = await checkPrepaidLocked(session, 'native')
+    if (recovery.state !== 'not-reserved' || recovery.hash || recovery.key !== original.attempt.key)
+      throw new Error('The original fee request may be reserved. Keep its recovery records; no renewal was prepared.')
+    const current = await savedCommonWithdrawal(session, true)
+    if (current.attempt.key !== original.attempt.key || json(current.withdrawal) !== json(original.withdrawal))
+      throw new Error('The saved withdrawal changed during recovery.')
+    const credit = await preparePrepaid(session, onStatus)
+    if (credit.scope.funding !== 'native' || credit.ledgerId !== current.record.ledgerId || credit.owner !== current.record.owner ||
+      json(credit.scope) !== json(current.record.scope) || credit.nextSequence <= current.sequence)
+      throw new Error('The renewed fee quote differs from the retired credit identity or sequence.')
+    if (await withdrawalInputsSpent(session, current.withdrawal)) throw new Error('A saved withdrawal input is spent. Check its outcome before renewal.')
+    if ((await session.provider.getNetwork()).chainId !== CHAIN) throw new Error('Arbitrum RPC required.')
+    const head = assertRenewalHead(await session.provider.getBlock('latest'))
+    const floor = BigInt(current.bound.transaction.gasPrice!)
+    const gasPrice = bufferedArbitrumGasPrice(head.baseFeePerGas, floor, credit.maximumGasPrice)
+    const nonce = await session.provider.getTransactionCount(credit.scope.operator, head.number)
+    if (!Number.isSafeInteger(nonce) || nonce < 0 || await session.provider.getCode(credit.scope.operator, head.number) !== '0x')
+      throw new Error('The prepaid operator identity or nonce is unavailable.')
+    let estimate: unknown
+    try {
+      estimate = await session.provider.send('eth_estimateGas', [session.provider.getRpcTransaction({
+        ...current.bound.transaction, from: credit.scope.operator, nonce, gasPrice,
+      }), `0x${head.number.toString(16)}`])
+    } catch { throw new Error('The saved withdrawal could not be estimated. Keep its proof; no new attempt was sent.') }
+    if (typeof estimate !== 'string' || !/^0x[1-9a-f][0-9a-f]{0,63}$/i.test(estimate) ||
+      (BigInt(estimate) * 110n + 99n) / 100n > 8_000_000n)
+      throw new Error('The saved withdrawal gas estimate is invalid or exceeds its limit.')
+    if ((await session.provider.getBlock(head.number))?.hash !== head.hash)
+      throw new Error('The withdrawal review block changed. Review it again before confirming.')
+    const gas = { evmGasType: EVMGasType.Type1 as const, gasEstimate: BigInt(estimate), gasPrice }
+    await (await import('./broadcaster')).assertSubmittable(session, credit.selected, gas, credit)
+    const prepared = { credit, gas, withdrawal: structuredClone(current.withdrawal), previousKey: current.attempt.key }
+    withdrawalReviews.set(prepared, json(prepared))
+    return prepared
+  })
+}
+
+export async function confirmSavedPrepaidWithdrawal(session: WalletSession, prepared: PreparedSavedPrepaidWithdrawal): Promise<string> {
+  return exclusive(session, async () => {
+    if (withdrawalReviews.get(prepared) !== json(prepared)) throw new Error('Review this saved withdrawal and its new fee before confirming.')
+    const reviewed = structuredClone(prepared)
+    requireWalletSync()
+    const current = await savedCommonWithdrawal(session, true)
+    if (current.attempt.key !== reviewed.previousKey || json(current.withdrawal) !== json(reviewed.withdrawal) ||
+      current.record.ledgerId !== reviewed.credit.ledgerId || current.record.owner !== reviewed.credit.owner ||
+      json(current.record.scope) !== json(reviewed.credit.scope) || reviewed.credit.nextSequence <= current.sequence)
+      throw new Error('The saved withdrawal or credit identity changed after review.')
+    if (await withdrawalInputsSpent(session, current.withdrawal)) throw new Error('A saved withdrawal input is spent. Check its outcome before confirming.')
+    const head = assertRenewalHead(await session.provider.getBlock('latest'))
+    if (reviewed.gas.gasPrice < head.baseFeePerGas + 1n)
+      throw new Error('Gas pricing changed. Review a new fee before confirming; no request was sent.')
+    await (await import('./broadcaster')).assertSubmittable(session, reviewed.credit.selected, reviewed.gas, reviewed.credit)
+    const fresh = await savedCommonWithdrawal(session, true)
+    if (fresh.attempt.key !== reviewed.previousKey || json(fresh.withdrawal) !== json(reviewed.withdrawal))
+      throw new Error('The saved withdrawal changed while confirming.')
+    withdrawalReviews.delete(prepared)
+    const hash = await submitPrepaidLocked(session, { transaction: { ...reviewed.withdrawal.transaction, value: 0n },
+      nullifiers: reviewed.withdrawal.nullifiers, preTransactionPOIsPerTxidLeafPerList: {} },
+    reviewed.credit.selected, reviewed.gas, false, undefined, reviewed.credit)
+    const pending = await pendingWithdrawal(session)
+    if (json(pending) !== json(reviewed.withdrawal)) throw new Error('The withdrawal journal changed. Keep the acknowledged fee request for recovery.')
+    await savePendingWithdrawal(session, { ...reviewed.withdrawal, hash })
+    return hash
+  })
+}
+export async function diagnosePrepaidTransaction(session: WalletSession): Promise<string> {
+  return exclusive(session, async () => {
+    if (CHAIN_ID !== 42161) throw new Error('This diagnostic is for the Arbitrum pilot.')
+    const record = await saved(session, 'native'), swap = await pendingSwap(session), withdrawal = await pendingWithdrawal(session)
+    const pending = swap ?? withdrawal
+    const attempt = record?.attempt ?? record?.completed?.attempt
+    if (!record || !pending || (swap && withdrawal) || pending.feeMode !== 'prepaid' || pending.hash || !attempt || attempt.hash)
+      throw new Error('Keep the saved, unsubmitted prepaid transaction for this diagnostic.')
+    let payload: unknown
+    try { payload = JSON.parse(attempt.payload) } catch { throw new Error('The saved diagnostic request is damaged. Keep it for recovery.') }
+    if (!object(payload) || payload.kind !== 'execute') throw new Error('A saved execution request is required.')
+    const { diagnoseSavedTransaction } = await import('./prepaid-diagnostic')
+    return diagnoseSavedTransaction(session.provider, payload.request, pending,
+      record.scope.operator, '0x5fa18eD9d36Fe8e6e30aCD4f894Df9C05913aB5E')
+  })
+}
 export async function pendingPrepaid(session: WalletSession, funding?: CreditFunding) {
   const record = await saved(session, funding)
   const attempt = record?.attempt ?? record?.completed?.attempt
   const request: unknown = attempt && JSON.parse(attempt.payload).request
-  return record && { key: attempt?.key, hash: attempt?.hash, state: attempt?.state, completed: !record.attempt && !!record.completed,
+  return record && { key: attempt?.key, hash: attempt?.hash, state: attempt?.state, reserved: reservedAttempt(attempt), completed: !record.attempt && !!record.completed,
     request: object(request) && typeof request.to === 'string' && typeof request.data === 'string'
       ? { to: request.to, data: request.data } : undefined,
     topUpPending: !!record.topUp, topUpHash: record.topUp?.hash, deferredTopUpCount: record.deferredTopUps?.length ?? 0, refundPending: !!record.refund, funding: record.scope.funding }
 }
 
 export async function checkPrepaid(session: WalletSession, funding?: CreditFunding) {
-  return exclusive(session, async () => {
+  return exclusive(session, () => checkPrepaidLocked(session, funding))
+}
+async function checkPrepaidLocked(session: WalletSession, funding?: CreditFunding) {
     const record = await saved(session, funding)
     if (!record?.attempt) {
       if (record?.completed) return { key: record.completed.attempt.key, hash: record.completed.attempt.hash,
@@ -405,7 +585,7 @@ export async function checkPrepaid(session: WalletSession, funding?: CreditFundi
       result.cancelled = receipt.hash !== hash
       if (record.scope.funding === 'native') {
         if (transaction.nonce !== record.attempt.nonce) throw new Error('The settlement differs from the saved operator nonce.')
-        const expectedCharge = (receipt.gasUsed * receipt.gasPrice * quantity(record.attempt.rate, true) + 10n ** 18n - 1n) / 10n ** 18n
+        const expectedCharge = ((await receiptNetworkCost(session.provider, receipt, CHAIN_ID)) * quantity(record.attempt.rate, true) + 10n ** 18n - 1n) / 10n ** 18n
         if (result.charged !== expectedCharge) throw new Error('The settled charge differs from actual gas and the reviewed margin.')
         const request = JSON.parse(record.attempt.payload).request
         if (result.cancelled) {
@@ -430,7 +610,6 @@ export async function checkPrepaid(session: WalletSession, funding?: CreditFundi
     }
     await save(session, record)
     return result
-  })
 }
 
 export async function topUpPrepaid(session: WalletSession, signer: JsonRpcSigner, amount: bigint,
@@ -449,10 +628,10 @@ export async function topUpPrepaid(session: WalletSession, signer: JsonRpcSigner
     if (from === getAddress(credit.owner)) throw new Error('Use your connected public wallet for gas, not the derived credit claimant.')
     if (credit.scope.funding === 'native') {
       if (from === getAddress(credit.scope.operator)) throw new Error('The broadcaster gas wallet cannot fund customer credit.')
-      // shortcut: standard EOA transfers only; qualify smart-account internal transfers before accepting their funds.
+      // Only a direct type2 payment is requested; contract-account batches remain unsupported.
       const [senderCode, recipientCode] = await Promise.all([signer.provider.getCode(from), session.provider.getCode(credit.scope.operator)])
-      if (senderCode !== '0x' || recipientCode !== '0x')
-        throw new Error('Native fee credit currently requires a standard public account without smart-account delegation. No payment was requested.')
+      if (!directNativePaymentSender(senderCode)) throw new Error('This wallet cannot send the direct fee payment. No payment was requested.')
+      if (recipientCode !== '0x') throw new Error('The broadcaster cannot accept this payment. No payment was requested.')
       const paymentId = hexlify(randomBytes(32))
       const nonce = await signer.provider.getTransactionCount(from, 'pending')
       if (!Number.isSafeInteger(nonce) || nonce < 0) throw new Error('Public payment nonce is unavailable.')
@@ -611,7 +790,7 @@ export async function checkPrepaidRefund(session: WalletSession, funding?: Credi
         getAddress(transaction.from) !== getAddress(record.scope.operator) || transaction.chainId !== CHAIN || transaction.data !== '0x')
         throw new Error('The native refund settlement is not finalized. Keep the saved refund.')
       const original = hash === result.transactionHash
-      const expectedCharge = (receipt.gasUsed * receipt.gasPrice * quantity(record.refund.rate, true) + 10n ** 18n - 1n) / 10n ** 18n + (result.netPaid ?? 0n)
+      const expectedCharge = ((await receiptNetworkCost(session.provider, receipt, CHAIN_ID)) * quantity(record.refund.rate, true) + 10n ** 18n - 1n) / 10n ** 18n + (result.netPaid ?? 0n)
       if (result.charged !== expectedCharge) throw new Error('The refund charge differs from actual gas and the reviewed margin.')
       if (transaction.nonce !== record.refund.nonce) throw new Error('The refund differs from the saved operator nonce.')
       if (original ? getAddress(transaction.to ?? '') !== getAddress(result.recipient) || transaction.value !== result.net ||
@@ -685,8 +864,11 @@ export async function retryPrepaidTopUp(session: WalletSession, signer: JsonRpcS
     await save(session, record)
     await assertPublicNetwork(session, signer)
     if (getAddress(await signer.getAddress()) !== getAddress(topUp.from)) throw new Error('The public gas wallet changed.')
-    if (record.scope.funding === 'native' && (await signer.provider.getCode(topUp.from) !== '0x' ||
-      await session.provider.getCode(record.scope.operator) !== '0x')) throw new Error('The native payment account changed. Keep the saved payment.')
+    if (record.scope.funding === 'native') {
+      const [senderCode, recipientCode] = await Promise.all([signer.provider.getCode(topUp.from), session.provider.getCode(record.scope.operator)])
+      if (!directNativePaymentSender(senderCode)) throw new Error('This wallet cannot send the direct fee payment. No payment was requested. Keep the saved payment.')
+      if (recipientCode !== '0x') throw new Error('The broadcaster cannot accept this payment. No payment was requested. Keep the saved payment.')
+    }
     onProgress('Confirm the exact saved top-up in your public wallet. A replacement may require a higher gas fee.')
     const sent = await signer.sendTransaction({ ...topUp.transaction, value: BigInt(topUp.transaction.value), nonce: topUp.nonce, chainId: CHAIN,
       ...(record.scope.funding === 'native' && { type: 2 }) })

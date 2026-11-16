@@ -52,6 +52,17 @@ beforeEach(() => {
   state.simulate.mockImplementation(async () => { state.events.push('disclosed'); throw new Error('Synthetic simulation stopped') })
 })
 
+it('stops a prepaid balance timeout before withdrawal proof generation or disclosure', async () => {
+  const prepaid = {} as NonNullable<PreparedBoundWithdrawal['prepaid']>
+  const send = vi.fn(), assertReady = vi.fn().mockRejectedValue(new Error('Prepaid balance check response timed out'))
+  await expect(executeBoundWithdrawal(session, { ...prepared, prepaid }, () => {}, { assertReady, send }))
+    .rejects.toThrow('balance check response timed out')
+  expect(state.proof).not.toHaveBeenCalled()
+  expect(state.save).not.toHaveBeenCalled()
+  expect(state.simulate).not.toHaveBeenCalled()
+  expect(send).not.toHaveBeenCalled()
+})
+
 it('rejects a fallback zero recovery index when the proof uses the selected nonzero account', async () => {
   state.derive.mockResolvedValue({ address: otherAccount })
   const send = vi.fn()
