@@ -1,6 +1,6 @@
 import { Web3Provider } from '@ethersproject/providers'
 
-import { createPublicClient, createWalletClient, custom, type Hex } from 'viem'
+import { createPublicClient, createWalletClient, custom, type Chain, type Hex } from 'viem'
 import { base, mainnet } from 'viem/chains'
 
 import {
@@ -21,7 +21,8 @@ const tx = { from: address, to: address, data, value: '0x1', gas: '0x10000', non
 describe('Ophis Base attribution', () => {
   it('uses attributed calldata for SDK viem public-client estimation too', async () => {
     const request = jest.fn(async () => '0x6000')
-    const client = createPublicClient({ chain: base, transport: custom({ request }) })
+    const chain: Chain = base
+    const client = createPublicClient({ chain, transport: custom({ request }) })
     await withOphisBasePublicClient(client).estimateGas({ account: address, to: address, data })
     expect(request).toHaveBeenCalledWith({
       method: 'eth_estimateGas',

@@ -7,7 +7,7 @@ import {
 } from '@cowprotocol/wallet-provider'
 import type { JsonRpcProvider } from '@ethersproject/providers'
 
-import { createPublicClient, createWalletClient, custom } from 'viem'
+import { createPublicClient, createWalletClient, custom, type Chain } from 'viem'
 import { base } from 'viem/chains'
 
 import { WalletFirstReadProvider, withAppRpcFallback } from './cowSdk.utils'
@@ -155,8 +155,9 @@ it('tags raw estimation requests made by the installed CoW viem adapter', async 
   const request = jest.fn(async ({ method }: { method: string; params?: unknown }) =>
     method === 'eth_chainId' ? '0x2105' : method === 'eth_estimateGas' ? '0x6000' : hash,
   )
-  const client = createPublicClient({ chain: base, transport: custom({ request }) })
-  const wallet = createWalletClient({ account: address, chain: base, transport: custom({ request }) })
+  const chain: Chain = base
+  const client = createPublicClient({ chain, transport: custom({ request }) })
+  const wallet = createWalletClient({ account: address, chain, transport: custom({ request }) })
   const adapter = new ViemAdapter({
     provider: withOphisBasePublicClient(client),
     walletClient: withOphisBaseWalletClient(wallet),
