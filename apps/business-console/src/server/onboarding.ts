@@ -22,7 +22,7 @@ export const OPERATOR: Record<string, string> = { local: 'http://operator.localh
 export const DNS = { timeoutMs: 5000, maxBytes: 16 * 1024 }
 const WEEK_S = 7 * 24 * 60 * 60
 const DUE_MS = 14 * 24 * 60 * 60 * 1000 // a review is due from 14 days before its date
-const INVITE_S = 14 * 24 * 60 * 60 // an application code lives 14 days
+const INVITE_MS = 48 * 60 * 60 * 1000 // an invitation code lives 48 hours (owner, 2026-11-17)
 const MAX_DNS = 10 // DNS checks per application code per clock hour
 const MAX_BODY = 64 * 1024
 const ID = /^[0-9a-f]{32}$/
@@ -98,7 +98,7 @@ interface Passkey { id: string; publicKey: string; counter: number; transports: 
 // 2026-11-17 (7 days at most) has none of the new fields: they are stored as NULL.
 interface Contact { position: string; phone: string; telegram: string | null }
 interface Person extends Contact { name: string; email: string; role: 'owner' | 'admin' }
-interface Applicant extends Contact { legalName: string; country: string; registration: string; lei: string | null; address: string; kind: 'partner' | 'institution'; domain: string; email: string; name: string; people: Person[] }
+interface Applicant extends Contact { businessType: string; legalName: string; country: string; registration: string; lei: string | null; address: string; kind: 'partner' | 'institution'; domain: string; email: string; name: string; people: Person[] }
 /** What /apply asked for, signed by the server and held nowhere: nothing is written before the DNS record is seen. Times are Unix seconds. */
 interface ApplyIntent extends Applicant { inviteHash: string; seat: string; credential: Passkey; credentialHash: string; issuedAt: number; expiresAt: number; site: string }
 
@@ -114,8 +114,8 @@ async function createOrganisation(db: D1Database, a: ApplyIntent, value: string,
     await commit(db, orgId, () => {
       outcome = 'ok'
       return [{ at: now, actorKind: 'seat', actorId: a.seat, sessionId: null, action: 'organisation.apply', subjectId: a.credential.id, detail: a.credentialHash }, [
-        db.prepare(`INSERT INTO organisations (id, kind, name, state, email_domain, domain_challenge, domain_verified_at, country, registration_number, lei, registered_address, invite_hash, created_at)
-                    VALUES (?, ?, ?, 'unverified', ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(orgId, a.kind, a.legalName, a.domain, value, now, a.country, a.registration, a.lei ?? null, a.address ?? null, a.inviteHash, now),
+        db.prepare(`INSERT INTO organisations (id, kind, business_type, name, state, email_domain, domain_challenge, domain_verified_at, country, registration_number, lei, registered_address, invite_hash, created_at)
+                    VALUES (?, ?, ?, ?, 'unverified', ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(orgId, a.kind, a.businessType ?? null, a.legalName, a.domain, value, now, a.country, a.registration, a.lei ?? null, a.address ?? null, a.inviteHash, now),
         db.prepare(`INSERT INTO seats (id, org_id, display_name, email, role, state, position, phone, telegram, created_at) VALUES (?, ?, ?, ?, 'owner', 'active', ?, ?, ?, ?)`)
           .bind(a.seat, orgId, a.name, a.email, a.position ?? null, a.phone ?? null, a.telegram ?? null, now),
         db.prepare(`INSERT INTO credentials (id, org_id, seat_id, public_key, counter, device_bound, transports, label, state, created_at) VALUES (?, ?, ?, ?, ?, 1, ?, 'First key', 'active', ?)`)
@@ -222,8 +222,8 @@ const walletOf = (db: D1Database, orgId: string) =>
               FROM wallets w JOIN organisations o ON o.id = w.org_id WHERE w.org_id = ? AND ((o.state = 'unverified' AND w.state = 'pending') OR (o.state <> 'unverified' AND w.anchor IS NOT NULL))
               ORDER BY w.rowid DESC LIMIT 1`).bind(orgId).first<WalletRow>()
 
-interface Company { id: string; legalName: string; kind: string; state: string; country: string | null; registration: string | null; lei: string | null; address: string | null; domain: string | null; domainVerifiedAt: number | null; reviewAt: number | null; print: string | null }
-const COMPANY = `id, name AS legalName, kind, state, country, registration_number AS registration, lei, registered_address AS address, email_domain AS domain, domain_verified_at AS domainVerifiedAt, review_at AS reviewAt, review_print AS print FROM organisations`
+interface Company { id: string; legalName: string; kind: string; businessType: string | null; state: string; country: string | null; registration: string | null; lei: string | null; address: string | null; domain: string | null; domainVerifiedAt: number | null; reviewAt: number | null; print: string | null }
+const COMPANY = `id, name AS legalName, kind, business_type AS businessType, state, country, registration_number AS registration, lei, registered_address AS address, email_domain AS domain, domain_verified_at AS domainVerifiedAt, review_at AS reviewAt, review_print AS print FROM organisations`
 interface KybRow { legalName: string; registration: string | null; country: string; tier: string; source: string; evidenceSha256: string | null; decision: string; reason: string | null; decidedAt: number | null; nextReview: number | null }
 /** The newest KYB row of one organisation (bind its id): the row that says how the organisation stands. */
 const NEWEST = `FROM kyb_records WHERE org_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`
@@ -487,6 +487,12 @@ const NAME = /^[\p{L}\p{M}\p{N} .'’-]{1,60}$/u
 const POSITION = /^[\p{L}\p{M}\p{N} .,'’&()/-]{2,60}$/u
 const POSTAL = /^(?=.*[\p{L}\p{N}])[^\p{C}<>]{5,200}$/u
 const MAX_PEOPLE = 4 // besides the applicant: 5 people in all
+// What the company does (owner, 2026-11-17), and the part of the console it gets: partners follow their partner fees,
+// institutions trade on the desk. The browser shows the names; the kind is set here, never sent by the page.
+export const BUSINESS: Record<string, 'partner' | 'institution'> = {
+  wallet: 'partner', exchange: 'partner', app: 'partner', payments: 'partner', protocol: 'partner',
+  fund: 'institution', vc: 'institution', bank: 'institution', broker: 'institution', family_office: 'institution', treasury: 'institution',
+}
 /** An LEI (ISO 17442): 18 letters or digits and 2 check digits, ISO 7064 mod 97-10 over the letters as 10 to 35. */
 export function leiValid(lei: string) {
   if (!/^[A-Z0-9]{18}[0-9]{2}$/.test(lei)) return false
@@ -511,7 +517,7 @@ function applicant(body: Record<string, unknown>): Applicant | string {
   const field = (key: string) => (typeof body[key] === 'string' ? (body[key] as string).trim() : '')
   const a = {
     legalName: field('legalName'), country: field('country').toUpperCase(), registration: field('registration'), lei: field('lei').toUpperCase() || null,
-    address: field('address').replace(/\s+/g, ' '), kind: field('kind'), domain: field('domain').toLowerCase(), email: field('email').toLowerCase(), name: field('name'),
+    address: field('address').replace(/\s+/g, ' '), businessType: field('businessType'), kind: BUSINESS[field('businessType')] ?? '', domain: field('domain').toLowerCase(), email: field('email').toLowerCase(), name: field('name'),
   }
   const contact = contactOf(body)
   const given = body.people === undefined ? [] : Array.isArray(body.people) && body.people.length <= MAX_PEOPLE ? (body.people as unknown[]) : null
@@ -524,7 +530,7 @@ function applicant(body: Record<string, unknown>): Applicant | string {
     : !/^[A-Za-z0-9 ./-]{2,40}$/.test(a.registration) ? 'registration_invalid'
     : a.lei !== null && !leiValid(a.lei) ? 'lei_invalid'
     : !POSTAL.test(a.address) ? 'address_invalid'
-    : a.kind !== 'partner' && a.kind !== 'institution' ? 'kind_invalid'
+    : !Object.hasOwn(BUSINESS, a.businessType) ? 'kind_invalid'
     : !DOMAIN.test(a.domain) ? 'domain_invalid'
     : !emailAt(a.email, a.domain) ? 'email_not_at_domain'
     : !NAME.test(a.name) ? 'name_invalid'
@@ -536,17 +542,24 @@ function applicant(body: Record<string, unknown>): Applicant | string {
 }
 
 const APPLY = 'apply-intent' // the labels of this file's texts under the challenge key
-const INVITE = 'apply-invite'
-// G1: applications are by invitation. An application code is the server's own text (MAC label "apply-invite": an id
-// and an expiry), made by the operator's command, valid 14 days, good for one organisation: the SHA-256 of its id is
-// stored unique on the organisation it makes. Checked before anything else on every call of /apply; "unused" is the one
-// read of that route. The code never leaves the browser again: the intent carries its hash.
+// G1: applications are by invitation (owner, 2026-11-17): a code of 12 characters, three groups of four in Crockford
+// base32 (32 symbols, no I, L, O or U: 60 random bits), made by the operator's command, valid 48 hours, good for one
+// organisation. The server keeps the SHA-256 of its 12 characters (invites, 0027); the organisation it makes stores the
+// same hash, unique (0007). Read the way a person types it: any case, spaces and dashes ignored, O read as 0, I and L as
+// 1. Checked before anything else on every call of /apply; the DNS step then has the 7 days of the intent, which carries
+// the hash. ponytail: no count of wrong guesses: 60 bits are out of reach at the Free plan's 100,000 requests a day.
+const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
+export const inviteText = (raw: unknown) => {
+  const text = typeof raw === 'string' ? raw.toUpperCase().replace(/[\s-]/g, '').replace(/O/g, '0').replace(/[IL]/g, '1') : ''
+  return text.length === 12 && [...text].every((char) => CROCKFORD.includes(char)) ? text : null
+}
 async function invited(c: Ctx) {
-  const code = typeof c.body.invite === 'string' ? c.body.invite.trim() : ''
-  const fields = (await unseal(c.env.CHALLENGE_KEY, INVITE, code)) as { id: string; expiresAt: number } | null
-  if (!fields || fields.expiresAt * 1000 <= c.now) return 'invite_invalid'
-  const hash = await sha256Hex(fields.id) // the code's own random id, not the text as typed (unseal takes one spelling only)
-  return (await c.env.DB.prepare('SELECT 1 FROM organisations WHERE invite_hash = ?').bind(hash).first()) ? 'invite_used' : { hash }
+  const code = inviteText(c.body.invite)
+  if (!code) return 'invite_invalid'
+  const hash = await sha256Hex(code)
+  const row = await c.env.DB.prepare('SELECT expires_at AS expiresAt, EXISTS (SELECT 1 FROM organisations WHERE invite_hash = ?1) AS used FROM invites WHERE code_hash = ?1')
+    .bind(hash).first<{ expiresAt: number; used: number }>()
+  return !row || row.expiresAt <= c.now ? 'invite_invalid' : row.used ? 'invite_used' : { hash }
 }
 const ACTIVATE = 'activate-intent'
 export const dnsName = (domain: string) => `_ophis-verify.${domain}`
@@ -649,7 +662,7 @@ export async function onboarding(c: Member) {
   const sealed = await sealedOf(c.env.DB, orgId)
   const status = company.state !== 'unverified' ? 'verified' : company.reviewAt !== null ? 'under_review' : record?.decision === 'pending' ? 'more_information' : 'not_submitted'
   return json(200, {
-    company: { legalName: company.legalName, kind: company.kind, country: company.country, registration: company.registration, lei: company.lei, address: company.address, domain: company.domain, domainVerifiedAt: company.domainVerifiedAt },
+    company: { legalName: company.legalName, kind: company.kind, businessType: company.businessType, country: company.country, registration: company.registration, lei: company.lei, address: company.address, domain: company.domain, domainVerifiedAt: company.domainVerifiedAt },
     first: first && { credentialHash: first.hash, active: first.active === 1, name: first.name, position: first.position },
     people: await peopleOf(c.env.DB, orgId), // the people the application named besides the first Owner: Ophis approves them with the organisation
     // Milestone 5b: the sealing key of this environment (its fingerprint; null: none configured), and the sealed declaration as the server knows it.
@@ -872,7 +885,7 @@ async function list(c: Ctx) {
     const endpoints = wallet?.kind === 'safe' ? c.config.chains[wallet.chainId] : undefined
     const live = endpoints ? await safeState(endpoints, wallet!.chainId, wallet!.address) : null
     organisations.push({
-      id: o.id, legalName: o.legalName, kind: o.kind, country: o.country, registration: o.registration, lei: o.lei, address: o.address, domain: o.domain, submittedAt: o.reviewAt, submission: await submissionOf(o.print),
+      id: o.id, legalName: o.legalName, kind: o.kind, businessType: o.businessType, country: o.country, registration: o.registration, lei: o.lei, address: o.address, domain: o.domain, submittedAt: o.reviewAt, submission: await submissionOf(o.print),
       applicant: { name: first.name, email: first.email, position: first.position, phone: first.phone, telegram: first.telegram },
       credentialHash: first.hash, people: await peopleOf(c.env.DB, o.id), missing: await missing(c.env.DB, o.id, c.now),
       // Milestone 5b: that the sealed declaration exists, and what the server knows of it. "items" and "get" are the way to the file.
@@ -983,11 +996,13 @@ async function download(c: Ctx) {
   if (!object) return fail(404, 'not_found')
   return new Response(object, { headers: { 'content-type': 'application/octet-stream', 'x-sha256': item.sha256, 'x-seal-key': item.key } })
 }
-// G1: a new application code. Nothing is written: the code is the server's own text, and it is used up by the
-// organisation it makes. ponytail: issued codes are not listed anywhere; whoever holds the operator's token makes them.
+// G1: a new invitation code: 12 random characters of CROCKFORD (each a byte's low 5 bits: 256 is a multiple of 32, so no
+// bias), its hash and expiry written. ponytail: issued codes are not listed anywhere; whoever holds the operator's token makes them.
 async function invite(c: Ctx) {
-  const expiresAt = Math.floor(c.now / 1000) + INVITE_S
-  return json(200, { code: await seal(c.env.CHALLENGE_KEY, INVITE, { id: randomId(), expiresAt }), expiresAt: expiresAt * 1000 })
+  const code = Array.from(crypto.getRandomValues(new Uint8Array(12)), (byte) => CROCKFORD[byte & 31]).join('')
+  const expiresAt = c.now + INVITE_MS
+  await c.env.DB.prepare('INSERT INTO invites (code_hash, expires_at, created_at) VALUES (?, ?, ?)').bind(await sha256Hex(code), expiresAt, c.now).run()
+  return json(200, { code: code.match(/.{4}/g)!.join('-'), expiresAt })
 }
 const freeze = (frozen: boolean) => async (c: Ctx) => {
   const outcome = ID.test(c.params.id ?? '') ? await setFrozen(c.env.DB, c.params.id!, frozen, c.now) : 'not_found'

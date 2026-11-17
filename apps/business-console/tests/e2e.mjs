@@ -820,14 +820,14 @@ try {
   const operator = (...args) => run('node', ['scripts/operator.mjs', ...args])
   const refusedBy = (command) => { try { command(); return '' } catch (error) { return String(error.stderr ?? '') } } // what a refused command printed
   const code = operator('invite').trim().split('\n').pop() // G1: applications are by invitation
-  check('the operator command issues an application code', /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$/.test(code))
+  check('the operator command issues an invitation code of 12 characters, in three groups of four', /^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/.test(code))
   await on.goto(`${ORIGIN}/apply`)
   await on.getByLabel('Invitation code').fill(code)
   await on.getByLabel('Legal name').fill('Alder Custody S.A.')
-  await on.getByLabel('Type of business').selectOption('institution')
+  await on.getByLabel('Type of business').selectOption('fund')
   await on.getByLabel('Country of incorporation').selectOption('LU')
-  check('the country is chosen by its name, and the type of business says what each one gets', await on.getByLabel('Country of incorporation').locator('option:checked').innerText() === 'Luxembourg'
-    && (await on.getByLabel('Type of business').innerText()).includes('use the desk'))
+  check('the country is chosen by its name, and the type of business from a short list of names', await on.getByLabel('Country of incorporation').locator('option:checked').innerText() === 'Luxembourg'
+    && (await on.getByLabel('Type of business').locator('option').allInnerTexts()).join('|') === 'Choose a type|Wallet|Exchange|App or dApp|Payments|DeFi protocol|Fund or asset manager|Venture capital|Bank|Broker|Family office|Company treasury')
   await on.getByLabel('Company registration number').fill('B123456')
   await on.getByLabel('LEI, if the company has one').fill('5493001KJTIIGC8Y1R12')
   await on.getByLabel('Registered address').fill('2 rue de la Gare, L-1611 Luxembourg')
