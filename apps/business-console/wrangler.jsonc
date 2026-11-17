@@ -20,9 +20,7 @@
       "migrations_dir": "migrations",
     },
   ],
-  // Milestone 5b: the sealed items (ciphertext only; the Worker holds no key). Local simulation only so far: the name is
-  // a placeholder. Create the real bucket in the EU jurisdiction and add "jurisdiction": "eu" here before a deploy.
-  "r2_buckets": [{ "binding": "SEALED", "bucket_name": "ophis-business-sealed" }],
+  // No R2: past its free tier R2 bills (owner, 2026-11-17: nothing may cost money). The sealed items are in D1 (sealed_chunks).
   // Selects the constants in src/server/passkeys.ts. The relying-party id and origin are never read from a request.
   "vars": { "ENVIRONMENT": "local" },
   // M10: once a day the Worker reads the OFAC list file (SANCTIONS_URL; unset: nothing is read) and then the figures of the partners.
@@ -44,7 +42,6 @@
       ],
       // Created 2026-11-17 with --jurisdiction=eu (wrangler d1 list: "jurisdiction": "eu").
       "d1_databases": [{ "binding": "DB", "database_name": "ophis-business", "database_id": "c5d7d56e-ddd5-4788-8008-7089aa7f2a0b", "migrations_dir": "migrations" }],
-      "r2_buckets": [{ "binding": "SEALED", "bucket_name": "ophis-business-sealed", "jurisdiction": "eu" }],
       // SANCTIONS_URL stays unset: the OFAC list is loaded by hand once a month (README, "The OFAC list file").
       // Secrets: CHALLENGE_KEY, INDEXER_TOKEN, TYPESAFE_API_KEY, TURNSTILE_SECRET, OPERATOR_TOKEN (wrangler secret put --env production).
       // SEAL_RECIPIENT: the public recipient of the key ceremony (scripts/seal-ceremony.sh), generation g1, made on

@@ -411,6 +411,23 @@ export const sealKey = async (env: { ENVIRONMENT: string; SEAL_RECIPIENT?: strin
 const HEADER = /^age-encryption\.org\/v1\n-> mlkem768x25519 [A-Za-z0-9+/]{1494}\n[A-Za-z0-9+/]{43}\n--- [A-Za-z0-9+/]{43}\n/ // 1,627 characters exactly, so no end anchor
 export const sealedShape = (bytes: Uint8Array) => bytes.length >= 1627 + 32 && HEADER.test(String.fromCharCode(...bytes.subarray(0, 1627)))
 
+// The ciphertext of each sealed item, in D1 (sealed_chunks, migration 0024), never R2: past its free tier R2 bills, and
+// D1 on the Free plan only refuses (owner, 2026-11-17). D1 keeps 2 MB per row, so a file is cut in pieces. D1 reads a
+// BLOB back as an Array of numbers (millions of them for 10 MB), so the pieces come back as hex() and are decoded natively.
+const PIECE = 1_900_000
+declare global { interface Uint8ArrayConstructor { fromHex(hex: string): Uint8Array } } // ES2026, in workerd; TypeScript 5.9 has no type for it yet
+export const sealedStore = (db: D1Database) => ({
+  async put(id: string, bytes: Uint8Array) {
+    for (let n = 0; n * PIECE < bytes.length; n++)
+      await db.prepare('INSERT INTO sealed_chunks (item_id, n, data) VALUES (?, ?, ?)').bind(id, n, bytes.subarray(n * PIECE, (n + 1) * PIECE)).run()
+  },
+  async get(id: string) {
+    const pieces = await db.prepare('SELECT hex(data) FROM sealed_chunks WHERE item_id = ? ORDER BY n').bind(id).raw<[string]>()
+    return pieces.length ? new Blob(pieces.map(([piece]) => Uint8Array.fromHex(piece))) : null
+  },
+  delete: (id: string) => db.prepare('DELETE FROM sealed_chunks WHERE item_id = ?').bind(id).run(),
+})
+
 interface Sealed { id: string; kind: string; size: number; sha256: string; key: string; generation: string; at: number }
 const SEALED = `id, kind, size, sha256, key_fingerprint AS key, key_generation AS generation, created_at AS at FROM sealed_items`
 /** The sealed items of one organisation: what the server knows of each, never a byte of it. */
@@ -445,7 +462,7 @@ async function storeSealed(db: D1Database, actor: Actor, item: { id: string; siz
 
 // The route's context, as much as these handlers read (index.ts builds it).
 interface Ctx {
-  env: { DB: D1Database; SEALED: R2Bucket; ENVIRONMENT: string; CHALLENGE_KEY: string; SEAL_RECIPIENT?: string; SANCTIONS_URL?: string }
+  env: { DB: D1Database; ENVIRONMENT: string; CHALLENGE_KEY: string; SEAL_RECIPIENT?: string; SANCTIONS_URL?: string }
   now: number; config: Config; body: Record<string, unknown>; params: Record<string, string | undefined>
 }
 interface Member extends Ctx { actor: Actor }
@@ -759,22 +776,23 @@ export async function activationProof(c: Ctx, intent: ActivateIntent, signature:
 // POST /api/onboarding/declaration (Owner, fresh, two passkeys). The body is the sealed file and nothing else; the
 // router has capped its size. The header x-seal-key names the key the browser sealed to: a console built for another
 // key is told so, and a row never names a key that this console's page did not use. The SHA-256 is computed here, of
-// the bytes that arrived. The object goes into the bucket first, under the item's random id, then the row: when the
-// row is refused or fails, the object is taken out again; when it replaces an older item, that one's object goes.
-// ponytail: a Worker that dies between the two leaves an object that no row names. Sweep the bucket against the table if that ever matters.
+// the bytes that arrived. The pieces go into sealed_chunks first, under the item's random id, then the row: when a
+// piece or the row is refused or fails, the pieces are taken out again; when it replaces an older item, that one's go.
+// ponytail: a Worker that dies between the two leaves pieces that no row names. Sweep sealed_chunks against sealed_items if that ever matters.
 export async function sealDeclaration(c: Member & { request: Request; bytes: Uint8Array }) {
   const key = await sealKey(c.env)
   if (!key) return fail(503, 'not_configured')
   if (c.request.headers.get('x-seal-key') !== key) return fail(409, 'key_changed')
   if (!sealedShape(c.bytes)) return fail(400, 'not_sealed')
   const item = { id: randomId(), size: c.bytes.length, sha256: hex(new Uint8Array(await crypto.subtle.digest('SHA-256', c.bytes))), key }
-  await c.env.SEALED.put(item.id, c.bytes)
+  const store = sealedStore(c.env.DB)
   let stored: Awaited<ReturnType<typeof storeSealed>> = { outcome: 'failed', old: null }
   try {
+    await store.put(item.id, c.bytes)
     stored = await storeSealed(c.env.DB, c.actor, item, c.now)
   } finally {
     const gone = stored.outcome === 'ok' ? stored.old : item.id
-    if (gone) await c.env.SEALED.delete(gone)
+    if (gone) await store.delete(gone)
   }
   return stored.outcome === 'ok' ? json(200, { ...item, at: c.now, generation: SEAL.generation }) : refuse(stored.outcome)
 }
@@ -793,7 +811,7 @@ export async function submit(c: Member) {
 // of an organisation and take one, still sealed, for a stated reason, and (sanctions screening) record a screening and
 // load the addresses of a public list. Nothing else: no route here takes a passkey, a member or a client's wallet address.
 
-interface OperatorEnv { DB: D1Database; SEALED: R2Bucket; ENVIRONMENT: string; CHALLENGE_KEY: string; OPERATOR_TOKEN?: string; SANCTIONS_URL?: string; ACCESS_TEAM?: string; ACCESS_AUD?: string }
+interface OperatorEnv { DB: D1Database; ENVIRONMENT: string; CHALLENGE_KEY: string; OPERATOR_TOKEN?: string; SANCTIONS_URL?: string; ACCESS_TEAM?: string; ACCESS_AUD?: string }
 
 // What the operator compares before a decision: the domain, the first Owner's passkey hash, the people the application
 // named besides the first Owner (an approval approves them too), the recovery wallet with its kind and its colour (read
@@ -919,9 +937,9 @@ async function download(c: Ctx) {
     if (!(await c.env.DB.prepare('SELECT 1 FROM sealed_items WHERE org_id = ? AND id = ?').bind(item.orgId, id).first())) return null
     return [{ at: c.now, actorKind: 'operator', actorId: null, sessionId: null, action: 'sealed.download', subjectId: id, detail: reason }, []]
   })
-  const object = logged ? await c.env.SEALED.get(id) : null
+  const object = logged ? await sealedStore(c.env.DB).get(id) : null
   if (!object) return fail(404, 'not_found')
-  return new Response(object.body, { headers: { 'content-type': 'application/octet-stream', 'x-sha256': item.sha256, 'x-seal-key': item.key } })
+  return new Response(object, { headers: { 'content-type': 'application/octet-stream', 'x-sha256': item.sha256, 'x-seal-key': item.key } })
 }
 // G1: a new application code. Nothing is written: the code is the server's own text, and it is used up by the
 // organisation it makes. ponytail: issued codes are not listed anywhere; whoever holds the operator's token makes them.
