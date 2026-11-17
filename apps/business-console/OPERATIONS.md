@@ -45,7 +45,7 @@ Everything needed to run and update pro.ophis.fi. Live since 2026-11-17. Command
 The first command of a day opens a Cloudflare Access sign-in (cloudflared, valid 24 hours). The link also works from a phone; it waits about 6 minutes. On success cloudflared prints the token: never paste that output anywhere.
 
 - `operator list --production`: what is under review, reviews due, frozen organisations, and the loaded lists with their dates.
-- `operator invite --production`: an invitation code for a new client (one use, 14 days; the code says "application code" in older notes).
+- `operator invite --production`: an invitation code for a new client, 12 characters like `7K3M-Q9TX-4BDA`, one use, valid 48 hours. Make it just before you send it.
 - `operator decide <id> approve|more|refuse ... --production`, `operator freeze|unfreeze <id> --production`, `operator items <id> --production`, `operator get <item id> --reason kyb_review --out item.age --production`: README, "Onboarding" and "Sealed declaration".
 
 ## OFAC list: by hand, once a month

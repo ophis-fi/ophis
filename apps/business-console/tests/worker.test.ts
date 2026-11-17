@@ -44,6 +44,8 @@ const CHECKS = 'audit_checks'
 const TOKENS = 'used_tokens'
 // And the pieces of each sealed file (0024), with no org_id: written and taken out with its sealed_items row, which the snapshots hold.
 const PIECES = 'sealed_chunks'
+// And the invitation codes (0027), global: their hash and expiry, written by the operator's command.
+const INVITES = 'invites'
 const db = env.DB
 // The challenge key is made per run: no secret lives in the repository.
 // The static files: a stand-in that answers every path, with a header only the console's pages may keep.
@@ -1434,7 +1436,7 @@ describe('g. security headers', () => {
 describe('h. sign-in start', () => {
   it('the snapshot below covers every table', async () => {
     const { results } = await db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name <> 'd1_migrations' ORDER BY name`).all<{ name: string }>()
-    expect(results.map((row) => row.name)).toEqual([...TABLES, ...GLOBAL, COUNTER, CHECKS, TOKENS, PIECES].sort())
+    expect(results.map((row) => row.name)).toEqual([...TABLES, ...GLOBAL, COUNTER, CHECKS, TOKENS, PIECES, INVITES].sort())
   })
   it('writes no row, however often it is called, signed in or not', async () => {
     const m = await member()
@@ -6214,29 +6216,27 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect((await checkDns(a.intent)).body).toEqual({ state: 'unverified' })
   })
 
-  it('R3 (review): an application code is used up by its own id and has one spelling: padding, the other base64 alphabet, spare bits or a space inside make no second code', async () => {
-    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
-    let code = await newCode()
-    for (let i = 0; i < 40 && !/[-_]/.test(code); i++) code = await newCode() // a code that the other alphabet spells differently
-    expect(code).toMatch(/[-_]/)
-    const [body, mac] = code.split('.')
-    const pad = (part: string) => part + '='.repeat((4 - (part.length % 4)) % 4)
-    const spare = (part: string) => part.slice(0, -1) + alphabet[alphabet.indexOf(part.at(-1)!) ^ 1] // the last character of 43 carries two bits that count for nothing
-    const spellings = [`${body}.${pad(mac)}`, `${pad(body)}.${mac}`, code.replace(/-/g, '+').replace(/_/g, '/'), `${body}.${spare(mac)}`, `${body.slice(0, 4)} ${body.slice(4)}.${mac}`, `${body}.${mac.slice(0, 4)}\n${mac.slice(4)}`]
-    expect(new Set([code, ...spellings]).size).toBeGreaterThanOrEqual(6)
-    // Each of them is the same bytes under the same MAC: before the fix each passed as a code of its own.
-    for (const invite of spellings) {
-      if (invite === code) continue
+  it('R3 (owner, 2026-11-17): an invitation code is 12 characters, read the way a person types it: any case, spaces and dashes, O for 0, I or L for 1; any other text is no code', async () => {
+    const code = await newCode()
+    expect(code).toMatch(/^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/)
+    const plain = code.replace(/-/g, '')
+    // The same 12 characters, typed in other ways: each is the code (checked on the first call, which writes nothing).
+    const typed = [plain, plain.toLowerCase(), ` ${code}\n`, plain.match(/.{3}/g)!.join(' '), code.replace(/0/g, 'O').replace(/1/g, 'I'), code.replace(/1/g, 'l')]
+    for (const invite of typed) expect((await call('POST', '/api/apply', { body: { ...form('alder.example'), invite } })).status, invite).toBe(200)
+    // One character off, one too few or too many, a letter outside the alphabet, the code twice: no code.
+    const other = plain[0] === 'A' ? 'B' : 'A'
+    for (const invite of [other + plain.slice(1), plain.slice(1), plain + 'A', plain.slice(0, -1) + 'U', plain + plain]) {
       const refused = await call('POST', '/api/apply', { body: { ...form('alder.example'), invite } })
       expect([refused.status, refused.body], invite).toEqual([403, { error: 'invite_invalid' }])
     }
-    // The exact text, with spaces around it from a paste, is the code. What the organisation keeps is the hash of the code's id.
-    const a = await applyFor(undefined, { invite: ` ${code}\n` })
+    // What the organisation keeps is the hash of the 12 characters: typed another way, the code is the same, and used.
+    const a = await applyFor(undefined, { invite: plain.toLowerCase() })
     publish(a.body.record)
     expect((await checkDns(a.intent)).body).toEqual({ state: 'unverified' })
-    expect((await row('SELECT invite_hash FROM organisations WHERE email_domain = ?', a.domain))!.invite_hash).toBe(await data.sha256Hex(fieldsOf<{ id: string }>(code).id))
+    expect((await row('SELECT invite_hash FROM organisations WHERE email_domain = ?', a.domain))!.invite_hash).toBe(await data.sha256Hex(plain))
     expect((await call('POST', '/api/apply', { body: { ...form('birch.example'), invite: code } })).body).toEqual({ error: 'invite_used' })
     // Every sealed text has one spelling: an intent in another one is not ours either.
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
     const b = await applyFor()
     expect((await checkDns(`${b.intent}=`)).body).toEqual({ error: 'intent_invalid' })
     expect((await checkDns(b.intent.replace(/.$/, (c) => alphabet[alphabet.indexOf(c) ^ 1]))).body).toEqual({ error: 'intent_invalid' })
@@ -6311,10 +6311,14 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect((await applied(`eu.${one}`)).domain).toBe(`eu.${one}`)
   })
 
-  it('G1: applications are by invitation: without a valid, unused application code /apply refuses before anything else; a code makes one organisation, once; no daily cap', async () => {
+  it('G1: applications are by invitation: without a valid, unused invitation code /apply refuses before anything else; a code makes one organisation, once; no daily cap', async () => {
     const issued = await op('POST', '/api/operator/invites')
     const code = issued.body.code as string
-    expect([issued.status, issued.body.expiresAt, fieldsOf<{ expiresAt: number }>(code).expiresAt]).toEqual([200, START + 14 * DAY, START / 1000 + 14 * 24 * 3600])
+    const hash = await data.sha256Hex(code.replace(/-/g, ''))
+    expect([issued.status, issued.body.expiresAt]).toEqual([200, START + 48 * HOUR])
+    // The server keeps the hash and the expiry, never the code (0027).
+    expect(await row('SELECT * FROM invites WHERE code_hash = ?', hash)).toEqual({ code_hash: hash, expires_at: START + 48 * HOUR, created_at: START })
+    expect(await row('SELECT count(*) AS n FROM invites WHERE code_hash = ?', code)).toEqual({ n: 0 })
     expect((await op('POST', '/api/operator/invites')).body.code).not.toBe(code)
     const rows = await snapshot([...TABLES, COUNTER])
     // Refused before the form is read, on the first call and on the second: no code, a changed one, a longer life, another label, another key.
@@ -6322,7 +6326,9 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     const start = await call('POST', '/api/apply', { body: { ...form('alder.example'), invite: code } })
     expect(start.status).toBe(200)
     const response = await key.register(start.body.options)
-    const bad = [undefined, '', 7, 'x', code.replace(/\.(.)/, (_, c) => (c === 'A' ? '.B' : '.A')), resealed(code, { expiresAt: START / 1000 + 365 * 24 * 3600 }), await seal(testEnv.CHALLENGE_KEY, 'apply-intent', fieldsOf<object>(code)), await seal(`${testEnv.CHALLENGE_KEY}x`, 'apply-invite', fieldsOf<object>(code))]
+    // No code, a malformed one, one never issued, and a sealed code of the earlier form (14 days, MAC label apply-invite).
+    const never = Array.from({ length: 12 }, (_, i) => '0123456789ABCDEFGHJKMNPQRSTVWXYZ'[(code.charCodeAt(i % 12) + i * 7) % 32]).join('')
+    const bad = [undefined, '', 7, 'x', never, await seal(testEnv.CHALLENGE_KEY, 'apply-invite', { id: data.randomId(), expiresAt: START / 1000 + 14 * 24 * 3600 })]
     for (const invite of bad) {
       const refused = await call('POST', '/api/apply', { body: { ...form('alder.example'), invite } })
       expect([refused.status, refused.body], String(invite).slice(0, 12)).toEqual([403, { error: 'invite_invalid' }])
@@ -6330,7 +6336,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       expect((await call('POST', '/api/apply', { body: { ...form('alder.example'), invite, seat: start.body.seat, response } })).body).toEqual({ error: 'invite_invalid' })
     }
     expect((await call('POST', '/api/apply', { body: { invite: code, legalName: '' } })).body).toEqual({ error: 'legal_name_invalid' })
-    now = START + 14 * DAY // 14 days and not a second more
+    now = START + 48 * HOUR // 48 hours and not a second more
     expect((await call('POST', '/api/apply', { body: { ...form('alder.example'), invite: code } })).body).toEqual({ error: 'invite_invalid' })
     now -= 1000
     expect((await call('POST', '/api/apply', { body: { ...form('alder.example'), invite: code } })).status).toBe(200)
@@ -6341,7 +6347,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     publish(a.body.record)
     publish(b.body.record)
     expect((await checkDns(a.intent)).body).toEqual({ state: 'unverified' })
-    expect((await row('SELECT invite_hash FROM organisations WHERE email_domain = ?', a.domain))!.invite_hash).toBe(await data.sha256Hex(fieldsOf<{ id: string }>(code).id))
+    expect((await row('SELECT invite_hash FROM organisations WHERE email_domain = ?', a.domain))!.invite_hash).toBe(hash)
     const made = await snapshot()
     expect((await checkDns(b.intent)).body).toEqual({ error: 'invite_used' })
     expect(await snapshot()).toBe(made)

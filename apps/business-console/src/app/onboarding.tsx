@@ -27,8 +27,8 @@ const SAY: Record<string, string> = {
   intent_expired: 'This application is older than 7 days. Start again.',
   dns_not_proved: 'The record is not there yet on both resolvers, or its value differs. DNS changes can take some minutes. Check the name and the value, then try again.',
   domain_taken: 'An organisation already exists for this domain. Ask its Owner to invite you, or write to Ophis.',
-  invite_invalid: 'This application code is not one Ophis issued, or it is older than 14 days. Ask Ophis for a new one.',
-  invite_used: 'This application code was already used. Ask Ophis for a new one.',
+  invite_invalid: 'This invitation code is not one Ophis issued, or it is older than 48 hours. Check the 12 characters, or ask Ophis for a new one.',
+  invite_used: 'This invitation code was already used. Ask Ophis for a new one.',
   too_many: 'Too many DNS checks for this domain in the last hour. Try again later.',
   not_stored: 'This application was already used. Sign in with the passkey you created for it.',
   second_key: 'The first Owner needs two passkeys. Add the second under Organisation, My passkeys.',
@@ -197,8 +197,8 @@ export function Apply() {
       ) : (
         <form className="panel stack" onSubmit={start}>
           <label className="field">Invitation code
-            <span className="hint">Ophis sent it to you. It works once, for 14 days.</span>
-            <input className="input mono" value={form.invite} required maxLength={400} spellCheck={false} autoComplete="off" onChange={set('invite')} />
+            <span className="hint">12 characters Ophis sent you. It works once, for 48 hours.</span>
+            <input className="input mono" value={form.invite} required maxLength={20} placeholder="XXXX-XXXX-XXXX" spellCheck={false} autoComplete="off" autoCapitalize="characters" onChange={set('invite')} />
           </label>
           <h2 className="h-panel">The company</h2>
           <label className="field">Legal name

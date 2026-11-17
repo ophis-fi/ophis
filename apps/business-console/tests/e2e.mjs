@@ -820,7 +820,7 @@ try {
   const operator = (...args) => run('node', ['scripts/operator.mjs', ...args])
   const refusedBy = (command) => { try { command(); return '' } catch (error) { return String(error.stderr ?? '') } } // what a refused command printed
   const code = operator('invite').trim().split('\n').pop() // G1: applications are by invitation
-  check('the operator command issues an application code', /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$/.test(code))
+  check('the operator command issues an invitation code of 12 characters, in three groups of four', /^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/.test(code))
   await on.goto(`${ORIGIN}/apply`)
   await on.getByLabel('Invitation code').fill(code)
   await on.getByLabel('Legal name').fill('Alder Custody S.A.')

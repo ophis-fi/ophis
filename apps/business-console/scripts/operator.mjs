@@ -5,7 +5,7 @@
 // token comes from cloudflared: when it has none, "cloudflared access login" opens the browser for the Cloudflare sign-in.
 //   node scripts/operator.mjs token --production   once at go-live, or to change it: a new token into the Keychain and the Worker secret
 //                                                   OPERATOR_TOKEN (wrangler, logged in). It goes on stdin only, never as an argument, and is never shown.
-//   node scripts/operator.mjs invite    a new application code: one use, valid 14 days; give it to the company that may apply
+//   node scripts/operator.mjs invite    a new invitation code (12 characters): one use, valid 48 hours; give it to the company that may apply
 //   node scripts/operator.mjs list      the 3 oldest under review (and how many more wait: decide these first), with the people the application named besides the first Owner (an approval makes each an invited seat
 //                                       that needs no second person at its first enrolment), and a warning line when a wallet the application named was refused as listed; then "Reviews due, and frozen
 //                                       organisations": no screening, the next review passed or within 14 days, or frozen; a frozen one ends with what froze it: "frozen by

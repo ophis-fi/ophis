@@ -22,7 +22,7 @@ export const OPERATOR: Record<string, string> = { local: 'http://operator.localh
 export const DNS = { timeoutMs: 5000, maxBytes: 16 * 1024 }
 const WEEK_S = 7 * 24 * 60 * 60
 const DUE_MS = 14 * 24 * 60 * 60 * 1000 // a review is due from 14 days before its date
-const INVITE_S = 14 * 24 * 60 * 60 // an application code lives 14 days
+const INVITE_MS = 48 * 60 * 60 * 1000 // an invitation code lives 48 hours (owner, 2026-11-17)
 const MAX_DNS = 10 // DNS checks per application code per clock hour
 const MAX_BODY = 64 * 1024
 const ID = /^[0-9a-f]{32}$/
@@ -536,17 +536,24 @@ function applicant(body: Record<string, unknown>): Applicant | string {
 }
 
 const APPLY = 'apply-intent' // the labels of this file's texts under the challenge key
-const INVITE = 'apply-invite'
-// G1: applications are by invitation. An application code is the server's own text (MAC label "apply-invite": an id
-// and an expiry), made by the operator's command, valid 14 days, good for one organisation: the SHA-256 of its id is
-// stored unique on the organisation it makes. Checked before anything else on every call of /apply; "unused" is the one
-// read of that route. The code never leaves the browser again: the intent carries its hash.
+// G1: applications are by invitation (owner, 2026-11-17): a code of 12 characters, three groups of four in Crockford
+// base32 (32 symbols, no I, L, O or U: 60 random bits), made by the operator's command, valid 48 hours, good for one
+// organisation. The server keeps the SHA-256 of its 12 characters (invites, 0027); the organisation it makes stores the
+// same hash, unique (0007). Read the way a person types it: any case, spaces and dashes ignored, O read as 0, I and L as
+// 1. Checked before anything else on every call of /apply; the DNS step then has the 7 days of the intent, which carries
+// the hash. ponytail: no count of wrong guesses: 60 bits are out of reach at the Free plan's 100,000 requests a day.
+const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
+export const inviteText = (raw: unknown) => {
+  const text = typeof raw === 'string' ? raw.toUpperCase().replace(/[\s-]/g, '').replace(/O/g, '0').replace(/[IL]/g, '1') : ''
+  return text.length === 12 && [...text].every((char) => CROCKFORD.includes(char)) ? text : null
+}
 async function invited(c: Ctx) {
-  const code = typeof c.body.invite === 'string' ? c.body.invite.trim() : ''
-  const fields = (await unseal(c.env.CHALLENGE_KEY, INVITE, code)) as { id: string; expiresAt: number } | null
-  if (!fields || fields.expiresAt * 1000 <= c.now) return 'invite_invalid'
-  const hash = await sha256Hex(fields.id) // the code's own random id, not the text as typed (unseal takes one spelling only)
-  return (await c.env.DB.prepare('SELECT 1 FROM organisations WHERE invite_hash = ?').bind(hash).first()) ? 'invite_used' : { hash }
+  const code = inviteText(c.body.invite)
+  if (!code) return 'invite_invalid'
+  const hash = await sha256Hex(code)
+  const row = await c.env.DB.prepare('SELECT expires_at AS expiresAt, EXISTS (SELECT 1 FROM organisations WHERE invite_hash = ?1) AS used FROM invites WHERE code_hash = ?1')
+    .bind(hash).first<{ expiresAt: number; used: number }>()
+  return !row || row.expiresAt <= c.now ? 'invite_invalid' : row.used ? 'invite_used' : { hash }
 }
 const ACTIVATE = 'activate-intent'
 export const dnsName = (domain: string) => `_ophis-verify.${domain}`
@@ -983,11 +990,13 @@ async function download(c: Ctx) {
   if (!object) return fail(404, 'not_found')
   return new Response(object, { headers: { 'content-type': 'application/octet-stream', 'x-sha256': item.sha256, 'x-seal-key': item.key } })
 }
-// G1: a new application code. Nothing is written: the code is the server's own text, and it is used up by the
-// organisation it makes. ponytail: issued codes are not listed anywhere; whoever holds the operator's token makes them.
+// G1: a new invitation code: 12 random characters of CROCKFORD (each a byte's low 5 bits: 256 is a multiple of 32, so no
+// bias), its hash and expiry written. ponytail: issued codes are not listed anywhere; whoever holds the operator's token makes them.
 async function invite(c: Ctx) {
-  const expiresAt = Math.floor(c.now / 1000) + INVITE_S
-  return json(200, { code: await seal(c.env.CHALLENGE_KEY, INVITE, { id: randomId(), expiresAt }), expiresAt: expiresAt * 1000 })
+  const code = Array.from(crypto.getRandomValues(new Uint8Array(12)), (byte) => CROCKFORD[byte & 31]).join('')
+  const expiresAt = c.now + INVITE_MS
+  await c.env.DB.prepare('INSERT INTO invites (code_hash, expires_at, created_at) VALUES (?, ?, ?)').bind(await sha256Hex(code), expiresAt, c.now).run()
+  return json(200, { code: code.match(/.{4}/g)!.join('-'), expiresAt })
 }
 const freeze = (frozen: boolean) => async (c: Ctx) => {
   const outcome = ID.test(c.params.id ?? '') ? await setFrozen(c.env.DB, c.params.id!, frozen, c.now) : 'not_found'
