@@ -479,10 +479,13 @@ interface Ctx {
 }
 interface Member extends Ctx { actor: Actor }
 
-const LEGAL = /^[\p{L}\p{N} .,'&()/-]{2,120}$/u
-const NAME = /^[\p{L}\p{N} .'-]{1,60}$/u
-const POSITION = /^[\p{L}\p{N} .,'&()/-]{2,60}$/u
-const POSTAL = /^[\p{L}\p{N} .,'&()/#:+-]{5,200}$/u
+// Letters with their combining marks (\p{M}: Thai, Hindi, a decomposed accent) and the typographic apostrophe (l’Église):
+// what a company register prints (Codex, PR #1653). No control or format character (\p{C}: escapes, bidi overrides), as
+// the operator's terminal prints these, and no < or >.
+const LEGAL = /^[\p{L}\p{M}\p{N} .,'’&()/-]{2,120}$/u
+const NAME = /^[\p{L}\p{M}\p{N} .'’-]{1,60}$/u
+const POSITION = /^[\p{L}\p{M}\p{N} .,'’&()/-]{2,60}$/u
+const POSTAL = /^(?=.*[\p{L}\p{N}])[^\p{C}<>]{5,200}$/u
 const MAX_PEOPLE = 4 // besides the applicant: 5 people in all
 /** An LEI (ISO 17442): 18 letters or digits and 2 check digits, ISO 7064 mod 97-10 over the letters as 10 to 35. */
 export function leiValid(lei: string) {

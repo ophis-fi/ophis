@@ -6076,11 +6076,18 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       // and the applicant gives a position and a phone in international form; a Telegram username is optional.
       [{ lei: '5493001KJTIIGC8Y1R13' }, 'lei_invalid'], [{ lei: '5493001KJTIIGC8Y1R1' }, 'lei_invalid'], [{ lei: '5493001KJT-IGC8Y1R12' }, 'lei_invalid'],
       [{ address: '' }, 'address_invalid'], [{ address: 'x' }, 'address_invalid'], [{ address: '<b>2 rue</b>' }, 'address_invalid'], [{ address: 'x'.repeat(201) }, 'address_invalid'],
+      // What a terminal or a page acts on (the operator's list prints the address): an escape, a bidi override, a zero-width joiner; or no letter or digit at all.
+      [{ address: '2 rue \u001b[8mde la Gare' }, 'address_invalid'], [{ address: '2 rue \u202ede la Gare' }, 'address_invalid'], [{ address: '2 rue\u200dde la Gare' }, 'address_invalid'], [{ address: '.,-/ ()' }, 'address_invalid'],
+      [{ legalName: 'Alder\u202e S.A.' }, 'legal_name_invalid'], [{ position: 'CEO\u001b[2J' }, 'contact_invalid'],
       [{ position: '' }, 'contact_invalid'], [{ position: '<i>CEO</i>' }, 'contact_invalid'], [{ phone: '' }, 'contact_invalid'], [{ phone: '0621 123 456' }, 'contact_invalid'],
       [{ phone: '+352 abc' }, 'contact_invalid'], [{ phone: '+0 621 123 456' }, 'contact_invalid'], [{ phone: '+1234' }, 'contact_invalid'], [{ telegram: 'ab' }, 'contact_invalid'], [{ telegram: '@1abcde' }, 'contact_invalid'],
     ]
     for (const [change, error] of bad) expect((await call('POST', '/api/apply', { body: { ...form('alder.example'), ...change } })).body, JSON.stringify(change)).toEqual({ error })
     for (const email of ['ops@alder.example', 'Ops@Mail.Alder.Example']) expect((await call('POST', '/api/apply', { body: { ...form('alder.example'), email } })).status, email).toBe(200)
+    // What company registers print (Codex, PR #1653): combining marks, the typographic apostrophe, other scripts.
+    for (const fields of [{ address: '12 rue de l’Église, 75015 Paris' }, { address: '191 ถนนสีลม กรุงเทพฯ 10500' }, { address: 'Ka\u0301roly ko\u0308ru\u0301t 9, 1075 Budapest' },
+      { legalName: 'L’Oréal S.A.' }, { legalName: 'บริษัท ตัวอย่าง จำกัด' }, { name: 'Zoë d’Arcy' }, { position: 'Directeur général délégué' }])
+      expect((await call('POST', '/api/apply', { body: { ...form('alder.example'), ...fields } })).status, JSON.stringify(fields)).toBe(200)
     // Every field is under the MAC of the intent: the address that is stored is the one that was checked.
     const a = await applyFor('alder.example', { email: 'Ops@Mail.Alder.Example', country: 'lu', domain: 'Alder.Example', lei: ' 5493001kjtiigc8y1r12 ', address: ' 2 rue  de la Gare,\n L-1611 Luxembourg ', phone: '+352 (621) 123-456', telegram: '@maren_ok' })
     expect(fieldsOf(a.intent)).toMatchObject({ email: 'ops@mail.alder.example', country: 'LU', domain: 'alder.example', lei: '5493001KJTIIGC8Y1R12', address: '2 rue de la Gare, L-1611 Luxembourg', phone: '+352621123456', telegram: '@maren_ok' })

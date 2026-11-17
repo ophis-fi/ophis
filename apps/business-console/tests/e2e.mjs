@@ -279,8 +279,11 @@ try {
   // The first key goes back in the drawer; a second security key is plugged in.
   await devtools.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId })
   await devtools.send('WebAuthn.addVirtualAuthenticator', { options: KEY })
+  // Recovery readiness sits on this page now: it says so before the key, and reads again after it with no page reload (Codex, PR #1653).
+  await page.locator('#readiness', { hasText: 'An Owner holds fewer than two hardware keys.' }).waitFor()
   await page.getByRole('button', { name: 'Add a passkey' }).click()
   await page.getByRole('button', { name: 'Invite member' }).waitFor()
+  check('the readiness block on Organisation reads again after the action: one Owner with two keys', await page.locator('#readiness', { hasText: 'One Owner, with two hardware keys.' }).waitFor({ timeout: 5000 }).then(() => true, () => false))
   check('the Owner added a second hardware key and may now invite', await page.getByText('2: Security key 1, Security key 2').isVisible() && (await page.getByText('Add your second hardware key.').count()) === 0)
 
   // Invite a Viewer. The first try is answered "step-up required", as it would be 5 minutes after the last

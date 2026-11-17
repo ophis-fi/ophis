@@ -872,7 +872,7 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
       )}
 
       <Section later icon="key-round" title="API keys" hint="Read-only keys for reports come after the first release. No key will be able to move funds." />
-      {me.seat.role === 'owner' && <div className="groups"><Readiness /></div>}
+      {me.seat.role === 'owner' && view && <div className="groups"><Readiness after={view} /></div>}
     </>
   )
 }
@@ -1252,9 +1252,15 @@ const WHY: Record<string, (w: Ready['wallet']) => string> = {
 }
 const LEVEL: Record<string, string> = { green: 'Green', amber: 'Amber', red: 'Red', none: 'None' }
 // For an Owner: how ready the organisation is to recover access. The server reads the recovery wallet on the chain for this page.
-function Readiness() {
+// Read again after each read of the page it sits on (`after` is that page's state): an action on Organisation, a key
+// added or revoked, an Owner frozen, a wallet change, can change it. Only the newest answer lands (Codex, PR #1653).
+function Readiness({ after }: { after: unknown }) {
   const [ready, setReady] = useState<Ready>()
-  useEffect(() => void api<Ready>('/api/readiness').then((result) => result.status === 200 && setReady(result.data)), [])
+  const reads = useRef(0)
+  useEffect(() => {
+    const n = ++reads.current
+    void api<Ready>('/api/readiness').then((result) => n === reads.current && result.status === 200 && setReady(result.data))
+  }, [after])
   if (!ready) return null
   const { owners, wallet } = ready
   const [badge, sentence] = OVERALL[ready.overall] ?? OVERALL.at_risk
