@@ -11367,5 +11367,5 @@ describe('K. the Free plan of Cloudflare Workers', () => {
     expect(jobs.filter((job) => !answered.has(job)), 'never answered 2xx: run the whole file').toEqual([])
     const rows = (job: string) => (JOBS.includes(job) || onboarding.operatorRoutes.some((r) => `${r.method} ${r.path}` === job) ? RARE : FREE)
     expect([...metered].filter(([job, c]) => c.d1 > FREE.d1 || c.fetch > FREE.fetch || c.d1 + c.internal > FREE.internal || c.read > rows(job).read || c.written > rows(job).written)).toEqual([])
-  })
+  }, 60_000) // it drives every route and job of the meter in one run: about 2 s here, past the 5 s default on CI runners (2026-11-17)
 })

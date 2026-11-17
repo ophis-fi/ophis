@@ -16,7 +16,7 @@ export const ANSWERS: readonly Answer[] = [
     text: 'Sign-in uses a passkey only: on your computer or phone, or a hardware security key where your organisation requires one. There are no passwords, no SMS codes and no Google or Microsoft sign-in. On the start page choose Sign in with a passkey and confirm on your key. The passkey identifies you. It never signs a trade.' },
   { id: 'KB-03', title: 'Add a second passkey', link: ORG,
     about: 'Adding another passkey or security key to the own seat, for example on a new device.',
-    text: 'Open Organisation, My passkeys, give the new key a name and choose Add a passkey. You confirm with a passkey you already hold. Every seat needs two active passkeys before sensitive actions work, and an Owner needs two hardware security keys. Two passkeys of one seat cannot share a name.' },
+    text: 'Open Organisation, My passkeys, give the new key a name and choose Add a passkey. You confirm with a passkey you already hold. Every seat needs two active passkeys before sensitive actions work. Where the organisation requires hardware security keys, a key role adds a second one. Two passkeys of one seat cannot share a name.' },
   { id: 'KB-04', title: 'Lost passkey', link: ORG,
     about: 'A passkey, security key or device is lost, broken or gone, and how to get back in.',
     text: 'If you still hold another passkey, sign in with it and revoke the lost one under Organisation, My passkeys. The last passkey of a seat cannot be revoked. If you lost every passkey, ask an Owner or Admin to re-enrol you. Open the one-time link and create a passkey. Your colleague checks with you, then confirms it. Your old passkeys are suspended, and your seat is in quarantine for 24 or 72 hours.' },
