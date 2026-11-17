@@ -1035,7 +1035,7 @@ export async function orderOpened(db: D1Database, r: Opening, tokenHash: string,
   const done = await commit(db, r.orgId, async () => {
     const still = await db.prepare(`SELECT 1 FROM orders o WHERE o.org_id = ? AND o.id = ? AND o.link_hash = ? AND o.valid_to IS NULL`).bind(r.orgId, r.id, tokenHash).first()
     if (!still) return null
-    // The taken seconds of that minute: none read when none is taken (the primary key leads with org_id).
+    // The taken seconds of that minute, by the index orders_by_expiry (0025): no row read when none is taken.
     const taken = new Set((await db.prepare('SELECT valid_to FROM orders WHERE org_id = ? AND valid_to BETWEEN ? AND ?').bind(r.orgId, validTo, validTo + 59).raw<[number]>()).map(([v]) => v))
     for (fixed = validTo; taken.has(fixed); fixed++) if (fixed === validTo + 59) return null
     return [walletEntry(r, now, 'order.open'), [db.prepare('UPDATE orders SET valid_to = ? WHERE org_id = ? AND id = ? AND valid_to IS NULL').bind(fixed, r.orgId, r.id)]]
