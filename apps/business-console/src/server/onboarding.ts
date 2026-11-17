@@ -412,15 +412,20 @@ const HEADER = /^age-encryption\.org\/v1\n-> mlkem768x25519 [A-Za-z0-9+/]{1494}\
 export const sealedShape = (bytes: Uint8Array) => bytes.length >= 1627 + 32 && HEADER.test(String.fromCharCode(...bytes.subarray(0, 1627)))
 
 // The ciphertext of each sealed item, in D1 (sealed_chunks, migration 0024), never R2: past its free tier R2 bills, and
-// D1 on the Free plan only refuses (owner, 2026-11-17). D1 reads a BLOB back as an Array of numbers (millions of them for
-// 10 MB), so the pieces come back as hex() and are decoded natively. D1 keeps 2,000,000 bytes per string, and hex()
-// doubles a piece: under 1,000,000 bytes each (Codex P1, 2026-11-17; the local SQLite has no such cap, a test measures it).
+// D1 on the Free plan only refuses (owner, 2026-11-17). D1 carries bytes as an Array of numbers both ways (Array.from on
+// bind, millions of values for 10 MB, CPU the Free plan does not have; CodeRabbit, 2026-11-17), so a piece travels as hex
+// text, encoded and decoded natively, and SQLite stores it as a BLOB: unhex(?) in, hex(data) out (both checked on the
+// production D1). D1 keeps 2,000,000 bytes per string, and hex doubles a piece: under 1,000,000 bytes each (Codex P1,
+// 2026-11-17; the local SQLite has no such cap, a test measures it).
 export const PIECE = 990_000
-declare global { interface Uint8ArrayConstructor { fromHex(hex: string): Uint8Array } } // ES2026, in workerd; TypeScript 5.9 has no type for it yet
+declare global { // ES2026, in workerd; TypeScript 5.9 has no type for them yet
+  interface Uint8ArrayConstructor { fromHex(hex: string): Uint8Array }
+  interface Uint8Array { toHex(): string }
+}
 export const sealedStore = (db: D1Database) => ({
   async put(id: string, bytes: Uint8Array) {
     for (let n = 0; n * PIECE < bytes.length; n++)
-      await db.prepare('INSERT INTO sealed_chunks (item_id, n, data) VALUES (?, ?, ?)').bind(id, n, bytes.subarray(n * PIECE, (n + 1) * PIECE)).run()
+      await db.prepare('INSERT INTO sealed_chunks (item_id, n, data) VALUES (?, ?, unhex(?))').bind(id, n, bytes.subarray(n * PIECE, (n + 1) * PIECE).toHex()).run()
   },
   async get(id: string) {
     const pieces = await db.prepare('SELECT hex(data) FROM sealed_chunks WHERE item_id = ? ORDER BY n').bind(id).raw<[string]>()

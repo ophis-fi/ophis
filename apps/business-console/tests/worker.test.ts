@@ -5886,7 +5886,6 @@ import packageJson from '../package.json'
 const serverSources = import.meta.glob('../src/server/*.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 const sealEnv = { ENVIRONMENT: 'local', SEAL_RECIPIENT: RECIPIENT }
 const KEY = await data.sha256Hex(RECIPIENT) // the fingerprint of this run's sealing key
-const bucket = onboarding.sealedStore(db)
 // What a browser makes: a file sealed with the age library to a recipient. MARKER stands in the clear file only.
 const MARKER = 'CLEAR-TEXT-MARKER-5b'
 async function sealedFile(text = `%PDF-1.7 ${MARKER} ${crypto.randomUUID()}`, recipient = RECIPIENT) {
@@ -5906,6 +5905,7 @@ const upload = (m: Holder, bytes: Uint8Array, options: Options = {}) => call('PO
 interface Item { id: string; org_id: string; kind: string; key_generation: string; key_fingerprint: string; size: number; sha256: string; uploaded_by_seat_id: string | null; kyb_record_id: string | null; created_at: number }
 const itemsOf = async (orgId: string) => (await db.prepare('SELECT * FROM sealed_items WHERE org_id = ? ORDER BY created_at, id').bind(orgId).all<Item>()).results
 import * as onboarding from '../src/server/onboarding.ts'
+const bucket = onboarding.sealedStore(db)
 import signHtml from '../sign/index.html?raw'
 
 describe('E. onboarding: a company applies, proves its domain, is activated and reviewed', () => {
@@ -7455,8 +7455,9 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
         return (sql: string) => {
           const statement = target.prepare(sql)
           if (!sql.startsWith('INSERT INTO sealed_chunks')) return statement
-          return { bind: (id: string, n: number, piece: Uint8Array) => ({
-            run: async () => { if (n === 0) { puts.push(id); await before() } return statement.bind(id, n, piece).run() },
+          return { bind: (id: string, n: number, piece: string) => ({
+            // The piece goes as hex text: bytes bound to D1 become an Array of numbers in the Worker (CPU of the Free plan).
+            run: async () => { expect(typeof piece).toBe('string'); if (n === 0) { puts.push(id); await before() } return statement.bind(id, n, piece).run() },
           }) }
         }
       },
