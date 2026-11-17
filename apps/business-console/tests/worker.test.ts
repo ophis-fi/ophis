@@ -57,7 +57,7 @@ const RECIPIENT = await age.identityToRecipient(IDENTITY)
 let humanSerial = 0
 const humanOk = () => `XXXX.DUMMY.TOKEN.XXXX.${++humanSerial}` // a new token each time: the server uses each once
 const TURNSTILE_TEST = '1x0000000000000000000000000000000AA'
-const testEnv = { DB: db, ASSETS, ENVIRONMENT: 'local', CHALLENGE_KEY: crypto.randomUUID() + crypto.randomUUID(), SEAL_RECIPIENT: RECIPIENT, TURNSTILE_URL: 'http://127.0.0.1:8796', TURNSTILE_SECRET: TURNSTILE_TEST } as unknown as Env
+const testEnv = { DB: db, ASSETS, ENVIRONMENT: 'local', CHALLENGE_KEY: crypto.randomUUID() + crypto.randomUUID(), SEAL_RECIPIENT: RECIPIENT, TURNSTILE_URL: 'http://127.0.0.1:8796', TURNSTILE_SECRET: TURNSTILE_TEST, TELEGRAM_URL: 'http://127.0.0.1:8798', TELEGRAM_BOT_TOKEN: 'test-telegram-token', TELEGRAM_CHAT_ID: '42' } as unknown as Env
 const SIGN = configFor('local').signOrigin
 let now = START
 
@@ -325,7 +325,14 @@ const chain = {
 // turnstileTwist lets a test change the bot check's answer; turnstileAsked keeps the field names of each request to it.
 let turnstileTwist = (answer: Record<string, unknown>): Record<string, unknown> => answer
 const turnstileAsked: string[][] = []
+// The operator's Telegram (owner, 2026-11-17): what the Worker sent, and what the stand-in answers (a test may make it fail).
+const telegramSent: { url: string; body: { chat_id: string; text: string } }[] = []
+let telegramTwist = (): Response | Promise<Response> => Response.json({ ok: true })
 function fakeRpc(input: RequestInfo | URL, init?: RequestInit) {
+  if (String(input).startsWith('http://127.0.0.1:8798/bot')) {
+    telegramSent.push({ url: String(input), body: JSON.parse(String(init?.body)) })
+    return telegramTwist()
+  }
   if (String(input) === 'http://127.0.0.1:8796/turnstile/v0/siteverify') {
     const asked = JSON.parse(String(init?.body)) as Record<string, unknown>
     turnstileAsked.push(Object.keys(asked))
@@ -433,7 +440,7 @@ async function crossWallet(a: Member, b: Member, what: 'unlink' | 'anchor' | 'an
 
 // ---- milestone 4b helpers: the requester on /recover, the recovery wallet that signs, the pending passkey that continues ----
 type Signer = (typeof accounts)[number]
-interface RecoverFields { kind: 'replace' | 'override' | 'cancel'; org: string; nonce: string; credentialHash: string; issuedAt: number; expiresAt: number; site: string; seat?: string; credential?: { id: string; publicKey: string } }
+interface RecoverFields { kind: 'replace' | 'override' | 'cancel'; org: string; nonce: string; credentialHash: string; issuedAt: number; expiresAt: number; site: string; seat?: string; credential?: { id: string; publicKey: string; deviceBound?: boolean } }
 const recoverOf = (sealed: string) => JSON.parse(new TextDecoder().decode(fromBase64Url(sealed.split('.')[0]))) as RecoverFields
 // What the signing page builds from a recovery intent, with the wallet its signer reports. `change`: one field made different.
 const typedRecover = (i: RecoverFields, wallet: string, change: Partial<Parameters<typeof typedProof>[0]> = {}) =>
@@ -634,7 +641,7 @@ describe('b. only an active credential signs in', () => {
     expect([shut.status, shut.body, shut.cookie]).toEqual([403, { error: 'org_frozen' }, ''])
     expect((await call('GET', '/api/me', { cookie: m.cookie })).body).toEqual({ error: 'org_frozen' }) // milestone 5: the session is told so, and reaches nothing but its sign-out (section E)
   })
-  it('an Owner cannot enrol a synced passkey; a Viewer can', async () => {
+  it('a key role, Owners included, enrols a synced passkey only where the organisation allows it; a Viewer always can', async () => {
     const org = await organisation()
     const synced = await softwareAuthenticator(SITE, { backupEligible: true })
     const refused = await enrol(org.ticket, synced)
@@ -645,13 +652,14 @@ describe('b. only an active credential signs in', () => {
     await db.prepare(`UPDATE seats SET state = 'active' WHERE id = ?`).bind(org.seatId).run()
     const viewer = await invite(org.orgId, org.seatId, 'viewer')
     expect((await enrol(viewer.ticket, synced)).status).toBe(200)
-    // An Admin may, once the organisation allows synced keys. An Owner never may.
+    // A key role, Owners included, may once the organisation allows synced keys (owner, 2026-11-17); until then it may not.
     const admin = await invite(org.orgId, org.seatId, 'admin')
     const second = await softwareAuthenticator(SITE, { backupEligible: true })
     expect((await enrol(admin.ticket, second)).body.error).toBe('device_bound_required')
-    await db.prepare('UPDATE organisations SET synced_keys_allowed = 1 WHERE id = ?').bind(org.orgId).run()
     expect((await enrol(org.ticket, second)).body.error).toBe('device_bound_required')
+    await db.prepare('UPDATE organisations SET synced_keys_allowed = 1 WHERE id = ?').bind(org.orgId).run()
     expect((await enrol(admin.ticket, second)).status).toBe(200)
+    expect((await enrol(org.ticket, await softwareAuthenticator(SITE, { backupEligible: true }))).status).toBe(200)
   })
   it('the seat decides the key rule: a ticket that names another role than its seat is dead', async () => {
     const org = await organisation()
@@ -4390,7 +4398,7 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
     const hash = await credentialHash(asked.key.id, i.credential!.publicKey)
     expect(i).toEqual({
       kind: 'replace', org: o.orgId, seat: asked.seat, nonce: expect.stringMatching(/^0x[0-9a-f]{64}$/), credentialHash: `0x${hexOf(hash)}`,
-      credential: { id: asked.key.id, publicKey: expect.any(String), counter: expect.any(Number), transports: expect.any(Array) }, issuedAt: now / 1000, expiresAt: now / 1000 + WEEK / 1000, site: 'localhost',
+      credential: { id: asked.key.id, publicKey: expect.any(String), counter: expect.any(Number), transports: expect.any(Array), deviceBound: true }, issuedAt: now / 1000, expiresAt: now / 1000 + WEEK / 1000, site: 'localhost',
     })
     expect(asked.body).toMatchObject({ link: `${SIGN}/sign/#${asked.intent}`, expiresAt: now + WEEK })
     expect(recoverOf((await askRecovery(o.orgId, { override: true })).intent).kind).toBe('override')
@@ -4400,8 +4408,18 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
       expect((await call('POST', '/api/recover/cancel-intent', { body: { organisationId, nonce } })).status, String(organisationId)).toBe(400)
     }
     for (const bad of ['', nonce.slice(2), nonce.toUpperCase(), `${nonce}00`, 7]) expect((await call('POST', '/api/recover/cancel-intent', { body: { organisationId: o.orgId, nonce: bad } })).status, String(bad)).toBe(400)
-    // The new passkey: device-bound, with user verification, for a challenge made for this organisation and this seat, within 5 minutes.
-    expect((await askRecovery(o.orgId, {}, { backupEligible: true })).body).toEqual({ error: 'device_bound_required' })
+    // The new passkey: with user verification, for a challenge made for this organisation and this seat, within 5 minutes.
+    // A passkey that syncs passes this route, which reads no row of the organisation; whether the organisation requires a
+    // hardware key is read when the request opens (owner, 2026-11-17), from the flag the intent carries under the MAC.
+    const syncedAsk = await askRecovery(o.orgId, {}, { backupEligible: true })
+    expect(syncedAsk.status).toBe(200)
+    expect(recoverOf(syncedAsk.intent).credential!.deviceBound).toBe(false)
+    const asking = (deviceBound: boolean) => data.recoverable(db, { orgId: o.orgId, nonce: `0x${'5'.repeat(64)}`, credential: { id: 'synced-key', publicKey: 'x', counter: 0, transports: [], deviceBound } }, now)
+    expect(await asking(false)).toEqual({ error: 'device_bound_required' }) // this organisation requires hardware keys (0, as made before 2026-11-17)
+    expect(await asking(true)).toMatchObject({ wallet: { id: expect.any(String) } })
+    await db.prepare('UPDATE organisations SET synced_keys_allowed = 1 WHERE id = ?').bind(o.orgId).run()
+    expect(await asking(false)).toMatchObject({ wallet: { id: expect.any(String) } })
+    await db.prepare('UPDATE organisations SET synced_keys_allowed = 0 WHERE id = ?').bind(o.orgId).run()
     const key = await softwareAuthenticator(SITE)
     const start = await call('POST', '/api/recover/intent', { body: { organisationId: o.orgId } })
     const finish = async (body: Record<string, unknown>, answer: Answer = {}) => (await call('POST', '/api/recover/intent', { body: { organisationId: o.orgId, seat: start.body.seat, response: await key.register(start.body.options, answer), turnstile: humanOk(), ...body } })).body.error
@@ -5514,8 +5532,8 @@ describe('D. Support: the model selects, the server decides', () => {
       expect(a.title + a.text, a.id).not.toMatch(banned)
     }
     expect(new Set(ANSWERS.map((a) => a.title)).size).toBe(25)
-    // What is not built says so.
-    for (const id of ['KB-01', 'KB-13']) expect(ANSWERS.find((a) => a.id === id)!.text, id).toMatch(/^Not available yet\./)
+    // What is not built says so. Registration (KB-01) is live since 2026-11-17.
+    for (const id of ['KB-13']) expect(ANSWERS.find((a) => a.id === id)!.text, id).toMatch(/^Not available yet\./)
     // Review of P4: a partner's Overview shows its fee figures and exports one table, so the two texts say so. No text
     // speaks of a referral share, referred wallets, codes or earnings: the console's partners get none (2026-11-13).
     const text = (id: string) => ANSWERS.find((a) => a.id === id)!.text
@@ -5527,7 +5545,7 @@ describe('D. Support: the model selects, the server decides', () => {
     expect(text('KB-13') + text('KB-16')).not.toMatch(/no fees view|does not show|one export that exists/)
     for (const a of ANSWERS) expect(a.title + a.about + a.text, a.id).not.toMatch(/referr|affiliate|partner code|earning/i)
     // Onboarding is built and the Desk is real (2026-11-14): the two texts say what is there.
-    expect(text('KB-01')).toMatch(/application code from Ophis/)
+    expect(text('KB-01')).toMatch(/invitation code from Ophis, valid 48 hours/)
     expect(text('KB-19')).toMatch(/approves it with a passkey, within 1 hour\. Then a one-time link lets your wallet sign it, within 1 hour \(market\) or 24 hours \(limit\)\. A Safe signs in the Safe interface\./)
     expect(text('KB-19')).toContain('Sent: waiting for the Safe transaction')
     expect(text('KB-19')).not.toMatch(/demo|Not available/)
@@ -5974,6 +5992,56 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     return { ...a, key2: second.key }
   }
   const undeclared = (domain?: string) => applicantWithTwoKeys(domain, false)
+
+  it('local passkeys (owner, 2026-11-17): an applicant uses a passkey that syncs; the organisation it makes allows them for every key role and stores the first key as it is; two of them make the Owner ready; once its Owners require hardware keys, they no longer count', async () => {
+    const a = await applyFor(undefined, {}, { backupEligible: true })
+    publish(a.body.record)
+    expect((await checkDns(a.intent)).body).toEqual({ state: 'unverified' })
+    const org = (await row<{ id: string; synced: number }>('SELECT id, synced_keys_allowed AS synced FROM organisations WHERE email_domain = ?', a.domain))!
+    expect(org.synced).toBe(1)
+    expect(await row('SELECT device_bound FROM credentials WHERE org_id = ?', org.id)).toEqual({ device_bound: 0 })
+    const m: Holder = { cookie: (await signIn(a.key)).cookie }
+    const keysOf = async () => (await call('GET', '/api/me', { cookie: m.cookie })).body.seat.keys as number
+    expect(await keysOf()).toBe(1)
+    expect((await addKey(m, { backupEligible: true })).status).toBe(200)
+    expect(await keysOf()).toBe(2) // two passkeys that sync: what every further step of an Owner needs
+    expect((await upload(m, await sealedFile())).status).toBe(200) // a route that needs two keys
+    // Its Owners require hardware keys: the two no longer count, and a third that syncs is refused.
+    await db.prepare('UPDATE organisations SET synced_keys_allowed = 0 WHERE id = ?').bind(org.id).run()
+    expect(await keysOf()).toBe(0)
+    expect((await addKey(m, { backupEligible: true })).body).toEqual({ error: 'device_bound_required' })
+  })
+
+  it('the operator hears of each application submitted for review, on Telegram, in the server\'s own words; without the secrets nothing is sent; a failure changes nothing for the client (owner, 2026-11-17)', async () => {
+    telegramSent.length = 0
+    const u = await underReview()
+    expect(telegramSent).toHaveLength(1)
+    const [sent] = telegramSent
+    expect(sent.url).toBe('http://127.0.0.1:8798/bottest-telegram-token/sendMessage')
+    expect(sent.body).toMatchObject({ chat_id: '42', disable_web_page_preview: true })
+    expect(sent.body.text).toBe(`New application to review on pro.ophis.fi: Alder Custody S.A. (fund, LU), ${u.domain}.\nOrganisation ${u.orgId}.\nRun: operator list --production`)
+    // Telegram down: the application stands, under review.
+    telegramTwist = () => { throw new TypeError('network') }
+    try {
+      const v = await applicantWithTwoKeys()
+      expect((await activation(v)).body).toEqual({ state: 'stored' })
+      expect((await submit(v)).body).toEqual({ state: 'under_review' })
+      telegramTwist = () => new Response('busy', { status: 502 })
+      const w = await applicantWithTwoKeys()
+      expect((await activation(w, accounts[1])).body).toEqual({ state: 'stored' })
+      expect((await submit(w)).body).toEqual({ state: 'under_review' })
+    } finally {
+      telegramTwist = () => Response.json({ ok: true })
+    }
+    // No token or no chat: nothing is sent.
+    telegramSent.length = 0
+    for (const env of [{ ...testEnv, TELEGRAM_BOT_TOKEN: undefined }, { ...testEnv, TELEGRAM_CHAT_ID: '' }]) {
+      const x = await applicantWithTwoKeys()
+      expect((await activation(x, accounts[2])).body).toEqual({ state: 'stored' })
+      expect((await call('POST', '/api/onboarding/submit', { cookie: x.cookie, body: {}, env: env as unknown as Env })).body).toEqual({ state: 'under_review' })
+    }
+    expect(telegramSent).toHaveLength(0)
+  })
   interface ActivateFields { kind: 'activate'; org: string; chainId: number; wallet: string; label: string; custodian: boolean; credentialHash: string; nonce: string; issuedAt: number; expiresAt: number; site: string }
   const typedActivate = (i: ActivateFields, change: Partial<Parameters<typeof typedProof>[0]> = {}) =>
     typedProof({ kind: 'activate', chainId: i.chainId, site: i.site, organisationId: i.org, wallet: i.wallet, credentialHash: i.credentialHash, nonce: i.nonce, issuedAt: i.issuedAt, expiresAt: i.expiresAt, ...change }) as never
@@ -6050,8 +6118,11 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect((await applyFor('alder.example')).body.record.value).not.toBe(a.body.record.value) // another passkey
     expect(await onboarding.dnsValue(testEnv.CHALLENGE_KEY, 'birch.example', f.credentialHash)).not.toBe(a.body.record.value) // another domain
     expect(await onboarding.dnsValue(`${testEnv.CHALLENGE_KEY}x`, 'alder.example', f.credentialHash)).not.toBe(a.body.record.value) // another key
-    // The Owner rule: a device-bound passkey with user verification, for a challenge made for this seat and this domain.
-    expect((await applyFor('alder.example', {}, { backupEligible: true })).body).toEqual({ error: 'device_bound_required' })
+    // Any passkey with user verification (owner, 2026-11-17: a passkey on a computer or a phone too), for a challenge made
+    // for this seat and this domain. The options no longer steer the browser to a security key.
+    const synced = await applyFor('alder-synced.example', {}, { backupEligible: true })
+    expect(synced.status).toBe(200)
+    expect(fieldsOf<{ credential: { deviceBound: boolean } }>(synced.intent).credential.deviceBound).toBe(false)
     expect((await applyFor('alder.example', {}, {}, { userVerified: false })).body).toEqual({ error: 'passkey_rejected' })
     expect((await applyFor('alder.example', {}, {}, { as: { origin: 'https://evil.example' } })).body).toEqual({ error: 'passkey_rejected' })
     const key = await softwareAuthenticator(SITE)
@@ -7836,8 +7907,10 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       expect((await call('GET', '/api/audit', { cookie: a.cookie })).body.rows[0]).toMatchObject({ who: 'Maren Okafor', event: 'Passkey confirmed by the issuer, active with no second person: Ophis approved this member with the organisation', target: 'Ben Okoro' })
       expect((await signIn(joined.key)).status).toBe(200)
       expect(await row('SELECT state, ophis_approved AS approved, quarantine_until AS quarantine FROM seats WHERE id = ?', ben.id)).toEqual({ state: 'active', approved: 0, quarantine: null })
-      // Ben is now a second key-role member: an Owner's first enrolment would need a second person. Cleo's does not,
-      // and as an Owner she still enrols a hardware key only.
+      // Ben is now a second key-role member: an Owner's first enrolment would need a second person. Cleo's does not. As an
+      // Owner she enrols a hardware key only where the organisation requires one (an organisation that applied allows synced keys).
+      expect(await row('SELECT synced_keys_allowed AS synced FROM organisations WHERE id = ?', a.orgId)).toEqual({ synced: 1 })
+      await db.prepare('UPDATE organisations SET synced_keys_allowed = 0 WHERE id = ?').bind(a.orgId).run()
       const owner = await issue(a, { seatId: cleo.id })
       expect((await enrolLink(owner.body.link, { backupEligible: true })).body).toEqual({ error: 'device_bound_required' })
       expect((await enrolLink(owner.body.link)).status).toBe(200)

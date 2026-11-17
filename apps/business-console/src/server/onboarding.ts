@@ -8,6 +8,7 @@ import { checksum, colour, parseAddress, readCapped, safeState, verify, verifyDi
 import { commit, countHour, DOMAIN, emailAt, freezing, LISTED, listed, listedWallet, PEOPLE, randomId, REVIEWED, sha256Hex, type Actor, type WalletKind } from './data.ts'
 import { challengeIsOurs, creationOptions, credentialHash, fromBase64Url, newChallenge, seal, unseal, verifyRegistration, type Config } from './passkeys.ts'
 import { indexerBase } from './partner.ts'
+import { standIn } from './orders.ts'
 import { CHAIN_NAME, LISTS, typedProof } from './typed.ts'
 
 // Constants per environment, like those of passkeys.ts, and never read from a request.
@@ -92,7 +93,8 @@ const hex = (bytes: Uint8Array) => [...bytes].map((byte) => byte.toString(16).pa
 
 // ---- rows ----
 
-interface Passkey { id: string; publicKey: string; counter: number; transports: string[] }
+// deviceBound: absent in an intent sealed before 2026-11-17, when an applicant's passkey had to be a hardware key.
+interface Passkey { id: string; publicKey: string; counter: number; transports: string[]; deviceBound?: boolean }
 /** One more person the application names (owner decision of 2026-11-13): Ophis approves them with the organisation. */
 // position, phone and telegram (0026): how Ophis reaches each person; telegram is optional. An intent sealed before
 // 2026-11-17 (7 days at most) has none of the new fields: they are stored as NULL.
@@ -114,12 +116,12 @@ async function createOrganisation(db: D1Database, a: ApplyIntent, value: string,
     await commit(db, orgId, () => {
       outcome = 'ok'
       return [{ at: now, actorKind: 'seat', actorId: a.seat, sessionId: null, action: 'organisation.apply', subjectId: a.credential.id, detail: a.credentialHash }, [
-        db.prepare(`INSERT INTO organisations (id, kind, business_type, name, state, email_domain, domain_challenge, domain_verified_at, country, registration_number, lei, registered_address, invite_hash, created_at)
-                    VALUES (?, ?, ?, ?, 'unverified', ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(orgId, a.kind, a.businessType ?? null, a.legalName, a.domain, value, now, a.country, a.registration, a.lei ?? null, a.address ?? null, a.inviteHash, now),
+        db.prepare(`INSERT INTO organisations (id, kind, business_type, name, state, email_domain, domain_challenge, domain_verified_at, country, registration_number, lei, registered_address, invite_hash, synced_keys_allowed, created_at)
+                    VALUES (?, ?, ?, ?, 'unverified', ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`).bind(orgId, a.kind, a.businessType ?? null, a.legalName, a.domain, value, now, a.country, a.registration, a.lei ?? null, a.address ?? null, a.inviteHash, now),
         db.prepare(`INSERT INTO seats (id, org_id, display_name, email, role, state, position, phone, telegram, created_at) VALUES (?, ?, ?, ?, 'owner', 'active', ?, ?, ?, ?)`)
           .bind(a.seat, orgId, a.name, a.email, a.position ?? null, a.phone ?? null, a.telegram ?? null, now),
-        db.prepare(`INSERT INTO credentials (id, org_id, seat_id, public_key, counter, device_bound, transports, label, state, created_at) VALUES (?, ?, ?, ?, ?, 1, ?, 'First key', 'active', ?)`)
-          .bind(a.credential.id, orgId, a.seat, a.credential.publicKey, a.credential.counter, JSON.stringify(a.credential.transports), now),
+        db.prepare(`INSERT INTO credentials (id, org_id, seat_id, public_key, counter, device_bound, transports, label, state, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'First key', 'active', ?)`)
+          .bind(a.credential.id, orgId, a.seat, a.credential.publicKey, a.credential.counter, a.credential.deviceBound === false ? 0 : 1, JSON.stringify(a.credential.transports), now),
         // An intent sealed before 2026-11-13 (7 days at most) has no `people`: it names nobody.
         ...(a.people ?? []).map((p) => db.prepare('INSERT INTO application_people (org_id, email, display_name, role, position, phone, telegram) VALUES (?, ?, ?, ?, ?, ?, ?)')
           .bind(orgId, p.email, p.name, p.role, p.position ?? null, p.phone ?? null, p.telegram ?? null)),
@@ -157,7 +159,7 @@ const peopleOf = async (db: D1Database, orgId: string) =>
 async function missing(db: D1Database, orgId: string, now: number): Promise<null | 'not_found' | 'second_key' | 'proof_or_owner' | 'single_key' | 'declaration'> {
   const first = await firstOf(db, orgId)
   if (!first) return 'not_found'
-  const owner = `s.org_id = ?1 AND s.role = 'owner' AND s.state = 'active' AND (SELECT count(*) FROM credentials k WHERE k.org_id = s.org_id AND k.seat_id = s.id AND k.state = 'active' AND k.device_bound = 1) >= 2`
+  const owner = `s.org_id = ?1 AND s.role = 'owner' AND s.state = 'active' AND (SELECT count(*) FROM credentials k WHERE k.org_id = s.org_id AND k.seat_id = s.id AND k.state = 'active' AND (k.device_bound = 1 OR (SELECT synced_keys_allowed FROM organisations WHERE id = s.org_id) = 1)) >= 2`
   const seen = (await db.prepare(`SELECT (SELECT count(*) FROM seats s WHERE ${owner} AND s.id = ?2) AS own, (SELECT count(*) FROM seats s WHERE ${owner} AND s.id <> ?2) AS others,
                                          (SELECT count(*) FROM wallets w WHERE w.org_id = ?1 AND w.state = 'pending') AS proof,
                                          (SELECT count(*) FROM wallets w WHERE w.org_id = ?1 AND w.state = 'pending' AND w.kind = 'single_key') AS single, ${PEOPLE('?1', '?3')} AS people,
@@ -474,8 +476,8 @@ async function storeSealed(db: D1Database, actor: Actor, item: { id: string; siz
 
 // The route's context, as much as these handlers read (index.ts builds it).
 interface Ctx {
-  env: { DB: D1Database; ENVIRONMENT: string; CHALLENGE_KEY: string; SEAL_RECIPIENT?: string; SANCTIONS_URL?: string }
-  now: number; config: Config; body: Record<string, unknown>; params: Record<string, string | undefined>
+  env: { DB: D1Database; ENVIRONMENT: string; CHALLENGE_KEY: string; SEAL_RECIPIENT?: string; SANCTIONS_URL?: string; TELEGRAM_BOT_TOKEN?: string; TELEGRAM_CHAT_ID?: string; TELEGRAM_URL?: string }
+  now: number; config: Config; body: Record<string, unknown>; params: Record<string, string | undefined>; ctx?: ExecutionContext
 }
 interface Member extends Ctx { actor: Actor }
 
@@ -578,7 +580,7 @@ export async function apply(c: Ctx) {
   const { seat } = c.body
   if (typeof seat !== 'string' || !ID.test(seat)) {
     const made = randomId()
-    return json(200, { seat: made, options: creationOptions(c.config, await newChallenge(c.env.CHALLENGE_KEY, 'apply', `${made}.${a.domain}`, c.now), { id: made, name: a.name }, true) })
+    return json(200, { seat: made, options: creationOptions(c.config, await newChallenge(c.env.CHALLENGE_KEY, 'apply', `${made}.${a.domain}`, c.now), { id: made, name: a.name }, false) })
   }
   let credential
   try {
@@ -586,11 +588,11 @@ export async function apply(c: Ctx) {
   } catch {
     return fail(400, 'passkey_rejected')
   }
-  if (!credential.deviceBound) return fail(400, 'device_bound_required') // the Owner rule
+  // Any passkey (owner, 2026-11-17): the organisation it makes allows passkeys that sync; its Owners can require hardware keys later.
   const hash = `0x${hex(await credentialHash(credential.id, credential.publicKey))}`
   const issuedAt = Math.floor(c.now / 1000)
   const intent: ApplyIntent = {
-    ...a, inviteHash: code.hash, seat, credential: { id: credential.id, publicKey: credential.publicKey, counter: credential.counter, transports: credential.transports },
+    ...a, inviteHash: code.hash, seat, credential: { id: credential.id, publicKey: credential.publicKey, counter: credential.counter, transports: credential.transports, deviceBound: credential.deviceBound },
     credentialHash: hash, issuedAt, expiresAt: issuedAt + WEEK_S, site: c.config.rpId,
   }
   return json(200, {
@@ -854,7 +856,30 @@ export async function sealDeclaration(c: Member & { request: Request; bytes: Uin
 // POST /api/onboarding/submit (Owner, fresh, two passkeys).
 export async function submit(c: Member) {
   const outcome = await submitForReview(c.env.DB, c.actor, c.now)
-  return outcome === 'ok' ? json(200, { state: 'under_review' }) : refuse(outcome)
+  if (outcome !== 'ok') return refuse(outcome)
+  const told = tellOperator(c.env, c.actor.orgId)
+  if (c.ctx) c.ctx.waitUntil(told)
+  else await told
+  return json(200, { state: 'under_review' })
+}
+
+// The operator hears of each application submitted for review (owner, 2026-11-17): one Telegram message to the chat
+// TELEGRAM_CHAT_ID from the bot TELEGRAM_BOT_TOKEN, both Worker secrets; without them nothing is sent. Plain text from
+// the server's own values. After the commit and out of the answer's way (waitUntil): a failure changes nothing for the
+// client, and nothing about it is logged (the address holds the bot's token).
+async function tellOperator(env: Ctx['env'], orgId: string) {
+  if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return
+  try {
+    const o = await env.DB.prepare('SELECT name, business_type AS type, kind, country, email_domain AS domain FROM organisations WHERE id = ?').bind(orgId)
+      .first<{ name: string; type: string | null; kind: string; country: string | null; domain: string | null }>()
+    if (!o) return
+    const text = `New application to review on pro.ophis.fi: ${o.name} (${o.type ?? o.kind}${o.country ? `, ${o.country}` : ''}), ${o.domain ?? 'no domain'}.\nOrganisation ${orgId}.\nRun: operator list --production`
+    await fetch(`${standIn(env, env.TELEGRAM_URL) ?? 'https://api.telegram.org'}/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text, disable_web_page_preview: true }), signal: AbortSignal.timeout(5000),
+    })
+  } catch {
+    // Telegram is down or slow: the application stands, and the operator's list shows it.
+  }
 }
 
 // ---- the operator's API (its own hostname) ----

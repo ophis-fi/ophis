@@ -280,10 +280,10 @@ try {
   await devtools.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId })
   await devtools.send('WebAuthn.addVirtualAuthenticator', { options: KEY })
   // Recovery readiness sits on this page now: it says so before the key, and reads again after it with no page reload (Codex, PR #1653).
-  await page.locator('#readiness', { hasText: 'An Owner holds fewer than two hardware keys.' }).waitFor()
+  await page.locator('#readiness', { hasText: 'An Owner holds fewer than two passkeys.' }).waitFor()
   await page.getByRole('button', { name: 'Add a passkey' }).click()
   await page.getByRole('button', { name: 'Invite member' }).waitFor()
-  check('the readiness block on Organisation reads again after the action: one Owner with two keys', await page.locator('#readiness', { hasText: 'One Owner, with two hardware keys.' }).waitFor({ timeout: 5000 }).then(() => true, () => false))
+  check('the readiness block on Organisation reads again after the action: one Owner with two keys', await page.locator('#readiness', { hasText: 'One Owner, with two passkeys.' }).waitFor({ timeout: 5000 }).then(() => true, () => false))
   check('the Owner added a second hardware key and may now invite', await page.getByText('2: Security key 1, Security key 2').isVisible() && (await page.getByText('Add your second hardware key.').count()) === 0)
 
   // Invite a Viewer. The first try is answered "step-up required", as it would be 5 minutes after the last
@@ -596,18 +596,18 @@ try {
   await page.getByRole('heading', { name: 'Recovery readiness' }).waitFor()
   const readiness = await page.locator('#readiness').innerText()
   check('the Organisation page shows an Owner the readiness state: two Owners with two hardware keys are Ready, and a recovery wallet that still waits is amber and says so',
-    ['Ready', '2 Owners, each with two hardware keys.', 'Amber', 'Custody wallet is in force from', 'Until then it does not count.'].every((text) => readiness.includes(text)) && await both(page, '21-readiness'))
+    ['Ready', '2 Owners, each with two passkeys.', 'Amber', 'Custody wallet is in force from', 'Until then it does not count.'].every((text) => readiness.includes(text)) && await both(page, '21-readiness'))
   check('an Admin gets no readiness block', (await status('/api/readiness', cy.page)) === 403)
   // A read that fails clears the earlier answer and offers a retry: no old assessment is shown as current (CodeRabbit, PR #1653).
   await page.route('**/api/readiness', (route) => route.fulfill({ status: 500, contentType: 'application/json', body: '{}' }))
   await page.getByRole('button', { name: 'Invite member' }).click()
   await page.getByRole('button', { name: 'Close' }).last().click() // the page reads its state again, and readiness with it
   await page.locator('#readiness', { hasText: 'It could not be read just now' }).waitFor()
-  check('a readiness read that fails shows no earlier answer, and offers Try again', !(await page.locator('#readiness').innerText()).includes('2 Owners, each with two hardware keys.')
+  check('a readiness read that fails shows no earlier answer, and offers Try again', !(await page.locator('#readiness').innerText()).includes('2 Owners, each with two passkeys.')
     && await page.locator('#readiness').getByRole('button', { name: 'Try again' }).isVisible())
   await page.unroute('**/api/readiness')
   await page.locator('#readiness').getByRole('button', { name: 'Try again' }).click()
-  check('Try again reads it again', await page.locator('#readiness', { hasText: '2 Owners, each with two hardware keys.' }).waitFor({ timeout: 5000 }).then(() => true, () => false))
+  check('Try again reads it again', await page.locator('#readiness', { hasText: '2 Owners, each with two passkeys.' }).waitFor({ timeout: 5000 }).then(() => true, () => false))
 
   // Unlinking the recovery wallet is refused: by the page, and by the server when asked directly.
   await arrive(owner, false)

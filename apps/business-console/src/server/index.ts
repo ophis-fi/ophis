@@ -8,7 +8,7 @@ import * as orders from './orders.ts'
 import * as partner from './partner.ts'
 import { activateIntent, activationIntent, activationProof, apply, applyCheck, DOWNLOAD_REASONS, ofacStale, onboarding, ONBOARDING_EVENTS, operator, OPERATOR, screening, SEAL, sealDeclaration, submit, sync } from './onboarding.ts'
 
-export interface Env { DB: D1Database; ASSETS: Fetcher; ENVIRONMENT: string; CHALLENGE_KEY: string; SEAL_RECIPIENT?: string; INDEXER_URL?: string; INDEXER_TOKEN?: string; SANCTIONS_URL?: string; ORDERBOOK_URL?: string; RPC_URL?: string; TURNSTILE_URL?: string; TURNSTILE_SECRET?: string }
+export interface Env { DB: D1Database; ASSETS: Fetcher; ENVIRONMENT: string; CHALLENGE_KEY: string; SEAL_RECIPIENT?: string; INDEXER_URL?: string; INDEXER_TOKEN?: string; SANCTIONS_URL?: string; ORDERBOOK_URL?: string; RPC_URL?: string; TURNSTILE_URL?: string; TURNSTILE_SECRET?: string; TELEGRAM_BOT_TOKEN?: string; TELEGRAM_CHAT_ID?: string; TELEGRAM_URL?: string }
 
 const IDLE_MS = 15 * 60_000
 const ABSOLUTE_MS = 12 * 60 * 60_000
@@ -466,7 +466,7 @@ async function recoverIntent(c: Context) {
   if (typeof seat !== 'string' || !ID.test(seat)) {
     const made = data.randomId()
     const challenge = await newChallenge(c.env.CHALLENGE_KEY, 'recover', `${org}.${made}`, c.now)
-    return json(200, { seat: made, options: creationOptions(c.config, challenge, { id: made, name: 'Recovery Owner' }, true) })
+    return json(200, { seat: made, options: creationOptions(c.config, challenge, { id: made, name: 'Recovery Owner' }, false) }) // the organisation's rule is read on the second call
   }
   if (!(await human(c))) return fail(403, 'human_check_failed')
   let credential
@@ -475,7 +475,8 @@ async function recoverIntent(c: Context) {
   } catch {
     return fail(400, 'passkey_rejected')
   }
-  if (!credential.deviceBound) return fail(400, 'device_bound_required') // the new passkey is an Owner's
+  // The new passkey is an Owner's: whether the organisation requires a hardware key is read when the request opens
+  // (data.recoverable): this route reads no row of an organisation. The intent carries the flag (owner, 2026-11-17).
   const hash = `0x${Array.from(await credentialHash(credential.id, credential.publicKey), (byte) => byte.toString(16).padStart(2, '0')).join('')}`
   const kind = c.body.override === true ? 'override' : 'replace'
   // One registration, one request: the same response sent again (its challenge lives 5 minutes), with either kind, gets
@@ -484,7 +485,7 @@ async function recoverIntent(c: Context) {
   return json(200, await sealedRecover(c, {
     kind, org, seat, nonce: `0x${await data.sha256Hex(`${org}.${seat}.${hash}`)}`,
     credentialHash: hash,
-    credential: { id: credential.id, publicKey: credential.publicKey, counter: credential.counter, transports: credential.transports },
+    credential: { id: credential.id, publicKey: credential.publicKey, counter: credential.counter, transports: credential.transports, deviceBound: credential.deviceBound },
   }))
 }
 // The same for a cancel by the recovery wallet: an organisation id and the nonce of the request in, an intent out,

@@ -44,8 +44,9 @@ const gone = (s: string) => `(${s}.role = 'owner' AND ${s}.state = 'active'
   AND NOT EXISTS (SELECT 1 FROM credentials k WHERE k.org_id = ${s}.org_id AND k.seat_id = ${s}.id AND k.state = 'active')
   AND EXISTS (SELECT 1 FROM credentials k JOIN recovery_requests r ON r.org_id = k.org_id AND r.state = 'completed' AND r.closed_at + ${STOP_MS} = k.stop_right_until
               WHERE k.org_id = ${s}.org_id AND k.seat_id = ${s}.id AND k.state = 'suspended' AND k.stop_right_until <= ?))`
-/** Owners: hardware keys only, no exception. Other key roles: hardware keys unless the organisation allowed synced ones. */
-export const needsHardware = (role: Role, syncedKeysAllowed: number) => role === 'owner' || (KEY_ROLES.includes(role) && syncedKeysAllowed !== 1)
+/** Key roles, Owners included: hardware keys unless the organisation allows passkeys that sync (owner, 2026-11-17: an
+ * organisation made by an application allows them; an Owner can require hardware keys under Organisation). */
+export const needsHardware = (role: Role, syncedKeysAllowed: number) => KEY_ROLES.includes(role) && syncedKeysAllowed !== 1
 /** Quarantine and the stop right last 24 hours for a Trader or Viewer, 72 hours for a key role. */
 const quarantineMs = (role: Role) => (KEY_ROLES.includes(role) ? 72 : 24) * HOUR
 const quarantined = (actor: Actor, now: number) => (actor.quarantineUntil ?? 0) > now
@@ -315,7 +316,7 @@ export function sessionByToken(db: D1Database, tokenHash: string) {
     .prepare(
       `SELECT x.id, x.org_id, x.seat_id, x.credential_id, x.created_at, x.last_seen_at, x.step_up_at, s.role, s.display_name, s.quarantine_until, o.quarantine_until AS org_quarantine_until,
               o.name AS org_name, o.kind AS org_kind, o.synced_keys_allowed, o.state AS org_state,
-              (SELECT count(*) FROM credentials k WHERE k.org_id = x.org_id AND k.seat_id = x.seat_id AND k.state = 'active' AND (s.role <> 'owner' OR k.device_bound = 1)) AS strong_keys
+              (SELECT count(*) FROM credentials k WHERE k.org_id = x.org_id AND k.seat_id = x.seat_id AND k.state = 'active' AND (s.role <> 'owner' OR k.device_bound = 1 OR o.synced_keys_allowed = 1)) AS strong_keys
        FROM sessions x
        JOIN credentials c ON c.org_id = x.org_id AND c.id = x.credential_id AND c.state = 'active'
        JOIN seats s ON s.org_id = x.org_id AND s.id = x.seat_id AND s.state = 'active'
@@ -1265,9 +1266,9 @@ export async function linkWallet(
   return outcome as Linked
 }
 
-/** For the readiness block: the device-bound passkeys of each active Owner, and the recovery wallet in force (failing that, the one that waits). */
+/** For the readiness block: the passkeys that count for each active Owner (device-bound, or any where the organisation allows synced ones), and the recovery wallet in force (failing that, the one that waits). */
 export async function readiness(db: D1Database, actor: Actor, now: number) {
-  const owners = await db.prepare(`SELECT (SELECT count(*) FROM credentials k WHERE k.org_id = s.org_id AND k.seat_id = s.id AND k.state = 'active' AND k.device_bound = 1) AS keys
+  const owners = await db.prepare(`SELECT (SELECT count(*) FROM credentials k WHERE k.org_id = s.org_id AND k.seat_id = s.id AND k.state = 'active' AND (k.device_bound = 1 OR (SELECT synced_keys_allowed FROM organisations WHERE id = s.org_id) = 1)) AS keys
                                    FROM seats s WHERE s.org_id = ? AND s.role = 'owner' AND s.state = 'active' AND NOT ${gone('s')}`).bind(actor.orgId, now).all<{ keys: number }>()
   const all = await wallets(db, actor.orgId, now)
   return { owners: owners.results.map((owner) => owner.keys), wallet: all.find((w) => w.recovery === 'in_force') ?? all.find((w) => w.recovery === 'waiting') ?? null }
@@ -1324,7 +1325,7 @@ const closeRecovery = (db: D1Database, orgId: string, r: { id: string; seat_id: 
 /** The people of an organisation: its seats that hold a passkey which signs in or can still stop something. A recovery wallet with a single key stands only for one (here, and at "Submit for review": G5). */
 export const PEOPLE = (org: string, now: string) => `(SELECT count(*) FROM seats s WHERE s.org_id = ${org} AND s.state IN ('active', 'frozen') AND EXISTS (SELECT 1 FROM credentials k WHERE k.org_id = s.org_id AND k.seat_id = s.id
   AND (k.state = 'active' OR (k.state = 'suspended' AND (k.stop_right_until IS NULL OR k.stop_right_until > ${now})))))`
-export interface RecoveryAsk { orgId: string; override: boolean; seatId: string; credential: { id: string; publicKey: string; counter: number; transports: string[] }; credentialHash: string; nonce: string }
+export interface RecoveryAsk { orgId: string; override: boolean; seatId: string; credential: { id: string; publicKey: string; counter: number; transports: string[]; deviceBound?: boolean }; credentialHash: string; nonce: string }
 export interface Anchor { id: string; chainId: number; address: string; kind: WalletKind; snapshot: string | null }
 /**
  * The rows that decide whether a request can open, as they are now: the organisation is active, it has a recovery
@@ -1335,9 +1336,13 @@ export interface Anchor { id: string; chainId: number; address: string; kind: Wa
  */
 export async function recoverable(db: D1Database, ask: Pick<RecoveryAsk, 'orgId' | 'nonce' | 'credential'>, now: number): Promise<{ error: string } | { wallet: Anchor }> {
   const inForce = (await anchors(db, ask.orgId, now)).inForce
-  const wallet = inForce === null ? null : await db.prepare(`SELECT w.id, w.chain_id AS chainId, w.address, w.kind, w.snapshot FROM wallets w JOIN organisations o ON o.id = w.org_id AND o.state = 'active'
-                                                             WHERE w.org_id = ? AND w.id = ?`).bind(ask.orgId, inForce).first<Anchor>()
-  if (!wallet) return { error: 'no_recovery_wallet' }
+  const found = inForce === null ? null : await db.prepare(`SELECT w.id, w.chain_id AS chainId, w.address, w.kind, w.snapshot, o.synced_keys_allowed AS synced FROM wallets w JOIN organisations o ON o.id = w.org_id AND o.state = 'active'
+                                                             WHERE w.org_id = ? AND w.id = ?`).bind(ask.orgId, inForce).first<Anchor & { synced: number }>()
+  if (!found) return { error: 'no_recovery_wallet' }
+  const { synced, ...wallet } = found
+  // The new Owner's passkey: a hardware key where the organisation requires one (owner, 2026-11-17). The intent carries
+  // the flag under the server's MAC; an intent sealed before has none, and its passkey was a hardware key then.
+  if (needsHardware('owner', synced) && ask.credential.deviceBound === false) return { error: 'device_bound_required' }
   if (await recoveryRow(db, ask.orgId, now)) return { error: 'request_open' }
   const seen = (await db.prepare(`SELECT (SELECT count(*) FROM recovery_requests WHERE nonce = ?) + (SELECT count(*) FROM credentials WHERE id = ?) AS used,
                                          (SELECT max(closed_at) FROM recovery_requests WHERE org_id = ? AND state = 'cancelled') AS cancelled,
@@ -1384,8 +1389,8 @@ export async function openRecovery(db: D1Database, ask: RecoveryAsk, proof: { wa
       db.prepare(`UPDATE seats SET state = 'removed' WHERE org_id = ? AND id IN (${lapsed})`).bind(ask.orgId, ask.orgId, now),
       db.prepare(`UPDATE recovery_requests SET state = 'lapsed', closed_at = wait_until + ${READY_MS} WHERE org_id = ? AND state = 'waiting' AND wait_until + ${READY_MS} <= ?`).bind(ask.orgId, now),
       db.prepare(`INSERT INTO seats (id, org_id, display_name, role, state, created_at) VALUES (?, ?, 'Recovery Owner', 'owner', 'invited', ?)`).bind(ask.seatId, ask.orgId, now),
-      db.prepare(`INSERT INTO credentials (id, org_id, seat_id, public_key, counter, device_bound, transports, label, state, created_at) VALUES (?, ?, ?, ?, ?, 1, ?, 'Recovery key', 'pending', ?)`)
-        .bind(ask.credential.id, ask.orgId, ask.seatId, ask.credential.publicKey, ask.credential.counter, JSON.stringify(ask.credential.transports), now),
+      db.prepare(`INSERT INTO credentials (id, org_id, seat_id, public_key, counter, device_bound, transports, label, state, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'Recovery key', 'pending', ?)`)
+        .bind(ask.credential.id, ask.orgId, ask.seatId, ask.credential.publicKey, ask.credential.counter, ask.credential.deviceBound === false ? 0 : 1, JSON.stringify(ask.credential.transports), now),
       db.prepare(`INSERT INTO recovery_requests (id, org_id, wallet_id, seat_id, action, credential_hash, nonce, digest, signature, owners_snapshot, state, wait_until, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'waiting', ?, ?)`)
         .bind(id, ask.orgId, wallet.id, ask.seatId, ask.override ? 'override_owners' : 'replace_owners', ask.credentialHash, ask.nonce, proof.digest, proof.signature, JSON.stringify(proof.live), now + WAIT_MS, now),
     ]]

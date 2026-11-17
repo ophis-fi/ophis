@@ -21,8 +21,8 @@ const SAY: Record<string, string> = {
   people_invalid: 'Name at most 4 more people. Each needs a name of 60 characters at most and the role Owner or Admin.',
   person_contact_invalid: 'Each person needs a position (2 to 60 characters) and a phone in international form, for example +352 621 123 456. A Telegram username, if given, has 5 to 32 letters, digits or underscores.',
   person_email_invalid: 'Each person needs a work email of their own at the company domain. Not yours, and not one given twice.',
-  passkey_rejected: 'The passkey was not accepted. Use a hardware security key and try again.',
-  device_bound_required: 'An Owner needs a hardware security key. A passkey that syncs to a cloud account is not accepted.',
+  passkey_rejected: 'The passkey was not accepted. Try again, on this device, your phone or a security key.',
+  device_bound_required: 'This organisation requires hardware security keys. A passkey that syncs to a cloud account is not accepted.',
   intent_invalid: 'This application is not one this site issued, or it was changed on the way. Start again.',
   intent_expired: 'This application is older than 7 days. Start again.',
   dns_not_proved: 'The record is not there yet on both resolvers, or its value differs. DNS changes can take some minutes. Check the name and the value, then try again.',
@@ -158,7 +158,7 @@ export function Apply() {
       <header className="ph"><div>
         <span className="cap eyebrow">Apply</span>
         <h1 className="h-page">Open an organisation, <em>prove your company domain</em>.</h1>
-        <p className="lede">For companies only, by invitation: Ophis gives you an invitation code. You enter the company, create a passkey on a hardware security key, and your DNS administrator publishes one record. Nothing is stored until that record is found.</p>
+        <p className="lede">For companies only, by invitation: Ophis gives you an invitation code. You enter the company, create a passkey (on this device, your phone or a security key), and your DNS administrator publishes one record. Nothing is stored until that record is found.</p>
       </div></header>
       {problem && <Problem>{problem}</Problem>}
       {done ? (
@@ -281,7 +281,7 @@ export function Apply() {
               {people.length < 4 && <div><button className="btn ghost md" type="button" onClick={() => setPeople([...people, { ...NOBODY }])}><Icon name="user" size={16} />Add a person</button></div>}
             </div>
           </fieldset>
-          <p>The next step creates your passkey, which makes you the first Owner. Use a hardware security key. Then you get one DNS record to publish at the company domain: it proves the domain, and that this passkey is the one your company means.</p>
+          <p>The next step creates your passkey, which makes you the first Owner: on this device, your phone or a security key. Then you get one DNS record to publish at the company domain: it proves the domain, and that this passkey is the one your company means.</p>
           <div><button className="btn primary md" type="submit" disabled={busy || typeof PublicKeyCredential === 'undefined'}><Icon name="key-round" size={16} />Create the passkey and the DNS record</button></div>
         </form>
       )}
@@ -456,12 +456,12 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
               : 'Ophis checks them with the company. When Ophis approves, each gets a seat. Do not invite them yourself.'}</p>}
           </Step>
           <Step icon="key-round" title="Passkeys" done={keys}>
-            <p>{keys ? 'The first Owner holds two hardware keys.' : 'The first Owner needs two hardware keys. Add the second one now: until then this seat can do nothing else.'}</p>
+            <p>{keys ? 'The first Owner holds two passkeys.' : 'The first Owner needs two passkeys, for example this computer and a phone. Add the second one now: until then this seat can do nothing else.'}</p>
             {!keys && <p><a className="btn ghost sm" href="/#/organisation">Open Organisation, My passkeys</a></p>}
           </Step>
           <Step icon="wallet" title="Recovery wallet or second Owner" done={proved}>
             {view.wallet ? <p>{view.wallet.label}: {kindOf(view.wallet)}, <span className="mono">{view.wallet.address}</span> on {view.wallet.chain}. {view.wallet.inForce ? 'It is the recovery wallet in force.' : 'It signed the activation. It becomes the recovery wallet when Ophis approves the organisation.'}</p>
-              : <p>{proved ? 'A second Owner with two hardware keys is enrolled. No recovery wallet is named.' : 'Name the wallet that restores access if every Owner is locked out, and let it sign once. Or invite a second Owner, who needs two hardware keys.'}</p>}
+              : <p>{proved ? 'A second Owner with two passkeys is enrolled. No recovery wallet is named.' : 'Name the wallet that restores access if every Owner is locked out, and let it sign once. Or invite a second Owner, who needs two passkeys.'}</p>}
             {!verified && owner && keys && first?.active && !issued && (
               <form className="stack" onSubmit={name}>
                 <label className="field">Chain

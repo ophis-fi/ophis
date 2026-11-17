@@ -437,8 +437,8 @@ function effect(kind: string, name: string, was: string | null, value?: string |
     : kind === 'seat.unfreeze' ? `Unfreezes the seat of ${name} (${role(was)}). The passkeys that were active before the freeze work again and they can sign in.`
     : kind === 'seat.remove' ? `Removes ${name} (${role(was)}) from the organisation. Their passkeys are revoked, their sessions end, and their open links and requests are cancelled. This cannot be undone: coming back takes a new invitation.`
     : kind === 'seat.role' ? `Changes the role of ${name} from ${role(was)} to ${role(value)}. Their sessions end, and the new role starts at their next sign-in.`
-    : value === '1' ? 'Allows passkeys that sync to a cloud account for Admins, Approvers and Compliance officers. Owners still need hardware keys. This lowers a security setting.'
-    : 'Requires hardware security keys again for Admins, Approvers and Compliance officers. Passkeys already enrolled stay.'
+    : value === '1' ? 'Allows passkeys that sync to a cloud account for every key role, Owners included. This lowers a security setting.'
+    : 'Requires hardware security keys for every key role, Owners included. Passkeys already enrolled stay.'
 }
 const CHANGE: Record<string, string> = {
   'seat.unfreeze': 'Unfreeze a seat', 'seat.remove': 'Remove a member', 'seat.role': 'Change a role', 'policy.synced_keys': 'Change the passkey rule for key roles',
@@ -723,7 +723,8 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
   const ready = me.seat.keys >= 2
   const quarantined = (me.seat.quarantineUntil ?? 0) > Date.now()
   const mayManage = (role: string) => me.seat.role === 'owner' || (me.seat.role === 'admin' && role !== 'owner')
-  const hardware = me.seat.role === 'owner'
+  const owner = me.seat.role === 'owner'
+  const hardware = owner && !view?.syncedKeysAllowed // an Owner where the organisation requires hardware keys (the wording only)
   const chain = (id: number) => view?.chains.find((c) => c.id === id)?.name ?? `Chain ${id}`
   const wallet = view?.wallets.find((w) => w.id === walletId)
   const last = (key: Passkey) => view?.passkeys.filter((other) => other.seatId === key.seatId && other.state === 'active').length === 1
@@ -824,7 +825,7 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
       </Section>
       {linking && view && <LinkDialog chains={view.chains} onClose={() => { setLinking(false); void load() }} />}
       {wallet && <WalletDialog wallet={wallet} on={chain(wallet.chainId)} act={act} onClose={() => setWalletId(undefined)}
-        may={{ unlink: ready, set: hardware && ready && !quarantined && !wallet.recovery && !view!.wallets.some((w) => w.recovery === 'waiting'), cancel: hardware && ready && wallet.recovery === 'waiting' }} />}
+        may={{ unlink: ready, set: owner && ready && !quarantined && !wallet.recovery && !view!.wallets.some((w) => w.recovery === 'waiting'), cancel: owner && ready && wallet.recovery === 'waiting' }} />}
 
       <Section id="my-passkeys" icon="key-round" title="My passkeys" hint={`Public keys only. Keep two${hardware ? ' hardware keys' : ''}: if you lose one, sign in with the other, revoke the lost one and add a new one.`}>
         <div className="table-wrap"><table className="t">{keyHead(true)}<tbody>{view && keyRows(view.passkeys.filter((key) => key.seatId === me.seat.id), true)}</tbody></table></div>
@@ -859,7 +860,7 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
       </Section>
 
       {view && (
-        <Section icon="key-square" title="Passkey rule for key roles" hint="Owners always need hardware security keys. This rule is for Admins, Approvers and Compliance officers.">
+        <Section icon="key-square" title="Passkey rule for key roles" hint="For Owners, Admins, Approvers and Compliance officers. An organisation that applied starts with passkeys that sync allowed: on a computer, a phone or a security key.">
           <article className="appr">
             <Tile name="key-round" />
             <div>
@@ -903,7 +904,7 @@ const ALERT: Record<string, (alert: Alert) => string> = {
       : a.what === 'wallet.link' ? `The wallet ${a.name} was linked ${when}. ${a.detail === 'alone' ? 'The only key-role member did it alone.' : 'Two people decided it.'}`
       : a.what === 'recovery.stop' ? `An account recovery was stopped ${when} by an Owner passkey it had replaced. The new Owner was removed, the Owner passkeys are valid again and the quarantine is over.`
       : a.what === 'anchor.set' ? `The wallet ${a.name} was ${a.detail === 'alone' ? 'set as the recovery wallet by the only key-role member' : 'approved as the recovery wallet'} ${when}. It is in force 72 hours later. Until then an Owner can cancel the change, under Wallets.`
-      : `The passkey rule for key roles was changed ${when}: ${a.detail === 'synced' ? 'synced passkeys are allowed for Admins, Approvers and Compliance officers' : 'hardware security keys only'}. Two people decided it.`
+      : `The passkey rule for key roles was changed ${when}: ${a.detail === 'synced' ? 'synced passkeys are allowed for every key role, Owners included' : 'hardware security keys only'}. Two people decided it.`
   },
   confirmation_waiting: (a) => `A new passkey of ${a.name} waits for you, under Waiting for confirmation.`,
 }
@@ -1000,7 +1001,7 @@ export function Recover() {
       const passkey = (await navigator.credentials.create({ publicKey: PublicKeyCredential.parseCreationOptionsFromJSON(begun.data.options) })) as PublicKeyCredential
       const done = await api<{ link: string; expiresAt: number; error?: string }>('/api/recover/intent', { organisationId, seat: begun.data.seat, override, response: passkey.toJSON(), turnstile: human })
       spent()
-      if (done.status !== 200) return done.data.error === 'human_check_failed' ? HUMAN_FAILED : done.data.error === 'device_bound_required' ? say(done.data) : 'The passkey was not accepted. Use a hardware security key and try again.'
+      if (done.status !== 200) return done.data.error === 'human_check_failed' ? HUMAN_FAILED : done.data.error === 'device_bound_required' ? say(done.data) : 'The passkey was not accepted. Try again, on this device, your phone or a security key.'
       setIssued({ ...done.data, recovery: true })
     })
   }
@@ -1053,7 +1054,7 @@ export function Recover() {
                 <input className="input mono" value={org} required spellCheck={false} autoComplete="off" maxLength={32} onChange={(event) => setOrg(event.target.value)} />
               </label>
               <label className="check"><input type="checkbox" checked={override} onChange={(event) => setOverride(event.target.checked)} /><span>Override the Owners. Only after an Owner cancelled or stopped a recovery in the last 30 days, and only if the recovery wallet is a Safe with two or more signers and no module. No Owner can cancel or stop an override.</span></label>
-              <p>This creates a passkey on your hardware security key and gives you a signing link. Nothing is stored until the recovery wallet has signed. Then a wait of 72 hours starts, during which an Owner or the recovery wallet can cancel.</p>
+              <p>This creates a new passkey and gives you a signing link. Nothing is stored until the recovery wallet has signed. Then a wait of 72 hours starts, during which an Owner or the recovery wallet can cancel.</p>
               <div><button className="btn primary md" type="submit" disabled={busy || !passkeysWork()}><Icon name="key-round" size={16} />Create the passkey and the signing link</button></div>
             </form>
           </section>
@@ -1236,8 +1237,8 @@ const OVERALL: Record<string, [badge: string, sentence: string]> = {
   not_recoverable: ['Not recoverable', 'One Owner and no recovery wallet: if that Owner is locked out, nobody can restore access.'],
 }
 const STEP: Record<string, string> = {
-  second_key: 'Next step: every Owner adds a second hardware key, under Organisation, My passkeys.',
-  second_owner: 'Next step: invite a second Owner, who enrols two hardware keys.',
+  second_key: 'Next step: every Owner adds a second passkey, under Organisation, My passkeys.',
+  second_owner: 'Next step: invite a second Owner, who enrols two passkeys.',
   recovery_wallet: 'Next step: link a wallet and set it as the recovery wallet, under Organisation, Wallets. A Safe with a threshold of 2 or more and no module is best.',
 }
 const WHY: Record<string, (w: Ready['wallet']) => string> = {
@@ -1277,7 +1278,7 @@ function Readiness({ after }: { after: unknown }) {
       <header><Tile name="life-buoy" /><div><h2 className="h-panel" id="rd-h">Recovery readiness</h2><p><Status>{badge}</Status></p><p>{sentence} {ready.step && STEP[ready.step]}</p></div></header>
       <div>
         <div className="srow"><Icon name="users" size={20} /><b>Owners</b><Status>{LEVEL[owners.level]}</Status>
-          <p>{owners.level === 'green' ? `${owners.count} Owners, each with two hardware keys.` : owners.level === 'amber' ? 'One Owner, with two hardware keys. If that person is locked out, only the recovery wallet restores access.' : 'An Owner holds fewer than two hardware keys. One lost key locks that Owner out.'}</p></div>
+          <p>{owners.level === 'green' ? `${owners.count} Owners, each with two passkeys.` : owners.level === 'amber' ? 'One Owner, with two passkeys. If that person is locked out, only the recovery wallet restores access.' : 'An Owner holds fewer than two passkeys. One lost passkey locks that Owner out.'}</p></div>
         <div className="srow"><Icon name="key-round" size={20} /><b>Last-Owner recovery</b><Status>{ready.sheet.wallet ? 'In place today' : 'None'}</Status>
           <p>{ready.sheet.wallet ? `If no Owner can sign in, the signers of ${wallet.label} can replace all Owner passkeys: 72 hours of wait, which an Owner or the wallet can cancel, then 7 days in which a replaced Owner passkey can stop it. Print the recovery sheet below and keep it where the signers find it.` : 'Not possible yet: no recovery wallet is in force. If every Owner is locked out, nobody can restore access.'}</p></div>
         <div className="srow"><Icon name="wallet" size={20} /><b>Recovery wallet</b><Status>{LEVEL[wallet.level]}</Status>
@@ -1296,7 +1297,7 @@ function Sheet({ sheet }: { sheet: Ready['sheet'] }) {
       `Sign in at ${host} with the passkey you still hold.`,
       'Open Organisation, My passkeys.',
       'Revoke the passkey you lost.',
-      'Use "Add a passkey" for a new hardware key, and name it.',
+      'Use "Add a passkey" for a new passkey, and name it.',
       'Keep the two keys in different places. Nothing waits: this works at once.',
     ]],
     ['2. You lost every passkey, and a colleague can sign in', [
@@ -1307,7 +1308,7 @@ function Sheet({ sheet }: { sheet: Ready['sheet'] }) {
       'Your old passkeys can stop the replacement for 24 hours (72 hours for those roles). Sign in with the new passkey and add a second one.',
     ]],
     ['3. No Owner can sign in: the recovery wallet', [
-      `Open ${host}/recover, enter the organisation id above and create a passkey on a new hardware key.`,
+      `Open ${host}/recover, enter the organisation id above and create a new passkey.`,
       'Give the signing link to the signers of the recovery wallet, by a channel they trust.',
       `They open ${sheet.signPage} (a Safe: as a custom app in the Safe interface), compare the organisation id, and sign.`,
       'A wait of 72 hours follows. Every member sees it at sign-in. An Owner or the recovery wallet can cancel it. An Admin, Approver or Compliance officer can add 72 hours, once.',
