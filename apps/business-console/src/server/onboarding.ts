@@ -94,8 +94,11 @@ const hex = (bytes: Uint8Array) => [...bytes].map((byte) => byte.toString(16).pa
 
 interface Passkey { id: string; publicKey: string; counter: number; transports: string[] }
 /** One more person the application names (owner decision of 2026-11-13): Ophis approves them with the organisation. */
-interface Person { name: string; email: string; role: 'owner' | 'admin' }
-interface Applicant { legalName: string; country: string; registration: string; kind: 'partner' | 'institution'; domain: string; email: string; name: string; people: Person[] }
+// position, phone and telegram (0026): how Ophis reaches each person; telegram is optional. An intent sealed before
+// 2026-11-17 (7 days at most) has none of the new fields: they are stored as NULL.
+interface Contact { position: string; phone: string; telegram: string | null }
+interface Person extends Contact { name: string; email: string; role: 'owner' | 'admin' }
+interface Applicant extends Contact { legalName: string; country: string; registration: string; lei: string | null; address: string; kind: 'partner' | 'institution'; domain: string; email: string; name: string; people: Person[] }
 /** What /apply asked for, signed by the server and held nowhere: nothing is written before the DNS record is seen. Times are Unix seconds. */
 interface ApplyIntent extends Applicant { inviteHash: string; seat: string; credential: Passkey; credentialHash: string; issuedAt: number; expiresAt: number; site: string }
 
@@ -111,13 +114,15 @@ async function createOrganisation(db: D1Database, a: ApplyIntent, value: string,
     await commit(db, orgId, () => {
       outcome = 'ok'
       return [{ at: now, actorKind: 'seat', actorId: a.seat, sessionId: null, action: 'organisation.apply', subjectId: a.credential.id, detail: a.credentialHash }, [
-        db.prepare(`INSERT INTO organisations (id, kind, name, state, email_domain, domain_challenge, domain_verified_at, country, registration_number, invite_hash, created_at)
-                    VALUES (?, ?, ?, 'unverified', ?, ?, ?, ?, ?, ?, ?)`).bind(orgId, a.kind, a.legalName, a.domain, value, now, a.country, a.registration, a.inviteHash, now),
-        db.prepare(`INSERT INTO seats (id, org_id, display_name, email, role, state, created_at) VALUES (?, ?, ?, ?, 'owner', 'active', ?)`).bind(a.seat, orgId, a.name, a.email, now),
+        db.prepare(`INSERT INTO organisations (id, kind, name, state, email_domain, domain_challenge, domain_verified_at, country, registration_number, lei, registered_address, invite_hash, created_at)
+                    VALUES (?, ?, ?, 'unverified', ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(orgId, a.kind, a.legalName, a.domain, value, now, a.country, a.registration, a.lei ?? null, a.address ?? null, a.inviteHash, now),
+        db.prepare(`INSERT INTO seats (id, org_id, display_name, email, role, state, position, phone, telegram, created_at) VALUES (?, ?, ?, ?, 'owner', 'active', ?, ?, ?, ?)`)
+          .bind(a.seat, orgId, a.name, a.email, a.position ?? null, a.phone ?? null, a.telegram ?? null, now),
         db.prepare(`INSERT INTO credentials (id, org_id, seat_id, public_key, counter, device_bound, transports, label, state, created_at) VALUES (?, ?, ?, ?, ?, 1, ?, 'First key', 'active', ?)`)
           .bind(a.credential.id, orgId, a.seat, a.credential.publicKey, a.credential.counter, JSON.stringify(a.credential.transports), now),
         // An intent sealed before 2026-11-13 (7 days at most) has no `people`: it names nobody.
-        ...(a.people ?? []).map((p) => db.prepare('INSERT INTO application_people (org_id, email, display_name, role) VALUES (?, ?, ?, ?)').bind(orgId, p.email, p.name, p.role)),
+        ...(a.people ?? []).map((p) => db.prepare('INSERT INTO application_people (org_id, email, display_name, role, position, phone, telegram) VALUES (?, ?, ?, ?, ?, ?, ?)')
+          .bind(orgId, p.email, p.name, p.role, p.position ?? null, p.phone ?? null, p.telegram ?? null)),
       ]]
     })
   } catch (error) {
@@ -130,15 +135,16 @@ async function createOrganisation(db: D1Database, a: ApplyIntent, value: string,
 }
 
 /** The first Owner of an organisation that applied: the seat, the passkey and its hash from the first audit row, the organisation's state, whether that passkey is still active on that Owner seat, and the seat's name (for the declaration). */
-interface First { seatId: string; hash: string; state: string; reviewAt: number | null; active: number; name: string }
+interface First { seatId: string; hash: string; state: string; reviewAt: number | null; active: number; name: string; email: string; position: string | null; phone: string | null; telegram: string | null }
 const firstOf = (db: D1Database, orgId: string) =>
-  db.prepare(`SELECT a.actor_id AS seatId, a.detail AS hash, o.state, o.review_at AS reviewAt, (SELECT display_name FROM seats WHERE org_id = a.org_id AND id = a.actor_id) AS name,
+  db.prepare(`SELECT a.actor_id AS seatId, a.detail AS hash, o.state, o.review_at AS reviewAt, f.display_name AS name, f.email, f.position, f.phone, f.telegram,
                      (SELECT count(*) FROM credentials k JOIN seats s ON s.org_id = k.org_id AND s.id = k.seat_id AND s.role = 'owner' AND s.state = 'active'
                       WHERE k.org_id = a.org_id AND k.id = a.subject_id AND k.seat_id = a.actor_id AND k.state = 'active') AS active
-              FROM audit_log a JOIN organisations o ON o.id = a.org_id WHERE a.org_id = ? AND a.seq = 1 AND a.action = 'organisation.apply'`).bind(orgId).first<First>()
+              FROM audit_log a JOIN organisations o ON o.id = a.org_id LEFT JOIN seats f ON f.org_id = a.org_id AND f.id = a.actor_id
+              WHERE a.org_id = ? AND a.seq = 1 AND a.action = 'organisation.apply'`).bind(orgId).first<First>()
 /** The people the application named besides its applicant, in the order it gave them. */
 const peopleOf = async (db: D1Database, orgId: string) =>
-  (await db.prepare('SELECT display_name AS name, email, role FROM application_people WHERE org_id = ? ORDER BY rowid').bind(orgId).all<Person>()).results
+  (await db.prepare('SELECT display_name AS name, email, role, position, phone, telegram FROM application_people WHERE org_id = ? ORDER BY rowid').bind(orgId).all<Person>()).results
 
 /**
  * A7: what a review needs, from the rows as they are now. Two device-bound passkeys on the first Owner's seat, and
@@ -216,8 +222,8 @@ const walletOf = (db: D1Database, orgId: string) =>
               FROM wallets w JOIN organisations o ON o.id = w.org_id WHERE w.org_id = ? AND ((o.state = 'unverified' AND w.state = 'pending') OR (o.state <> 'unverified' AND w.anchor IS NOT NULL))
               ORDER BY w.rowid DESC LIMIT 1`).bind(orgId).first<WalletRow>()
 
-interface Company { id: string; legalName: string; kind: string; state: string; country: string | null; registration: string | null; domain: string | null; domainVerifiedAt: number | null; reviewAt: number | null; print: string | null }
-const COMPANY = `id, name AS legalName, kind, state, country, registration_number AS registration, email_domain AS domain, domain_verified_at AS domainVerifiedAt, review_at AS reviewAt, review_print AS print FROM organisations`
+interface Company { id: string; legalName: string; kind: string; state: string; country: string | null; registration: string | null; lei: string | null; address: string | null; domain: string | null; domainVerifiedAt: number | null; reviewAt: number | null; print: string | null }
+const COMPANY = `id, name AS legalName, kind, state, country, registration_number AS registration, lei, registered_address AS address, email_domain AS domain, domain_verified_at AS domainVerifiedAt, review_at AS reviewAt, review_print AS print FROM organisations`
 interface KybRow { legalName: string; registration: string | null; country: string; tier: string; source: string; evidenceSha256: string | null; decision: string; reason: string | null; decidedAt: number | null; nextReview: number | null }
 /** The newest KYB row of one organisation (bind its id): the row that says how the organisation stands. */
 const NEWEST = `FROM kyb_records WHERE org_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`
@@ -287,8 +293,8 @@ async function decideKyb(db: D1Database, orgId: string, d: Kyb, checked: { id: s
       db.prepare('UPDATE organisations SET state = ?, review_at = NULL WHERE id = ?').bind({ approve: 'active', refuse: 'archived', more: 'unverified' }[d.decision], orgId),
       ...(d.decision === 'approve' && checked ? [db.prepare(`UPDATE wallets SET state = 'linked', linked_at = ?, anchor = 'current', anchor_effective_at = ?, snapshot = ? WHERE org_id = ? AND id = ? AND state = 'pending'`)
         .bind(now, now, checked.snapshot, orgId, checked.id)] : []),
-      ...people.map((p) => db.prepare(`INSERT INTO seats (id, org_id, display_name, email, role, state, ophis_approved, created_at) VALUES (?, ?, ?, ?, ?, 'invited', 1, ?)`)
-        .bind(randomId(), orgId, p.name, p.email, p.role, now)),
+      ...people.map((p) => db.prepare(`INSERT INTO seats (id, org_id, display_name, email, role, state, ophis_approved, position, phone, telegram, created_at) VALUES (?, ?, ?, ?, ?, 'invited', 1, ?, ?, ?, ?)`)
+        .bind(randomId(), orgId, p.name, p.email, p.role, p.position, p.phone, p.telegram, now)),
     ]]
   })
   return outcome
@@ -475,30 +481,55 @@ interface Member extends Ctx { actor: Actor }
 
 const LEGAL = /^[\p{L}\p{N} .,'&()/-]{2,120}$/u
 const NAME = /^[\p{L}\p{N} .'-]{1,60}$/u
+const POSITION = /^[\p{L}\p{N} .,'&()/-]{2,60}$/u
+const POSTAL = /^[\p{L}\p{N} .,'&()/#:+-]{5,200}$/u
 const MAX_PEOPLE = 4 // besides the applicant: 5 people in all
+/** An LEI (ISO 17442): 18 letters or digits and 2 check digits, ISO 7064 mod 97-10 over the letters as 10 to 35. */
+export function leiValid(lei: string) {
+  if (!/^[A-Z0-9]{18}[0-9]{2}$/.test(lei)) return false
+  let rest = 0
+  for (const char of lei) for (const digit of String(parseInt(char, 36))) rest = (rest * 10 + Number(digit)) % 97
+  return rest === 1
+}
+/** How Ophis reaches a person: a position, a phone in international form (+ and 7 to 15 digits), a Telegram username or none. */
+function contactOf(x: Record<string, unknown>): Contact | null {
+  const text = (key: string) => (typeof x[key] === 'string' ? (x[key] as string).trim() : '')
+  const position = text('position'), phone = text('phone').replace(/[\s().-]/g, ''), telegram = text('telegram').replace(/^@/, '')
+  if (!POSITION.test(position) || !/^\+[1-9][0-9]{6,14}$/.test(phone) || (telegram && !/^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(telegram))) return null
+  return { position, phone, telegram: telegram ? `@${telegram}` : null }
+}
 /**
  * The form, checked. The contact address must be at the company's domain or a subdomain of it: the DNS proof of that
  * domain is then the proof that this is a company address, and no list of mail providers is needed. `people`: 0 to 4
- * more people, each a name, a work email by the same rule and the role Owner or Admin; no address twice, none the applicant's.
+ * more people, each a name, a work email by the same rule, the role Owner or Admin, and a contact (contactOf); no address
+ * twice, none the applicant's. The LEI is optional; the registered address is required (owner, 2026-11-17).
  */
 function applicant(body: Record<string, unknown>): Applicant | string {
   const field = (key: string) => (typeof body[key] === 'string' ? (body[key] as string).trim() : '')
-  const a = { legalName: field('legalName'), country: field('country').toUpperCase(), registration: field('registration'), kind: field('kind'), domain: field('domain').toLowerCase(), email: field('email').toLowerCase(), name: field('name') }
+  const a = {
+    legalName: field('legalName'), country: field('country').toUpperCase(), registration: field('registration'), lei: field('lei').toUpperCase() || null,
+    address: field('address').replace(/\s+/g, ' '), kind: field('kind'), domain: field('domain').toLowerCase(), email: field('email').toLowerCase(), name: field('name'),
+  }
+  const contact = contactOf(body)
   const given = body.people === undefined ? [] : Array.isArray(body.people) && body.people.length <= MAX_PEOPLE ? (body.people as unknown[]) : null
   const people = given?.map((p) => {
     const x = (p ?? {}) as Record<string, unknown>
-    return { name: typeof x.name === 'string' ? x.name.trim() : '', email: emailAt(x.email, a.domain), role: x.role }
+    return { name: typeof x.name === 'string' ? x.name.trim() : '', email: emailAt(x.email, a.domain), role: x.role, contact: contactOf(x) }
   })
   return !LEGAL.test(a.legalName) ? 'legal_name_invalid'
     : !/^[A-Z]{2}$/.test(a.country) ? 'country_invalid'
     : !/^[A-Za-z0-9 ./-]{2,40}$/.test(a.registration) ? 'registration_invalid'
+    : a.lei !== null && !leiValid(a.lei) ? 'lei_invalid'
+    : !POSTAL.test(a.address) ? 'address_invalid'
     : a.kind !== 'partner' && a.kind !== 'institution' ? 'kind_invalid'
     : !DOMAIN.test(a.domain) ? 'domain_invalid'
     : !emailAt(a.email, a.domain) ? 'email_not_at_domain'
     : !NAME.test(a.name) ? 'name_invalid'
+    : !contact ? 'contact_invalid'
     : !people || people.some((p) => !NAME.test(p.name) || (p.role !== 'owner' && p.role !== 'admin')) ? 'people_invalid'
     : people.some((p, i) => !p.email || p.email === a.email || people.findIndex((q) => q.email === p.email) < i) ? 'person_email_invalid'
-    : ({ ...a, people } as Applicant)
+    : people.some((p) => !p.contact) ? 'person_contact_invalid'
+    : ({ ...a, ...contact, people: people.map(({ contact: c, ...p }) => ({ ...p, ...c })) } as Applicant)
 }
 
 const APPLY = 'apply-intent' // the labels of this file's texts under the challenge key
@@ -615,8 +646,8 @@ export async function onboarding(c: Member) {
   const sealed = await sealedOf(c.env.DB, orgId)
   const status = company.state !== 'unverified' ? 'verified' : company.reviewAt !== null ? 'under_review' : record?.decision === 'pending' ? 'more_information' : 'not_submitted'
   return json(200, {
-    company: { legalName: company.legalName, kind: company.kind, country: company.country, registration: company.registration, domain: company.domain, domainVerifiedAt: company.domainVerifiedAt },
-    first: first && { credentialHash: first.hash, active: first.active === 1, name: first.name },
+    company: { legalName: company.legalName, kind: company.kind, country: company.country, registration: company.registration, lei: company.lei, address: company.address, domain: company.domain, domainVerifiedAt: company.domainVerifiedAt },
+    first: first && { credentialHash: first.hash, active: first.active === 1, name: first.name, position: first.position },
     people: await peopleOf(c.env.DB, orgId), // the people the application named besides the first Owner: Ophis approves them with the organisation
     // Milestone 5b: the sealing key of this environment (its fingerprint; null: none configured), and the sealed declaration as the server knows it.
     seal: { key: await sealKey(c.env), generation: SEAL.generation },
@@ -838,7 +869,8 @@ async function list(c: Ctx) {
     const endpoints = wallet?.kind === 'safe' ? c.config.chains[wallet.chainId] : undefined
     const live = endpoints ? await safeState(endpoints, wallet!.chainId, wallet!.address) : null
     organisations.push({
-      id: o.id, legalName: o.legalName, kind: o.kind, country: o.country, registration: o.registration, domain: o.domain, submittedAt: o.reviewAt, submission: await submissionOf(o.print),
+      id: o.id, legalName: o.legalName, kind: o.kind, country: o.country, registration: o.registration, lei: o.lei, address: o.address, domain: o.domain, submittedAt: o.reviewAt, submission: await submissionOf(o.print),
+      applicant: { name: first.name, email: first.email, position: first.position, phone: first.phone, telegram: first.telegram },
       credentialHash: first.hash, people: await peopleOf(c.env.DB, o.id), missing: await missing(c.env.DB, o.id, c.now),
       // Milestone 5b: that the sealed declaration exists, and what the server knows of it. "items" and "get" are the way to the file.
       declaration: (await sealedOf(c.env.DB, o.id)).find((item) => item.kind === 'declaration') ?? null,

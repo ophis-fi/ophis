@@ -237,7 +237,7 @@ else if (command === 'get') {
   }
   writeFileSync(values.out, answer.bytes, { mode: 0o600, flag: 'wx' }) // never over an existing file
   console.log(`Written, still sealed: ${values.out}\n${answer.bytes.length} bytes  sha256 ${sha256}  sealed to key ${answer.key.slice(0, 16)}\nThe download is in the organisation's audit log, with the reason "${values.reason}". Open it offline: see README, "Sealed declaration".`)
-} else if (command === 'invite') console.log(`Application code, one use, valid until ${new Date(answer.body.expiresAt).toISOString().slice(0, 16).replace('T', ' ')} UTC:\n${answer.body.code}`)
+} else if (command === 'invite') console.log(`Invitation code (the client enters it at /apply), one use, valid until ${new Date(answer.body.expiresAt).toISOString().slice(0, 16).replace('T', ' ')} UTC:\n${answer.body.code}`)
 else if (load) {
   console.log(`Loaded ${count(answer.body.entries)} of the list "${answer.body.list}" (file SHA-256 ${load.sha256}).`)
   console.log(hitLines(answer.body.hits))
@@ -253,13 +253,16 @@ else if (load) {
 else {
   if (!answer.body.organisations.length) console.log('Nothing is under review.')
   if (answer.body.more) console.log(`${answer.body.more} more under review: decide these first, then list again.`)
+  // A person in one line: name, position, email, phone, Telegram (an application before 2026-11-17 has no position or contact).
+  const person = (p) => [p.name, p.position, p.email, p.phone, p.telegram].filter(Boolean).join(', ')
   for (const o of answer.body.organisations) {
     console.log([
-      `${o.id}  ${o.legalName} (${o.kind}, ${o.country}, ${o.registration})`,
+      `${o.id}  ${o.legalName} (${o.kind}, ${o.country}, ${o.registration}${o.lei ? `, LEI ${o.lei}` : ''})`,
+      `  address         ${o.address ?? 'none given'}`,
       `  domain          ${o.domain}`,
       `  submitted       ${new Date(o.submittedAt).toISOString()}   submission ${o.submission} (name it in "approve": a change and a new submit make another)`,
-      `  first Owner     passkey hash ${o.credentialHash}`,
-      ...(o.people.length ? o.people.map((p) => `  person          ${p.name}, ${p.role}, ${p.email}`) : ['  people          none besides the first Owner']),
+      `  first Owner     ${person(o.applicant)}, passkey hash ${o.credentialHash}`,
+      ...(o.people.length ? o.people.map((p) => `  person          ${person(p)}, ${p.role}`) : ['  people          none besides the first Owner']),
       `  recovery wallet ${o.wallet ? `${o.wallet.address} on ${o.wallet.chain}, ${o.wallet.kind}${o.wallet.threshold ? ` ${o.wallet.threshold} of ${o.wallet.owners}` : ''}, ${o.wallet.colour.level}${o.wallet.colour.why ? ` (${o.wallet.colour.why})` : ''}` : 'none: a second Owner with two passkeys'}`,
       `  declaration     ${o.declaration ? sealed(o.declaration) : 'none'}`,
       ...(o.refused.length ? [`  WARNING         listed wallet refused: ${o.refused.join(', ')}`] : []),

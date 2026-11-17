@@ -181,7 +181,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
           <button className="btn primary" type="button" onClick={signIn} disabled={busy || !passkeysWork()}><Icon name="fingerprint" />Sign in with a passkey</button>
           {problem && <Problem>{problem}</Problem>}
           <p className="fine"><Icon name="info" size={16} />No username is asked. Your passkey tells us which organisation and seat you hold.</p>
-          <p className="fine"><Icon name="building-2" size={16} /><span>New organisation? Access is by <a href="/apply">application</a>, after business verification. <a href="/#/security">Security and data</a>.</span></p>
+          <p className="fine"><Icon name="building-2" size={16} /><span>New organisation? Access is by <a href="/apply">application</a>, after business verification.</span></p>
           <p className="fine"><Icon name="life-buoy" size={16} /><span>No Owner can sign in any more? <a href="/recover">Recover access with the recovery wallet</a>.</span></p>
         </div>
       </div>
@@ -872,6 +872,7 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
       )}
 
       <Section later icon="key-round" title="API keys" hint="Read-only keys for reports come after the first release. No key will be able to move funds." />
+      {me.seat.role === 'owner' && <div className="groups"><Readiness /></div>}
     </>
   )
 }
@@ -1226,45 +1227,6 @@ function Screening() {
   )
 }
 
-// Rows of the approved mockup, from security-design.md section 6. true = in place today for the product that runs now.
-// Every row about this console stays "Planned" until the console ships: a local build proves nothing to a client.
-type Row = [icon: string, title: string, sentence: string, inPlace?: boolean]
-const SECURITY: [group: string, icon: string, summary: string, rows: Row[]][] = [
-  ['How you sign in', 'fingerprint', 'Passkeys first.', [
-    ['fingerprint', 'Passkey sign-in', 'Sign-in uses passkeys, with no passwords and no SMS codes.'],
-    ['shield-check', 'Stricter rule for key roles', 'Owners, admins, approvers and compliance officers sign in with passkeys only, with no fallback code.'],
-    ['clock', 'Short sessions', 'A session locks after 15 minutes idle and ends after 12 hours.'],
-  ]],
-  ['If you lose access', 'shield', 'No weak reset.', [
-    ['ban', 'No reset by email, phone or code', 'No email, phone call or typed code can reset access to an account.'],
-    ['users', 'Colleagues confirm a new passkey', 'A lost passkey is replaced only after a colleague confirmed the new passkey with a passkey of their own. The console asks them to check with the member first, by a channel both trust. Key roles need two colleagues.'],
-    ['wallet', 'Your wallet is the last resort', 'If every Owner is locked out, only the recovery wallet of your organisation can restore access, after a 72-hour wait.'],
-    ['clock', 'Time to object', 'For some days after a recovery the replaced passkey can still stop the new one, and sensitive changes are blocked.'],
-  ]],
-  ['What we store', 'database', 'Results and records.', [
-    ['globe', 'Stored in the EU', 'The account database is restricted to the European Union and encrypted at rest.'],
-    ['key-square', 'No decryption key in the cloud', 'Our servers and our cloud provider hold no key that can open sealed records.'],
-    ['lock-keyhole', 'Sealed in your browser', 'Owner names, signatories, contact persons and signed declarations are encrypted in your browser before upload. One offline key opens them, kept on paper in two places. The key fingerprint is printed in your contract.'],
-    ['eye', 'Readable by design', 'Member names, roles, linked wallets and company details are stored readable, because the service uses them on every request.'],
-    ['clipboard-check', 'Results, not documents', 'We keep a verification result and a fingerprint of the evidence, not copies of identity documents.'],
-    ['scroll-text', 'Tamper-evident audit log', 'Every action, including ours, is written to a hash-chained log that you can export.'],
-    ['history', 'Backups', 'The account database can be restored to any minute of the last 7 days. A weekly copy, sealed with the same offline key, is kept outside the cloud provider.'],
-  ]],
-  ['Who can read it', 'eye', 'Your organisation first.', [
-    ['building-2', 'Your data, kept apart', 'Every record belongs to one organisation, and each endpoint is tested against access from another.'],
-    ['user', 'No impersonation', 'Ophis has no feature to sign in as you, and each access through our console appears in your log.'],
-    ['users', 'Two-person approval', 'Changes to wallets, payout addresses, members, API keys and security settings need a second person.'],
-    ['life-buoy', 'Support assistant', 'The assistant receives your question with emails, addresses and your organisation name removed, plus public help articles. An outside provider runs it in the United States. Ophis does not store the question text.'],
-  ]],
-  ['How we build it', 'list-checks', 'Checks on every change.', [
-    ['list-checks', 'Checked code', 'Every pull request is scanned for known vulnerabilities and leaked secrets. New dependency versions wait 7 days, except reviewed security fixes.', true],
-  ]],
-  ['What we never hold', 'key-round', 'Your keys and your documents.', [
-    ['key-round', 'Your keys stay with you', 'Ophis never holds your private keys. Every trade is signed by your own wallet or custodian.', true],
-    ['eye', 'Check before you sign', 'Each order is shown decoded, with tokens, amounts, receiver and fees, before your wallet signs.'],
-    ['ban', 'No passwords, no documents', 'The account system stores no passwords, no seed phrases, no SMS numbers for sign-in, no identity documents and no card or bank details.'],
-  ]],
-]
 
 interface Ready { owners: { level: string; count: number }; wallet: { level: string; why: string | null; label: string | null; at: number | null; threshold?: number; owners?: number }; overall: string; step: string | null
   sheet: { organisationId: string; console: string; signPage: string; wallet: { address: string; chain: string } | null } }
@@ -1354,37 +1316,6 @@ function Sheet({ sheet }: { sheet: Ready['sheet'] }) {
         {ways.map(([title, lines]) => <section key={title}><h4 className="h-card">{title}</h4><ol>{lines.map((line) => <li key={line}>{line}</li>)}</ol></section>)}
         <p className="fine">This sheet holds no secret: no key, no passkey, no password. Ophis never asks for one. Ophis is a software provider. It is not a crypto-asset service provider.</p>
       </article>
-    </>
-  )
-}
-
-export function Security({ owner }: { owner: boolean }) {
-  const rows = SECURITY.flatMap((group) => group[3])
-  const inPlace = rows.filter((row) => row[3]).length
-  const stats: [number, string, string, string][] = [
-    [inPlace, 'circle-check', 'In place today', 'For the product that runs now'],
-    [rows.length - inPlace, 'calendar', 'Planned', 'Ships with the business console'],
-    [0, 'key-round', 'Client keys held by Ophis', 'Your wallet or custodian signs'],
-  ]
-  return (
-    <>
-      <header className="ph"><div>
-        <span className="cap eyebrow">Security and data</span>
-        <h1 className="h-page">What we store, <em>and what we never hold</em>.</h1>
-        <p className="lede">Each item below says whether it is in place today or planned.</p>
-      </div></header>
-      <div className="stats">{stats.map(([count, icon, caption, sub]) => (
-        <div className="c" key={caption}><span className="num">{count}</span><span className="cap"><Icon name={icon} size={16} />{caption}</span><span className="sub">{sub}</span></div>
-      ))}</div>
-      <div className="groups">{owner && <Readiness />}{SECURITY.map(([group, icon, summary, groupRows]) => (
-        <section className="sg" key={group}>
-          <header><Tile name={icon} /><div><h2 className="h-panel">{group}</h2><p>{summary}</p></div></header>
-          <div>{groupRows.map(([rowIcon, title, sentence, on]) => (
-            <div className="srow" key={title}><Icon name={rowIcon} size={20} /><b>{title}</b><Status>{on ? 'In place today' : 'Planned'}</Status><p>{sentence}</p></div>
-          ))}</div>
-        </section>
-      ))}</div>
-      <div className="note"><Icon name="info" /><span className="grow"><b>Limits.</b> No hardware security module, no external certification of Ophis, one operator today. Only the database is pinned to the EU.</span></div>
     </>
   )
 }

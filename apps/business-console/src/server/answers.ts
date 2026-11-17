@@ -5,7 +5,7 @@
 // `pnpm test:jev` before it ships. It imports nothing.
 export interface Answer { id: string; title: string; about: string; text: string; link: string }
 
-const ORG = '/#/organisation', COMPLIANCE = '/#/compliance', SECURITY = '/#/security', SUPPORT = '/#/support'
+const ORG = '/#/organisation', COMPLIANCE = '/#/compliance', SUPPORT = '/#/support'
 
 export const ANSWERS: readonly Answer[] = [
   { id: 'KB-01', title: 'Open an organisation account, onboarding and the company check (KYB): not available yet', link: SUPPORT,
@@ -38,7 +38,7 @@ export const ANSWERS: readonly Answer[] = [
   { id: 'KB-10', title: 'Link a wallet or a Safe', link: ORG,
     about: 'Connecting a wallet, a Safe or a custodian wallet to the organisation.',
     text: 'An Owner or Admin opens Organisation, Wallets, Link a wallet, and enters the address and its chain. The console gives a signing link, valid 7 days. Open it in the browser that holds the wallet: the wallet signs one message that names your organisation. A Safe signs inside the Safe interface. The link proves control. It gives nobody the power to move funds. With colleagues in key roles, a second person then approves it.' },
-  { id: 'KB-11', title: 'Why sign-in never signs a trade', link: SECURITY,
+  { id: 'KB-11', title: 'Why sign-in never signs a trade', link: SUPPORT,
     about: 'What a passkey or the console can and cannot do with funds: sending, moving, signing.',
     text: 'Your passkey identifies you in the console and nothing more. It cannot sign a trade or move funds. Signatures come from your own wallet or your custodian. No role in the console can sign for you, and nobody at Ophis can.' },
   { id: 'KB-12', title: 'Unlink or replace a wallet', link: ORG,
@@ -58,7 +58,7 @@ export const ANSWERS: readonly Answer[] = [
     text: 'CSV files only. Compliance: the audit log. An institution, in Overview: the balances of its linked wallets, its orders, and the monthly statement of its filled orders, volume and fees in the asset sold; on the Desk: the orders with every term and what was executed, and the permitted assets. A partner, in Overview: the partner-fee months, payouts, daily volume, the split by chain and by fee token, the wallets that traded, and those of them on a sanctions list.' },
   { id: 'KB-17', title: 'The recovery wallet and its 72 hours', link: ORG,
     about: 'Choosing or changing the wallet that can restore access, and the 72 hour wait.',
-    text: 'The recovery wallet is one linked wallet that can restore access if no Owner can sign in. An Owner opens Organisation, Wallets, Manage, Set as recovery wallet, and a second key-role member approves. It is in force 72 hours after the approval. Until then the old one stays, and any Owner can cancel the change. Recovery readiness, under Security and data, is green only for a Safe with a threshold of 2 or more.' },
+    text: 'The recovery wallet is one linked wallet that can restore access if no Owner can sign in. An Owner opens Organisation, Wallets, Manage, Set as recovery wallet, and a second key-role member approves. It is in force 72 hours after the approval. Until then the old one stays, and any Owner can cancel the change. Recovery readiness, at the end of Organisation (for Owners), is green only for a Safe with a threshold of 2 or more.' },
   { id: 'KB-18', title: 'Read and export the audit log', link: COMPLIANCE,
     about: 'Seeing who did what and when in the organisation, and downloading that log.',
     text: 'Owners, Compliance officers and Viewers open Compliance. The audit log lists every change in your organisation in the order it happened, in plain words, with times in UTC. Each row carries the hash of the row before it. Each load verifies the new rows and re-checks older rows in turn, and says which. A changed row shows as Chain broken, and stays so. Export CSV asks for your passkey and downloads the whole log as one file.' },
@@ -68,7 +68,7 @@ export const ANSWERS: readonly Answer[] = [
   { id: 'KB-20', title: 'Supported chains', link: ORG,
     about: 'Which blockchains or networks a linked wallet can be on.',
     text: 'A wallet can be linked on four chains today: Ethereum, OP Mainnet, Base and Arbitrum One. You choose the chain when you link the wallet, under Organisation, Wallets, Link a wallet. A wallet on another chain cannot be linked yet.' },
-  { id: 'KB-21', title: 'What Ophis is and is not', link: SECURITY,
+  { id: 'KB-21', title: 'What Ophis is and is not', link: SUPPORT,
     about: 'The legal and regulatory status of Ophis, licences, custody, who holds funds and keys.',
     text: 'Ophis is a software provider. It is not a crypto-asset service provider. Ophis is non-custodial: it never holds your funds or your keys. Wallets stay with you or your custodian, and every trade is signed by a wallet, never by the console. Ophis gives no legal advice: for a legal question about your own situation, ask your own adviser.' },
   { id: 'KB-22', title: 'Last-Owner recovery', link: '/recover',
@@ -77,9 +77,9 @@ export const ANSWERS: readonly Answer[] = [
   { id: 'KB-23', title: 'Security incident: freeze a seat', link: ORG,
     about: 'A stolen device, an unknown member or sign-in, an unexpected approval, a suspected compromise.',
     text: 'Act first, then write to Ophis. An Owner or Admin opens Organisation, Members and roles, Manage, Freeze seat: the passkeys of the seat are suspended and its sessions end at once. One person is enough. Unfreezing takes two people. You can also end a session under Sessions and revoke a passkey you do not know. The audit log under Compliance shows who did what.' },
-  { id: 'KB-24', title: 'The recovery sheet', link: SECURITY,
+  { id: 'KB-24', title: 'The recovery sheet', link: ORG,
     about: 'The printed page with the organisation id and the steps for a recovery.',
-    text: 'The recovery sheet holds what you need when no Owner can sign in: the organisation id, the address of the console, the recovery wallet and the steps. An Owner opens Security and data, Recovery sheet, and chooses Print the recovery sheet. Keep the paper with the signers of the recovery wallet. It holds no secret: no key, no passkey, no password.' },
+    text: 'The recovery sheet holds what you need when no Owner can sign in: the organisation id, the address of the console, the recovery wallet and the steps. An Owner opens Organisation, Recovery readiness at the end of the page, and chooses Print the recovery sheet. Keep the paper with the signers of the recovery wallet. It holds no secret: no key, no passkey, no password.' },
   { id: 'KB-25', title: 'Support and how to reach a person', link: SUPPORT,
     about: 'Contacting the Ophis team, support hours, reply times, complaints.',
     text: 'This page matches your question to a fixed set of help texts. If none fits, choose Write to Ophis: it opens an email to the Ophis team in your own mail program. Say what you were doing, what you expected and what happened. Never send a passkey, a private key or a seed phrase. No reply time is promised.' },

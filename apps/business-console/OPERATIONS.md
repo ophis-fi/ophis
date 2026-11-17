@@ -44,7 +44,7 @@ Everything needed to run and update pro.ophis.fi. Live since 2026-11-17. Command
 The first command of a day opens a Cloudflare Access sign-in (cloudflared, valid 24 hours). The link also works from a phone; it waits about 6 minutes. On success cloudflared prints the token: never paste that output anywhere.
 
 - `operator list --production`: what is under review, reviews due, frozen organisations, and the loaded lists with their dates.
-- `operator invite --production`: an application code for a new client (one use, 14 days).
+- `operator invite --production`: an invitation code for a new client (one use, 14 days; the code says "application code" in older notes).
 - `operator decide <id> approve|more|refuse ... --production`, `operator freeze|unfreeze <id> --production`, `operator items <id> --production`, `operator get <item id> --reason kyb_review --out item.age --production`: README, "Onboarding" and "Sealed declaration".
 
 ## OFAC list: by hand, once a month
@@ -54,7 +54,7 @@ Download https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/expo
 ## A new client
 
 1. `operator invite --production`: give the client the code and https://pro.ophis.fi/apply.
-2. The client applies: company, email domain, a work email at that domain, up to 4 more people, a passkey on a hardware key. The page shows a TXT record `_ophis-verify.<domain>` = `ophis-verify=<code>`; the client publishes it in its DNS and presses "Check DNS". (For `ophis.fi` the Keychain token `cloudflare-api-token` can publish it.)
+2. The client applies: the company (legal name, type, country of incorporation, registration number, LEI if any, registered address), the applicant (name, position, work email, phone, Telegram if any), the company domain, up to 4 more people with the same details and a role, and a passkey on a hardware key. The page shows a TXT record `_ophis-verify.<domain>` = `ophis-verify=<code>`; the client publishes it in its DNS and presses "Check DNS". (For `ophis.fi` the Keychain token `cloudflare-api-token` can publish it.)
 3. The client signs in: a second passkey, the recovery wallet (it signs "Activate this organisation ..." on the signing page), the declaration (printed, signed, scanned, sealed in the browser, uploaded), "Submit for review".
 4. The operator: `operator list --production` (compare the domain, the passkey hash, the wallet, the declaration's SHA-256, and each person the application names: on the signed declaration with the same role, an address at the company's domain; the approval approves them all, there is no approval per person), the sanctions screening (README, "Screening, step by step"), then `operator decide <id> approve --submission <16 characters> --tier standard --source registry --evidence "<reference>" --sha256 <64 hex> --next-review <date> --screening clear --list eu=<file> --production`.
 5. The organisation is active. Its Owner invites the members from the console. Ophis sends no email.

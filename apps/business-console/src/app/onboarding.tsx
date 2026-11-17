@@ -9,13 +9,17 @@ const Problem = ({ children }: { children: string }) => <p className="note bad" 
 // What the server's refusals mean here, in the reader's words. Anything else falls back to the console's own list.
 const SAY: Record<string, string> = {
   legal_name_invalid: 'Enter the legal name of the company, 2 to 120 characters.',
-  country_invalid: 'Enter the country as its two-letter code, for example LU.',
-  registration_invalid: 'Enter the registration number or the LEI: letters and digits, 40 characters at most.',
-  kind_invalid: 'Choose what the company is.',
-  domain_invalid: 'Enter the email domain of the company, for example alder-custody.example. No address, no https.',
-  email_not_at_domain: 'The work email must be at the company domain you entered, or at a subdomain of it.',
+  country_invalid: 'Choose the country where the company is incorporated.',
+  registration_invalid: 'Enter the company registration number: letters, digits, spaces, dots, dashes or slashes, 40 characters at most.',
+  lei_invalid: 'This LEI is not valid: 20 letters and digits, and its check digits must match. Leave it empty if the company has none.',
+  address_invalid: 'Enter the registered address of the company: street, postcode and city, 5 to 200 characters.',
+  kind_invalid: 'Choose the type of business.',
+  domain_invalid: 'Enter the company domain, for example ophis.fi: the part of your work email after the @. No address, no https.',
+  email_not_at_domain: 'Your work email must be at the company domain, or at a subdomain of it.',
   name_invalid: 'Enter your own name, 60 characters at most.',
+  contact_invalid: 'Enter your position (2 to 60 characters) and your phone in international form, for example +352 621 123 456. A Telegram username, if you give one, has 5 to 32 letters, digits or underscores.',
   people_invalid: 'Name at most 4 more people. Each needs a name of 60 characters at most and the role Owner or Admin.',
+  person_contact_invalid: 'Each person needs a position (2 to 60 characters) and a phone in international form, for example +352 621 123 456. A Telegram username, if given, has 5 to 32 letters, digits or underscores.',
   person_email_invalid: 'Each person needs a work email of their own at the company domain. Not yours, and not one given twice.',
   passkey_rejected: 'The passkey was not accepted. Use a hardware security key and try again.',
   device_bound_required: 'An Owner needs a hardware security key. A passkey that syncs to a cloud account is not accepted.',
@@ -51,6 +55,18 @@ const REASON: Record<string, string> = {
   not_eligible: 'The company is outside what Ophis can serve.',
 }
 const KIND: Record<string, string> = { partner: 'Crypto business', institution: 'Financial institution' }
+// What each type of business gets, for the application form.
+const KIND_CHOICE: Record<string, string> = {
+  partner: 'Crypto business that integrates Ophis (wallet, app, exchange): follow your partner fees',
+  institution: 'Financial institution that trades through Ophis (fund, treasury, bank, broker): use the desk',
+}
+// ISO 3166-1 alpha-2, and XK (Kosovo), named by the browser in English: the server stores the code.
+const NAMES = new Intl.DisplayNames(['en'], { type: 'region' })
+export const countryName = (code: string | null) => (code ? NAMES.of(code) ?? code : 'none')
+const COUNTRIES = ('AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS XK YE YT ZA ZM ZW')
+  .split(' ').map((code) => [code, countryName(code)]).sort((a, b) => a[1].localeCompare(b[1], 'en'))
+// A person in words: name, position, role; the contact is for Ophis, not for the declaration.
+const who = (p: { name: string; position?: string | null }) => (p.position ? `${p.name}, ${p.position}` : p.name)
 
 // ---- /apply: no session ----
 
@@ -70,8 +86,10 @@ const keep = (intent: string) => {
   }
 }
 interface DnsRecord { name: string; type: string; value: string }
-const FIELDS = { invite: '', legalName: '', country: '', registration: '', kind: 'partner', domain: '', email: '', name: '' }
-interface Person { name: string; email: string; role: string }
+const FIELDS = { invite: '', legalName: '', kind: 'partner', country: '', registration: '', lei: '', address: '', name: '', position: '', email: '', domain: '', phone: '', telegram: '' }
+interface Person { name: string; position: string; email: string; phone: string; telegram: string; role: string }
+const NOBODY: Person = { name: '', position: '', email: '', phone: '', telegram: '', role: 'admin' }
+const after = (email: string) => email.split('@')[1] ?? ''
 
 export function Apply() {
   const [form, setForm] = useState(FIELDS)
@@ -85,6 +103,8 @@ export function Apply() {
   const [copied, setCopied] = useState('')
   const [problem, setProblem] = useState(typeof PublicKeyCredential === 'undefined' ? 'This browser cannot use passkeys. Use a current version of Chrome, Edge, Firefox or Safari.' : '')
   const set = (key: keyof typeof FIELDS) => (event: { target: { value: string } }) => setForm({ ...form, [key]: event.target.value })
+  // The company domain follows the work email until it is edited: most companies' domain is the part after the @.
+  const setEmail = (event: { target: { value: string } }) => setForm({ ...form, email: event.target.value, domain: form.domain === after(form.email) ? after(event.target.value) : form.domain })
   const run = async (action: () => Promise<string | void>) => {
     setBusy(true)
     setProblem('')
@@ -138,7 +158,7 @@ export function Apply() {
       <header className="ph"><div>
         <span className="cap eyebrow">Apply</span>
         <h1 className="h-page">Open an organisation, <em>prove your company domain</em>.</h1>
-        <p className="lede">For companies only, by invitation: Ophis gives you an application code. You enter the company, create a passkey on a hardware security key, and your DNS administrator publishes one record. Nothing is stored until that record is found.</p>
+        <p className="lede">For companies only, by invitation: Ophis gives you an invitation code. You enter the company, create a passkey on a hardware security key, and your DNS administrator publishes one record. Nothing is stored until that record is found.</p>
       </div></header>
       {problem && <Problem>{problem}</Problem>}
       {done ? (
@@ -176,31 +196,57 @@ export function Apply() {
         </div>
       ) : (
         <form className="panel stack" onSubmit={start}>
-          <label className="field">Application code, from Ophis
+          <label className="field">Invitation code
+            <span className="hint">Ophis sent it to you. It works once, for 14 days.</span>
             <input className="input mono" value={form.invite} required maxLength={400} spellCheck={false} autoComplete="off" onChange={set('invite')} />
           </label>
-          <label className="field">Legal name of the company
+          <h2 className="h-panel">The company</h2>
+          <label className="field">Legal name
             <input className="input" value={form.legalName} required maxLength={120} autoComplete="organization" onChange={set('legalName')} />
           </label>
-          <label className="field">Country, two-letter code
-            <input className="input" value={form.country} required maxLength={2} placeholder="LU" autoComplete="country" spellCheck={false} onChange={set('country')} />
-          </label>
-          <label className="field">Registration number or LEI
-            <input className="input mono" value={form.registration} required maxLength={40} spellCheck={false} autoComplete="off" onChange={set('registration')} />
-          </label>
-          <label className="field">The company is a
+          <label className="field">Type of business
             <select className="input" value={form.kind} onChange={set('kind')}>
-              {Object.entries(KIND).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              {Object.entries(KIND_CHOICE).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </label>
-          <label className="field">Email domain of the company
-            <input className="input mono" value={form.domain} required maxLength={253} placeholder="company.example" spellCheck={false} autoComplete="off" onChange={set('domain')} />
+          <label className="field">Country of incorporation
+            <select className="input" value={form.country} required onChange={set('country')}>
+              <option value="" disabled>Choose a country</option>
+              {COUNTRIES.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+            </select>
           </label>
-          <label className="field">Your work email, at that domain
-            <input className="input" type="email" value={form.email} required maxLength={254} autoComplete="email" onChange={set('email')} />
+          <label className="field">Company registration number
+            <span className="hint">As in the company register, for example B123456 in Luxembourg.</span>
+            <input className="input mono" value={form.registration} required maxLength={40} spellCheck={false} autoComplete="off" onChange={set('registration')} />
           </label>
+          <label className="field">LEI, if the company has one
+            <span className="hint">The Legal Entity Identifier: 20 letters and digits. Leave it empty if there is none.</span>
+            <input className="input mono" value={form.lei} maxLength={20} spellCheck={false} autoComplete="off" onChange={set('lei')} />
+          </label>
+          <label className="field">Registered address
+            <span className="hint">Street, postcode and city, as in the company register.</span>
+            <input className="input" value={form.address} required maxLength={200} autoComplete="street-address" onChange={set('address')} />
+          </label>
+          <h2 className="h-panel">You</h2>
           <label className="field">Your name
             <input className="input" value={form.name} required maxLength={60} autoComplete="name" onChange={set('name')} />
+          </label>
+          <label className="field">Your position
+            <input className="input" value={form.position} required maxLength={60} placeholder="Chief Executive Officer" autoComplete="organization-title" onChange={set('position')} />
+          </label>
+          <label className="field">Your work email
+            <input className="input" type="email" value={form.email} required maxLength={254} autoComplete="email" onChange={setEmail} />
+          </label>
+          <label className="field">Your phone
+            <span className="hint">International form, with the country code.</span>
+            <input className="input" type="tel" value={form.phone} required maxLength={24} placeholder="+352 621 123 456" autoComplete="tel" onChange={set('phone')} />
+          </label>
+          <label className="field">Your Telegram username, optional
+            <input className="input" value={form.telegram} maxLength={33} placeholder="@username" spellCheck={false} autoComplete="off" onChange={set('telegram')} />
+          </label>
+          <label className="field">Company domain
+            <span className="hint">The part of your work email after the @, filled in from it. You will publish one DNS record on this domain to prove the company controls it.</span>
+            <input className="input mono" value={form.domain} required maxLength={253} placeholder="company.example" spellCheck={false} autoComplete="off" onChange={set('domain')} />
           </label>
           <fieldset className="field">
             <legend>Other people of the company, up to 4</legend>
@@ -211,8 +257,17 @@ export function Apply() {
                   <label className="field">Name of person {i + 2}
                     <input className="input" value={p.name} required maxLength={60} autoComplete="off" onChange={(event) => person(i, { name: event.target.value })} />
                   </label>
+                  <label className="field">Position of person {i + 2}
+                    <input className="input" value={p.position} required maxLength={60} autoComplete="off" onChange={(event) => person(i, { position: event.target.value })} />
+                  </label>
                   <label className="field">Work email of person {i + 2}
                     <input className="input" type="email" value={p.email} required maxLength={254} autoComplete="off" onChange={(event) => person(i, { email: event.target.value })} />
+                  </label>
+                  <label className="field">Phone of person {i + 2}
+                    <input className="input" type="tel" value={p.phone} required maxLength={24} placeholder="+352 621 123 456" autoComplete="off" onChange={(event) => person(i, { phone: event.target.value })} />
+                  </label>
+                  <label className="field">Telegram username of person {i + 2}, optional
+                    <input className="input" value={p.telegram} maxLength={33} placeholder="@username" spellCheck={false} autoComplete="off" onChange={(event) => person(i, { telegram: event.target.value })} />
                   </label>
                   <label className="field">Role of person {i + 2}
                     <select className="input" value={p.role} onChange={(event) => person(i, { role: event.target.value })}>
@@ -222,7 +277,7 @@ export function Apply() {
                   <div><button className="btn ghost sm" type="button" onClick={() => setPeople(people.filter((_, j) => j !== i))}><Icon name="x" size={16} />Remove person {i + 2}</button></div>
                 </div>
               ))}
-              {people.length < 4 && <div><button className="btn ghost md" type="button" onClick={() => setPeople([...people, { name: '', email: '', role: 'admin' }])}><Icon name="user" size={16} />Add a person</button></div>}
+              {people.length < 4 && <div><button className="btn ghost md" type="button" onClick={() => setPeople([...people, { ...NOBODY }])}><Icon name="user" size={16} />Add a person</button></div>}
             </div>
           </fieldset>
           <p>The next step creates your passkey, which makes you the first Owner. Use a hardware security key. Then you get one DNS record to publish at the company domain: it proves the domain, and that this passkey is the one your company means.</p>
@@ -238,9 +293,9 @@ export function Apply() {
 
 interface KybRow { legalName: string; registration: string | null; country: string; tier: string; source: string; evidenceSha256: string | null; decision: string; reason: string | null; decidedAt: number | null; nextReview: number | null }
 interface View {
-  company: { legalName: string; kind: string; country: string | null; registration: string | null; domain: string | null; domainVerifiedAt: number | null }
-  first: { credentialHash: string; active: boolean; name: string } | null
-  people: { name: string; email: string; role: string }[]
+  company: { legalName: string; kind: string; country: string | null; registration: string | null; lei: string | null; address: string | null; domain: string | null; domainVerifiedAt: number | null }
+  first: { credentialHash: string; active: boolean; name: string; position: string | null } | null
+  people: { name: string; email: string; role: string; position: string | null; phone: string | null; telegram: string | null }[]
   wallet: { chainId: number; chain: string; address: string; kind: string; label: string; inForce: boolean; threshold?: number; owners?: number } | null
   missing: string | null
   review: { status: 'not_submitted' | 'under_review' | 'more_information' | 'verified'; since: number | null; reason: string | null }
@@ -299,12 +354,14 @@ function Declaration({ view }: { view: View }) {
         <h3 className="h-panel">Declaration of the company to Ophis</h3>
         <dl className="kv">
           <dt>Legal name</dt><dd>{company.legalName}</dd>
-          <dt>Registration number or LEI</dt><dd className="mono">{company.registration ?? 'none'}</dd>
-          <dt>Country</dt><dd>{company.country ?? 'none'}</dd>
-          <dt>Email domain</dt><dd className="mono">{company.domain ?? 'none'}</dd>
-          <dt>First Owner</dt><dd>{first?.name ?? 'none'}</dd>
+          <dt>Registration number</dt><dd className="mono">{company.registration ?? 'none'}</dd>
+          {company.lei && <><dt>LEI</dt><dd className="mono">{company.lei}</dd></>}
+          <dt>Country of incorporation</dt><dd>{countryName(company.country)}</dd>
+          <dt>Registered address</dt><dd>{company.address ?? 'none'}</dd>
+          <dt>Company domain</dt><dd className="mono">{company.domain ?? 'none'}</dd>
+          <dt>First Owner</dt><dd>{first ? who(first) : 'none'}</dd>
           <dt>First Owner passkey (hash)</dt><dd className="mono">{first?.credentialHash ?? 'none'}</dd>
-          <dt>Other people</dt><dd>{view.people.length ? view.people.map((p) => `${p.name}, ${ROLE[p.role]}, ${p.email}`).join('; ') : 'none'}</dd>
+          <dt>Other people</dt><dd>{view.people.length ? view.people.map((p) => `${who(p)}, ${ROLE[p.role]}, ${p.email}`).join('; ') : 'none'}</dd>
           <dt>Recovery wallet</dt><dd className="mono">{wallet ? wallet.address : 'none'}</dd>
           <dt>Chain</dt><dd>{wallet?.chain ?? 'none'}</dd>
         </dl>
@@ -389,9 +446,10 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
         <header><Tile name="clipboard-check" /><div><h2 className="h-panel" id="ob-h">Steps</h2><p>Each step shows what the server holds now.</p></div></header>
         <div>
           <Step icon="building-2" title="Company and domain" done>
-            <p>{company.legalName}{company.kind ? `, ${KIND[company.kind] ?? company.kind}` : ''}{company.country ? `, ${company.country}` : ''}{company.registration ? `, number ${company.registration}` : ''}.</p>
+            <p>{company.legalName}{company.kind ? `, ${KIND[company.kind] ?? company.kind}` : ''}{company.country ? `, incorporated in ${countryName(company.country)}` : ''}{company.registration ? `, number ${company.registration}` : ''}{company.lei ? `, LEI ${company.lei}` : ''}.</p>
+            {company.address && <p>Registered address: {company.address}.</p>}
             <p>{company.domain ? `Domain ${company.domain}, proved by its DNS record on ${day(company.domainVerifiedAt!)}.` : 'Created by Ophis for this local build, without an application.'}</p>
-            {view.people.length > 0 && <p>{verified ? 'Approved by Ophis with the organisation' : 'Other people named in the application'}: {view.people.map((p) => `${p.name} (${ROLE[p.role]}, ${p.email})`).join(', ')}. {verified
+            {view.people.length > 0 && <p>{verified ? 'Approved by Ophis with the organisation' : 'Other people named in the application'}: {view.people.map((p) => `${who(p)} (${ROLE[p.role]}, ${p.email})`).join('; ')}. {verified
               ? 'Each has a seat under Organisation, Members and roles. An Owner or Admin gives each one a link there, then confirms the new passkey. No second person is needed.'
               : 'Ophis checks them with the company. When Ophis approves, each gets a seat. Do not invite them yourself.'}</p>}
           </Step>
