@@ -39,8 +39,14 @@ server; the hosted MCP server does not hold private keys or sign orders.
 Standard ERC-20 orders retain funds in the wallet until settlement. Approvals,
 native-token trades, bridges and private swaps can require onchain transactions
 or deposits. The app shows the applicable quote and funding steps before signing.
-See [fees](https://docs.ophis.fi/fees) and
-[network and funding coverage](https://docs.ophis.fi/networks-assets).
+See [network and funding coverage](https://docs.ophis.fi/networks-assets).
+
+**Batch-auction fees:**
+On every supported chain, Ophis charges a **0.01% (1 bp)** base fee, plus
+80% of improvement over the reference quote on volatile pairs (99 bps cap),
+or 50% on stable pairs (20 bps cap).
+Hosted chains encode that policy in CIP-75 appData and separately pay
+CoW Protocol's upstream fees. See the [fee guide](https://docs.ophis.fi/fees).
 
 ## Networks
 
