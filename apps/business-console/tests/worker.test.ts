@@ -6358,7 +6358,9 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     const b = await applyFor('alder-skip.example')
     expect((await skip(b.intent)).body).toEqual({ error: 'domain_taken' })
     // A changed or expired intent is refused before anything.
-    expect((await skip(`${a.intent.slice(0, -2)}AA`)).body).toEqual({ error: 'intent_invalid' })
+    const [body, mac] = a.intent.split('.')
+    const changed = `${body}.${mac[0] === 'A' ? 'B' : 'A'}${mac.slice(1)}` // the MAC's first character: always significant bits (CodeRabbit, PR #1659)
+    expect((await skip(changed)).body).toEqual({ error: 'intent_invalid' })
     now += 8 * DAY
     expect((await skip(b.intent)).body).toEqual({ error: 'intent_expired' })
     now -= 8 * DAY
