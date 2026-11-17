@@ -43,6 +43,7 @@ pub fn tx(
     approvals: impl Iterator<Item = eth::allowance::Approval>,
     internalization: settlement::Internalization,
     solver_native_token: ManageNativeToken,
+    chain_id: u64,
 ) -> Result<eth::Tx, Error> {
     // Keep the final transaction boundary safe even for internally constructed
     // or merged solutions that did not pass through the solver DTO validator.
@@ -235,11 +236,13 @@ pub fn tx(
     } else {
         (*contracts.settlement().address(), settle_calldata.into())
     };
+    let mut calldata = calldata.to_vec();
+    shared::builder_attribution::append_to_settlement(&mut calldata, chain_id);
 
     Ok(eth::Tx {
         from: solution.solver().address(),
         to,
-        input: calldata,
+        input: calldata.into(),
         value: Ether::zero(),
         access_list: Default::default(),
     })

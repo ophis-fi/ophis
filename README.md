@@ -75,7 +75,11 @@ Use the [network guide](https://docs.ophis.fi/networks-assets) for coverage and
 On Base, eligible public contract transactions from the swap app and CLI carry
 Ophis builder code `bc_8j4gt5x6` using [ERC-8021 attribution](https://docs.base.org/specifications/builder-codes/overview).
 Wallet batches request the optional attribution capability. Offchain order
-signatures and solver-submitted settlements are outside this client integration.
+signatures and CoW-hosted settlements are outside this client integration.
+Ophis-operated solver settlements on Optimism, Robinhood Chain and Arc also
+include cross-chain ERC-8021 tags. Recognition by Base's dashboard or rewards
+program on these networks is unverified. See the
+[backend rollout requirements](apps/backend/README.md#ophis-settlement-attribution).
 See the [SDK integration notes](packages/sdk/README.md#base-builder-attribution).
 
 For example, parse a request without submitting a trade:
