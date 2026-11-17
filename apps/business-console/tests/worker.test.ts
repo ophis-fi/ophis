@@ -7564,8 +7564,10 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     const b = await again(a)
     const exact = await upload(b, sized(onboarding.SEAL.maxBytes))
     expect([exact.status, exact.body.size]).toEqual([200, onboarding.SEAL.maxBytes])
-    // In 6 pieces under D1's 2 MB per row (0024), and read back whole, byte for byte.
-    expect((await row<{ n: number }>('SELECT count(*) AS n FROM sealed_chunks WHERE item_id = ?', exact.body.id))?.n).toBe(6)
+    // In 11 pieces (0024): the hex() of each, as the download reads it, fits D1's 2,000,000 bytes per string (the local
+    // SQLite has no such cap, so it is measured here). And read back whole, byte for byte.
+    const pieces = await row<{ n: number; widest: number }>('SELECT count(*) AS n, max(length(hex(data))) AS widest FROM sealed_chunks WHERE item_id = ?', exact.body.id)
+    expect([pieces?.n, pieces!.widest <= 2_000_000]).toEqual([11, true])
     expect(await sha256Of((await objectOf(exact.body.id))!)).toBe(exact.body.sha256)
     await bucket.delete(exact.body.id) // 10 MB: not left behind for the other tests
   })

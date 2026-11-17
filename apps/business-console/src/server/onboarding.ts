@@ -412,9 +412,10 @@ const HEADER = /^age-encryption\.org\/v1\n-> mlkem768x25519 [A-Za-z0-9+/]{1494}\
 export const sealedShape = (bytes: Uint8Array) => bytes.length >= 1627 + 32 && HEADER.test(String.fromCharCode(...bytes.subarray(0, 1627)))
 
 // The ciphertext of each sealed item, in D1 (sealed_chunks, migration 0024), never R2: past its free tier R2 bills, and
-// D1 on the Free plan only refuses (owner, 2026-11-17). D1 keeps 2 MB per row, so a file is cut in pieces. D1 reads a
-// BLOB back as an Array of numbers (millions of them for 10 MB), so the pieces come back as hex() and are decoded natively.
-const PIECE = 1_900_000
+// D1 on the Free plan only refuses (owner, 2026-11-17). D1 reads a BLOB back as an Array of numbers (millions of them for
+// 10 MB), so the pieces come back as hex() and are decoded natively. D1 keeps 2,000,000 bytes per string, and hex()
+// doubles a piece: under 1,000,000 bytes each (Codex P1, 2026-11-17; the local SQLite has no such cap, a test measures it).
+export const PIECE = 990_000
 declare global { interface Uint8ArrayConstructor { fromHex(hex: string): Uint8Array } } // ES2026, in workerd; TypeScript 5.9 has no type for it yet
 export const sealedStore = (db: D1Database) => ({
   async put(id: string, bytes: Uint8Array) {
@@ -778,7 +779,8 @@ export async function activationProof(c: Ctx, intent: ActivateIntent, signature:
 // key is told so, and a row never names a key that this console's page did not use. The SHA-256 is computed here, of
 // the bytes that arrived. The pieces go into sealed_chunks first, under the item's random id, then the row: when a
 // piece or the row is refused or fails, the pieces are taken out again; when it replaces an older item, that one's go.
-// ponytail: a Worker that dies between the two leaves pieces that no row names. Sweep sealed_chunks against sealed_items if that ever matters.
+// ponytail: a Worker that dies between the two, or D1's daily quota that runs out between two pieces (the DELETE then fails
+// too), leaves pieces that no row names: never served, only space. Sweep sealed_chunks against sealed_items if that ever matters.
 export async function sealDeclaration(c: Member & { request: Request; bytes: Uint8Array }) {
   const key = await sealKey(c.env)
   if (!key) return fail(503, 'not_configured')
