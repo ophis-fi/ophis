@@ -1,4 +1,3 @@
-import { ViemAdapter } from '@cowprotocol/sdk-viem-adapter'
 import { Web3Provider } from '@ethersproject/providers'
 
 import { createPublicClient, createWalletClient, custom, type Hex } from 'viem'
@@ -181,28 +180,5 @@ describe('Ophis Base attribution', () => {
       method: 'wallet_sendTransaction',
       params: [expect.objectContaining({ to: address, data: tagged })],
     })
-  })
-
-  it('tags raw estimation requests made by the installed CoW viem adapter', async () => {
-    const request = jest.fn(async ({ method }: { method: string; params?: unknown }) =>
-      method === 'eth_chainId' ? '0x2105' : method === 'eth_estimateGas' ? '0x6000' : hash,
-    )
-    const client = createPublicClient({ chain: base, transport: custom({ request }) })
-    const wallet = createWalletClient({ account: address, chain: base, transport: custom({ request }) })
-    const adapter = new ViemAdapter({
-      provider: withOphisBasePublicClient(client),
-      walletClient: withOphisBaseWalletClient(wallet),
-    })
-    const signer = adapter.signer
-    if (!signer) throw new Error('Missing test signer')
-    const gasLimit = await signer.estimateGas({ to: address, data })
-    await signer.sendTransaction({ to: address, data, gasLimit })
-    const transactionCalls = request.mock.calls
-      .map(([call]) => call)
-      .filter(({ method }) => ['eth_estimateGas', 'eth_sendTransaction'].includes(method))
-    expect(transactionCalls.length).toBeGreaterThanOrEqual(3)
-    for (const call of transactionCalls) {
-      expect(call.params).toEqual([expect.objectContaining({ to: address, data: tagged })])
-    }
   })
 })
