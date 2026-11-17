@@ -98,7 +98,7 @@ interface Passkey { id: string; publicKey: string; counter: number; transports: 
 // 2026-11-17 (7 days at most) has none of the new fields: they are stored as NULL.
 interface Contact { position: string; phone: string; telegram: string | null }
 interface Person extends Contact { name: string; email: string; role: 'owner' | 'admin' }
-interface Applicant extends Contact { legalName: string; country: string; registration: string; lei: string | null; address: string; kind: 'partner' | 'institution'; domain: string; email: string; name: string; people: Person[] }
+interface Applicant extends Contact { businessType: string; legalName: string; country: string; registration: string; lei: string | null; address: string; kind: 'partner' | 'institution'; domain: string; email: string; name: string; people: Person[] }
 /** What /apply asked for, signed by the server and held nowhere: nothing is written before the DNS record is seen. Times are Unix seconds. */
 interface ApplyIntent extends Applicant { inviteHash: string; seat: string; credential: Passkey; credentialHash: string; issuedAt: number; expiresAt: number; site: string }
 
@@ -114,8 +114,8 @@ async function createOrganisation(db: D1Database, a: ApplyIntent, value: string,
     await commit(db, orgId, () => {
       outcome = 'ok'
       return [{ at: now, actorKind: 'seat', actorId: a.seat, sessionId: null, action: 'organisation.apply', subjectId: a.credential.id, detail: a.credentialHash }, [
-        db.prepare(`INSERT INTO organisations (id, kind, name, state, email_domain, domain_challenge, domain_verified_at, country, registration_number, lei, registered_address, invite_hash, created_at)
-                    VALUES (?, ?, ?, 'unverified', ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(orgId, a.kind, a.legalName, a.domain, value, now, a.country, a.registration, a.lei ?? null, a.address ?? null, a.inviteHash, now),
+        db.prepare(`INSERT INTO organisations (id, kind, business_type, name, state, email_domain, domain_challenge, domain_verified_at, country, registration_number, lei, registered_address, invite_hash, created_at)
+                    VALUES (?, ?, ?, ?, 'unverified', ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(orgId, a.kind, a.businessType ?? null, a.legalName, a.domain, value, now, a.country, a.registration, a.lei ?? null, a.address ?? null, a.inviteHash, now),
         db.prepare(`INSERT INTO seats (id, org_id, display_name, email, role, state, position, phone, telegram, created_at) VALUES (?, ?, ?, ?, 'owner', 'active', ?, ?, ?, ?)`)
           .bind(a.seat, orgId, a.name, a.email, a.position ?? null, a.phone ?? null, a.telegram ?? null, now),
         db.prepare(`INSERT INTO credentials (id, org_id, seat_id, public_key, counter, device_bound, transports, label, state, created_at) VALUES (?, ?, ?, ?, ?, 1, ?, 'First key', 'active', ?)`)
@@ -222,8 +222,8 @@ const walletOf = (db: D1Database, orgId: string) =>
               FROM wallets w JOIN organisations o ON o.id = w.org_id WHERE w.org_id = ? AND ((o.state = 'unverified' AND w.state = 'pending') OR (o.state <> 'unverified' AND w.anchor IS NOT NULL))
               ORDER BY w.rowid DESC LIMIT 1`).bind(orgId).first<WalletRow>()
 
-interface Company { id: string; legalName: string; kind: string; state: string; country: string | null; registration: string | null; lei: string | null; address: string | null; domain: string | null; domainVerifiedAt: number | null; reviewAt: number | null; print: string | null }
-const COMPANY = `id, name AS legalName, kind, state, country, registration_number AS registration, lei, registered_address AS address, email_domain AS domain, domain_verified_at AS domainVerifiedAt, review_at AS reviewAt, review_print AS print FROM organisations`
+interface Company { id: string; legalName: string; kind: string; businessType: string | null; state: string; country: string | null; registration: string | null; lei: string | null; address: string | null; domain: string | null; domainVerifiedAt: number | null; reviewAt: number | null; print: string | null }
+const COMPANY = `id, name AS legalName, kind, business_type AS businessType, state, country, registration_number AS registration, lei, registered_address AS address, email_domain AS domain, domain_verified_at AS domainVerifiedAt, review_at AS reviewAt, review_print AS print FROM organisations`
 interface KybRow { legalName: string; registration: string | null; country: string; tier: string; source: string; evidenceSha256: string | null; decision: string; reason: string | null; decidedAt: number | null; nextReview: number | null }
 /** The newest KYB row of one organisation (bind its id): the row that says how the organisation stands. */
 const NEWEST = `FROM kyb_records WHERE org_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`
@@ -487,6 +487,12 @@ const NAME = /^[\p{L}\p{M}\p{N} .'’-]{1,60}$/u
 const POSITION = /^[\p{L}\p{M}\p{N} .,'’&()/-]{2,60}$/u
 const POSTAL = /^(?=.*[\p{L}\p{N}])[^\p{C}<>]{5,200}$/u
 const MAX_PEOPLE = 4 // besides the applicant: 5 people in all
+// What the company does (owner, 2026-11-17), and the part of the console it gets: partners follow their partner fees,
+// institutions trade on the desk. The browser shows the names; the kind is set here, never sent by the page.
+export const BUSINESS: Record<string, 'partner' | 'institution'> = {
+  wallet: 'partner', exchange: 'partner', app: 'partner', payments: 'partner', protocol: 'partner',
+  fund: 'institution', vc: 'institution', bank: 'institution', broker: 'institution', family_office: 'institution', treasury: 'institution',
+}
 /** An LEI (ISO 17442): 18 letters or digits and 2 check digits, ISO 7064 mod 97-10 over the letters as 10 to 35. */
 export function leiValid(lei: string) {
   if (!/^[A-Z0-9]{18}[0-9]{2}$/.test(lei)) return false
@@ -511,7 +517,7 @@ function applicant(body: Record<string, unknown>): Applicant | string {
   const field = (key: string) => (typeof body[key] === 'string' ? (body[key] as string).trim() : '')
   const a = {
     legalName: field('legalName'), country: field('country').toUpperCase(), registration: field('registration'), lei: field('lei').toUpperCase() || null,
-    address: field('address').replace(/\s+/g, ' '), kind: field('kind'), domain: field('domain').toLowerCase(), email: field('email').toLowerCase(), name: field('name'),
+    address: field('address').replace(/\s+/g, ' '), businessType: field('businessType'), kind: BUSINESS[field('businessType')] ?? '', domain: field('domain').toLowerCase(), email: field('email').toLowerCase(), name: field('name'),
   }
   const contact = contactOf(body)
   const given = body.people === undefined ? [] : Array.isArray(body.people) && body.people.length <= MAX_PEOPLE ? (body.people as unknown[]) : null
@@ -524,7 +530,7 @@ function applicant(body: Record<string, unknown>): Applicant | string {
     : !/^[A-Za-z0-9 ./-]{2,40}$/.test(a.registration) ? 'registration_invalid'
     : a.lei !== null && !leiValid(a.lei) ? 'lei_invalid'
     : !POSTAL.test(a.address) ? 'address_invalid'
-    : a.kind !== 'partner' && a.kind !== 'institution' ? 'kind_invalid'
+    : !Object.hasOwn(BUSINESS, a.businessType) ? 'kind_invalid'
     : !DOMAIN.test(a.domain) ? 'domain_invalid'
     : !emailAt(a.email, a.domain) ? 'email_not_at_domain'
     : !NAME.test(a.name) ? 'name_invalid'
@@ -656,7 +662,7 @@ export async function onboarding(c: Member) {
   const sealed = await sealedOf(c.env.DB, orgId)
   const status = company.state !== 'unverified' ? 'verified' : company.reviewAt !== null ? 'under_review' : record?.decision === 'pending' ? 'more_information' : 'not_submitted'
   return json(200, {
-    company: { legalName: company.legalName, kind: company.kind, country: company.country, registration: company.registration, lei: company.lei, address: company.address, domain: company.domain, domainVerifiedAt: company.domainVerifiedAt },
+    company: { legalName: company.legalName, kind: company.kind, businessType: company.businessType, country: company.country, registration: company.registration, lei: company.lei, address: company.address, domain: company.domain, domainVerifiedAt: company.domainVerifiedAt },
     first: first && { credentialHash: first.hash, active: first.active === 1, name: first.name, position: first.position },
     people: await peopleOf(c.env.DB, orgId), // the people the application named besides the first Owner: Ophis approves them with the organisation
     // Milestone 5b: the sealing key of this environment (its fingerprint; null: none configured), and the sealed declaration as the server knows it.
@@ -879,7 +885,7 @@ async function list(c: Ctx) {
     const endpoints = wallet?.kind === 'safe' ? c.config.chains[wallet.chainId] : undefined
     const live = endpoints ? await safeState(endpoints, wallet!.chainId, wallet!.address) : null
     organisations.push({
-      id: o.id, legalName: o.legalName, kind: o.kind, country: o.country, registration: o.registration, lei: o.lei, address: o.address, domain: o.domain, submittedAt: o.reviewAt, submission: await submissionOf(o.print),
+      id: o.id, legalName: o.legalName, kind: o.kind, businessType: o.businessType, country: o.country, registration: o.registration, lei: o.lei, address: o.address, domain: o.domain, submittedAt: o.reviewAt, submission: await submissionOf(o.print),
       applicant: { name: first.name, email: first.email, position: first.position, phone: first.phone, telegram: first.telegram },
       credentialHash: first.hash, people: await peopleOf(c.env.DB, o.id), missing: await missing(c.env.DB, o.id, c.now),
       // Milestone 5b: that the sealed declaration exists, and what the server knows of it. "items" and "get" are the way to the file.

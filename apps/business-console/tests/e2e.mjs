@@ -824,10 +824,10 @@ try {
   await on.goto(`${ORIGIN}/apply`)
   await on.getByLabel('Invitation code').fill(code)
   await on.getByLabel('Legal name').fill('Alder Custody S.A.')
-  await on.getByLabel('Type of business').selectOption('institution')
+  await on.getByLabel('Type of business').selectOption('fund')
   await on.getByLabel('Country of incorporation').selectOption('LU')
-  check('the country is chosen by its name, and the type of business says what each one gets', await on.getByLabel('Country of incorporation').locator('option:checked').innerText() === 'Luxembourg'
-    && (await on.getByLabel('Type of business').innerText()).includes('use the desk'))
+  check('the country is chosen by its name, and the type of business from a short list of names', await on.getByLabel('Country of incorporation').locator('option:checked').innerText() === 'Luxembourg'
+    && (await on.getByLabel('Type of business').locator('option').allInnerTexts()).join('|') === 'Choose a type|Wallet|Exchange|App or dApp|Payments|DeFi protocol|Fund or asset manager|Venture capital|Bank|Broker|Family office|Company treasury')
   await on.getByLabel('Company registration number').fill('B123456')
   await on.getByLabel('LEI, if the company has one').fill('5493001KJTIIGC8Y1R12')
   await on.getByLabel('Registered address').fill('2 rue de la Gare, L-1611 Luxembourg')

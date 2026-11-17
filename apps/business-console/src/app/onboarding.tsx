@@ -13,7 +13,7 @@ const SAY: Record<string, string> = {
   registration_invalid: 'Enter the company registration number: letters, digits, spaces, dots, dashes or slashes, 40 characters at most.',
   lei_invalid: 'This LEI is not valid: 20 letters and digits, and its check digits must match. Leave it empty if the company has none.',
   address_invalid: 'Enter the registered address of the company: street, postcode and city, 5 to 200 characters.',
-  kind_invalid: 'Choose the type of business.',
+  kind_invalid: 'Choose the type of business from the list.',
   domain_invalid: 'Enter the company domain, for example ophis.fi: the part of your work email after the @. No address, no https.',
   email_not_at_domain: 'Your work email must be at the company domain, or at a subdomain of it.',
   name_invalid: 'Enter your own name, 60 characters at most.',
@@ -55,10 +55,10 @@ const REASON: Record<string, string> = {
   not_eligible: 'The company is outside what Ophis can serve.',
 }
 const KIND: Record<string, string> = { partner: 'Crypto business', institution: 'Financial institution' }
-// What each type of business gets, for the application form.
-const KIND_CHOICE: Record<string, string> = {
-  partner: 'Crypto business that integrates Ophis (wallet, app, exchange): follow your partner fees',
-  institution: 'Financial institution that trades through Ophis (fund, treasury, bank, broker): use the desk',
+// What the company does (owner, 2026-11-17). The server sets the kind from it (BUSINESS in server/onboarding.ts).
+const BUSINESS: Record<string, string> = {
+  wallet: 'Wallet', exchange: 'Exchange', app: 'App or dApp', payments: 'Payments', protocol: 'DeFi protocol',
+  fund: 'Fund or asset manager', vc: 'Venture capital', bank: 'Bank', broker: 'Broker', family_office: 'Family office', treasury: 'Company treasury',
 }
 // ISO 3166-1 alpha-2, and XK (Kosovo), named by the browser in English: the server stores the code.
 const NAMES = new Intl.DisplayNames(['en'], { type: 'region' })
@@ -86,7 +86,7 @@ const keep = (intent: string) => {
   }
 }
 interface DnsRecord { name: string; type: string; value: string }
-const FIELDS = { invite: '', legalName: '', kind: 'partner', country: '', registration: '', lei: '', address: '', name: '', position: '', email: '', domain: '', phone: '', telegram: '' }
+const FIELDS = { invite: '', legalName: '', businessType: '', country: '', registration: '', lei: '', address: '', name: '', position: '', email: '', domain: '', phone: '', telegram: '' }
 interface Person { name: string; position: string; email: string; phone: string; telegram: string; role: string }
 const NOBODY: Person = { name: '', position: '', email: '', phone: '', telegram: '', role: 'admin' }
 const after = (email: string) => email.split('@')[1] ?? ''
@@ -205,8 +205,9 @@ export function Apply() {
             <input className="input" value={form.legalName} required maxLength={120} autoComplete="organization" onChange={set('legalName')} />
           </label>
           <label className="field">Type of business
-            <select className="input" value={form.kind} onChange={set('kind')}>
-              {Object.entries(KIND_CHOICE).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            <select className="input" value={form.businessType} required onChange={set('businessType')}>
+              <option value="" disabled>Choose a type</option>
+              {Object.entries(BUSINESS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </label>
           <label className="field">Country of incorporation
@@ -216,7 +217,7 @@ export function Apply() {
             </select>
           </label>
           <label className="field">Company registration number
-            <span className="hint">As in the company register, for example B123456 in Luxembourg.</span>
+            <span className="hint">As in the company register.</span>
             <input className="input mono" value={form.registration} required maxLength={40} spellCheck={false} autoComplete="off" onChange={set('registration')} />
           </label>
           <label className="field">LEI, if the company has one
@@ -293,7 +294,7 @@ export function Apply() {
 
 interface KybRow { legalName: string; registration: string | null; country: string; tier: string; source: string; evidenceSha256: string | null; decision: string; reason: string | null; decidedAt: number | null; nextReview: number | null }
 interface View {
-  company: { legalName: string; kind: string; country: string | null; registration: string | null; lei: string | null; address: string | null; domain: string | null; domainVerifiedAt: number | null }
+  company: { legalName: string; kind: string; businessType: string | null; country: string | null; registration: string | null; lei: string | null; address: string | null; domain: string | null; domainVerifiedAt: number | null }
   first: { credentialHash: string; active: boolean; name: string; position: string | null } | null
   people: { name: string; email: string; role: string; position: string | null; phone: string | null; telegram: string | null }[]
   wallet: { chainId: number; chain: string; address: string; kind: string; label: string; inForce: boolean; threshold?: number; owners?: number } | null
@@ -354,6 +355,7 @@ function Declaration({ view }: { view: View }) {
         <h3 className="h-panel">Declaration of the company to Ophis</h3>
         <dl className="kv">
           <dt>Legal name</dt><dd>{company.legalName}</dd>
+          {company.businessType && <><dt>Type of business</dt><dd>{BUSINESS[company.businessType] ?? company.businessType}</dd></>}
           <dt>Registration number</dt><dd className="mono">{company.registration ?? 'none'}</dd>
           {company.lei && <><dt>LEI</dt><dd className="mono">{company.lei}</dd></>}
           <dt>Country of incorporation</dt><dd>{countryName(company.country)}</dd>
@@ -446,7 +448,7 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
         <header><Tile name="clipboard-check" /><div><h2 className="h-panel" id="ob-h">Steps</h2><p>Each step shows what the server holds now.</p></div></header>
         <div>
           <Step icon="building-2" title="Company and domain" done>
-            <p>{company.legalName}{company.kind ? `, ${KIND[company.kind] ?? company.kind}` : ''}{company.country ? `, incorporated in ${countryName(company.country)}` : ''}{company.registration ? `, number ${company.registration}` : ''}{company.lei ? `, LEI ${company.lei}` : ''}.</p>
+            <p>{company.legalName}{company.businessType ? `, ${BUSINESS[company.businessType] ?? company.businessType}` : company.kind ? `, ${KIND[company.kind] ?? company.kind}` : ''}{company.country ? `, incorporated in ${countryName(company.country)}` : ''}{company.registration ? `, number ${company.registration}` : ''}{company.lei ? `, LEI ${company.lei}` : ''}.</p>
             {company.address && <p>Registered address: {company.address}.</p>}
             <p>{company.domain ? `Domain ${company.domain}, proved by its DNS record on ${day(company.domainVerifiedAt!)}.` : 'Created by Ophis for this local build, without an application.'}</p>
             {view.people.length > 0 && <p>{verified ? 'Approved by Ophis with the organisation' : 'Other people named in the application'}: {view.people.map((p) => `${who(p)} (${ROLE[p.role]}, ${p.email})`).join('; ')}. {verified

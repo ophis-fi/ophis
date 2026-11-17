@@ -257,7 +257,7 @@ else {
   const person = (p) => [p.name, p.position, p.email, p.phone, p.telegram].filter(Boolean).join(', ')
   for (const o of answer.body.organisations) {
     console.log([
-      `${o.id}  ${o.legalName} (${o.kind}, ${o.country}, ${o.registration}${o.lei ? `, LEI ${o.lei}` : ''})`,
+      `${o.id}  ${o.legalName} (${o.businessType ? `${o.businessType}, ` : ''}${o.kind}, ${o.country}, ${o.registration}${o.lei ? `, LEI ${o.lei}` : ''})`,
       `  address         ${o.address ?? 'none given'}`,
       `  domain          ${o.domain}`,
       `  submitted       ${new Date(o.submittedAt).toISOString()}   submission ${o.submission} (name it in "approve": a change and a new submit make another)`,

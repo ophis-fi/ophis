@@ -5943,7 +5943,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
   const fieldsOf = <T,>(sealed: string) => JSON.parse(new TextDecoder().decode(fromBase64Url(sealed.split('.')[0]))) as T
   const resealed = (sealed: string, change: object) => `${toBase64Url(new TextEncoder().encode(JSON.stringify({ ...fieldsOf<object>(sealed), ...change })))}.${sealed.split('.')[1]}`
   let domains = 0
-  const form = (domain: string) => ({ invite: INVITE, legalName: 'Alder Custody S.A.', country: 'LU', registration: 'B123456', address: '2 rue de la Gare, L-1611 Luxembourg', kind: 'institution', domain, email: `ops@${domain}`, name: 'Maren Okafor', position: 'Chief Operating Officer', phone: '+352 621 123 456' })
+  const form = (domain: string) => ({ invite: INVITE, legalName: 'Alder Custody S.A.', country: 'LU', registration: 'B123456', address: '2 rue de la Gare, L-1611 Luxembourg', businessType: 'fund', domain, email: `ops@${domain}`, name: 'Maren Okafor', position: 'Chief Operating Officer', phone: '+352 621 123 456' })
   // The applicant: the form, then a new passkey. Nothing is written.
   async function applyFor(domain = `alder${++domains}.example`, more: Record<string, unknown> = {}, keyOptions: { backupEligible?: boolean } = {}, answer: Answer = {}) {
     const key = await softwareAuthenticator(SITE, keyOptions)
@@ -6068,7 +6068,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
   it('A1: the form is checked, and the contact address must be at the company domain or a subdomain of it', async () => {
     const bad: [Record<string, unknown>, string][] = [
       [{ legalName: 'A' }, 'legal_name_invalid'], [{ legalName: '<b>Alder</b>' }, 'legal_name_invalid'], [{ country: 'Luxembourg' }, 'country_invalid'], [{ registration: '' }, 'registration_invalid'],
-      [{ kind: 'bank' }, 'kind_invalid'], [{ domain: 'localhost' }, 'domain_invalid'], [{ domain: 'alder..example' }, 'domain_invalid'], [{ domain: 'https://alder.example' }, 'domain_invalid'],
+      [{ businessType: 'casino' }, 'kind_invalid'], [{ businessType: '' }, 'kind_invalid'], [{ businessType: 'constructor' }, 'kind_invalid'], [{ businessType: 'partner' }, 'kind_invalid'], [{ domain: 'localhost' }, 'domain_invalid'], [{ domain: 'alder..example' }, 'domain_invalid'], [{ domain: 'https://alder.example' }, 'domain_invalid'],
       [{ domain: '-alder.example' }, 'domain_invalid'], [{ domain: 'alder.123' }, 'domain_invalid'], [{ name: '' }, 'name_invalid'], [{ name: 'x'.repeat(61) }, 'name_invalid'],
       // Not at the domain: another company's, a free-mail provider's, a look-alike, the domain as a prefix, two addresses.
       [{ email: 'ops@birch.example' }, 'email_not_at_domain'], [{ email: 'maren@gmail.com' }, 'email_not_at_domain'], [{ email: 'ops@evilalder.example' }, 'email_not_at_domain'],
@@ -6091,6 +6091,9 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       { legalName: 'L’Oréal S.A.' }, { legalName: 'บริษัท ตัวอย่าง จำกัด' }, { name: 'Zoë d’Arcy' }, { position: 'Directeur général délégué' }])
       expect((await call('POST', '/api/apply', { body: { ...form('alder.example'), ...fields } })).status, JSON.stringify(fields)).toBe(200)
     // Every field is under the MAC of the intent: the address that is stored is the one that was checked.
+    // The kind is the server's, from the type of business: a wallet is a partner, a fund an institution, whatever else the page sends.
+    expect(fieldsOf((await applyFor('alder.example', { businessType: 'wallet', kind: 'institution' })).intent)).toMatchObject({ businessType: 'wallet', kind: 'partner' })
+    expect(fieldsOf((await applyFor('alder.example', { businessType: 'vc', kind: 'partner' })).intent)).toMatchObject({ businessType: 'vc', kind: 'institution' })
     const a = await applyFor('alder.example', { email: 'Ops@Mail.Alder.Example', country: 'lu', domain: 'Alder.Example', lei: ' 5493001kjtiigc8y1r12 ', address: ' 2 rue  de la Gare,\n L-1611 Luxembourg ', phone: '+352 (621) 123-456', telegram: '@maren_ok' })
     expect(fieldsOf(a.intent)).toMatchObject({ email: 'ops@mail.alder.example', country: 'LU', domain: 'alder.example', lei: '5493001KJTIIGC8Y1R12', address: '2 rue de la Gare, L-1611 Luxembourg', phone: '+352621123456', telegram: '@maren_ok' })
   })
@@ -6265,7 +6268,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     publish(a.body.record)
     expect((await checkDns(a.intent)).body).toEqual({ state: 'unverified' })
     const org = (await row<Record<string, unknown>>('SELECT * FROM organisations WHERE email_domain = ?', 'alder-commit.example'))!
-    expect(org).toMatchObject({ kind: 'institution', name: 'Alder Custody S.A.', state: 'unverified', domain_challenge: a.body.record.value, domain_verified_at: now, country: 'LU', registration_number: 'B123456', lei: null, registered_address: '2 rue de la Gare, L-1611 Luxembourg', review_at: null, created_at: now })
+    expect(org).toMatchObject({ kind: 'institution', business_type: 'fund', name: 'Alder Custody S.A.', state: 'unverified', domain_challenge: a.body.record.value, domain_verified_at: now, country: 'LU', registration_number: 'B123456', lei: null, registered_address: '2 rue de la Gare, L-1611 Luxembourg', review_at: null, created_at: now })
     expect(await row('SELECT id, display_name, email, role, state, position, phone, telegram FROM seats WHERE org_id = ?', org.id)).toEqual({ id: a.seat, display_name: 'Maren Okafor', email: 'ops@alder-commit.example', role: 'owner', state: 'active', position: 'Chief Operating Officer', phone: '+352621123456', telegram: null })
     expect(await row('SELECT id, seat_id, state, device_bound, label FROM credentials WHERE org_id = ?', org.id)).toEqual({ id: a.key.id, seat_id: a.seat, state: 'active', device_bound: 1, label: 'First key' })
     const hash = fieldsOf<{ credentialHash: string }>(a.intent).credentialHash
@@ -6883,7 +6886,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect((await submit(a)).body).toEqual({ state: 'under_review' })
     const view = (await call('GET', '/api/onboarding', { cookie: a.cookie })).body
     expect(await mine()).toEqual([{
-      id: a.orgId, legalName: 'Alder Custody S.A.', kind: 'institution', country: 'LU', registration: 'B123456', lei: null, address: '2 rue de la Gare, L-1611 Luxembourg', domain: 'alder-list.example', submittedAt: now, submission: await submissionOf(a.orgId),
+      id: a.orgId, legalName: 'Alder Custody S.A.', kind: 'institution', businessType: 'fund', country: 'LU', registration: 'B123456', lei: null, address: '2 rue de la Gare, L-1611 Luxembourg', domain: 'alder-list.example', submittedAt: now, submission: await submissionOf(a.orgId),
       applicant: { name: 'Maren Okafor', email: 'ops@alder-list.example', position: 'Chief Operating Officer', phone: '+352621123456', telegram: null },
       credentialHash: view.first.credentialHash, people: [], missing: null, declaration: view.sealed, refused: [],
       wallet: { chainId: CHAIN, chain: 'OP Mainnet', address: accounts[4].address, kind: 'safe', label: 'Treasury', inForce: false, threshold: 2, owners: 3, colour: { level: 'green', why: null } },
@@ -7185,7 +7188,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect((await post(`/api/wallets/${wallet.id}/anchor`, b)).body).toEqual({ state: 'applied' })
     for (const path of ['/api/onboarding', `/api/onboarding?organisationId=${b.orgId}`, `/api/onboarding?org=${b.orgId}`]) {
       const view = await call('GET', path, { cookie: a.cookie })
-      expect(view.body).toEqual({ company: { legalName: a.name, kind: 'partner', country: 'LU', registration: null, lei: null, address: null, domain: null, domainVerifiedAt: null }, first: null, people: [], seal: { key: KEY, generation: 'g1' }, sealed: null, downloads: [], wallet: null, missing: null, review: { status: 'verified', since: null, reason: null }, record: null, chains: expect.any(Array) })
+      expect(view.body).toEqual({ company: { legalName: a.name, kind: 'partner', businessType: null, country: 'LU', registration: null, lei: null, address: null, domain: null, domainVerifiedAt: null }, first: null, people: [], seal: { key: KEY, generation: 'g1' }, sealed: null, downloads: [], wallet: null, missing: null, review: { status: 'verified', since: null, reason: null }, record: null, chains: expect.any(Array) })
     }
     expect((await call('GET', '/api/onboarding', { cookie: b.cookie })).body).toMatchObject({ company: { legalName: b.name }, people: [{ name: 'Zed Birch', email: 'zed@birch.example', role: 'admin' }], record: { legalName: 'Birchfield Capital Ltd', tier: 'enhanced' }, wallet: { address: accounts[0].address } })
     expect((await call('GET', `/api/onboarding/${b.orgId}`, { cookie: a.cookie })).status).toBe(404)
