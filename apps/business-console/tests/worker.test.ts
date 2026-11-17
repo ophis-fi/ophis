@@ -6334,6 +6334,32 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect(onboardingSource).not.toMatch(/env\.\w*(RESOLVER|DNS|STUB)|body\.resolver|searchParams/i)
   })
 
+  it('owner, 2026-11-17: the DNS record is optional: skipDns makes the organisation now, its domain not proved, and asks no resolver; the intent, the invitation and one organisation per domain still hold', async () => {
+    const skip = (intent: string, value: unknown = true) => call('POST', '/api/apply/check', { body: { intent, skipDns: value } })
+    const code = await newCode()
+    const a = await applyFor('alder-skip.example', { invite: code })
+    // Anything but true is no request to skip: the DNS path, which finds no record.
+    for (const value of ['true', 1, 'yes']) expect((await skip(a.intent, value)).body).toMatchObject({ error: 'dns_not_proved' })
+    dns.asked = []
+    expect((await skip(a.intent)).body).toEqual({ state: 'unverified' })
+    expect(dns.asked).toHaveLength(0)
+    const org = (await row<{ id: string; state: string; domain_challenge: string | null; domain_verified_at: number | null; invite_hash: string }>('SELECT id, state, domain_challenge, domain_verified_at, invite_hash FROM organisations WHERE email_domain = ?', 'alder-skip.example'))!
+    expect(org).toMatchObject({ state: 'unverified', domain_challenge: null, domain_verified_at: null })
+    // The Owner signs in; the page and the operator say the domain is not proved.
+    const session = await signIn(a.key)
+    expect((await call('GET', '/api/onboarding', { cookie: session.cookie })).body.company).toMatchObject({ domain: 'alder-skip.example', domainVerifiedAt: null })
+    // The same intent again, the code again, the domain again: as on the DNS path.
+    expect((await skip(a.intent)).body).toEqual({ error: 'not_stored' })
+    expect((await call('POST', '/api/apply', { body: { ...form('birch-skip.example'), invite: code } })).body).toEqual({ error: 'invite_used' })
+    const b = await applyFor('alder-skip.example')
+    expect((await skip(b.intent)).body).toEqual({ error: 'domain_taken' })
+    // A changed or expired intent is refused before anything.
+    expect((await skip(`${a.intent.slice(0, -2)}AA`)).body).toEqual({ error: 'intent_invalid' })
+    now += 8 * DAY
+    expect((await skip(b.intent)).body).toEqual({ error: 'intent_expired' })
+    now -= 8 * DAY
+  })
+
   it('A3: one commit: the organisation, unverified, with its fields and domain, its first Owner seat, the active passkey and one audit row; the applicant then signs in', async () => {
     const a = await applyFor('alder-commit.example')
     publish(a.body.record)
@@ -6957,7 +6983,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect((await submit(a)).body).toEqual({ state: 'under_review' })
     const view = (await call('GET', '/api/onboarding', { cookie: a.cookie })).body
     expect(await mine()).toEqual([{
-      id: a.orgId, legalName: 'Alder Custody S.A.', kind: 'institution', businessType: 'fund', country: 'LU', registration: 'B123456', lei: null, address: '2 rue de la Gare, L-1611 Luxembourg', domain: 'alder-list.example', submittedAt: now, submission: await submissionOf(a.orgId),
+      id: a.orgId, legalName: 'Alder Custody S.A.', kind: 'institution', businessType: 'fund', country: 'LU', registration: 'B123456', lei: null, address: '2 rue de la Gare, L-1611 Luxembourg', domain: 'alder-list.example', domainVerifiedAt: expect.any(Number), submittedAt: now, submission: await submissionOf(a.orgId),
       applicant: { name: 'Maren Okafor', email: 'ops@alder-list.example', position: 'Chief Operating Officer', phone: '+352621123456', telegram: null },
       credentialHash: view.first.credentialHash, people: [], missing: null, declaration: view.sealed, refused: [],
       wallet: { chainId: CHAIN, chain: 'OP Mainnet', address: accounts[4].address, kind: 'safe', label: 'Treasury', inForce: false, threshold: 2, owners: 3, colour: { level: 'green', why: null } },

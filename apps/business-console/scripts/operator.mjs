@@ -259,7 +259,7 @@ else {
     console.log([
       `${o.id}  ${o.legalName} (${o.businessType ? `${o.businessType}, ` : ''}${o.kind}, ${o.country}, ${o.registration}${o.lei ? `, LEI ${o.lei}` : ''})`,
       `  address         ${o.address ?? 'none given'}`,
-      `  domain          ${o.domain}`,
+      `  domain          ${o.domain}${o.domainVerifiedAt ? ` (proved by DNS on ${new Date(o.domainVerifiedAt).toISOString().slice(0, 10)})` : ' (NOT proved by DNS: confirm the applicant with the company before approving)'}`,
       `  submitted       ${new Date(o.submittedAt).toISOString()}   submission ${o.submission} (name it in "approve": a change and a new submit make another)`,
       `  first Owner     ${person(o.applicant)}, passkey hash ${o.credentialHash}`,
       ...(o.people.length ? o.people.map((p) => `  person          ${person(p)}, ${p.role}`) : ['  people          none besides the first Owner']),
