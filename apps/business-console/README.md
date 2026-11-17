@@ -1,7 +1,7 @@
 # Ophis Business console
 
 Production on pro.ophis.fi (2026-11-17), all on Cloudflare's Free plans: nothing in it can be billed (no R2). Passkey sign-in, enrolment of members (each new passkey confirmed by a colleague), roles with two-person approval and the audit log, wallets with the recovery wallet, last-Owner recovery, Support, and registration by invitation with the operator's review. Design, schema, routes and invariants: `ARCHITECTURE.md`.
-Deploys run in CI on merge to main (`.github/workflows/business-console-deploy.yml`); never deploy from a laptop. Its token cannot touch D1: a PR that adds a migration is applied by hand before its merge (`npx wrangler d1 migrations apply ophis-business --remote --env production`). The first deploy (2026-11-17) ran from the operator's Mac: it created the three custom domains, which the CI token cannot.
+Production runbook (hosts, secrets, updates, the monthly OFAC load, a new client): `OPERATIONS.md`. Deploys run in CI on merge to main (`.github/workflows/business-console-deploy.yml`); never deploy from a laptop. Its token cannot touch D1: a PR that adds a migration is applied by hand before its merge (`npx wrangler d1 migrations apply ophis-business --remote --env production`). The first deploy (2026-11-17) ran from the operator's Mac: it created the three custom domains, which the CI token cannot.
 
 Needs Node 22.18 or later and Google Chrome. Run everything from this folder, with pnpm as `npx -y pnpm@10.34.9`.
 

@@ -1022,12 +1022,25 @@ const walletEntry = (r: Opening, now: number, action: string, detail: string | n
   const signed = checked && r.terms.scheme === 'eip712' && action !== 'order.open'
   return { at: now, actorKind: signed ? 'anchor' : 'system', actorId: signed ? r.terms.walletId : null, sessionId: null, action, subjectId: r.id, detail }
 }
-/** The signing page read the order: its expiry is fixed now, once. */
+/**
+ * The signing page read the order: its expiry is fixed now, once, and returned; null when it was fixed already. The order
+ * id is the signed terms and the expiry, so two orders with the same terms opened in the same second would be one order on
+ * the chain (#1648): the expiry is the first second from `validTo`, in the next minute, that no order of the organisation
+ * has. Only this writes valid_to, always through commit(), whose batch fails when another write of the organisation
+ * landed after its read: a page that lost the race reads again and takes the next second. Per organisation, as uid is
+ * not unique (0017): one wallet may be linked to two organisations.
+ */
 export async function orderOpened(db: D1Database, r: Opening, tokenHash: string, validTo: number, now: number) {
-  return commit(db, r.orgId, async () => {
+  let fixed = validTo
+  const done = await commit(db, r.orgId, async () => {
     const still = await db.prepare(`SELECT 1 FROM orders o WHERE o.org_id = ? AND o.id = ? AND o.link_hash = ? AND o.valid_to IS NULL`).bind(r.orgId, r.id, tokenHash).first()
-    return still ? [walletEntry(r, now, 'order.open'), [db.prepare('UPDATE orders SET valid_to = ? WHERE org_id = ? AND id = ? AND valid_to IS NULL').bind(validTo, r.orgId, r.id)]] : null
+    if (!still) return null
+    // The taken seconds of that minute, by the index orders_by_expiry (0025): no row read when none is taken.
+    const taken = new Set((await db.prepare('SELECT valid_to FROM orders WHERE org_id = ? AND valid_to BETWEEN ? AND ?').bind(r.orgId, validTo, validTo + 59).raw<[number]>()).map(([v]) => v))
+    for (fixed = validTo; taken.has(fixed); fixed++) if (fixed === validTo + 59) return null
+    return [walletEntry(r, now, 'order.open'), [db.prepare('UPDATE orders SET valid_to = ? WHERE org_id = ? AND id = ? AND valid_to IS NULL').bind(fixed, r.orgId, r.id)]]
   })
+  return done ? fixed : null
 }
 const HOLD_MS = 60_000 // longer than a send can wait for the orderbook (orders.ORDERBOOK, 5 seconds)
 /**

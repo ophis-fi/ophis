@@ -11047,6 +11047,28 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     expect(Object.fromEntries((await deskOrders(team.o)).map((x) => [x.id, x.state]))).toMatchObject({ [c.id]: 'Filled' })
   })
 
+  it('#1648: two approved orders with the same terms, opened in the same second, are two orders on the chain: the second takes the next free second', async () => {
+    const team = await deskTeam()
+    book()
+    const ids = [await approvedOrder(team), await approvedOrder(team), await approvedOrder(team)]
+    const pages = []
+    for (const id of ids) pages.push((await orderPage((await orderLink(team.t, id)).token)).body)
+    const asked = pages[0].validTo
+    expect(asked).toBe(Math.floor(now / 1000) + 1800) // the first takes the second asked
+    // The same terms, read at the same instant: three expiries one second apart, so three order ids.
+    expect(pages.map((p) => p.validTo)).toEqual([asked, asked + 1, asked + 2])
+    expect(new Set(pages.map((p) => p.uid)).size).toBe(3)
+    // Read again, each page signs the same order as before.
+    for (const [n, id] of ids.entries()) expect((await row<{ v: number }>('SELECT valid_to AS v FROM orders WHERE id = ?', id))!.v).toBe(pages[n].validTo)
+    // Two pages at the same instant both read the same second free: the later batch fails (commit), reads again, and takes the next.
+    const [fourth, fifth] = [await approvedOrder(team), await approvedOrder(team)]
+    const tokens = [(await orderLink(team.t, fourth)).token, (await orderLink(team.t, fifth)).token]
+    const hashes = [await data.sha256Hex(tokens[0]), await data.sha256Hex(tokens[1])]
+    const [four, five] = [(await data.orderByLink(db, hashes[0], now))!, (await data.orderByLink(db, hashes[1], now))!]
+    const raced = racing(async () => expect(await data.orderOpened(db, five, hashes[1], asked + 3, now)).toBe(asked + 3)).DB
+    expect(await data.orderOpened(raced, four, hashes[0], asked + 3, now)).toBe(asked + 4)
+  })
+
   it('inside the commits: the link reads the role now; the expiry is fixed once; one send per approval; the link is read again; the state read is written only while the order is open', async () => {
     const team = await deskTeam()
     book()
@@ -11060,10 +11082,11 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     const hash = await data.sha256Hex(token)
     const r = (await data.orderByLink(db, hash, now))!
     // Two reads of the page at the same instant: one fixes the expiry and writes its row, the other changes nothing.
-    const fixed = Math.floor(now / 1000) + 1800
-    expect(await data.orderOpened(db, r, hash, fixed, now)).toBe(true)
+    const asked = Math.floor(now / 1000) + 1800
+    const fixed = (await data.orderOpened(db, r, hash, asked, now))!
+    expect(fixed).toBeGreaterThanOrEqual(asked) // the first free second from the one asked (#1648)
     const rows = await count('audit_log', team.o.orgId)
-    expect(await data.orderOpened(db, r, hash, fixed + 1, now)).toBe(false)
+    expect(await data.orderOpened(db, r, hash, fixed + 1, now)).toBeNull()
     expect([await count('audit_log', team.o.orgId), (await row<{ v: number }>('SELECT valid_to AS v FROM orders WHERE id = ?', id))!.v]).toEqual([rows, fixed])
     // Two sends at the same instant: one holds the order id, the other is refused; the record, the refusal and the cancel read the link again.
     expect(await data.orderSending(db, r, hash, `0x${'1'.repeat(112)}`, '0x', now)).toBe('ok')
