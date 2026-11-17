@@ -65,6 +65,7 @@ const listable = (addresses: unknown): addresses is string[] => Array.isArray(ad
 // The words of this file's audit actions, for the audit page and the export (spread into EVENTS of index.ts).
 export const ONBOARDING_EVENTS: Record<string, string> = {
   'organisation.apply': 'Organisation created by an application: its DNS record proved the company domain, first Owner passkey active',
+  'organisation.apply_unproved': 'Organisation created by an application, the company domain not proved by DNS (Ophis checks the company in its review), first Owner passkey active',
   'activation.proof': 'Recovery wallet signed the activation and confirmed the first Owner passkey',
   'review.submit': 'Organisation submitted for review',
   'declaration.upload': 'Signed declaration uploaded, sealed in the browser (the detail is the SHA-256 of the sealed file)',
@@ -109,15 +110,17 @@ interface ApplyIntent extends Applicant { inviteHash: string; seat: string; cred
 // row of its audit log, which names the seat, the passkey and the passkey's hash for good. One organisation per domain among those that are not archived is the database's rule (the unique
 // index of 0006), and so are "an intent makes one organisation, once" (the primary keys of its seat and passkey) and
 // "an application code makes one organisation, once" (the unique index of 0007 on its hash).
-async function createOrganisation(db: D1Database, a: ApplyIntent, value: string, now: number) {
+// value: the DNS record the resolvers showed, or null when the applicant went on without it (the domain is not proved).
+async function createOrganisation(db: D1Database, a: ApplyIntent, value: string | null, now: number) {
   const orgId = randomId()
   let outcome = 'not_stored'
   try {
     await commit(db, orgId, () => {
       outcome = 'ok'
-      return [{ at: now, actorKind: 'seat', actorId: a.seat, sessionId: null, action: 'organisation.apply', subjectId: a.credential.id, detail: a.credentialHash }, [
+      // The first row says how the domain stood (owner, 2026-11-17): proved by DNS, or not; the row is hashed into the chain.
+      return [{ at: now, actorKind: 'seat', actorId: a.seat, sessionId: null, action: value === null ? 'organisation.apply_unproved' : 'organisation.apply', subjectId: a.credential.id, detail: a.credentialHash }, [
         db.prepare(`INSERT INTO organisations (id, kind, business_type, name, state, email_domain, domain_challenge, domain_verified_at, country, registration_number, lei, registered_address, invite_hash, synced_keys_allowed, created_at)
-                    VALUES (?, ?, ?, ?, 'unverified', ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`).bind(orgId, a.kind, a.businessType ?? null, a.legalName, a.domain, value, now, a.country, a.registration, a.lei ?? null, a.address ?? null, a.inviteHash, now),
+                    VALUES (?, ?, ?, ?, 'unverified', ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`).bind(orgId, a.kind, a.businessType ?? null, a.legalName, a.domain, value, value === null ? null : now, a.country, a.registration, a.lei ?? null, a.address ?? null, a.inviteHash, now),
         db.prepare(`INSERT INTO seats (id, org_id, display_name, email, role, state, position, phone, telegram, created_at) VALUES (?, ?, ?, ?, 'owner', 'active', ?, ?, ?, ?)`)
           .bind(a.seat, orgId, a.name, a.email, a.position ?? null, a.phone ?? null, a.telegram ?? null, now),
         db.prepare(`INSERT INTO credentials (id, org_id, seat_id, public_key, counter, device_bound, transports, label, state, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'First key', 'active', ?)`)
@@ -143,7 +146,7 @@ const firstOf = (db: D1Database, orgId: string) =>
                      (SELECT count(*) FROM credentials k JOIN seats s ON s.org_id = k.org_id AND s.id = k.seat_id AND s.role = 'owner' AND s.state = 'active'
                       WHERE k.org_id = a.org_id AND k.id = a.subject_id AND k.seat_id = a.actor_id AND k.state = 'active') AS active
               FROM audit_log a JOIN organisations o ON o.id = a.org_id LEFT JOIN seats f ON f.org_id = a.org_id AND f.id = a.actor_id
-              WHERE a.org_id = ? AND a.seq = 1 AND a.action = 'organisation.apply'`).bind(orgId).first<First>()
+              WHERE a.org_id = ? AND a.seq = 1 AND a.action IN ('organisation.apply', 'organisation.apply_unproved')`).bind(orgId).first<First>()
 /** The people the application named besides its applicant, in the order it gave them. */
 const peopleOf = async (db: D1Database, orgId: string) =>
   (await db.prepare('SELECT display_name AS name, email, role, position, phone, telegram FROM application_people WHERE org_id = ? ORDER BY rowid').bind(orgId).all<Person>()).results
@@ -639,6 +642,13 @@ export async function applyCheck(c: Ctx) {
   const intent = (await unseal(c.env.CHALLENGE_KEY, APPLY, typeof c.body.intent === 'string' ? c.body.intent : '')) as ApplyIntent | null
   if (!intent) return fail(400, 'intent_invalid')
   if (intent.expiresAt * 1000 <= c.now) return fail(410, 'intent_expired')
+  // Owner, 2026-11-17: the DNS record is optional, as many companies will not publish one. `skipDns: true` makes the
+  // organisation now, its domain not proved (Ophis checks the company in its review, as for every organisation); no
+  // resolver is asked. The invitation still has to be valid and unused, and one organisation per domain still holds.
+  if (c.body.skipDns === true) {
+    const outcome = await createOrganisation(c.env.DB, intent, null, c.now)
+    return outcome === 'ok' ? json(200, { state: 'unverified' }) : refuse(outcome)
+  }
   if (!(await countHour(c.env.DB, `dns:${intent.inviteHash}`, c.now, MAX_DNS))) return fail(429, 'too_many')
   const value = await dnsValue(c.env.CHALLENGE_KEY, intent.domain, intent.credentialHash)
   const answers = await Promise.all(RESOLVERS[c.env.ENVIRONMENT].map((resolver) => lookup(resolver, dnsName(intent.domain))))
@@ -910,7 +920,7 @@ async function list(c: Ctx) {
     const endpoints = wallet?.kind === 'safe' ? c.config.chains[wallet.chainId] : undefined
     const live = endpoints ? await safeState(endpoints, wallet!.chainId, wallet!.address) : null
     organisations.push({
-      id: o.id, legalName: o.legalName, kind: o.kind, businessType: o.businessType, country: o.country, registration: o.registration, lei: o.lei, address: o.address, domain: o.domain, submittedAt: o.reviewAt, submission: await submissionOf(o.print),
+      id: o.id, legalName: o.legalName, kind: o.kind, businessType: o.businessType, country: o.country, registration: o.registration, lei: o.lei, address: o.address, domain: o.domain, domainVerifiedAt: o.domainVerifiedAt, submittedAt: o.reviewAt, submission: await submissionOf(o.print),
       applicant: { name: first.name, email: first.email, position: first.position, phone: first.phone, telegram: first.telegram },
       credentialHash: first.hash, people: await peopleOf(c.env.DB, o.id), missing: await missing(c.env.DB, o.id, c.now),
       // Milestone 5b: that the sealed declaration exists, and what the server knows of it. "items" and "get" are the way to the file.

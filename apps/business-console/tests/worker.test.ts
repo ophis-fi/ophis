@@ -6334,6 +6334,36 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect(onboardingSource).not.toMatch(/env\.\w*(RESOLVER|DNS|STUB)|body\.resolver|searchParams/i)
   })
 
+  it('owner, 2026-11-17: the DNS record is optional: skipDns makes the organisation now, its domain not proved, and asks no resolver; the intent, the invitation and one organisation per domain still hold', async () => {
+    const skip = (intent: string, value: unknown = true) => call('POST', '/api/apply/check', { body: { intent, skipDns: value } })
+    const code = await newCode()
+    const a = await applyFor('alder-skip.example', { invite: code })
+    // Anything but true is no request to skip: the DNS path, which finds no record.
+    for (const value of ['true', 1, 'yes']) expect((await skip(a.intent, value)).body).toMatchObject({ error: 'dns_not_proved' })
+    dns.asked = []
+    expect((await skip(a.intent)).body).toEqual({ state: 'unverified' })
+    expect(dns.asked).toHaveLength(0)
+    const org = (await row<{ id: string; state: string; domain_challenge: string | null; domain_verified_at: number | null; invite_hash: string }>('SELECT id, state, domain_challenge, domain_verified_at, invite_hash FROM organisations WHERE email_domain = ?', 'alder-skip.example'))!
+    expect(org).toMatchObject({ state: 'unverified', domain_challenge: null, domain_verified_at: null })
+    // The client's own log says so in its first row (hashed into the chain), not that DNS proved the domain.
+    expect(await row('SELECT seq, action, detail FROM audit_log WHERE org_id = ?', org.id)).toEqual({ seq: 1, action: 'organisation.apply_unproved', detail: fieldsOf<{ credentialHash: string }>(a.intent).credentialHash })
+    expect(onboarding.ONBOARDING_EVENTS['organisation.apply_unproved']).toMatch(/not proved by DNS/)
+    expect(await data.verifyAudit(db, org.id)).toMatchObject({ ok: true, rows: 1 })
+    // The Owner signs in; the page and the operator say the domain is not proved.
+    const session = await signIn(a.key)
+    expect((await call('GET', '/api/onboarding', { cookie: session.cookie })).body.company).toMatchObject({ domain: 'alder-skip.example', domainVerifiedAt: null })
+    // The same intent again, the code again, the domain again: as on the DNS path.
+    expect((await skip(a.intent)).body).toEqual({ error: 'not_stored' })
+    expect((await call('POST', '/api/apply', { body: { ...form('birch-skip.example'), invite: code } })).body).toEqual({ error: 'invite_used' })
+    const b = await applyFor('alder-skip.example')
+    expect((await skip(b.intent)).body).toEqual({ error: 'domain_taken' })
+    // A changed or expired intent is refused before anything.
+    expect((await skip(`${a.intent.slice(0, -2)}AA`)).body).toEqual({ error: 'intent_invalid' })
+    now += 8 * DAY
+    expect((await skip(b.intent)).body).toEqual({ error: 'intent_expired' })
+    now -= 8 * DAY
+  })
+
   it('A3: one commit: the organisation, unverified, with its fields and domain, its first Owner seat, the active passkey and one audit row; the applicant then signs in', async () => {
     const a = await applyFor('alder-commit.example')
     publish(a.body.record)
@@ -6957,7 +6987,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect((await submit(a)).body).toEqual({ state: 'under_review' })
     const view = (await call('GET', '/api/onboarding', { cookie: a.cookie })).body
     expect(await mine()).toEqual([{
-      id: a.orgId, legalName: 'Alder Custody S.A.', kind: 'institution', businessType: 'fund', country: 'LU', registration: 'B123456', lei: null, address: '2 rue de la Gare, L-1611 Luxembourg', domain: 'alder-list.example', submittedAt: now, submission: await submissionOf(a.orgId),
+      id: a.orgId, legalName: 'Alder Custody S.A.', kind: 'institution', businessType: 'fund', country: 'LU', registration: 'B123456', lei: null, address: '2 rue de la Gare, L-1611 Luxembourg', domain: 'alder-list.example', domainVerifiedAt: expect.any(Number), submittedAt: now, submission: await submissionOf(a.orgId),
       applicant: { name: 'Maren Okafor', email: 'ops@alder-list.example', position: 'Chief Operating Officer', phone: '+352621123456', telegram: null },
       credentialHash: view.first.credentialHash, people: [], missing: null, declaration: view.sealed, refused: [],
       wallet: { chainId: CHAIN, chain: 'OP Mainnet', address: accounts[4].address, kind: 'safe', label: 'Treasury', inForce: false, threshold: 2, owners: 3, colour: { level: 'green', why: null } },
@@ -7180,6 +7210,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
   it('every change of this section and its audit row succeed or fail together, and every action it writes has its words', async () => {
     const a = await applyFor()
     publish(a.body.record)
+    const unproved = await applyFor() // owner, 2026-11-17: an application that goes on without the DNS record
     const b = await applicantWithTwoKeys()
     const asked = await nameWallet(b, accounts[0].address)
     const signature = await accounts[0].signTypedData(typedActivate(fieldsOf<ActivateFields>(asked.body.intent)))
@@ -7202,7 +7233,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     const [askedG, askedH] = [await askLink(g, g1.address), await nameWallet(h, h1.address)]
     const [proofG, proofH] = [await g1.signTypedData(typedOf(intentOf(askedG.body.intent))), await h1.signTypedData(typedActivate(fieldsOf<ActivateFields>(askedH.body.intent)))]
     const steps: [string, () => Promise<{ status: number }>][] = [
-      ['organisation.apply', () => checkDns(a.intent)], ['activation.proof', () => prove(asked.body.intent, signature)], ['review.submit', () => submit(c)], ['declaration.upload', () => upload(b, file)],
+      ['organisation.apply', () => checkDns(a.intent)], ['organisation.apply_unproved', () => call('POST', '/api/apply/check', { body: { intent: unproved.intent, skipDns: true } })], ['activation.proof', () => prove(asked.body.intent, signature)], ['review.submit', () => submit(c)], ['declaration.upload', () => upload(b, file)],
       ['kyb.approve', () => decideOn(d.orgId)], ['kyb.more', () => decideOn(d.orgId, MORE)], ['kyb.refuse', () => decideOn(d.orgId, { ...MORE, decision: 'refuse' })],
       ['organisation.freeze', () => op('POST', `/api/operator/organisations/${e.orgId}/freeze`)],
       ['sealed.download', async () => take((await itemsOf(d.orgId))[0].id)],
@@ -11367,5 +11398,5 @@ describe('K. the Free plan of Cloudflare Workers', () => {
     expect(jobs.filter((job) => !answered.has(job)), 'never answered 2xx: run the whole file').toEqual([])
     const rows = (job: string) => (JOBS.includes(job) || onboarding.operatorRoutes.some((r) => `${r.method} ${r.path}` === job) ? RARE : FREE)
     expect([...metered].filter(([job, c]) => c.d1 > FREE.d1 || c.fetch > FREE.fetch || c.d1 + c.internal > FREE.internal || c.read > rows(job).read || c.written > rows(job).written)).toEqual([])
-  })
+  }, 60_000) // it drives every route and job of the meter in one run: about 2 s here, past the 5 s default on CI runners (2026-11-17)
 })

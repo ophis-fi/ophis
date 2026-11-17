@@ -116,8 +116,9 @@ export function Apply() {
       setBusy(false)
     }
   }
-  const check = useCallback((sealed: string, quiet = false) => run(async () => {
-    const result = await api<{ state?: string; error?: string; record?: DnsRecord }>('/api/apply/check', { intent: sealed })
+  // skipDns: make the organisation now, without the DNS record (owner, 2026-11-17: the record is optional).
+  const check = useCallback((sealed: string, quiet = false, skipDns = false) => run(async () => {
+    const result = await api<{ state?: string; error?: string; record?: DnsRecord }>('/api/apply/check', { intent: sealed, ...(skipDns && { skipDns: true }) })
     if (result.status === 200) {
       keep('')
       return setDone(true)
@@ -158,7 +159,7 @@ export function Apply() {
       <header className="ph"><div>
         <span className="cap eyebrow">Apply</span>
         <h1 className="h-page">Open an organisation, <em>prove your company domain</em>.</h1>
-        <p className="lede">For companies only, by invitation: Ophis gives you an invitation code. You enter the company, create a passkey (on this device, your phone or a security key), and your DNS administrator publishes one record. Nothing is stored until that record is found.</p>
+        <p className="lede">For companies only, by invitation: Ophis gives you an invitation code. You enter the company, create a passkey (on this device, your phone or a security key), and Ophis reviews the company. Nothing is stored until you create the organisation.</p>
       </div></header>
       {problem && <Problem>{problem}</Problem>}
       {done ? (
@@ -169,7 +170,14 @@ export function Apply() {
         </div>
       ) : intent ? (
         <div className="panel stack">
-          <h2 className="h-panel">Ask your DNS administrator to publish this record.</h2>
+          <h2 className="h-panel">Your passkey is ready. Create the organisation.</h2>
+          <p>Ophis checks your company in its review before anything else opens. You do not need to change anything on your side.</p>
+          <div className="acts">
+            <button className="btn primary md" type="button" disabled={busy} onClick={() => check(intent, false, true)}><Icon name="building-2" size={16} />Create the organisation</button>
+            <button className="btn ghost md" type="button" disabled={busy} onClick={() => { keep(''); setIntent(''); setRecord(undefined); setProblem('') }}>Start again</button>
+          </div>
+          <h3 className="h-panel sub">Optional: prove the company domain by DNS</h3>
+          <p>If your DNS administrator can publish this record, check it instead: the organisation then shows a proved domain.</p>
           {record ? (
             <>
               <dl className="kv">
@@ -181,18 +189,15 @@ export function Apply() {
                 <button className="btn ghost md" type="button" onClick={() => copy('name', record.name)}><Icon name="clipboard-check" size={16} />{copied === 'name' ? 'Copied' : 'Copy the name'}</button>
                 <button className="btn ghost md" type="button" onClick={() => copy('value', record.value)}><Icon name="clipboard-check" size={16} />{copied === 'value' ? 'Copied' : 'Copy the value'}</button>
               </div>
-              <p className="note warn" role="status"><Icon name="info" /><span className="grow">The value belongs to the passkey you just created. A record from an earlier application does not work, and this record works for no other passkey. Keep the security key.</span></p>
+              <p className="note warn" role="status"><Icon name="info" /><span className="grow">The value belongs to the passkey you just created. A record from an earlier application does not work, and this record works for no other passkey. Keep this passkey.</span></p>
             </>
           ) : <p className="fine" role="status">Reading the application.</p>}
-          <div className="acts">
-            <button className="btn primary md" type="button" disabled={busy} onClick={() => check(intent)}><Icon name="shield-check" size={16} />Check DNS</button>
-            <button className="btn ghost md" type="button" disabled={busy} onClick={() => { keep(''); setIntent(''); setRecord(undefined); setProblem('') }}>Start again</button>
-          </div>
+          <div><button className="btn ghost md" type="button" disabled={busy} onClick={() => check(intent)}><Icon name="shield-check" size={16} />Check DNS and create</button></div>
           <label className="field">Link to come back to this application{expiresAt ? `, valid until ${minute(expiresAt)}` : ', valid 7 days'}
             <input className="input mono" readOnly value={resume} onFocus={(event) => event.target.select()} />
           </label>
           <div><button className="btn ghost md" type="button" onClick={() => copy('link', resume)}><Icon name="clipboard-check" size={16} />{copied === 'link' ? 'Copied' : 'Copy the link'}</button></div>
-          <p className="fine"><Icon name="info" size={16} /><span>Two independent DNS resolvers must both show the record. Once they do, the organisation is created and you sign in with your passkey. This browser remembers the application.</span></p>
+          <p className="fine"><Icon name="info" size={16} /><span>With the record, two independent DNS resolvers must both show it. Either way, the organisation is created and you sign in with your passkey. This browser remembers the application.</span></p>
         </div>
       ) : (
         <form className="panel stack" onSubmit={start}>
@@ -450,7 +455,7 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
           <Step icon="building-2" title="Company and domain" done>
             <p>{company.legalName}{company.businessType ? `, ${BUSINESS[company.businessType] ?? company.businessType}` : company.kind ? `, ${KIND[company.kind] ?? company.kind}` : ''}{company.country ? `, incorporated in ${countryName(company.country)}` : ''}{company.registration ? `, number ${company.registration}` : ''}{company.lei ? `, LEI ${company.lei}` : ''}.</p>
             {company.address && <p>Registered address: {company.address}.</p>}
-            <p>{company.domain ? `Domain ${company.domain}, proved by its DNS record on ${day(company.domainVerifiedAt!)}.` : 'Created by Ophis for this local build, without an application.'}</p>
+            <p>{!company.domain ? 'Created by Ophis for this local build, without an application.' : company.domainVerifiedAt ? `Domain ${company.domain}, proved by its DNS record on ${day(company.domainVerifiedAt)}.` : `Domain ${company.domain}, not proved by DNS: Ophis checks the company in its review.`}</p>
             {view.people.length > 0 && <p>{verified ? 'Approved by Ophis with the organisation' : 'Other people named in the application'}: {view.people.map((p) => `${who(p)} (${ROLE[p.role]}, ${p.email})`).join('; ')}. {verified
               ? 'Each has a seat under Organisation, Members and roles. An Owner or Admin gives each one a link there, then confirms the new passkey. No second person is needed.'
               : 'Ophis checks them with the company. When Ophis approves, each gets a seat. Do not invite them yourself.'}</p>}

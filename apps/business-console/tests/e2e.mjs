@@ -845,9 +845,13 @@ try {
   await on.getByLabel('Phone of person 2').fill('+352 621 000 001')
   await on.getByLabel('Role of person 2').selectOption('admin')
   check('the form names a second person: a name, a position, a work email at the domain, a phone, the role Owner or Admin; it fits a phone', await both(on, '59-apply-people', 'fieldset'))
-  check('the application page carries the footer line and says nothing is stored yet', await on.locator(".foot-line", { hasText: FOOTER }).isVisible() && await on.getByText('Nothing is stored until that record is found.').isVisible())
+  check('the application page carries the footer line and says nothing is stored yet', await on.locator(".foot-line", { hasText: FOOTER }).isVisible() && await on.getByText('Nothing is stored until you create the organisation.').isVisible())
   await on.getByRole('button', { name: 'Create the passkey and the DNS record' }).click()
-  await on.getByRole('heading', { name: 'Ask your DNS administrator to publish this record.' }).waitFor()
+  await on.getByRole('heading', { name: 'Your passkey is ready. Create the organisation.' }).waitFor()
+  // Owner, 2026-11-17: the DNS record is optional. The main action creates the organisation at once; this run takes the
+  // optional DNS path, which proves the domain (the main path is covered by the unit tests).
+  check('the page offers to create the organisation now, and the DNS record as an option', await on.getByRole('button', { name: 'Create the organisation' }).isVisible()
+    && await on.getByRole('heading', { name: 'Optional: prove the company domain by DNS' }).isVisible())
   const [, recordName, recordValue] = await on.locator('dl.kv dd').allInnerTexts()
   check('the record is a TXT at _ophis-verify.<domain> with a short code', recordName === `_ophis-verify.${domain}` && /^ophis-verify=[A-Za-z0-9_-]{20}$/.test(recordValue) && await both(on, '32-apply-record'))
   check('the page offers a link to come back, with the application in the fragment', (await on.getByLabel(/Link to come back/).inputValue()).startsWith(`${ORIGIN}/apply#`))
