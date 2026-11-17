@@ -1,4 +1,5 @@
 import { getRpcProvider } from '@cowprotocol/common-const'
+import { OPHIS_BASE_DATA_SUFFIX } from '@cowprotocol/wallet-provider'
 import type { JsonRpcProvider } from '@ethersproject/providers'
 
 import { WalletFirstReadProvider, withAppRpcFallback } from './cowSdk.utils'
@@ -30,6 +31,16 @@ const revert = rpcError('Internal JSON-RPC error.', {
 })
 
 describe('WalletFirstReadProvider: the wallet RPC first, the app RPC only when a READ fails there', () => {
+  it('retains Base attribution when gas estimation falls back to the app RPC', async () => {
+    const wallet = throwing(dead, '0x2105')
+    const app = appRpc()
+    const tx = { to: '0x1111111111111111111111111111111111111111', data: '0xd0e30db0', value: '0x1' }
+    await new WalletFirstReadProvider(wallet, app, 8453).send('eth_estimateGas', [tx])
+    const expected = [{ ...tx, data: tx.data + OPHIS_BASE_DATA_SUFFIX.slice(2) }]
+    expect(wallet.send).toHaveBeenCalledWith('eth_estimateGas', expected)
+    expect(app.send).toHaveBeenCalledWith('eth_estimateGas', expected)
+    expect(tx.data).toBe('0xd0e30db0')
+  })
   it('reads through the wallet while it answers, never touching the app RPC', async () => {
     const app = appRpc()
     await expect(

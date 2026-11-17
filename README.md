@@ -4,7 +4,7 @@
 
 <h1 align="center">Ophis</h1>
 
-<p align="center">Intent-based token swaps and cross-chain trading.</p>
+<p align="center">Multichain swaps, cross-chain transfers and private trading.</p>
 
 <p align="center">
   <a href="https://github.com/ophis-fi/ophis/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://github.com/ophis-fi/ophis/actions/workflows/ci.yml/badge.svg?branch=main" alt="Core CI on main" /></a>
@@ -22,10 +22,11 @@
   <a href="SECURITY.md"><b>Security</b></a>
 </p>
 
-Ophis combines a swap interface, order infrastructure and developer tools built
-on [CoW Protocol](https://cow.fi). Users review quotes and authorize trades in
-their wallets. Developers and agents can integrate through the SDK, CLI or MCP
-server; the hosted MCP server does not hold private keys or sign orders.
+Ophis is a multichain DEX aggregator that brings token swaps, cross-chain
+transfers and private trading into one interface. Users review quotes and
+authorize trades in their wallets. Developers and agents can integrate through
+the SDK, CLI or MCP server; the hosted MCP server does not hold private keys or
+sign orders.
 
 ## Trading
 
@@ -70,6 +71,12 @@ Use the [network guide](https://docs.ophis.fi/networks-assets) for coverage and
 | **CLI**            | Run `npx @ophis/cli help` to explore wallet-connected quoting, swaps and bridges. [CLI guide](packages/cli/README.md)                                      |
 | **MCP server**     | Connect a Streamable HTTP client to `https://mcp.ophis.fi/mcp`. [Tools and signing model](apps/mcp-server/README.md)                                       |
 | **Intent API**     | Parse natural-language requests into structured intent data. [API reference](https://docs.ophis.fi/intent-api)                                             |
+
+On Base, eligible public contract transactions from the swap app and CLI carry
+Ophis builder code `bc_8j4gt5x6` using [ERC-8021 attribution](https://docs.base.org/specifications/builder-codes/overview).
+Wallet batches request the optional attribution capability. Offchain order
+signatures and solver-submitted settlements are outside this client integration.
+See the [SDK integration notes](packages/sdk/README.md#base-builder-attribution).
 
 For example, parse a request without submitting a trade:
 

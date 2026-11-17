@@ -59,8 +59,9 @@ Echidna properties live in `contracts/echidna/` — extend them when adding new 
 ## Branch + PR hygiene
 
 Store dated review reports in `docs/audits/` and add them to its index. Keep
-machine-readable scan baselines in `audit/`. Verify co-author email addresses
-against the contributor's GitHub identity; do not infer them from a display name.
+machine-readable scan baselines in `audit/`. Verify commit author and co-author
+email addresses against the contributor's GitHub identity; do not infer them
+from a display name.
 
 - **Branch names**: `fix/<short-slug>`, `feat/<short-slug>`, `docs/<short-slug>`, `chore/<short-slug>`. Prefix matches the conventional-commit `type:` you'll use in the title.
 - **PR titles**: conventional commits. Example: `fix(driver): close panic in settlement state-machine on recover_owner failure`.

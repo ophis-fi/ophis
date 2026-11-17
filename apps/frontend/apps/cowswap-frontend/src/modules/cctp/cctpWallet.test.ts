@@ -1,3 +1,5 @@
+import { OPHIS_BASE_DATA_SUFFIX } from '@cowprotocol/wallet-provider'
+
 import { decodeFunctionData, erc20Abi, getAddress, type WalletClient } from 'viem'
 
 import { cctpClient, readCctpFunds, type CctpQuote } from './cctp.service'
@@ -76,6 +78,21 @@ it('approves only the displayed amount and skips approval when allowance already
   const decoded = decodeFunctionData({ abi: erc20Abi, data })
   expect(decoded.functionName).toBe('approve')
   expect(decoded.args).toEqual(['0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d', 2000000n])
+})
+
+it('estimates and submits identical Base calldata for approvals and burns', async () => {
+  const baseQuote = { ...quote, source: 8453, destination: 5042 }
+  wallet.getChainId.mockResolvedValue(8453)
+  jest.mocked(readCctpFunds).mockResolvedValueOnce({ allowance: 0n, balance: 2000000n })
+  await approveCctp(wallet as unknown as WalletClient, baseQuote)
+  await burnCctp(wallet as unknown as WalletClient, baseQuote, beforeSignature)
+  expect(wallet.sendTransaction).toHaveBeenCalledTimes(2)
+  for (const [index, [sent]] of wallet.sendTransaction.mock.calls.entries()) {
+    expect(sent.data.endsWith(OPHIS_BASE_DATA_SUFFIX.slice(2))).toBe(true)
+    expect(client.estimateGas.mock.calls[index]?.[0]).toEqual(
+      expect.objectContaining({ to: sent.to, data: sent.data, value: sent.value }),
+    )
+  }
 })
 
 it('adds a missing Arc network with native USDC metadata but never retries a rejected switch', async () => {

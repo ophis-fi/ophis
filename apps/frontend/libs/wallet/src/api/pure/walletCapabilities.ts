@@ -30,6 +30,7 @@ export interface WalletSendCallsRequest {
   readonly from: string
   readonly chainId: string
   readonly atomicRequired: true
+  readonly capabilities?: { readonly dataSuffix: { readonly value: string; readonly optional: true } }
   readonly calls: readonly {
     readonly to: string
     readonly data: string
@@ -256,5 +257,9 @@ export function buildWalletSendCallsRequest(
     chainId: `0x${chainId.toString(16)}`,
     atomicRequired: true,
     calls: normalizedCalls,
+    ...(chainId === 8453
+      ? { capabilities: { dataSuffix: { value: OPHIS_BASE_DATA_SUFFIX, optional: true as const } } }
+      : {}),
   }
 }
+import { OPHIS_BASE_DATA_SUFFIX } from '@cowprotocol/wallet-provider'

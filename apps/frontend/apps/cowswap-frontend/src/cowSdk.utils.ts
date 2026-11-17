@@ -1,5 +1,6 @@
 import { getRpcProvider } from '@cowprotocol/common-const'
 import { getProviderErrorMessage, withTimeout } from '@cowprotocol/common-utils'
+import { withOphisBaseTransactionParams } from '@cowprotocol/wallet-provider'
 import { JsonRpcProvider } from '@ethersproject/providers'
 
 /** Read-only methods that may fall back. Writes, signing and chain identity (eth_chainId, net_version) never do. */
@@ -126,6 +127,8 @@ export class WalletFirstReadProvider extends JsonRpcProvider {
   }
 
   async send(method: string, params: unknown[]): Promise<unknown> {
+    // Wallet and fallback RPC must estimate the exact calldata that will be submitted.
+    if (method === 'eth_estimateGas') params = withOphisBaseTransactionParams(method, params, this.appRpcChainId)
     if (!READ_METHODS.has(method)) return this.wallet.send(method, params)
     try {
       return await withTimeout(this.wallet.send(method, params), this.readTimeoutMs, `wallet ${method}`)

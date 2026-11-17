@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 
 import {
   ARC_ENABLED,
@@ -20,6 +20,7 @@ import {
 import { PERMIT_ACCOUNT } from '@cowprotocol/permit-utils'
 import { EthersV5Adapter } from '@cowprotocol/sdk-ethers-v5-adapter'
 import { ViemAdapter } from '@cowprotocol/sdk-viem-adapter'
+import { useWalletProvider, withOphisBaseWalletClient, withOphisBasePublicClient } from '@cowprotocol/wallet-provider'
 import { useWeb3React } from '@web3-react/core'
 
 import { usePublicClient, useWalletClient } from 'wagmi'
@@ -88,19 +89,29 @@ export const metadataApiSDK = new MetadataApi()
 
 export function CowSdkUpdater(): null {
   const publicClient = usePublicClient()
+  const attributedPublicClient = useMemo(() => publicClient && withOphisBasePublicClient(publicClient), [publicClient])
   const { data: walletClient } = useWalletClient()
-  const { chainId, provider, account } = useWeb3React()
+  const attributedWalletClient = useMemo(() => walletClient && withOphisBaseWalletClient(walletClient), [walletClient])
+  const { chainId, account } = useWeb3React()
+  const provider = useWalletProvider()
 
   useEffect(() => {
     if (!LAUNCH_DARKLY_VIEM_MIGRATION) return
-    if (!publicClient) return
-    if (walletClient) {
+    if (!attributedPublicClient) return
+    if (attributedWalletClient) {
       // TODO: fix the type casting
-      setGlobalAdapter(new ViemAdapter({ provider: publicClient, walletClient }) as AbstractProviderAdapter)
+      setGlobalAdapter(
+        new ViemAdapter({
+          provider: attributedPublicClient,
+          walletClient: attributedWalletClient,
+        }) as AbstractProviderAdapter,
+      )
     } else {
-      setGlobalAdapter(new ViemAdapter({ provider: publicClient, signer: PERMIT_ACCOUNT }) as AbstractProviderAdapter)
+      setGlobalAdapter(
+        new ViemAdapter({ provider: attributedPublicClient, signer: PERMIT_ACCOUNT }) as AbstractProviderAdapter,
+      )
     }
-  }, [publicClient, walletClient])
+  }, [attributedPublicClient, attributedWalletClient])
 
   useEffect(() => {
     if (LAUNCH_DARKLY_VIEM_MIGRATION) return
