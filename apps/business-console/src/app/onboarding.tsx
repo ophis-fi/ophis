@@ -164,7 +164,7 @@ export function Apply() {
       {problem && <Problem>{problem}</Problem>}
       {done ? (
         <div className="panel stack">
-          <h2 className="h-panel">The domain is proved and the organisation exists.</h2>
+          <h2 className="h-panel">The organisation exists.</h2>
           <p>It is not yet verified. Sign in with the passkey you just created, add a second passkey, and follow the Onboarding page.</p>
           <div><a className="btn primary md" href="/#/"><Icon name="fingerprint" size={16} />Sign in</a></div>
         </div>
@@ -251,7 +251,7 @@ export function Apply() {
             <input className="input" value={form.telegram} maxLength={33} placeholder="@username" spellCheck={false} autoComplete="off" onChange={set('telegram')} />
           </label>
           <label className="field">Company domain
-            <span className="hint">The part of your work email after the @, filled in from it. You will publish one DNS record on this domain to prove the company controls it.</span>
+            <span className="hint">The part of your work email after the @, filled in from it. The organisation is known by it: one organisation per company domain.</span>
             <input className="input mono" value={form.domain} required maxLength={253} placeholder="company.example" spellCheck={false} autoComplete="off" onChange={set('domain')} />
           </label>
           <fieldset className="field">
@@ -286,8 +286,8 @@ export function Apply() {
               {people.length < 4 && <div><button className="btn ghost md" type="button" onClick={() => setPeople([...people, { ...NOBODY }])}><Icon name="user" size={16} />Add a person</button></div>}
             </div>
           </fieldset>
-          <p>The next step creates your passkey, which makes you the first Owner: on this device, your phone or a security key. Then you get one DNS record to publish at the company domain: it proves the domain, and that this passkey is the one your company means.</p>
-          <div><button className="btn primary md" type="submit" disabled={busy || typeof PublicKeyCredential === 'undefined'}><Icon name="key-round" size={16} />Create the passkey and the DNS record</button></div>
+          <p>The next step creates your passkey, which makes you the first Owner: on this device, your phone or a security key. Then you create the organisation. Nothing is stored before.</p>
+          <div><button className="btn primary md" type="submit" disabled={busy || typeof PublicKeyCredential === 'undefined'}><Icon name="key-round" size={16} />Create the passkey</button></div>
         </form>
       )}
       <p className="fine"><Icon name="info" size={16} /><span>Already a member? <a href="/#/">Sign in</a>. Invited by a colleague? Open the link they gave you.</span></p>

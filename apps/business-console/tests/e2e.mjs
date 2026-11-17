@@ -846,7 +846,7 @@ try {
   await on.getByLabel('Role of person 2').selectOption('admin')
   check('the form names a second person: a name, a position, a work email at the domain, a phone, the role Owner or Admin; it fits a phone', await both(on, '59-apply-people', 'fieldset'))
   check('the application page carries the footer line and says nothing is stored yet', await on.locator(".foot-line", { hasText: FOOTER }).isVisible() && await on.getByText('Nothing is stored until you create the organisation.').isVisible())
-  await on.getByRole('button', { name: 'Create the passkey and the DNS record' }).click()
+  await on.getByRole('button', { name: 'Create the passkey', exact: true }).click()
   await on.getByRole('heading', { name: 'Your passkey is ready. Create the organisation.' }).waitFor()
   // Owner, 2026-11-17: the DNS record is optional. The main action creates the organisation at once; this run takes the
   // optional DNS path, which proves the domain (the main path is covered by the unit tests).
@@ -863,7 +863,7 @@ try {
   await on.getByText(recordValue).waitFor()
   publishTxt(recordName, recordValue) // what the company's DNS administrator does
   await on.getByRole('button', { name: 'Check DNS' }).click()
-  await on.getByRole('heading', { name: 'The domain is proved and the organisation exists.' }).waitFor()
+  await on.getByRole('heading', { name: 'The organisation exists.' }).waitFor()
   await on.getByRole('link', { name: 'Sign in' }).last().click()
   await on.getByRole('button', { name: 'Sign in with a passkey' }).click()
   await on.getByRole('heading', { name: /From application to a verified organisation|Read this before you continue/ }).waitFor()
