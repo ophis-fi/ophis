@@ -598,6 +598,16 @@ try {
   check('the Organisation page shows an Owner the readiness state: two Owners with two hardware keys are Ready, and a recovery wallet that still waits is amber and says so',
     ['Ready', '2 Owners, each with two hardware keys.', 'Amber', 'Custody wallet is in force from', 'Until then it does not count.'].every((text) => readiness.includes(text)) && await both(page, '21-readiness'))
   check('an Admin gets no readiness block', (await status('/api/readiness', cy.page)) === 403)
+  // A read that fails clears the earlier answer and offers a retry: no old assessment is shown as current (CodeRabbit, PR #1653).
+  await page.route('**/api/readiness', (route) => route.fulfill({ status: 500, contentType: 'application/json', body: '{}' }))
+  await page.getByRole('button', { name: 'Invite member' }).click()
+  await page.getByRole('button', { name: 'Close' }).last().click() // the page reads its state again, and readiness with it
+  await page.locator('#readiness', { hasText: 'It could not be read just now' }).waitFor()
+  check('a readiness read that fails shows no earlier answer, and offers Try again', !(await page.locator('#readiness').innerText()).includes('2 Owners, each with two hardware keys.')
+    && await page.locator('#readiness').getByRole('button', { name: 'Try again' }).isVisible())
+  await page.unroute('**/api/readiness')
+  await page.locator('#readiness').getByRole('button', { name: 'Try again' }).click()
+  check('Try again reads it again', await page.locator('#readiness', { hasText: '2 Owners, each with two hardware keys.' }).waitFor({ timeout: 5000 }).then(() => true, () => false))
 
   // Unlinking the recovery wallet is refused: by the page, and by the server when asked directly.
   await arrive(owner, false)

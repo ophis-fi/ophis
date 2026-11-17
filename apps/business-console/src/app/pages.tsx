@@ -1254,13 +1254,21 @@ const LEVEL: Record<string, string> = { green: 'Green', amber: 'Amber', red: 'Re
 // For an Owner: how ready the organisation is to recover access. The server reads the recovery wallet on the chain for this page.
 // Read again after each read of the page it sits on (`after` is that page's state): an action on Organisation, a key
 // added or revoked, an Owner frozen, a wallet change, can change it. Only the newest answer lands (Codex, PR #1653).
+// A read that fails clears the earlier answer: an old assessment is never shown as current (CodeRabbit, PR #1653).
 function Readiness({ after }: { after: unknown }) {
-  const [ready, setReady] = useState<Ready>()
+  const [ready, setReady] = useState<Ready | 'failed'>()
+  const [tries, setTries] = useState(0)
   const reads = useRef(0)
   useEffect(() => {
     const n = ++reads.current
-    void api<Ready>('/api/readiness').then((result) => n === reads.current && result.status === 200 && setReady(result.data))
-  }, [after])
+    void api<Ready>('/api/readiness').then((result) => n === reads.current && setReady(result.status === 200 ? result.data : 'failed'))
+  }, [after, tries])
+  if (ready === 'failed') return (
+    <section className="sg" id="readiness" aria-labelledby="rd-h">
+      <header><Tile name="life-buoy" /><div><h2 className="h-panel" id="rd-h">Recovery readiness</h2><p role="alert">It could not be read just now, so nothing is shown rather than an old answer.</p>
+        <p><button className="btn ghost sm" type="button" onClick={() => setTries(tries + 1)}><Icon name="history" size={16} />Try again</button></p></div></header>
+    </section>
+  )
   if (!ready) return null
   const { owners, wallet } = ready
   const [badge, sentence] = OVERALL[ready.overall] ?? OVERALL.at_risk
