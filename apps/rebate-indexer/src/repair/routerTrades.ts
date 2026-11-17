@@ -1,6 +1,6 @@
 import { sql } from '../db/index.js';
 import { getOrder } from '../cow/client.js';
-import { DECODER_ETHFLOW_OWNERS, ethFlowTrader } from '../fetcher.js';
+import { DECODER_ETHFLOW_OWNERS, ethFlowTraderSource } from '../fetcher.js';
 import { TRADE_REWARDS_CAMPAIGN_ID } from '../tradeRewards/config.js';
 import { logger } from '../logger.js';
 
@@ -97,8 +97,9 @@ export async function repairRouterTrades(): Promise<RouterRepairResult> {
         log.warn({ uid, chainId: r.chain_id, storedWallet, owner }, 'router repair: order owner is not an eth-flow router; skipping');
         continue;
       }
-      const trader = ethFlowTrader(order);
-      if (!trader) {
+      const found = ethFlowTraderSource(order);
+      const trader = found?.wallet;
+      if (!found || !trader) {
         skipped++;
         log.warn({ uid, chainId: r.chain_id, receiver: order.receiver ?? null, onchainUser: order.onchainUser ?? null }, 'router repair: no usable trader; skipping');
         continue;
@@ -148,11 +149,14 @@ export async function repairRouterTrades(): Promise<RouterRepairResult> {
         if (updated.count > 0) {
           // Keep reporting identity synchronized with the aggregate ledger. In
           // particular, overwrite a router copied by migration 0038 rather than
-          // preserving it forever through the fill upsert's null-only repair.
+          // preserving it forever through the fill upsert's null-only repair. A verified payer
+          // stays, as upsertDefillamaFills' keepPayer: an answer that does not name the payer
+          // knows less (CodeRabbit, PR #1646). A router copy is never 'onchain_user'.
           await tx`
             UPDATE defillama_fills
-            SET user_address = decode(${trader.slice(2)}, 'hex')
+            SET user_address = decode(${trader.slice(2)}, 'hex'), user_source = ${found.source}
             WHERE chain_id = ${r.chain_id} AND trade_uid = ${r.trade_uid}
+              AND NOT (${found.source !== 'onchain_user'} AND fee_verified AND user_source IS NOT DISTINCT FROM 'onchain_user')
           `;
         }
         return updated.count > 0;
@@ -189,4 +193,55 @@ export async function repairRouterTrades(): Promise<RouterRepairResult> {
     log.info(result, 'router repair complete');
   }
   return result;
+}
+
+/**
+ * Record where the wallet of an older eth-flow fill came from (defillama_fills.user_source, NULL
+ * before migration 0051). The business report names an eth-flow fill's wallet as its trader only
+ * when it is the payer, so each verified eth-flow fill with no source asks CoW for its order once:
+ * the stored wallet is tagged 'onchain_user' when it is the order's payer, 'receiver' when it is the
+ * order's receiver. Nothing else is written: user_address, trades and every retail figure stay as
+ * they are. A row CoW cannot answer for, or whose wallet is neither, stays NULL (unknown in the
+ * report) and is asked again on a later run. Only NULL rows are written, so a recorded payer is
+ * never downgraded and a second run on tagged rows makes no call.
+ */
+export async function backfillFillUserSource(
+  limit = 100,
+  fetchOrder: (chainId: number, uid: `0x${string}`) => Promise<{ owner: string; receiver?: string | null; onchainUser?: string | null }> = getOrder,
+): Promise<{ asked: number; tagged: number }> {
+  // ponytail: random pick so orders CoW cannot answer never starve the rest; a checked_at stamp if they pile up.
+  const rows = await sql<{ chain_id: number; uid: string }[]>`
+    SELECT chain_id, '0x' || encode(trade_uid, 'hex') AS uid
+    FROM defillama_fills
+    WHERE user_source IS NULL AND fee_verified AND user_address IS NOT NULL
+      AND ('0x' || encode(substring(trade_uid from 33 for 20), 'hex')) = ANY(${ROUTER_WALLETS})
+    GROUP BY chain_id, trade_uid
+    ORDER BY random()
+    LIMIT ${limit}
+  `;
+  let tagged = 0;
+  for (const r of rows) {
+    const uid = r.uid as `0x${string}`;
+    let order: Awaited<ReturnType<typeof fetchOrder>>;
+    try {
+      order = await fetchOrder(r.chain_id, uid);
+    } catch (err) {
+      log.warn({ err, uid, chainId: r.chain_id }, 'fill source backfill: order fetch failed; will retry next run');
+      continue;
+    }
+    const found = ethFlowTraderSource(order);
+    const payer = found?.source === 'onchain_user' ? found.wallet : null;
+    const receiver = ethFlowTraderSource({ owner: order.owner, receiver: order.receiver })?.wallet ?? null;
+    if (!payer && !receiver) continue;
+    const updated = await sql`
+      UPDATE defillama_fills
+      SET user_source = CASE WHEN user_address = decode(${payer?.slice(2) ?? null}, 'hex') THEN 'onchain_user' ELSE 'receiver' END
+      WHERE chain_id = ${r.chain_id} AND trade_uid = decode(${uid.slice(2)}, 'hex') AND user_source IS NULL AND fee_verified
+        AND (user_address = decode(${payer?.slice(2) ?? null}, 'hex') OR user_address = decode(${receiver?.slice(2) ?? null}, 'hex'))
+      RETURNING 1
+    `;
+    tagged += updated.length;
+  }
+  if (rows.length > 0) log.info({ asked: rows.length, tagged }, 'fill source backfill complete');
+  return { asked: rows.length, tagged };
 }

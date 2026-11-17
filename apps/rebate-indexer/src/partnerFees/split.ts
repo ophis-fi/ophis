@@ -11,6 +11,9 @@ export const PARTNER_FEE_PARTNER_SHARE_BPS = 8000;
 /** Minimum owed USD to trigger a WETH payout this cycle; below this the owed carries. */
 export const MIN_PARTNER_PAYOUT_USD = 25;
 
+/** The partner payout chain + Safe rails (decision 18: the existing affiliate Safe rails). */
+export const PARTNER_FEE_CHAIN = 100; // Gnosis, same Ophis Safe as rebate + affiliate
+
 /**
  * Split a collected-fee USD amount (fixed-point x10^4) into the partner's 80% and
  * Ophis's retained 20%. Exact and conservation-preserving: `ophisUsdFp` is the REMAINDER

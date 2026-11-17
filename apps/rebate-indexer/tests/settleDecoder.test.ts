@@ -19,6 +19,8 @@ import {
 import {
   attributeOrder,
   DECODER_ETHFLOW_OWNERS,
+  ethFlowTrader,
+  ethFlowTraderSource,
   type PendingDefiLlamaFill,
 } from '../src/fetcher.js';
 import { OPHIS_SAFE_ADDRESS } from '../src/safe/addresses.js';
@@ -294,6 +296,20 @@ describe('attributeOrder with DECODER_ETHFLOW_OWNERS (shared eth-flow coverage)'
       DECODER_ETHFLOW_OWNERS,
     );
     expect(t?.wallet).toBe(TRADER);
+    expect(t?.walletSource).toBe('receiver');
+  });
+  it('names the source of the wallet: the payer when onchainUser is usable, the receiver when it is not', () => {
+    const doc = JSON.parse(ophisDoc());
+    const paid = attributeOrder(doc, { ...base, owner: SHARED_ETHFLOW, receiver: TRADER, onchainUser: EOA }, DECODER_ETHFLOW_OWNERS);
+    expect([paid?.wallet, paid?.walletSource]).toEqual([EOA, 'onchain_user']);
+    const zero = attributeOrder(doc, { ...base, owner: SHARED_ETHFLOW, receiver: TRADER, onchainUser: `0x${'00'.repeat(20)}` }, DECODER_ETHFLOW_OWNERS);
+    expect([zero?.wallet, zero?.walletSource]).toEqual([TRADER, 'receiver']);
+    const router = attributeOrder(doc, { ...base, owner: SHARED_ETHFLOW, receiver: TRADER, onchainUser: SHARED_ETHFLOW }, DECODER_ETHFLOW_OWNERS);
+    expect([router?.wallet, router?.walletSource]).toEqual([TRADER, 'receiver']);
+    // ethFlowTrader, which retail reads, still returns the same wallet.
+    expect(ethFlowTrader({ owner: SHARED_ETHFLOW, receiver: TRADER, onchainUser: EOA })).toBe(EOA);
+    expect(ethFlowTrader({ owner: SHARED_ETHFLOW, receiver: TRADER })).toBe(TRADER);
+    expect(ethFlowTraderSource({ owner: SHARED_ETHFLOW, receiver: SHARED_ETHFLOW })).toBeNull();
   });
   it('attributes a normal EOA order to its owner', () => {
     const t = attributeOrder(
@@ -302,6 +318,7 @@ describe('attributeOrder with DECODER_ETHFLOW_OWNERS (shared eth-flow coverage)'
       DECODER_ETHFLOW_OWNERS,
     );
     expect(t?.wallet).toBe(EOA);
+    expect(t?.walletSource).toBe('owner');
   });
   it('drops a non-Ophis order', () => {
     const t = attributeOrder(
@@ -500,6 +517,7 @@ describe('decodeWindow (decode -> align -> attribute, end to end, no DB)', () =>
     expect(f.tradeUid).toBe(uid(2));
     expect(f.transactionHash).toBe(logs[0]!.transactionHash);
     expect(f.userAddress).toBe(TRADER);
+    expect(f.userSource).toBe('receiver'); // settle() calldata has no onchainUser
     expect(f.chainId).toBe(8453);
     expect(f.blockNumber).toBe(100n);
     expect(f.logIndex).toBe(7);

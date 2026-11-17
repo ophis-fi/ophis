@@ -1,0 +1,3 @@
+/* The kit's two font files. The console and the signing page each load them, and each build copies them into its own folder. */
+@font-face { font-family: 'Ophis Inter'; src: url('assets/Inter-roman.var.woff2') format('woff2'); font-weight: 100 900; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Ophis Inter'; src: url('assets/Inter-italic.var.woff2') format('woff2'); font-weight: 100 900; font-style: italic; font-display: swap; }

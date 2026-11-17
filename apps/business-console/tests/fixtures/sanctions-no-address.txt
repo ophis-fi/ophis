@@ -1,0 +1,2 @@
+TEST DATA. Not a real list and no extract of one, for the tests of the Ophis business console.
+This file names no wallet address: "operator addresses" refuses it before anything is sent.

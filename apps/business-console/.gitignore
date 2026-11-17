@@ -1,0 +1,9 @@
+/node_modules
+dist/
+.dev.vars*
+!.dev.vars.example
+.wrangler/
+.shots/
+# Milestone 5b: the local test identity of the sealing, and the build's copy of its public recipient
+.dev.seal*
+.env.local

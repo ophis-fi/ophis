@@ -1,0 +1,189 @@
+/* App layer of the approved mockup (mockup-v2/index.html), built from the kit tokens only.
+   Kept: the rules this milestone's screens use. kit.css is the brand kit, unchanged. */
+#root { display: contents; }
+.sprite { position: absolute; }
+[hidden] { display: none !important; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.skip { position: absolute; left: -9999px; top: 8px; z-index: 99; } .skip:focus { left: 8px; }
+p { margin: 0; } button { font-family: inherit; } .muted { color: var(--muted); }
+body { min-height: 100vh; display: flex; flex-direction: column; }
+.fine { font-size: 13px; line-height: 1.5; color: var(--muted); display: flex; gap: 8px; align-items: flex-start; } .fine .ic { margin-top: 2px; }
+.ib { display: inline-grid; place-items: center; width: 28px; height: 28px; margin-left: 2px; border: 0; border-radius: var(--r-pill); background: none; color: var(--muted); cursor: pointer; vertical-align: middle; transition: background 140ms ease, color 140ms ease; }
+.ib:hover { background: var(--mist); color: var(--ink); }
+.badge.bi::before { content: none; } .badge .ic { width: 12px; height: 12px; --ic-stroke: 2.2; }
+
+/* Band, bar, rail. The mockup names rail items .nav, because some are not links. */
+.bar { height: 64px; padding: 0 32px 0 24px; justify-content: flex-start; }
+.bar .org { display: flex; align-items: center; gap: 12px; margin-left: 4px; padding-left: 22px; border-left: 1px solid var(--hair); font: 400 18px/1.2 var(--font-display); letter-spacing: -0.01em; }
+.bar nav { position: absolute; left: 50%; transform: translateX(-50%); } .bar nav a { display: inline-flex; align-items: center; gap: 7px; } .bar .btn[data-support] { margin-left: auto; }
+body[data-route='signin'] :is(.rail, .org, .tabbar), body:not([data-route='signin']) .bar nav { display: none; }
+.shell { flex: 1; display: grid; grid-template-columns: 248px minmax(0, 1fr); }
+body[data-route='signin'] .shell { grid-template-columns: minmax(0, 1fr); }
+.rail { position: sticky; top: 64px; height: calc(100vh - 64px); padding-bottom: 60px; overflow-y: auto; z-index: 40; }
+.rail .nav { position: relative; display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border: 0; border-radius: var(--r-btn); background: none; color: var(--muted); font-family: inherit; font-size: 14px; text-align: left; cursor: pointer; transition: background 140ms ease, color 140ms ease; }
+.rail .nav:hover { background: var(--mist); color: var(--ink); } .rail .nav[aria-current='page'] { background: var(--mist); color: var(--ink); font-weight: 600; }
+.rail .nav:disabled, .rail .nav:disabled:hover { background: none; color: var(--faded); cursor: default; }
+.rail .nav .badge { margin-left: auto; }
+.who { margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 14px 8px 0; border-top: 1px solid var(--hair); font-size: 12.5px; line-height: 1.35; color: var(--muted); }
+.who b { display: block; color: var(--ink); font-size: 13.5px; font-weight: 600; } .who .txt { margin-right: auto; min-width: 0; }
+.av { display: grid; place-items: center; width: 34px; height: 34px; flex: none; border-radius: 50%; background: var(--mist); border: 1px solid var(--hair); color: var(--ink); font-size: 12px; font-weight: 600; }
+.col { display: flex; flex-direction: column; min-width: 0; }
+main { flex: 1; width: 100%; max-width: 1264px; margin: 0 auto; padding: 44px 32px 72px; } main:focus { outline: none; }
+.tabbar, .scrim { display: none; }
+/* The rail is as tall as the window below the bar. At the top of the page the band takes 44px more, so the rail gives those back and the shell clips them. */
+@media (min-width: 721px) { .shell { overflow: clip; } .rail { margin-bottom: -44px; } }
+body[data-route='signin'] main { padding-bottom: 20px; } .foot-line { padding-left: 32px; padding-right: 32px; }
+
+/* Page furniture */
+.ph { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px 32px; flex-wrap: wrap; margin-bottom: 36px; }
+.ph .lede { margin-top: 14px; }
+.acts { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sec { margin-top: 44px; } .stack { display: flex; flex-direction: column; gap: 16px; }
+.sh { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; } .panel > .sh { margin: 0; }
+.sh .tt { margin-right: auto; min-width: 0; } .sh .tt p { font-size: 13.5px; line-height: 1.5; color: var(--muted); margin-top: 4px; }
+.stats .cap { display: flex; align-items: center; gap: 6px; } .stats .sub { font-size: 13px; line-height: 1.4; color: var(--muted); margin-top: 4px; }
+.stats + .groups { margin-top: 36px; } .groups + .note { margin-top: 8px; }
+dl.kv { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 9px 24px; font-size: 14px; line-height: 1.5; }
+dl.kv dt { color: var(--muted); font-size: 13px; } dl.kv dd { margin: 0; overflow-wrap: anywhere; }
+.note .grow { flex: 1; min-width: 0; } .note .ic { margin-top: 2px; } .note.ok { color: var(--ok); background: var(--ok-bg); border-color: var(--ok-line); }
+
+/* Tables: denser than the marketing page, same parts. relative: the wrap also clips the screen-reader-only header texts, which would otherwise widen the page on a phone. */
+.table-wrap { position: relative; }
+table.t th { padding: 11px 14px; } table.t td { padding: 13px 14px; white-space: nowrap; }
+table.t td small { display: block; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+
+/* Sign-in and enrolment */
+.signin { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); gap: 72px; align-items: center; max-width: 1140px; margin: 0 auto; padding: 48px 0 24px; }
+.signin .lede { margin: 22px 0 32px; max-width: 470px; }
+.methods { display: flex; flex-direction: column; gap: 12px; max-width: 400px; } .methods .btn { justify-content: flex-start; gap: 12px; padding-left: 20px; }
+.trust { padding: 36px; display: flex; flex-direction: column; gap: 14px; } .trust h2 { font-size: 32px; line-height: 1.12; margin-top: 8px; }
+.cancan { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 12px; padding-top: 24px; border-top: 1px solid var(--hair); }
+.cancan ul { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; font-size: 14px; line-height: 1.45; } .cancan li { display: flex; gap: 10px; } .cancan .ic { margin-top: 2px; } .cancan .x { color: var(--muted); }
+
+/* Enrolment: the hand-over dialog, the waiting list, the alerts read at sign-in */
+.methods.wide { max-width: 560px; } dl.kv .site { font: 400 22px/1.2 var(--font-display); }
+.grow { flex: 1; min-width: 0; } select.input { appearance: auto; } .input.mono { font-family: var(--font-mono); font-size: 13px; }
+dialog { border: 1px solid var(--line); background: var(--paper); color: var(--ink); padding: 0; max-width: 100vw; box-shadow: var(--shadow-float); }
+dialog::backdrop { background: rgba(23, 25, 28, .3); } dialog[open] { display: flex; flex-direction: column; }
+.drawer { margin: 0 0 0 auto; width: min(480px, 100vw); height: 100dvh; max-height: none; border-width: 0 0 0 1px; border-radius: var(--r-panel) 0 0 var(--r-panel); }
+.dh { display: flex; align-items: center; gap: 12px; padding: 18px 20px 18px 24px; border-bottom: 1px solid var(--hair); background: var(--fog); } .dh .cap { display: block; margin-top: 2px; }
+.db { flex: 1; overflow-y: auto; padding: 24px; } .df { padding: 16px 24px 18px; border-top: 1px solid var(--hair); background: var(--fog); display: flex; justify-content: flex-end; }
+.steps { list-style: none; margin: 0; padding: 0; }
+.steps > li { position: relative; display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 8px 16px; padding-bottom: 30px; } .steps > li:last-child { padding-bottom: 0; }
+.steps > li:not(:last-child)::before { content: ''; position: absolute; left: 15.5px; top: 42px; bottom: 10px; width: 1px; background: var(--line); }
+.steps h3 { align-self: center; } .steps .body { grid-column: 2 / -1; font-size: 14px; line-height: 1.6; color: var(--muted); display: grid; gap: 12px; justify-items: start; } .steps .body > :is(.field, .note, dl) { justify-self: stretch; } .steps .body dl { color: var(--ink); }
+.steps > li:not([aria-current]) > .ic-tile { opacity: .5; }
+.appr { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 6px 16px; align-items: center; padding: 22px 24px; border: 1px solid var(--hair); border-radius: 18px; background: var(--fog); }
+.appr h3 { margin-bottom: 4px; } .appr h3 small { margin-left: 10px; font: 400 13px/1.3 var(--font-body); letter-spacing: 0; color: var(--muted); } .appr p { font-size: 14px; line-height: 1.55; } .appr .ic-tile { align-self: start; }
+.confirm, .addkey { display: grid; grid-template-columns: minmax(0, 360px) auto; gap: 12px 12px; align-items: end; justify-content: start; } .confirm { grid-column: 2 / -1; margin-top: 10px; } .addkey { margin-top: 16px; }
+.appr .acts { justify-content: flex-end; } .appr dl.kv { margin-top: 12px; } .appr .fine { margin-top: 4px; }
+/* Milestone 3: the choices of the Manage dialog, the role table, the audit log */
+.choices { list-style: none; margin: 0; padding: 0; display: grid; gap: 22px; }
+.choices > li { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 6px 16px; padding-bottom: 22px; border-bottom: 1px solid var(--hair); } .choices > li:last-child { border: 0; padding-bottom: 0; }
+.choices h3 { align-self: center; } .choices .body { grid-column: 2; display: grid; gap: 12px; justify-items: start; font-size: 14px; line-height: 1.6; color: var(--muted); } .choices .body > .field { justify-self: stretch; }
+.yes, .no { display: inline-flex; align-items: center; gap: 6px; } .no { color: var(--faded); } table.t td.wrap { white-space: normal; min-width: 260px; } table.t td.kind { white-space: normal; min-width: 150px; }
+.chain { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; font-size: 14px; color: var(--muted); } .pager { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
+:is(.confirm, .addkey) .fine { grid-column: 1 / -1; } :is(.confirm, .addkey) .btn { justify-self: start; }
+.alerts { max-width: 760px; margin: 24px auto; padding: 36px; display: flex; flex-direction: column; gap: 18px; }
+.alerts ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; } .alerts li { display: flex; gap: 10px; padding: 14px 16px; border: 1px solid var(--warn-line); border-radius: var(--r-row); background: var(--warn-bg); color: var(--warn); font-size: 14.5px; line-height: 1.55; } .alerts li .ic { margin-top: 3px; flex: none; }
+.stack > .note:last-child { margin-bottom: 8px; }
+
+/* Security and data */
+.sg { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 16px 48px; padding: 34px 0; border-top: 1px solid var(--hair); }
+.sg > header { display: flex; align-items: flex-start; gap: 14px; } .sg > header p { font-size: 13px; color: var(--muted); margin-top: 4px; }
+.srow { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 2px 16px; align-items: start; padding: 15px 0; border-top: 1px solid var(--hair); }
+.srow:first-child { border-top: 0; padding-top: 2px; } .srow > .ic { margin-top: 3px; color: var(--muted); } .srow b { font-size: 15px; font-weight: 600; } .srow p { grid-column: 2; font-size: 14px; line-height: 1.55; color: var(--muted); max-width: 640px; }
+
+/* 1400 and below: the rail folds to icons with tooltips. */
+@media (max-width: 1400px) and (min-width: 721px) {
+  .shell { grid-template-columns: 68px minmax(0, 1fr); }
+  .rail { width: 68px; padding: 16px 12px 60px; align-items: center; overflow: visible; }
+  .rail .nav { width: 44px; height: 44px; padding: 0; justify-content: center; }
+  .rail .lbl, .who .txt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .rail .cap { width: 28px; height: 1px; padding: 0; margin: 10px 0; background: var(--hair); font-size: 0; }
+  .rail .nav .badge { display: none; }
+  .who { padding: 14px 0 0; justify-content: center; position: relative; flex-direction: column; gap: 4px; } .who .ib { margin: 0; }
+  .rail [data-tip]:hover::after, .rail [data-tip]:focus-visible::after { content: attr(data-tip); position: absolute; left: calc(100% + 14px); top: 50%; transform: translateY(-50%); z-index: 60; padding: 8px 11px; border-radius: var(--r-sm); background: var(--ink); color: var(--paper); font: 500 12.5px/1 var(--font-body); white-space: nowrap; pointer-events: none; }
+}
+@media (max-width: 1220px) {
+  .sg { grid-template-columns: 210px minmax(0, 1fr); gap: 16px 32px; }
+  .stats .num { font-size: clamp(18px, 2.1vw, 27px); }
+}
+@media (max-width: 900px) {
+  .signin { grid-template-columns: minmax(0, 1fr); gap: 40px; padding-top: 24px; } .sg { grid-template-columns: minmax(0, 1fr); }
+}
+/* Phone: a bottom bar, and the rail becomes the menu. */
+@media (max-width: 720px) {
+  .badge { font-size: 11.5px; padding: 3px 8px; gap: 5px; }
+  .band { flex-wrap: wrap; gap: 4px 10px; padding: 8px 14px; font-size: 12.5px; } .band > .ic { display: none; }
+  .bar { height: 56px; padding: 0 14px 0 16px; } .bar .org, .bar nav { display: none; } .brand { font-size: 19px; }
+  .shell { grid-template-columns: minmax(0, 1fr); } main { padding: 28px 16px 104px; } body[data-route='signin'] main { padding-bottom: 40px; }
+  .rail { position: fixed; inset: 0 auto 0 0; top: 0; z-index: 80; width: min(300px, 86vw); height: 100dvh; padding: 24px 12px 20px; transform: translateX(-104%); visibility: hidden; transition: transform 220ms var(--ease), visibility 0s 220ms; box-shadow: var(--shadow-float); }
+  .menu-open .rail { transform: none; visibility: visible; transition-delay: 0s; } .menu-open .scrim { display: block; position: fixed; inset: 0; z-index: 70; background: rgba(23, 25, 28, .3); }
+  .tabbar { position: fixed; inset: auto 0 0 0; z-index: 60; display: grid; grid-template-columns: repeat(3, 1fr); padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); background: var(--fog); border-top: 1px solid var(--hair); }
+  .tabbar > * { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 0 6px; border: 0; border-radius: var(--r-btn); background: none; color: var(--muted); font: 500 11px/1.2 var(--font-body); cursor: pointer; }
+  .tabbar [aria-current='page'] { color: var(--ink); background: var(--mist); font-weight: 600; }
+  .ph { margin-bottom: 26px; } .lede { font-size: 16px; } .sec { margin-top: 36px; } .panel, .trust { padding: 22px 20px; } .foot-line { padding: 18px 16px 96px; } body[data-route='signin'] .foot-line { padding-bottom: 18px; }
+  .stats { grid-template-columns: 1fr 1fr; } .stats .c { padding: 16px; } .stats .c:last-child:nth-child(odd) { grid-column: 1 / -1; } .stats .num { font-size: 21px; }
+  .sh { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 10px 12px; align-items: start; } .sh > :is(.btn, .badge) { grid-column: 2; justify-self: start; padding: 8px 12px; } .h-panel { font-size: 21px; }
+  table.t { font-size: 13px; } table.t th { padding: 10px; } table.t td { padding: 12px 10px; }
+  .cancan { grid-template-columns: 1fr; } .methods { max-width: none; } .signin .lede { margin: 18px 0 26px; }
+  dl.kv { grid-template-columns: minmax(0, 1fr); gap: 2px; } dl.kv dd { margin-bottom: 8px; }
+  .drawer { width: 100vw; border: 0; border-radius: 0; } .db { padding: 18px 16px; } .dh { padding: 14px 12px 14px 16px; } .df { padding: 14px 16px; }
+  .appr { grid-template-columns: 32px minmax(0, 1fr); padding: 18px 16px; } .appr > .btn { grid-column: 2; justify-self: start; }
+  .appr .acts { grid-column: 1 / -1; margin-top: 8px; } .appr .acts .btn { flex: 1; }
+  .confirm, .addkey { grid-template-columns: minmax(0, 1fr); } .alerts { padding: 22px 20px; margin: 0; }
+}
+/* Milestone 4: the wallet list and the link dialog. */
+.check { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.5; color: var(--ink); } .check input { width: 16px; height: 16px; margin-top: 3px; accent-color: var(--ink); flex: none; }
+.appr p, .choices .body p, .steps .body p { overflow-wrap: anywhere; } table.t td .badge + .badge { margin-left: 6px; } .steps form.body { margin: 0; } .sg > header .badge { margin-top: 4px; }
+/* Milestone 4b: the recovery page, the banner of an open recovery, the recovery sheet and its print form. */
+.recover { max-width: 1140px; margin: 0 auto; } .recover > .panel { max-width: 760px; margin-top: 24px; } .recover .stack { font-size: 14px; line-height: 1.6; } .recover .sg .stack { max-width: 640px; } .recover > .fine { margin-top: 24px; } .recover > .note { margin-top: 16px; }
+.note.recovery { margin-bottom: 24px; } .note.recovery p { color: inherit; } .note.recovery .mono, .sheet .mono { overflow-wrap: anywhere; } .note.recovery .fine { color: inherit; }
+.sheet { border: 1px solid var(--hair); border-radius: 18px; padding: 28px; display: grid; gap: 18px; background: var(--fog); } .sheet ol { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 4px; font-size: 14px; line-height: 1.5; }
+@media print {
+  .band, .bar, .rail, .tabbar, .scrim, .skip, .foot-line, main > :not(.groups), .groups > :not(.printable), .printable > :not(.sheet) { display: none !important; }
+  .shell, .col, main, .groups, .printable { display: block !important; margin: 0 !important; padding: 0 !important; border: 0 !important; }
+  .sheet { border: 0; padding: 0; background: none; } @page { margin: 16mm; }
+}
+/* Milestone 5b, the declaration: four ruled lines for the signatory. */
+.sheet dl.sign dd { border-bottom: 1px solid var(--ink); min-height: 30px; }
+/* Milestone 5b, the KYB block: its two sub-headings stand clear of the list above. */
+h3.h-panel.sub { margin: 20px 0 6px; font-size: 18px; }
+/* Support (milestone 6): one readable column; the answer text is the member's main reading. */
+.support > .panel, .support > .stack { max-width: 760px; } .support > .stack { margin-top: 16px; } .support textarea.input { resize: vertical; }
+p a.btn { text-decoration: none; } /* a link drawn as a button is not underlined like a link in a sentence */
+.support .answer { margin: 0; font-size: 16px; line-height: 1.62; color: var(--ink); } .support .acts > span { font-size: 14px; font-weight: 500; } .support #sp-ask { flex-basis: 100%; } /* Yes and No stay side by side on a phone */
+.support .answer { margin: 0; font-size: 16px; line-height: 1.62; color: var(--ink); } .support .acts > span { font-size: 14px; font-weight: 500; }
+/* The FAQ item "What each role can do": its table runs edge to edge, so it fits at 1440 as it did on Organisation. */
+.disclose .table-wrap { margin: 0 -22px -20px; border-width: 1px 0 0; border-radius: 0; color: var(--ink); }
+/* Milestone 5a, the Onboarding page: a step's content sits under its title, across the row. */
+.srow > .stack { grid-column: 2 / -1; margin-top: 6px; } .srow > .stack p { grid-column: auto; overflow-wrap: anywhere; } .srow .fine > span { min-width: 0; overflow-wrap: anywhere; }
+/* Demo mode: Overview and Desk (the mockup's panels). */
+.g { display: grid; gap: 16px; align-items: start; } .g.two { grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); } .g.even { grid-template-columns: repeat(2, minmax(0, 1fr)); } .g.eq { align-items: stretch; }
+.g > .sec, .stack > .sec { margin-top: 0; } .g.sec, .stats + .g { margin-top: 16px; } .panel > .cap { display: block; margin-bottom: 14px; } .g.even .badge { white-space: normal; }
+table.t tfoot td { border-top: 1px solid var(--line); border-bottom: 0; background: var(--fog); font-weight: 600; } table.t tr.grp td { background: var(--fog); padding-top: 10px; padding-bottom: 10px; }
+tr.grp .gr { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; } table.t td .badge { margin-left: 8px; } table.t td > .badge:first-child { margin-left: 0; }
+button.link { border: 0; padding: 0; background: none; color: var(--ink); cursor: pointer; }
+.flow { list-style: none; margin: 0; padding: 0; } .stats.flow { grid-template-columns: 1fr; } .flow .c { flex-direction: row; gap: 14px; align-items: flex-start; padding: 18px 24px; } .flow b { display: block; font-weight: 600; font-size: 15px; } .flow p { font-size: 13.5px; line-height: 1.5; color: var(--muted); }
+.desk { display: grid; grid-template-columns: minmax(0, 420px) minmax(0, 1fr); gap: 16px; align-items: start; } .ticket { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; } .ticket .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; } .ticket > .btn { width: 100%; } .ticket .input { width: 100%; }
+fieldset.field { border: 0; margin: 0; padding: 0; min-width: 0; } fieldset.field legend { padding: 0; margin-bottom: 6px; } .pills { display: flex; gap: 8px; flex-wrap: wrap; }
+.pill input { position: absolute; opacity: 0; width: 1px; height: 1px; } .pill:has(input:checked) { background: var(--ink); border-color: var(--ink); color: var(--paper); } .pill:has(input:focus-visible) { outline: 2px solid var(--brown); outline-offset: 2px; } .pill:has(input:disabled) { opacity: .45; cursor: not-allowed; }
+.rp-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; } .rp-top .ib { margin-left: auto; } #record { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; } #record h3 { margin-bottom: 10px; }
+.checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 14px; } .checks li { display: flex; gap: 8px; align-items: flex-start; } .checks .ic { margin-top: 3px; color: var(--ok); flex: none; }
+.dk-s { display: none; }
+/* A partner's live figures: one block per linked wallet. */
+.pw-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 16px; font-weight: 400; margin: 0 0 14px; } .pw-head b { font-weight: 600; } .pw-head .mono { font-size: 13px; overflow-wrap: anywhere; min-width: 0; }
+.pw + .pw { margin-top: 44px; padding-top: 32px; border-top: 1px solid var(--hair); } .pw > .note, .pw > .sec { margin-top: 16px; } .pw .sec .stats + .table-wrap, .pw .sec .stats + p { margin-top: 16px; }
+.note > .btn { flex: none; align-self: center; }
+/* The daily volume: plain SVG bars, stretched to the width; the dates under it in HTML (text in a stretched SVG would stretch). */
+.bars { margin: 0; } .bars svg { display: block; width: 100%; height: 160px; color: var(--brown); fill: currentColor; border-bottom: 1px solid var(--line); }
+.bars figcaption { display: flex; justify-content: space-between; gap: 12px; margin-top: 6px; font-size: 13px; color: var(--muted); text-align: center; } .bars figcaption > span:not(:nth-child(2)) { white-space: nowrap; } .pw .bars + .fine, .pw .bars ~ .disclose { margin-top: 12px; }
+@media (max-width: 720px) { .pw td .badge { white-space: normal; } } /* "Waiting for signatures" wraps in the payouts on a phone */
+.pw .stats .num { overflow-wrap: anywhere; } .pw td .mono { white-space: normal; overflow-wrap: anywhere; } .pw td :is(small, .muted) { white-space: normal; } .pw .sec .fine { margin-top: 10px; }
+@media (max-width: 1220px) { .g.two, .g.even { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 1023px) { .desk { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 720px) { .dk-b { display: none; } .dk-s { display: flex; } }
+/* The wallets on a sanctions list that traded: a red note with its table, above the partner wallets. */
+.note.flagged { flex-direction: column; margin-bottom: 12px; } .note.flagged > p { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-start; margin: 0; } .note.flagged > .btn { align-self: flex-start; }
+.note.flagged td { color: var(--ink); } .note.flagged td .mono { white-space: normal; overflow-wrap: anywhere; } .note.flagged td small { white-space: normal; } .fine.checked { margin-bottom: 20px; }

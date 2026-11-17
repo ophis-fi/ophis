@@ -142,6 +142,20 @@ beforeAll(async () => {
       decode(${HUMAN_X}, 'hex'), 2, 1000000, decode(${ETHFLOW_UID('11')}, 'hex'), 1,
       100, decode(${'cd'.repeat(65)}, 'hex'), 1)`;
 
+  // u12: router-walleted, and its fill already holds a verified PAYER (HUMAN_Y). CoW now
+  // answers without onchainUser: the trade moves to the receiver, the fill keeps its payer.
+  await insTrade('12', PROD_ROUTER);
+  await sql`
+    INSERT INTO defillama_fills (
+      chain_id, block_number, log_index, trade_uid, transaction_hash, user_address, user_source,
+      settlement_timestamp, sell_token, sell_amount, buy_token, buy_amount,
+      volume_fee_bps, assessed_fee_bps, fee_verified, value_usd, priced_at)
+    VALUES (
+      1, 1, 2, decode(${UID('12')}, 'hex'), decode(${'12'.repeat(32)}, 'hex'),
+      decode(${HUMAN_Y}, 'hex'), 'onchain_user', ${AT}, decode(${W('5e11')}, 'hex'), 1,
+      decode(${W('b111')}, 'hex'), 1, 1, 1, true, 10, ${AT})`;
+  ORDERS.set(`0x${UID('12')}`, { owner: `0x${PROD_ROUTER}`, receiver: `0x${HUMAN_X}` });
+
   // Queues: router + human in both tables; only the router rows may be deleted.
   await sql`INSERT INTO tracked_wallets (wallet) VALUES
     (decode(${PROD_ROUTER}, 'hex')), (decode(${HUMAN_Y}, 'hex'))`;
@@ -157,7 +171,7 @@ afterAll(async () => {
 describe('repairRouterTrades', () => {
   it('re-attributes only the repairable row and cleans the router out of both queues', async () => {
     const result = await repairRouterTrades();
-    expect(result).toEqual({ scanned: 10, repaired: 3, skipped: 6, unchanged: 1, dequeued: 2 });
+    expect(result).toEqual({ scanned: 11, repaired: 4, skipped: 6, unchanged: 1, dequeued: 2 });
 
     // u1 now belongs to the real trader, lowercased.
     expect(await walletOf('01')).toBe(HUMAN_X);
@@ -167,10 +181,17 @@ describe('repairRouterTrades', () => {
     expect(await walletOf(ETHFLOW_UID('10'))).toBe(HUMAN_Y);
     // u11 was already right and keeps its ticket untouched.
     expect(await walletOf(ETHFLOW_UID('11'))).toBe(HUMAN_X);
-    const [fill] = await sql<{ w: string }[]>`
-      SELECT encode(user_address, 'hex') AS w FROM defillama_fills
+    const [fill] = await sql<{ w: string; s: string | null }[]>`
+      SELECT encode(user_address, 'hex') AS w, user_source AS s FROM defillama_fills
       WHERE chain_id = 1 AND trade_uid = decode(${UID('01')}, 'hex')`;
     expect(fill!.w).toBe(HUMAN_X);
+    expect(fill!.s).toBe('receiver'); // the order has no onchainUser: the source goes with the rewritten address
+    // u12: the trade follows the receiver, the fill keeps its verified payer and source (CodeRabbit, PR #1646).
+    expect(await walletOf('12')).toBe(HUMAN_X);
+    const [payer] = await sql<{ w: string; s: string | null }[]>`
+      SELECT encode(user_address, 'hex') AS w, user_source AS s FROM defillama_fills
+      WHERE chain_id = 1 AND trade_uid = decode(${UID('12')}, 'hex')`;
+    expect([payer!.w, payer!.s]).toEqual([HUMAN_Y, 'onchain_user']);
     // Every guarded case is untouched, including the ticketed trade u8.
     for (const uid of ['02', '03', '04', '05', '06', '08']) {
       expect(await walletOf(uid)).toBe(PROD_ROUTER);

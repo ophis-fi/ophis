@@ -22,6 +22,49 @@ See [`RUNBOOK.md`](./RUNBOOK.md) for incident response.
 See the [Ethereum RPC runbook](../../infra/ethereum-rpc/README.md) for baal-backed
 chain-1 reads, public fallback, and the scheduled OTC consistency check.
 
+## Business console read route
+
+`POST /business/partner` lets the Ophis Business console read the partner-fee
+dashboard of up to 10 wallets per call. With it comes `traders`: the wallets
+that traded through that partner's integration (the trades that carried its
+fee), each with its trades and USD volume. It lists the 100 largest, and its
+totals count every wallet. A sale of native ETH is listed under the wallet
+that paid, when the indexer attributed one to the settlement; while an
+eth-flow contract still owns it, it counts in `unknown`, never as a wallet.
+Each fill records where its wallet came from (`user_source`: `owner`,
+`onchain_user` or `receiver`). A native-ETH sale is named by its wallet only
+when the fill is verified and that wallet is the payer (`onchain_user`, CoW's
+record of who paid the ETH). Any other eth-flow fill stays in `unknown`: the
+on-chain decoder and older API records see only the order's receiver, which
+the order's maker chooses. Such trades are not checked against the sanctions
+lists, and the console says so. Fills written before migration 0051 have no
+source yet: the nightly pipeline asks CoW for up to 100 of those orders per
+run and records the source when the stored wallet is the payer or the
+receiver. A row CoW cannot answer for stays in `unknown`. A recorded payer is
+never replaced by a later verified write that does not name it.
+It does not read the referral
+dashboard: the console's partners get no referral share (`POST /partner` keeps
+it for retail). It is gated by `BUSINESS_API_TOKEN`
+(`Authorization: Bearer ...`). This token reads EVERY partner's fee dashboard
+and traders, so it is a secret: at least 32 characters, and different from
+`REBATE_INDEXER_ADMIN_TOKEN`. Unset, too short, or equal to the admin token
+means the route is off (404 for every caller).
+
+The body is `{ wallets, contract, listed }`, all three required. `listed` holds
+the addresses on the sanctions lists the console has loaded (`[]` when none is
+loaded): each wallet's answer names those of them that traded through its
+integration. `contract` names each wallet the console
+proved by a contract signature (a Safe), with the chains it proved it on. Such
+a wallet is read only when one of those chains is its pinned chain in
+`CONTRACT_WALLET_AUTH_CHAINS`, the rule `POST /partner` applies: the same
+address on another chain can be a contract with other owners. Otherwise its
+entry is `{ wallet, fees: null, traders: null }` and nothing is read for it. A wallet
+proved by its own key is not listed and is read on any chain.
+
+To turn the route on, set `BUSINESS_API_TOKEN` in the host environment of the
+deploy: `docker-compose.yml` passes it to the indexer process. Leave it unset
+and the route stays off.
+
 ## GitHub secrets required for deploy
 
 The deploy workflow joins the tailnet as an ephemeral `tag:ci` node and builds
