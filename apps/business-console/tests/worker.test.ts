@@ -6345,6 +6345,10 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect(dns.asked).toHaveLength(0)
     const org = (await row<{ id: string; state: string; domain_challenge: string | null; domain_verified_at: number | null; invite_hash: string }>('SELECT id, state, domain_challenge, domain_verified_at, invite_hash FROM organisations WHERE email_domain = ?', 'alder-skip.example'))!
     expect(org).toMatchObject({ state: 'unverified', domain_challenge: null, domain_verified_at: null })
+    // The client's own log says so in its first row (hashed into the chain), not that DNS proved the domain.
+    expect(await row('SELECT seq, action, detail FROM audit_log WHERE org_id = ?', org.id)).toEqual({ seq: 1, action: 'organisation.apply_unproved', detail: fieldsOf<{ credentialHash: string }>(a.intent).credentialHash })
+    expect(onboarding.ONBOARDING_EVENTS['organisation.apply_unproved']).toMatch(/not proved by DNS/)
+    expect(await data.verifyAudit(db, org.id)).toMatchObject({ ok: true, rows: 1 })
     // The Owner signs in; the page and the operator say the domain is not proved.
     const session = await signIn(a.key)
     expect((await call('GET', '/api/onboarding', { cookie: session.cookie })).body.company).toMatchObject({ domain: 'alder-skip.example', domainVerifiedAt: null })
@@ -7206,6 +7210,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
   it('every change of this section and its audit row succeed or fail together, and every action it writes has its words', async () => {
     const a = await applyFor()
     publish(a.body.record)
+    const unproved = await applyFor() // owner, 2026-11-17: an application that goes on without the DNS record
     const b = await applicantWithTwoKeys()
     const asked = await nameWallet(b, accounts[0].address)
     const signature = await accounts[0].signTypedData(typedActivate(fieldsOf<ActivateFields>(asked.body.intent)))
@@ -7228,7 +7233,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     const [askedG, askedH] = [await askLink(g, g1.address), await nameWallet(h, h1.address)]
     const [proofG, proofH] = [await g1.signTypedData(typedOf(intentOf(askedG.body.intent))), await h1.signTypedData(typedActivate(fieldsOf<ActivateFields>(askedH.body.intent)))]
     const steps: [string, () => Promise<{ status: number }>][] = [
-      ['organisation.apply', () => checkDns(a.intent)], ['activation.proof', () => prove(asked.body.intent, signature)], ['review.submit', () => submit(c)], ['declaration.upload', () => upload(b, file)],
+      ['organisation.apply', () => checkDns(a.intent)], ['organisation.apply_unproved', () => call('POST', '/api/apply/check', { body: { intent: unproved.intent, skipDns: true } })], ['activation.proof', () => prove(asked.body.intent, signature)], ['review.submit', () => submit(c)], ['declaration.upload', () => upload(b, file)],
       ['kyb.approve', () => decideOn(d.orgId)], ['kyb.more', () => decideOn(d.orgId, MORE)], ['kyb.refuse', () => decideOn(d.orgId, { ...MORE, decision: 'refuse' })],
       ['organisation.freeze', () => op('POST', `/api/operator/organisations/${e.orgId}/freeze`)],
       ['sealed.download', async () => take((await itemsOf(d.orgId))[0].id)],

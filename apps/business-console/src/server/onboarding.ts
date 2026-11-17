@@ -65,6 +65,7 @@ const listable = (addresses: unknown): addresses is string[] => Array.isArray(ad
 // The words of this file's audit actions, for the audit page and the export (spread into EVENTS of index.ts).
 export const ONBOARDING_EVENTS: Record<string, string> = {
   'organisation.apply': 'Organisation created by an application: its DNS record proved the company domain, first Owner passkey active',
+  'organisation.apply_unproved': 'Organisation created by an application, the company domain not proved by DNS (Ophis checks the company in its review), first Owner passkey active',
   'activation.proof': 'Recovery wallet signed the activation and confirmed the first Owner passkey',
   'review.submit': 'Organisation submitted for review',
   'declaration.upload': 'Signed declaration uploaded, sealed in the browser (the detail is the SHA-256 of the sealed file)',
@@ -116,7 +117,8 @@ async function createOrganisation(db: D1Database, a: ApplyIntent, value: string 
   try {
     await commit(db, orgId, () => {
       outcome = 'ok'
-      return [{ at: now, actorKind: 'seat', actorId: a.seat, sessionId: null, action: 'organisation.apply', subjectId: a.credential.id, detail: a.credentialHash }, [
+      // The first row says how the domain stood (owner, 2026-11-17): proved by DNS, or not; the row is hashed into the chain.
+      return [{ at: now, actorKind: 'seat', actorId: a.seat, sessionId: null, action: value === null ? 'organisation.apply_unproved' : 'organisation.apply', subjectId: a.credential.id, detail: a.credentialHash }, [
         db.prepare(`INSERT INTO organisations (id, kind, business_type, name, state, email_domain, domain_challenge, domain_verified_at, country, registration_number, lei, registered_address, invite_hash, synced_keys_allowed, created_at)
                     VALUES (?, ?, ?, ?, 'unverified', ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`).bind(orgId, a.kind, a.businessType ?? null, a.legalName, a.domain, value, value === null ? null : now, a.country, a.registration, a.lei ?? null, a.address ?? null, a.inviteHash, now),
         db.prepare(`INSERT INTO seats (id, org_id, display_name, email, role, state, position, phone, telegram, created_at) VALUES (?, ?, ?, ?, 'owner', 'active', ?, ?, ?, ?)`)
@@ -144,7 +146,7 @@ const firstOf = (db: D1Database, orgId: string) =>
                      (SELECT count(*) FROM credentials k JOIN seats s ON s.org_id = k.org_id AND s.id = k.seat_id AND s.role = 'owner' AND s.state = 'active'
                       WHERE k.org_id = a.org_id AND k.id = a.subject_id AND k.seat_id = a.actor_id AND k.state = 'active') AS active
               FROM audit_log a JOIN organisations o ON o.id = a.org_id LEFT JOIN seats f ON f.org_id = a.org_id AND f.id = a.actor_id
-              WHERE a.org_id = ? AND a.seq = 1 AND a.action = 'organisation.apply'`).bind(orgId).first<First>()
+              WHERE a.org_id = ? AND a.seq = 1 AND a.action IN ('organisation.apply', 'organisation.apply_unproved')`).bind(orgId).first<First>()
 /** The people the application named besides its applicant, in the order it gave them. */
 const peopleOf = async (db: D1Database, orgId: string) =>
   (await db.prepare('SELECT display_name AS name, email, role, position, phone, telegram FROM application_people WHERE org_id = ? ORDER BY rowid').bind(orgId).all<Person>()).results
