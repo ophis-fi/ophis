@@ -5,7 +5,7 @@ import './fonts.css'
 import './kit.css'
 import './app.css'
 import mark from './assets/ophis-icon-mono-dark.svg'
-import { Alerts, Closed, Compliance, Enrol, Organisation, Problem, Recover, RecoveryBanner, Security, SignIn, type Me } from './pages.tsx'
+import { Alerts, Closed, Compliance, Enrol, Organisation, Problem, Recover, RecoveryBanner, SignIn, type Me } from './pages.tsx'
 import { api, Icon, ROLE } from './ui.tsx'
 import { Desk, Overview } from './desk.tsx'
 import { Support } from './support.tsx'
@@ -65,7 +65,7 @@ function App() {
 
   // /recover is a path, not a fragment: a public page that holds no session, reached from the recovery sheet.
   // /apply too (milestone 5). An organisation that is not yet verified lands on Onboarding, an active one on Overview.
-  const page = location.pathname === '/apply' ? 'apply' : location.pathname === '/recover' ? 'recover' : hash.startsWith('#/security') ? 'security' : hash.startsWith('#/enrol') ? 'enrol' : !me ? 'signin' : hash.startsWith('#/compliance') ? 'compliance' : hash.startsWith('#/support') ? 'support' : hash.startsWith('#/onboarding') || (me.organisation.state === 'unverified' && !hash.startsWith('#/organisation')) ? 'onboarding' : hash.startsWith('#/organisation') ? 'organisation' : hash.startsWith('#/desk') ? 'desk' : 'overview'
+  const page = location.pathname === '/apply' ? 'apply' : location.pathname === '/recover' ? 'recover' : hash.startsWith('#/enrol') ? 'enrol' : !me ? 'signin' : hash.startsWith('#/compliance') ? 'compliance' : hash.startsWith('#/support') ? 'support' : hash.startsWith('#/onboarding') || (me.organisation.state === 'unverified' && !hash.startsWith('#/organisation')) ? 'onboarding' : hash.startsWith('#/organisation') ? 'organisation' : hash.startsWith('#/desk') ? 'desk' : 'overview'
   useEffect(() => {
     document.body.dataset.route = me ? page : 'signin'
     document.body.classList.toggle('menu-open', menu)
@@ -105,7 +105,6 @@ function App() {
         {me && <div className="org"><span>{me.organisation.name}</span></div>}
         <nav aria-label="Before you sign in">
           <a href="/#/" aria-current={current('signin')}><Icon name="fingerprint" size={16} />Sign in</a>
-          <a href="/#/security" aria-current={current('security')}><Icon name="lock-keyhole" size={16} />Security and data</a>
           <a href="/apply" aria-current={current('apply')}><Icon name="clipboard-check" size={16} />Apply</a>
         </nav>
         <a className="btn primary sm" data-support href="/#/support" aria-current={current('support')}><Icon name="life-buoy" size={16} />Support</a>
@@ -121,7 +120,6 @@ function App() {
           <a className="nav" href="/#/organisation" data-tip="Organisation" aria-current={current('organisation')}><Icon name="building-2" /><span className="lbl">Organisation</span></a>
           <a className="nav" href="/#/onboarding" data-tip="Onboarding" aria-current={current('onboarding')}><Icon name="clipboard-check" /><span className="lbl">Onboarding</span></a>
           <span className="cap">Trust and help</span>
-          <a className="nav" href="/#/security" data-tip="Security and data" aria-current={current('security')}><Icon name="lock-keyhole" /><span className="lbl">Security and data</span></a>
           <a className="nav" href="/#/support" data-tip="Support" aria-current={current('support')}><Icon name="life-buoy" /><span className="lbl">Support</span></a>
           {me && (
             <div className="who" data-tip="Signed in with a passkey">
@@ -137,7 +135,6 @@ function App() {
             {me && recovery && <RecoveryBanner alert={recovery} organisationId={me.organisation.id} onChanged={loadMe} />}
             {page === 'apply' ? <Apply />
             : page === 'recover' ? <Recover />
-            : page === 'security' ? <Security owner={me?.seat.role === 'owner'} />
             : page === 'enrol' ? <Enrol key={ticket} ticket={ticket} /> /* one per link: what an earlier link's requests answer lands nowhere (CodeRabbit, PR #1646) */
             : closed ? <Closed kind={closed} onSignOut={signOut} />
             : me === undefined ? null
@@ -156,7 +153,7 @@ function App() {
 
       <nav className="tabbar" aria-label="Quick access">
         <a href="/#/organisation" aria-current={current('organisation')}><Icon name="building-2" size={20} />Organisation</a>
-        <a href="/#/security" aria-current={current('security')}><Icon name="lock-keyhole" size={20} />Security</a>
+        <a href="/#/support" aria-current={current('support')}><Icon name="life-buoy" size={20} />Support</a>
         <button type="button" aria-label="Open the menu" aria-expanded={menu} onClick={() => setMenu(!menu)}><Icon name="menu" size={20} />Menu</button>
       </nav>
       <div className="scrim" onClick={() => setMenu(false)} />

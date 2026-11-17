@@ -8,7 +8,7 @@
 // "Chain verified", and the export downloads.
 // Milestone 4: an Owner asks to link a wallet; the wallet (a test key behind a fake injected provider, no network)
 // signs on the signing page, which lives on its own hostname; the second Owner approves the link, then the wallet
-// as recovery wallet; the Security page shows the readiness state; unlinking the recovery wallet is refused.
+// as recovery wallet; the Organisation page shows the readiness state to an Owner; unlinking the recovery wallet is refused.
 // Milestone 4b: somebody asks for a recovery on the public page /recover and gets a signing link; the recovery wallet
 // signs on the signing page; a member sees the banner and an Owner cancels; a second request waits (the local "skip"
 // command stands in for the waits), is completed with the new passkey, and an old Owner passkey stops it; the
@@ -178,7 +178,7 @@ try {
   const headers = first.headers()
   check('the page carries the strict policy', ["default-src 'none'", "script-src 'self'", "frame-ancestors 'none'", "require-trusted-types-for 'script'"].every((part) => headers['content-security-policy']?.includes(part)))
   check('the page carries the other security headers', headers['x-content-type-options'] === 'nosniff' && headers['referrer-policy'] === 'no-referrer' && headers['cross-origin-resource-policy'] === 'same-origin' && headers['x-frame-options'] === 'DENY')
-  check('the footer line is on the sign-in page', await page.getByText(FOOTER).isVisible())
+  check('the footer line is on the sign-in page', await page.locator(".foot-line", { hasText: FOOTER }).isVisible())
   check('the sign-in page has no username or password field', (await page.locator('input').count()) === 0)
   await page.evaluate(() => document.fonts.ready)
   await page.screenshot({ path: '.shots/01-signin.png' })
@@ -206,7 +206,7 @@ try {
   }
   await page.getByRole('heading', { name: 'Your flow, in one view.' }).waitFor()
   check('after sign-in an active organisation lands on Overview: a partner with no linked wallet is told so, with no example and no demo banner, and the footer line',
-    await page.getByText('No wallet is linked.').isVisible() && !(await page.getByText('Demo data.').count()) && !(await page.locator('.stats').count()) && await page.getByText(FOOTER).isVisible() && (await page.evaluate(() => location.hash)) !== '#/organisation')
+    await page.getByText('No wallet is linked.').isVisible() && !(await page.getByText('Demo data.').count()) && !(await page.locator('.stats').count()) && await page.locator(".foot-line", { hasText: FOOTER }).isVisible() && (await page.evaluate(() => location.hash)) !== '#/organisation')
   await toOrganisation(page)
   await page.getByRole('button', { name: 'End session' }).waitFor()
   check('the Organisation page shows the member, the passkey and the session',
@@ -214,13 +214,14 @@ try {
   let cookie = await sessionCookie()
   check('the session cookie is __Host-, Secure, HttpOnly, SameSite=Strict, Path=/', Boolean(cookie) && cookie.secure && cookie.httpOnly && cookie.sameSite === 'Strict' && cookie.path === '/' && cookie.domain === 'localhost')
   check('scripts cannot read the session cookie', !(await page.evaluate(() => document.cookie)).includes('session'))
-  check('the footer line is on the Organisation page', await page.getByText(FOOTER).isVisible())
+  check('the footer line is on the Organisation page', await page.locator(".foot-line", { hasText: FOOTER }).isVisible())
   await page.screenshot({ path: '.shots/02-organisation.png', fullPage: true })
 
-  await page.getByRole('link', { name: 'Security and data' }).first().click()
-  await page.getByRole('heading', { name: 'What we store, and what we never hold.' }).waitFor()
+  // The security list is internal since 2026-11-17 (SECURITY-TODO.md): no link to it, and its old address shows the console's own page.
+  check('no "Security and data" page or link', (await page.getByRole('link', { name: /Security/ }).count()) === 0)
+  await page.goto(`${ORIGIN}/#/security`)
   await page.reload()
-  await page.getByRole('heading', { name: 'What we store, and what we never hold.' }).waitFor()
+  check('the old address of the security page shows no such page', (await page.getByRole('heading', { name: 'What we store, and what we never hold.' }).count()) === 0)
   await page.getByRole('link', { name: 'Organisation' }).first().click()
   await page.getByRole('button', { name: 'End session' }).waitFor()
   check('the session survives a reload', (await status('/api/me')) === 200)
@@ -278,8 +279,11 @@ try {
   // The first key goes back in the drawer; a second security key is plugged in.
   await devtools.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId })
   await devtools.send('WebAuthn.addVirtualAuthenticator', { options: KEY })
+  // Recovery readiness sits on this page now: it says so before the key, and reads again after it with no page reload (Codex, PR #1653).
+  await page.locator('#readiness', { hasText: 'An Owner holds fewer than two hardware keys.' }).waitFor()
   await page.getByRole('button', { name: 'Add a passkey' }).click()
   await page.getByRole('button', { name: 'Invite member' }).waitFor()
+  check('the readiness block on Organisation reads again after the action: one Owner with two keys', await page.locator('#readiness', { hasText: 'One Owner, with two hardware keys.' }).waitFor({ timeout: 5000 }).then(() => true, () => false))
   check('the Owner added a second hardware key and may now invite', await page.getByText('2: Security key 1, Security key 2').isVisible() && (await page.getByText('Add your second hardware key.').count()) === 0)
 
   // Invite a Viewer. The first try is answered "step-up required", as it would be 5 minutes after the last
@@ -302,7 +306,7 @@ try {
   await enrolAt(invitation, viewer)
   check('the Viewer enrolled on their own device and is told that the colleague who invited them now confirms the passkey, after checking with them',
     await viewer.page.getByText('The colleague who invited you now confirms it with a passkey check. They may first ask you, by a channel you both trust, whether you created it.').isVisible())
-  check('the footer line is on the page after the passkey', await viewer.page.getByText(FOOTER).isVisible())
+  check('the footer line is on the page after the passkey', await viewer.page.locator(".foot-line", { hasText: FOOTER }).isVisible())
   check('the page after the passkey fits a phone', await both(viewer.page, '03-passkey-stored'))
 
   await organisation()
@@ -353,7 +357,7 @@ try {
   await viewer.page.getByRole('button', { name: 'Sign in with a passkey' }).click()
   await viewer.page.getByRole('heading', { name: 'This passkey was replaced.' }).waitFor()
   check('a replaced passkey lands on the stop page with no session, and the footer line',
-    (await status('/api/me', viewer.page)) === 401 && await viewer.page.getByText(FOOTER).isVisible() && (await viewer.page.getByRole('button', { name: /Stop|Back/ }).count()) === 2)
+    (await status('/api/me', viewer.page)) === 401 && await viewer.page.locator(".foot-line", { hasText: FOOTER }).isVisible() && (await viewer.page.getByRole('button', { name: /Stop|Back/ }).count()) === 2)
   await viewer.page.screenshot({ path: '.shots/05-replaced.png' })
   await viewer.page.getByRole('button', { name: 'Stop this replacement' }).click()
   await viewer.page.getByText('Replacement stopped.').waitFor()
@@ -375,7 +379,7 @@ try {
   await viewer.page.getByRole('heading', { name: 'Your seat is frozen.' }).waitFor()
   check('a frozen member lands on a page that says how the seat was frozen, with one way out and no session',
     await viewer.page.getByText('A replaced passkey of this seat stopped its replacement on').isVisible() && (await viewer.page.getByRole('button', { name: /Stop|freeze|Sign in/i }).count()) === 0
-    && (await status('/api/me', viewer.page)) === 401 && await viewer.page.getByText(FOOTER).isVisible() && await both(viewer.page, '11-frozen'))
+    && (await status('/api/me', viewer.page)) === 401 && await viewer.page.locator(".foot-line", { hasText: FOOTER }).isVisible() && await both(viewer.page, '11-frozen'))
   await viewer.context.close()
   await replacement.context.close()
 
@@ -468,7 +472,7 @@ try {
     await page.getByRole('row', { name: /Bo Owner.*Role changed: Viewer to Trader.*Ada Viewer/ }).isVisible() || await page.getByRole('row', { name: /Maren Okafor.*Role changed: Viewer to Trader.*Ada Viewer/ }).isVisible())
   check('the request and the freeze are there too, and no raw code', await page.getByRole('row', { name: /Cy Admin.*Change requested: change a role.*Ada Viewer/ }).isVisible()
     && await page.getByRole('cell', { name: 'Seat unfrozen' }).isVisible() && !/session\.create|seat\.role|approval\./.test(await page.locator('main').innerText()))
-  check('the audit page carries the footer line and fits a phone', await page.getByText(FOOTER).isVisible() && await both(page, '14-audit'))
+  check('the audit page carries the footer line and fits a phone', await page.locator(".foot-line", { hasText: FOOTER }).isVisible() && await both(page, '14-audit'))
   const verified = async () => Number((await page.locator('p.chain').innerText()).match(/Rows 1 to (\d+) verified\. Newest verified row hash [0-9a-f]{10}\.\.\.[0-9a-f]{4}\./)?.[1])
   const verifiedBefore = await verified()
   check('the audit page says which rows it verified', verifiedBefore > 10)
@@ -540,7 +544,7 @@ try {
   const shown = await signing.locator('#request dl.kv').innerText()
   check('it shows the action, the site, the organisation id, the chain, the wallet and the expiry as text',
     ['Link this wallet to this organisation', 'localhost', 'OP Mainnet (chain id 10)', key.address, 'UTC'].every((text) => shown.includes(text)) && /[0-9a-f]{32}/.test(shown))
-  check('the signing page carries the footer line and fits a phone', await signing.getByText(FOOTER).isVisible() && await both(signing, '16-signing-page'))
+  check('the signing page carries the footer line and fits a phone', await signing.locator(".foot-line", { hasText: FOOTER }).isVisible() && await both(signing, '16-signing-page'))
   const at = (url, on) => on.evaluate((target) => fetch(target).then((response) => response.status, () => 0), url)
   check('the signing host serves no console page and no console route; the console host serves no signing page',
     (await at('/', signing)) === 404 && (await at('/api/me', signing)) === 404 && (await at('/assets/', signing)) === 404 && (await status('/sign/')) === 404 && (await status('/sign/manifest.json')) === 404)
@@ -586,12 +590,12 @@ try {
       && await bo.page.locator('#wallets .table-wrap').evaluate((wrap) => wrap.scrollWidth <= wrap.clientWidth) // at 1440 the whole row shows, Manage included
       && await both(bo.page, '20-wallets', '#wallets'))
 
-  // The Security page, for an Owner: readiness, read on demand.
+  // The Organisation page, for an Owner: readiness, read on demand, at the end of the page.
   await arrive(owner, false)
-  await page.goto(`${ORIGIN}/#/security`)
+  await page.goto(`${ORIGIN}/#/organisation`)
   await page.getByRole('heading', { name: 'Recovery readiness' }).waitFor()
   const readiness = await page.locator('#readiness').innerText()
-  check('the Security page shows the readiness state: two Owners with two hardware keys are Ready, and a recovery wallet that still waits is amber and says so',
+  check('the Organisation page shows an Owner the readiness state: two Owners with two hardware keys are Ready, and a recovery wallet that still waits is amber and says so',
     ['Ready', '2 Owners, each with two hardware keys.', 'Amber', 'Custody wallet is in force from', 'Until then it does not count.'].every((text) => readiness.includes(text)) && await both(page, '21-readiness'))
   check('an Admin gets no readiness block', (await status('/api/readiness', cy.page)) === 403)
 
@@ -637,7 +641,7 @@ try {
     const who = await person()
     const opened = await who.page.goto(`${ORIGIN}/recover`)
     await who.page.getByRole('heading', { name: 'Start a recovery' }).waitFor()
-    const open = opened.status() === 200 && (await who.context.cookies()).length === 0 && await who.page.getByText(FOOTER).isVisible()
+    const open = opened.status() === 200 && (await who.context.cookies()).length === 0 && await who.page.locator(".foot-line", { hasText: FOOTER }).isVisible()
       && await who.page.getByText('Nothing is stored until the recovery wallet has signed.').isVisible() && (!shot || await both(who.page, shot))
     await who.page.getByText('Check that you are a person: the local stand-in passes it.').waitFor() // the bot check rendered, and solved
     await who.page.getByLabel('Organisation id, from the recovery sheet').fill(organisationId)
@@ -714,8 +718,8 @@ try {
   check('the organisation is out of quarantine and the new Owner seat is removed',
     (await page.getByText('The organisation is in quarantine until').count()) === 0 && await page.getByRole('row', { name: /Recovery Owner.*Removed/ }).first().isVisible())
 
-  // The recovery sheet, for an Owner: on the Security page, and alone on paper.
-  await page.goto(`${ORIGIN}/#/security`)
+  // The recovery sheet, for an Owner: on the Organisation page, and alone on paper.
+  await page.goto(`${ORIGIN}/#/organisation`)
   await page.getByRole('heading', { name: 'Recovery sheet', exact: true }).waitFor()
   const sheet = await page.locator('.sheet').innerText()
   check('the recovery sheet names the console, the organisation id, the recovery wallet and its chain, the signing page, and three ways back in five lines each; it holds no secret',
@@ -741,7 +745,7 @@ try {
   await page.getByRole('heading', { name: /Ask a question/ }).waitFor()
   check('the band at the top reads "Local build. Test data only." and nothing else', (await page.locator('.band').innerText()).trim() === 'Local build. Test data only.')
   check('Support opens from the rail and from the top button, with the provider notice under the box and the footer line',
-    (await page.locator('[data-support]').getAttribute('href')) === '/#/support' && await page.getByText(FOOTER).isVisible() && await page.getByText('Leave out names and anything secret.').isVisible()
+    (await page.locator('[data-support]').getAttribute('href')) === '/#/support' && await page.locator(".foot-line", { hasText: FOOTER }).isVisible() && await page.getByText('Leave out names and anything secret.').isVisible()
     && await page.getByText('An outside provider, TypeSafe AI (USA), matches your question to our help texts. It receives your question without your name, organisation or wallet. Ophis does not store your question.').isVisible())
   const write = page.getByRole('link', { name: 'Write to Ophis' })
   // A wallet recovery phrase (a public test vector) is refused by the server and the page says so; nothing is asked of the provider.
@@ -808,21 +812,30 @@ try {
   const code = operator('invite').trim().split('\n').pop() // G1: applications are by invitation
   check('the operator command issues an application code', /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$/.test(code))
   await on.goto(`${ORIGIN}/apply`)
-  await on.getByLabel('Application code, from Ophis').fill(code)
-  await on.getByLabel('Legal name of the company').fill('Alder Custody S.A.')
-  await on.getByLabel('Country, two-letter code').fill('LU')
-  await on.getByLabel('Registration number or LEI').fill('B123456')
-  await on.getByLabel('The company is a').selectOption('institution')
-  await on.getByLabel('Email domain of the company').fill(domain)
-  await on.getByLabel('Your work email, at that domain').fill(`ops@${domain}`)
+  await on.getByLabel('Invitation code').fill(code)
+  await on.getByLabel('Legal name').fill('Alder Custody S.A.')
+  await on.getByLabel('Type of business').selectOption('institution')
+  await on.getByLabel('Country of incorporation').selectOption('LU')
+  check('the country is chosen by its name, and the type of business says what each one gets', await on.getByLabel('Country of incorporation').locator('option:checked').innerText() === 'Luxembourg'
+    && (await on.getByLabel('Type of business').innerText()).includes('use the desk'))
+  await on.getByLabel('Company registration number').fill('B123456')
+  await on.getByLabel('LEI, if the company has one').fill('5493001KJTIIGC8Y1R12')
+  await on.getByLabel('Registered address').fill('2 rue de la Gare, L-1611 Luxembourg')
   await on.getByLabel('Your name').fill('Ada Applicant')
+  await on.getByLabel('Your position').fill('Chief Executive Officer')
+  await on.getByLabel('Your work email', { exact: true }).fill(`ops@${domain}`)
+  check('the company domain is filled in from the work email', await on.getByLabel('Company domain').inputValue() === domain)
+  await on.getByLabel('Your phone').fill('+352 621 123 456')
+  await on.getByLabel('Your Telegram username').fill('@ada_applicant')
   // Owner decision of 2026-11-13: the application names a second person, whom Ophis approves with the organisation.
   await on.getByRole('button', { name: 'Add a person' }).click()
-  await on.getByLabel('Name of person 2').fill('Ben Okoro')
+  await on.getByLabel('Name of person 2', { exact: true }).fill('Ben Okoro')
+  await on.getByLabel('Position of person 2').fill('Head of Treasury')
   await on.getByLabel('Work email of person 2').fill(`ben@${domain}`)
+  await on.getByLabel('Phone of person 2').fill('+352 621 000 001')
   await on.getByLabel('Role of person 2').selectOption('admin')
-  check('the form names a second person: a name, a work email at the domain, the role Owner or Admin; it fits a phone', await both(on, '59-apply-people', 'fieldset'))
-  check('the application page carries the footer line and says nothing is stored yet', await on.getByText(FOOTER).isVisible() && await on.getByText('Nothing is stored until that record is found.').isVisible())
+  check('the form names a second person: a name, a position, a work email at the domain, a phone, the role Owner or Admin; it fits a phone', await both(on, '59-apply-people', 'fieldset'))
+  check('the application page carries the footer line and says nothing is stored yet', await on.locator(".foot-line", { hasText: FOOTER }).isVisible() && await on.getByText('Nothing is stored until that record is found.').isVisible())
   await on.getByRole('button', { name: 'Create the passkey and the DNS record' }).click()
   await on.getByRole('heading', { name: 'Ask your DNS administrator to publish this record.' }).waitFor()
   const [, recordName, recordValue] = await on.locator('dl.kv dd').allInnerTexts()
@@ -844,7 +857,7 @@ try {
   await on.getByRole('heading', { name: 'From application to a verified organisation.' }).waitFor()
   const newOrg = await on.evaluate(() => fetch('/api/me').then((response) => response.json()).then((me) => me.organisation))
   check('the applicant signs in to an organisation that is not yet verified, and lands on Onboarding, which names Ben and says not to invite him', newOrg.state === 'unverified' && newOrg.name === 'Alder Custody S.A.' && await on.getByText('Not submitted.').isVisible()
-    && await on.getByText(`Other people named in the application: Ben Okoro (Admin, ben@${domain}). Ophis checks them with the company. When Ophis approves, each gets a seat. Do not invite them yourself.`).isVisible())
+    && await on.getByText(`Other people named in the application: Ben Okoro, Head of Treasury (Admin, ben@${domain}). Ophis checks them with the company. When Ophis approves, each gets a seat. Do not invite them yourself.`).isVisible())
   check('an unverified organisation does not reach the audit log', (await status('/api/audit', on)) === 403)
   check('its menu shows Overview and Desk switched off', await on.getByRole('button', { name: 'Overview', exact: true }).isDisabled() && await on.getByRole('button', { name: 'Desk', exact: true }).isDisabled())
   await arrive(applicant, false)
@@ -871,7 +884,7 @@ try {
   const paper = on.locator('article.sheet')
   const paperText = await paper.innerText()
   check('the declaration holds the server\'s values, a line for the signatory and the sentence that the signatory may bind the company; nothing on it can be typed',
-    ['Alder Custody S.A.', domain, key.address, 'OP Mainnet', `Ben Okoro, Admin, ben@${domain}`, 'each person named above acts for the company', 'Name of the signatory', 'Role', 'Date', 'Signature', 'the undersigned may bind the company', FOOTER].every((text) => paperText.includes(text))
+    ['Alder Custody S.A.', domain, key.address, 'OP Mainnet', `Ben Okoro, Head of Treasury, Admin, ben@${domain}`, 'Registered address', '2 rue de la Gare, L-1611 Luxembourg', '5493001KJTIIGC8Y1R12', 'Ada Applicant, Chief Executive Officer', 'each person named above acts for the company', 'Name of the signatory', 'Role', 'Date', 'Signature', 'the undersigned may bind the company', FOOTER].every((text) => paperText.includes(text))
       && /[0-9a-f]{64}/.test(paperText) && (await paper.locator('input, textarea, select, button, [contenteditable]').count()) === 0)
   await on.emulateMedia({ media: 'print' })
   check('printed, the declaration stands alone', await paper.isVisible() && await on.getByRole('button', { name: 'Print the declaration' }).isHidden() && await on.locator('.bar').isHidden() && await on.locator('.band').isHidden() && await on.getByRole('button', { name: 'Submit for review' }).isHidden())
@@ -931,8 +944,9 @@ try {
   const opener = new Decrypter()
   opener.addIdentity(readFileSync('.dev.seal-identity', 'utf8').trim()) // the local test identity; never printed
   check('the local test identity opens the downloaded file, offline: equal to the original', Buffer.from(await opener.decrypt(readFileSync(out))).equals(scan))
-  check('the operator command lists the organisation with its domain, the first Owner\'s passkey hash, the person the application named and the wallet', listed.includes(newOrg.id) && listed.includes(domain) && listed.includes(`first Owner     passkey hash ${firstHash}`)
-    && listed.includes(`person          Ben Okoro, admin, ben@${domain}`) && listed.includes(key.address) && listed.includes('ready           yes'))
+  check('the operator command lists the organisation with its domain, the first Owner\'s passkey hash, the person the application named and the wallet', listed.includes(newOrg.id) && listed.includes(domain) && listed.includes(`first Owner     Ada Applicant, Chief Executive Officer, ops@${domain}, +352621123456, @ada_applicant, passkey hash ${firstHash}`)
+    && listed.includes(`person          Ben Okoro, Head of Treasury, ben@${domain}, +352621000001, admin`)
+    && listed.includes('address         2 rue de la Gare, L-1611 Luxembourg') && listed.includes('LEI 5493001KJTIIGC8Y1R12') && listed.includes(key.address) && listed.includes('ready           yes'))
   const submission = /submission ([0-9a-f]{16}) /.exec(listed)?.[1] ?? ''
   // Sanctions screening: an approval carries a screening that says "clear". "--list eu=<file>": the command reads the file here and sends its SHA-256.
   const approve = (...more) => ['decide', newOrg.id, 'approve', '--tier', 'standard', '--source', 'registry', '--evidence', 'e2e register extract', '--sha256', 'ab'.repeat(32), '--next-review', '2030-01-01', ...more]
@@ -950,7 +964,7 @@ try {
   check('once active the declaration stays: the step shows it and offers no upload', await on.getByText('Uploaded on').isVisible() && (await on.getByLabel(/Signed scan/).count()) === 0 && (await on.locator('article.sheet').count()) === 0)
   // The person the application named has a seat, approved by Ophis. The Owner gives a link (the console shows it; Ophis
   // sends no email), the person enrols, the Owner confirms with a passkey check: active at once, with no second person.
-  check('the Onboarding page names the person Ophis approved with the organisation', await on.getByText(`Approved by Ophis with the organisation: Ben Okoro (Admin, ben@${domain}).`).isVisible())
+  check('the Onboarding page names the person Ophis approved with the organisation', await on.getByText(`Approved by Ophis with the organisation: Ben Okoro, Head of Treasury (Admin, ben@${domain}).`).isVisible())
   await arrive(applicant, false)
   check('the member table shows the invited seat as approved by Ophis', await on.getByRole('row', { name: /Ben Okoro.*Admin.*Invited.*Approved by Ophis with the organisation/ }).isVisible())
   await on.getByRole('button', { name: 'New link for Ben Okoro' }).click()
@@ -981,7 +995,7 @@ try {
   check('the KYB block lists the sealed declaration and the operator\'s download with its reason; the audit log has the row',
     await on.locator('dl.kv dd', { hasText: shownSha }).isVisible() && await on.getByText('still sealed, for the review of the organisation.').isVisible() && (await on.getByText(/still sealed, for/).count()) === 1
       && await on.getByText('Ophis operator: downloaded the sealed declaration, still sealed. Reason: the review of the organisation').isVisible() && await both(on, '44-kyb-sealed', '#root dl.kv >> nth=1'))
-  check('the footer line is on the Onboarding and Compliance pages', await on.getByText(FOOTER).isVisible())
+  check('the footer line is on the Onboarding and Compliance pages', await on.locator(".foot-line", { hasText: FOOTER }).isVisible())
   // Sanctions screening on the Compliance page. The version is the first 16 hex of the SHA-256 of the stored lists, which hold the SHA-256 of each list file: computed here again from the files.
   const today = new Date().toISOString().slice(0, 10)
   const version = (lists) => sha256(Buffer.from(JSON.stringify(lists))).slice(0, 16)
@@ -1006,7 +1020,7 @@ try {
   await on.reload()
   await on.getByRole('button', { name: 'Sign in with a passkey' }).click()
   await on.getByRole('heading', { name: 'This organisation is frozen.' }).waitFor()
-  check('a freeze ends the session, and a sign-in shows the plain page, not "Sign-in did not work"', (await status('/api/me', on)) === 401 && await on.getByText(FOOTER).isVisible() && await both(on, '36-org-frozen'))
+  check('a freeze ends the session, and a sign-in shows the plain page, not "Sign-in did not work"', (await status('/api/me', on)) === 401 && await on.locator(".foot-line", { hasText: FOOTER }).isVisible() && await both(on, '36-org-frozen'))
   check('the operator unfreezes it', operator('unfreeze', newOrg.id).includes(`${newOrg.id} is now active`))
   await on.getByRole('button', { name: 'Back to sign-in' }).click()
   await on.getByRole('button', { name: 'Sign in with a passkey' }).click()
@@ -1022,7 +1036,7 @@ try {
     await on.reload()
     await on.getByRole('button', { name: 'Sign in with a passkey' }).click()
     await on.getByRole('heading', { name: 'This organisation is frozen.' }).waitFor()
-    return (await status('/api/me', on)) === 401 && await on.getByText(FOOTER).isVisible()
+    return (await status('/api/me', on)) === 401 && await on.locator(".foot-line", { hasText: FOOTER }).isVisible()
   }
   check('a screening "hit" freezes the organisation', operator('screen', newOrg.id, '--outcome', 'hit', '--list', `eu=${LIST.eu}`, '--next-review', '2031-01-01').includes(`${newOrg.id} is now frozen`))
   check('its member lands on the frozen page, which does not say why, with no session', await frozenPage() && !/screening|sanction|\bhit\b/i.test(await on.locator('#root').innerText()) && await both(on, '58-screening-frozen'))
@@ -1073,7 +1087,7 @@ try {
   const balanceRows = dana.page.locator('section', { has: dana.page.getByRole('heading', { name: 'Balances by wallet' }) }).locator('tbody tr')
   const testWeth = (Number(TEST_BALANCES.weth / 10n ** 14n) / 10_000).toFixed(4) // the stand-in's test balance, as the page shows it (4 decimals)
   check('an institution lands on its overview: no example figure, the footer, the balances of its two linked wallets read on the stand-in endpoints, no approval and no order yet',
-    !(await dana.page.getByText(BANNER).count()) && await dana.page.getByText(FOOTER).isVisible() && (await balanceRows.count()) === 6
+    !(await dana.page.getByText(BANNER).count()) && await dana.page.locator(".foot-line", { hasText: FOOTER }).isVisible() && (await balanceRows.count()) === 6
     && JSON.stringify(await balanceRows.allInnerTexts()).includes(`WETH\\t${testWeth}`) && (await balanceRows.nth(3).innerText()).includes('Demo Safe')
     && (await dana.page.locator('[data-waiting]').textContent()) === '0' && await dana.page.getByText('No order yet. Orders are prepared on the desk.').isVisible() && await dana.page.getByText('No filled order yet.').isVisible())
   await toOrganisation(dana.page)
@@ -1558,7 +1572,7 @@ try {
   check('no demo banner, no example, no referral share, none of the withheld figures, no word of a licence or of payout terms; the footer line',
     !(await pat.page.getByText(BANNER).count()) && !/example|demo data|illustrative/i.test(partnerText) && !/referr|partner code|net fee|earning|payout run/i.test(partnerText)
     && [P.fees.currentCycle.grossFeeUsd, P.fees.minPayoutUsd].every((n) => !partnerText.includes(usd(n))) && !partnerText.includes(String(P.fees.partnerShareBps)) && !/bps|minimum/i.test(partnerText)
-    && !/Ophis fee|licen[cs]ed|regulated|authori[sz]ed|MiCA|compliant|paid (weekly|monthly)|guarantee|honest|—/i.test(partnerText) && await pat.page.getByText(FOOTER).isVisible())
+    && !/Ophis fee|licen[cs]ed|regulated|authori[sz]ed|MiCA|compliant|paid (weekly|monthly)|guarantee|honest|—/i.test(partnerText) && await pat.page.locator(".foot-line", { hasText: FOOTER }).isVisible())
   await pat.page.evaluate(() => scrollTo(0, 0)) // the checks above scrolled down: this shot is the top of the page
   check('the live partner overview fits a phone', await both(pat.page, '52-overview-partner-live'))
   await pat.page.waitForTimeout(200) // the desk size just came back: let it paint before the next shot

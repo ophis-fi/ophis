@@ -16,7 +16,7 @@ const PRIVACY = 'An outside provider, TypeSafe AI (USA), matches your question t
 const CARE = 'Leave out names and anything secret.'
 // The email is the member's own: a subject and three empty lines, nothing else filled in.
 const MAILTO = `mailto:clement@ophis.fi?subject=${encodeURIComponent('Ophis Business support')}&body=${encodeURIComponent('What I was doing:\r\n\r\nWhat I expected:\r\n\r\nWhat happened:\r\n')}`
-const PAGE: Record<string, string> = { '/#/organisation': 'Organisation', '/#/compliance': 'Compliance', '/#/security': 'Security and data', '/recover': 'the account recovery page' }
+const PAGE: Record<string, string> = { '/#/organisation': 'Organisation', '/#/compliance': 'Compliance', '/recover': 'the account recovery page' }
 const WHY = {
   none: 'No help text was found for this question.',
   no: 'The help texts did not answer this question.',

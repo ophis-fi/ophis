@@ -33,6 +33,7 @@ Everything needed to run and update pro.ophis.fi. Live since 2026-11-17. Command
 1. Branch from `origin/main`, change, test: `typecheck`, `test` (unit), `test:e2e` (browser). In a fresh worktree the first `test:e2e` fails at "the page names the key it seals to": the build ran before `seed` wrote `.env.local`. Run it again.
 2. A new migration (`migrations/00NN_*.sql`): apply it to production BY HAND before the merge, because the CI token cannot touch D1. Until the merge deploys, the Worker already running uses the new schema, so the migration must keep every read and write of that Worker working: add tables, nullable or defaulted columns, plain indexes; no new constraint its writes could break (a unique index, a CHECK, a NOT NULL column without a default); never drop or rename what it uses. A removal or a new constraint waits for a later release, after the Worker that needs it has deployed.
    `npx wrangler d1 migrations apply ophis-business --remote --env production`, then check with `npx wrangler d1 migrations list ophis-business --remote --env production` ("No migrations to apply").
+   After a migration is applied to production, never edit its file: Wrangler records only the file name, so an edited file is skipped and the check above still passes. Put any further change in a new `migrations/00NN_*.sql` file (CodeRabbit, PR #1652).
 3. PR. Required: CI green, the "fresh Codex review" gate (a Codex review of the exact head: comment `@codex review`, then `Head: <sha>` and `Base: <sha>` on their own lines), every review thread resolved. Mind D1's limits: 2,000,000 bytes per string or row, 50 queries per request, 10 ms of CPU; bytes bound to D1 become an Array of numbers in the Worker, so pass large binary data as hex text (`unhex(?)`, `hex(data)`).
 4. Merge: `.github/workflows/business-console-deploy.yml` deploys on main with `CLOUDFLARE_WORKERS_TOKEN`. Secrets stay as they are.
 5. Check: `curl -s -o /dev/null -w '%{http_code}' https://pro.ophis.fi/` (200), `https://sign.ophis.fi/sign/` (200), `https://operator.ophis.fi/` (302 to Access); `operator list --production`.
@@ -44,7 +45,7 @@ Everything needed to run and update pro.ophis.fi. Live since 2026-11-17. Command
 The first command of a day opens a Cloudflare Access sign-in (cloudflared, valid 24 hours). The link also works from a phone; it waits about 6 minutes. On success cloudflared prints the token: never paste that output anywhere.
 
 - `operator list --production`: what is under review, reviews due, frozen organisations, and the loaded lists with their dates.
-- `operator invite --production`: an application code for a new client (one use, 14 days).
+- `operator invite --production`: an invitation code for a new client (one use, 14 days; the code says "application code" in older notes).
 - `operator decide <id> approve|more|refuse ... --production`, `operator freeze|unfreeze <id> --production`, `operator items <id> --production`, `operator get <item id> --reason kyb_review --out item.age --production`: README, "Onboarding" and "Sealed declaration".
 
 ## OFAC list: by hand, once a month
@@ -54,7 +55,7 @@ Download https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/expo
 ## A new client
 
 1. `operator invite --production`: give the client the code and https://pro.ophis.fi/apply.
-2. The client applies: company, email domain, a work email at that domain, up to 4 more people, a passkey on a hardware key. The page shows a TXT record `_ophis-verify.<domain>` = `ophis-verify=<code>`; the client publishes it in its DNS and presses "Check DNS". (For `ophis.fi` the Keychain token `cloudflare-api-token` can publish it.)
+2. The client applies: the company (legal name, type, country of incorporation, registration number, LEI if any, registered address), the applicant (name, position, work email, phone, Telegram if any), the company domain, up to 4 more people with the same details and a role, and a passkey on a hardware key. The page shows a TXT record `_ophis-verify.<domain>` = `ophis-verify=<code>`; the client publishes it in its DNS and presses "Check DNS". (For `ophis.fi` the Keychain token `cloudflare-api-token` can publish it.)
 3. The client signs in: a second passkey, the recovery wallet (it signs "Activate this organisation ..." on the signing page), the declaration (printed, signed, scanned, sealed in the browser, uploaded), "Submit for review".
 4. The operator: `operator list --production` (compare the domain, the passkey hash, the wallet, the declaration's SHA-256, and each person the application names: on the signed declaration with the same role, an address at the company's domain; the approval approves them all, there is no approval per person), the sanctions screening (README, "Screening, step by step"), then `operator decide <id> approve --submission <16 characters> --tier standard --source registry --evidence "<reference>" --sha256 <64 hex> --next-review <date> --screening clear --list eu=<file> --production`.
 5. The organisation is active. Its Owner invites the members from the console. Ophis sends no email.

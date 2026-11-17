@@ -5941,7 +5941,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
   const fieldsOf = <T,>(sealed: string) => JSON.parse(new TextDecoder().decode(fromBase64Url(sealed.split('.')[0]))) as T
   const resealed = (sealed: string, change: object) => `${toBase64Url(new TextEncoder().encode(JSON.stringify({ ...fieldsOf<object>(sealed), ...change })))}.${sealed.split('.')[1]}`
   let domains = 0
-  const form = (domain: string) => ({ invite: INVITE, legalName: 'Alder Custody S.A.', country: 'LU', registration: 'B123456', kind: 'institution', domain, email: `ops@${domain}`, name: 'Maren Okafor' })
+  const form = (domain: string) => ({ invite: INVITE, legalName: 'Alder Custody S.A.', country: 'LU', registration: 'B123456', address: '2 rue de la Gare, L-1611 Luxembourg', kind: 'institution', domain, email: `ops@${domain}`, name: 'Maren Okafor', position: 'Chief Operating Officer', phone: '+352 621 123 456' })
   // The applicant: the form, then a new passkey. Nothing is written.
   async function applyFor(domain = `alder${++domains}.example`, more: Record<string, unknown> = {}, keyOptions: { backupEligible?: boolean } = {}, answer: Answer = {}) {
     const key = await softwareAuthenticator(SITE, keyOptions)
@@ -6038,7 +6038,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     const f = fieldsOf<Record<string, unknown> & { credential: { id: string; publicKey: string; transports: string[] }; credentialHash: string; issuedAt: number; expiresAt: number }>(a.intent)
     const { invite: _code, ...asked } = form('alder.example')
     expect(f.invite).toBeUndefined() // the code itself is not carried on: its hash is
-    expect(f).toMatchObject({ ...asked, inviteHash: expect.stringMatching(/^[0-9a-f]{64}$/), seat: a.seat, site: 'localhost', credential: { id: a.key.id, transports: ['usb'] } })
+    expect(f).toMatchObject({ ...asked, phone: '+352621123456', lei: null, telegram: null, inviteHash: expect.stringMatching(/^[0-9a-f]{64}$/), seat: a.seat, site: 'localhost', credential: { id: a.key.id, transports: ['usb'] } })
     expect(f.credentialHash).toBe(`0x${Array.from(await credentialHash(f.credential.id, f.credential.publicKey), (b) => b.toString(16).padStart(2, '0')).join('')}`)
     expect([f.issuedAt, f.expiresAt, a.body.expiresAt]).toEqual([START / 1000, START / 1000 + 7 * 24 * 3600, START + 7 * DAY])
     // The record: TXT at _ophis-verify.<domain>, "ophis-verify=" and a short code that is a MAC over domain and passkey.
@@ -6072,12 +6072,25 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       [{ email: 'ops@birch.example' }, 'email_not_at_domain'], [{ email: 'maren@gmail.com' }, 'email_not_at_domain'], [{ email: 'ops@evilalder.example' }, 'email_not_at_domain'],
       [{ email: 'ops@alder.example.evil.example' }, 'email_not_at_domain'], [{ email: 'ops@alder.example@gmail.com' }, 'email_not_at_domain'], [{ email: 'ops' }, 'email_not_at_domain'],
       [{ email: 'ops@.alder.example' }, 'email_not_at_domain'], [{ email: 'o ps@alder.example' }, 'email_not_at_domain'],
+      // 0026 (owner, 2026-11-17): the LEI is optional but checked (ISO 17442 check digits), the registered address is required,
+      // and the applicant gives a position and a phone in international form; a Telegram username is optional.
+      [{ lei: '5493001KJTIIGC8Y1R13' }, 'lei_invalid'], [{ lei: '5493001KJTIIGC8Y1R1' }, 'lei_invalid'], [{ lei: '5493001KJT-IGC8Y1R12' }, 'lei_invalid'],
+      [{ address: '' }, 'address_invalid'], [{ address: 'x' }, 'address_invalid'], [{ address: '<b>2 rue</b>' }, 'address_invalid'], [{ address: 'x'.repeat(201) }, 'address_invalid'],
+      // What a terminal or a page acts on (the operator's list prints the address): an escape, a bidi override, a zero-width joiner; or no letter or digit at all.
+      [{ address: '2 rue \u001b[8mde la Gare' }, 'address_invalid'], [{ address: '2 rue \u202ede la Gare' }, 'address_invalid'], [{ address: '2 rue\u200dde la Gare' }, 'address_invalid'], [{ address: '.,-/ ()' }, 'address_invalid'],
+      [{ legalName: 'Alder\u202e S.A.' }, 'legal_name_invalid'], [{ position: 'CEO\u001b[2J' }, 'contact_invalid'],
+      [{ position: '' }, 'contact_invalid'], [{ position: '<i>CEO</i>' }, 'contact_invalid'], [{ phone: '' }, 'contact_invalid'], [{ phone: '0621 123 456' }, 'contact_invalid'],
+      [{ phone: '+352 abc' }, 'contact_invalid'], [{ phone: '+0 621 123 456' }, 'contact_invalid'], [{ phone: '+1234' }, 'contact_invalid'], [{ telegram: 'ab' }, 'contact_invalid'], [{ telegram: '@1abcde' }, 'contact_invalid'],
     ]
     for (const [change, error] of bad) expect((await call('POST', '/api/apply', { body: { ...form('alder.example'), ...change } })).body, JSON.stringify(change)).toEqual({ error })
     for (const email of ['ops@alder.example', 'Ops@Mail.Alder.Example']) expect((await call('POST', '/api/apply', { body: { ...form('alder.example'), email } })).status, email).toBe(200)
+    // What company registers print (Codex, PR #1653): combining marks, the typographic apostrophe, other scripts.
+    for (const fields of [{ address: '12 rue de l’Église, 75015 Paris' }, { address: '191 ถนนสีลม กรุงเทพฯ 10500' }, { address: 'Ka\u0301roly ko\u0308ru\u0301t 9, 1075 Budapest' },
+      { legalName: 'L’Oréal S.A.' }, { legalName: 'บริษัท ตัวอย่าง จำกัด' }, { name: 'Zoë d’Arcy' }, { position: 'Directeur général délégué' }])
+      expect((await call('POST', '/api/apply', { body: { ...form('alder.example'), ...fields } })).status, JSON.stringify(fields)).toBe(200)
     // Every field is under the MAC of the intent: the address that is stored is the one that was checked.
-    const a = await applyFor('alder.example', { email: 'Ops@Mail.Alder.Example', country: 'lu', domain: 'Alder.Example' })
-    expect(fieldsOf(a.intent)).toMatchObject({ email: 'ops@mail.alder.example', country: 'LU', domain: 'alder.example' })
+    const a = await applyFor('alder.example', { email: 'Ops@Mail.Alder.Example', country: 'lu', domain: 'Alder.Example', lei: ' 5493001kjtiigc8y1r12 ', address: ' 2 rue  de la Gare,\n L-1611 Luxembourg ', phone: '+352 (621) 123-456', telegram: '@maren_ok' })
+    expect(fieldsOf(a.intent)).toMatchObject({ email: 'ops@mail.alder.example', country: 'LU', domain: 'alder.example', lei: '5493001KJTIIGC8Y1R12', address: '2 rue de la Gare, L-1611 Luxembourg', phone: '+352621123456', telegram: '@maren_ok' })
   })
 
   // ---- A3: Check DNS ----
@@ -6252,8 +6265,8 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     publish(a.body.record)
     expect((await checkDns(a.intent)).body).toEqual({ state: 'unverified' })
     const org = (await row<Record<string, unknown>>('SELECT * FROM organisations WHERE email_domain = ?', 'alder-commit.example'))!
-    expect(org).toMatchObject({ kind: 'institution', name: 'Alder Custody S.A.', state: 'unverified', domain_challenge: a.body.record.value, domain_verified_at: now, country: 'LU', registration_number: 'B123456', review_at: null, created_at: now })
-    expect(await row('SELECT id, display_name, email, role, state FROM seats WHERE org_id = ?', org.id)).toEqual({ id: a.seat, display_name: 'Maren Okafor', email: 'ops@alder-commit.example', role: 'owner', state: 'active' })
+    expect(org).toMatchObject({ kind: 'institution', name: 'Alder Custody S.A.', state: 'unverified', domain_challenge: a.body.record.value, domain_verified_at: now, country: 'LU', registration_number: 'B123456', lei: null, registered_address: '2 rue de la Gare, L-1611 Luxembourg', review_at: null, created_at: now })
+    expect(await row('SELECT id, display_name, email, role, state, position, phone, telegram FROM seats WHERE org_id = ?', org.id)).toEqual({ id: a.seat, display_name: 'Maren Okafor', email: 'ops@alder-commit.example', role: 'owner', state: 'active', position: 'Chief Operating Officer', phone: '+352621123456', telegram: null })
     expect(await row('SELECT id, seat_id, state, device_bound, label FROM credentials WHERE org_id = ?', org.id)).toEqual({ id: a.key.id, seat_id: a.seat, state: 'active', device_bound: 1, label: 'First key' })
     const hash = fieldsOf<{ credentialHash: string }>(a.intent).credentialHash
     expect((await db.prepare('SELECT seq, actor_kind, actor_id, action, subject_id, detail FROM audit_log WHERE org_id = ?').bind(org.id).all()).results)
@@ -6428,7 +6441,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect(asked.body).toEqual({ intent: asked.body.intent, link: `${SIGN}/sign/#${asked.body.intent}`, expiresAt: START + 7 * DAY })
     // The same passkey hash on the Owner's page, and in an intent for another wallet.
     const view = await call('GET', '/api/onboarding', { cookie: a.cookie })
-    expect(view.body.first).toEqual({ credentialHash: f.credentialHash, active: true, name: 'Maren Okafor' })
+    expect(view.body.first).toEqual({ credentialHash: f.credentialHash, active: true, name: 'Maren Okafor', position: 'Chief Operating Officer' })
     expect(fieldsOf<ActivateFields>((await nameWallet(a, accounts[1].address)).body.intent)).toMatchObject({ credentialHash: f.credentialHash })
     expect(typedActivate(f)).toMatchObject({ primaryType: 'Proof', domain: { name: 'Ophis Business', version: '1', chainId: CHAIN }, message: { action: 'Activate this organisation and confirm its first Owner passkey', organisationId: a.orgId, wallet: accounts[0].address, credentialHash: f.credentialHash } })
     for (const [body, error] of [[{ chainId: 5 }, 'chain_invalid'], [{ address: '0x12' }, 'address_invalid'], [{ label: '<b>' }, 'label_invalid'], [{ custodian: 'yes' }, 'invalid']] as const) {
@@ -6864,7 +6877,8 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect((await submit(a)).body).toEqual({ state: 'under_review' })
     const view = (await call('GET', '/api/onboarding', { cookie: a.cookie })).body
     expect(await mine()).toEqual([{
-      id: a.orgId, legalName: 'Alder Custody S.A.', kind: 'institution', country: 'LU', registration: 'B123456', domain: 'alder-list.example', submittedAt: now, submission: await submissionOf(a.orgId),
+      id: a.orgId, legalName: 'Alder Custody S.A.', kind: 'institution', country: 'LU', registration: 'B123456', lei: null, address: '2 rue de la Gare, L-1611 Luxembourg', domain: 'alder-list.example', submittedAt: now, submission: await submissionOf(a.orgId),
+      applicant: { name: 'Maren Okafor', email: 'ops@alder-list.example', position: 'Chief Operating Officer', phone: '+352621123456', telegram: null },
       credentialHash: view.first.credentialHash, people: [], missing: null, declaration: view.sealed, refused: [],
       wallet: { chainId: CHAIN, chain: 'OP Mainnet', address: accounts[4].address, kind: 'safe', label: 'Treasury', inForce: false, threshold: 2, owners: 3, colour: { level: 'green', why: null } },
     }])
@@ -7165,7 +7179,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect((await post(`/api/wallets/${wallet.id}/anchor`, b)).body).toEqual({ state: 'applied' })
     for (const path of ['/api/onboarding', `/api/onboarding?organisationId=${b.orgId}`, `/api/onboarding?org=${b.orgId}`]) {
       const view = await call('GET', path, { cookie: a.cookie })
-      expect(view.body).toEqual({ company: { legalName: a.name, kind: 'partner', country: 'LU', registration: null, domain: null, domainVerifiedAt: null }, first: null, people: [], seal: { key: KEY, generation: 'g1' }, sealed: null, downloads: [], wallet: null, missing: null, review: { status: 'verified', since: null, reason: null }, record: null, chains: expect.any(Array) })
+      expect(view.body).toEqual({ company: { legalName: a.name, kind: 'partner', country: 'LU', registration: null, lei: null, address: null, domain: null, domainVerifiedAt: null }, first: null, people: [], seal: { key: KEY, generation: 'g1' }, sealed: null, downloads: [], wallet: null, missing: null, review: { status: 'verified', since: null, reason: null }, record: null, chains: expect.any(Array) })
     }
     expect((await call('GET', '/api/onboarding', { cookie: b.cookie })).body).toMatchObject({ company: { legalName: b.name }, people: [{ name: 'Zed Birch', email: 'zed@birch.example', role: 'admin' }], record: { legalName: 'Birchfield Capital Ltd', tier: 'enhanced' }, wallet: { address: accounts[0].address } })
     expect((await call('GET', `/api/onboarding/${b.orgId}`, { cookie: a.cookie })).status).toBe(404)
@@ -7403,7 +7417,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect((await view()).wallet).toMatchObject({ address: accounts[0].address, chain: 'OP Mainnet' })
     // The sheet: every line of the brief, as text. No field, no editable element, and the sentence about binding the company.
     const sheet = onboardingPage.slice(onboardingPage.indexOf('function Declaration('), onboardingPage.indexOf('// end of the declaration sheet'))
-    for (const line of ['Legal name', 'Registration number or LEI', 'Country', 'Email domain', 'First Owner', 'passkey (hash)', 'Recovery wallet', 'Chain', 'Name of the signatory', 'Role', 'Date', 'Signature', 'may bind the company', 'Ophis is a software provider. It is not a crypto-asset service provider.']) expect(sheet, line).toContain(line)
+    for (const line of ['Legal name', 'Registration number', 'LEI', 'Country of incorporation', 'Registered address', 'Company domain', 'First Owner', 'passkey (hash)', 'Recovery wallet', 'Chain', 'Name of the signatory', 'Role', 'Date', 'Signature', 'may bind the company', 'Ophis is a software provider. It is not a crypto-asset service provider.']) expect(sheet, line).toContain(line)
     expect(sheet.length).toBeGreaterThan(500)
     expect(sheet).not.toMatch(/<input|<textarea|<select|contentEditable|useState|onChange/)
     expect(sheet).toMatch(/wallet \? wallet\.address : 'none'/)
@@ -7708,9 +7722,14 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
   // ---- P: people Ophis approves with the organisation (owner decision of 2026-11-13) ----
   describe('P. people Ophis approves with the organisation', () => {
     const named = (domain: string) => [
-      { name: 'Ben Okoro', email: `Ben@${domain}`, role: 'admin' }, { name: 'Cleo Ndiaye', email: `cleo@eu.${domain}`, role: 'owner' }, { name: 'Dee Lund', email: `dee@${domain}`, role: 'admin' }, { name: 'Eli Varga', email: `eli@${domain}`, role: 'owner' },
+      { name: 'Ben Okoro', email: `Ben@${domain}`, role: 'admin', position: 'Head of Treasury', phone: '+352 621 000 001', telegram: '@ben_okoro' },
+      { name: 'Cleo Ndiaye', email: `cleo@eu.${domain}`, role: 'owner', position: 'Chief Financial Officer', phone: '+33 6 12 34 56 78' },
+      { name: 'Dee Lund', email: `dee@${domain}`, role: 'admin', position: 'Operations', phone: '+352621000003' },
+      { name: 'Eli Varga', email: `eli@${domain}`, role: 'owner', position: 'Director', phone: '+36 (1) 234-5678', telegram: 'eli_varga' },
     ]
-    const stored = (domain: string) => named(domain).map((p) => ({ ...p, email: p.email.toLowerCase() }))
+    const stored = (domain: string) => named(domain).map(({ name, email, role }) => ({ name, email: email.toLowerCase(), role }))
+    // With the contact as stored (0026): the phone in one form, the Telegram username with its @, or null.
+    const contacts = (domain: string) => named(domain).map((p) => ({ ...p, email: p.email.toLowerCase(), phone: p.phone.replace(/[\s().-]/g, ''), telegram: p.telegram ? `@${p.telegram.replace(/^@/, '')}` : null }))
     const seatsOf = async (orgId: string) => (await db.prepare('SELECT id, display_name AS name, email, role, state, ophis_approved AS approved FROM seats WHERE org_id = ? ORDER BY rowid').bind(orgId).all<{ id: string; name: string; email: string | null; role: string; state: string; approved: number }>()).results
     // An application that named four more people (five in all), approved by the operator. Its first Owner is signed in, with two keys.
     // Its recovery wallet is a custodian's: G5 refuses a single key where the application names people.
@@ -7724,7 +7743,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
 
     it('P1: an application names at most 4 more people, each a name, a work email at the proved domain and the role Owner or Admin; no address twice and never the applicant\'s; the intent carries them as checked', async () => {
       const domain = 'alder-p1.example'
-      const person = (more: Record<string, unknown> = {}) => ({ name: 'Ben Okoro', email: `ben@${domain}`, role: 'admin', ...more })
+      const person = (more: Record<string, unknown> = {}) => ({ name: 'Ben Okoro', email: `ben@${domain}`, role: 'admin', position: 'Head of Treasury', phone: '+352 621 000 001', ...more })
       const four = ['ben', 'cleo', 'dee', 'eva'].map((name) => person({ name, email: `${name}@${domain}` }))
       const asked = (people: unknown) => call('POST', '/api/apply', { body: { ...form(domain), people } })
       const rows = await snapshot([...TABLES, COUNTER])
@@ -7739,6 +7758,8 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
         ...[`\u001b[8mben@${domain}`, `\b\b\badmin,ben@${domain}`, `ben\u202e@${domain}`].map((email): [unknown, string] => [[person({ email })], 'person_email_invalid']),
         // Twice, whatever the case, and the applicant's own address.
         [[person(), person({ name: 'Ben Again', email: `BEN@${domain}` })], 'person_email_invalid'], [[person({ email: `Ops@${domain}` })], 'person_email_invalid'],
+        // 0026: each person a position and a phone in international form; a Telegram username is optional.
+        [[person({ position: '' })], 'person_contact_invalid'], [[person({ phone: '621 000 001' })], 'person_contact_invalid'], [[person({ phone: undefined })], 'person_contact_invalid'], [[person({ telegram: 'a b' })], 'person_contact_invalid'],
       ]
       for (const [people, error] of bad) expect(await asked(people).then((r) => [r.status, r.body]), JSON.stringify(people)).toEqual([400, { error }])
       for (const people of [four, [], undefined]) expect((await asked(people)).status, JSON.stringify(people)).toBe(200)
@@ -7750,7 +7771,8 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       expect(sixth.body).toEqual({ error: 'people_invalid' })
       // The intent carries them as checked: trimmed, the address in lower case, no other field. None given: nobody else.
       const a = await applyFor(domain, { people: [person({ name: ' Ben Okoro ', email: ` Ben@Mail.${domain} `, approved: 1, state: 'active' }), person({ name: 'Cleo Ndiaye', email: `cleo@${domain}`, role: 'owner' })] })
-      expect(fieldsOf<{ people: unknown }>(a.intent).people).toEqual([{ name: 'Ben Okoro', email: `ben@mail.${domain}`, role: 'admin' }, { name: 'Cleo Ndiaye', email: `cleo@${domain}`, role: 'owner' }])
+      const contact = { position: 'Head of Treasury', phone: '+352621000001', telegram: null }
+      expect(fieldsOf<{ people: unknown }>(a.intent).people).toEqual([{ name: 'Ben Okoro', email: `ben@mail.${domain}`, role: 'admin', ...contact }, { name: 'Cleo Ndiaye', email: `cleo@${domain}`, role: 'owner', ...contact }])
       expect(fieldsOf<{ people: unknown }>((await applyFor(domain)).intent).people).toEqual([])
     })
 
@@ -7763,14 +7785,14 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       const add = (email: string, role: string) => db.prepare(`INSERT INTO application_people (org_id, email, display_name, role) VALUES (?, ?, 'Twin', ?)`).bind(a.orgId, email, role).run()
       await expect(add(`ben@${domain}`, 'admin')).rejects.toThrow(/UNIQUE/)
       await expect(add(`vic@${domain}`, 'viewer')).rejects.toThrow(/CHECK/)
-      expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body.people).toEqual(stored(domain))
+      expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body.people).toEqual(contacts(domain))
       // Review, G5: the approval makes them members, so a recovery wallet with a single key is refused now, as a recovery would refuse it then.
       expect((await activation(a)).body).toEqual({ state: 'stored' })
       expect([(await submit(a)).body, (await call('GET', '/api/onboarding', { cookie: a.cookie })).body.missing]).toEqual([{ error: 'single_key' }, 'single_key'])
       expect((await activation(a, accounts[1], { custodian: true })).body).toEqual({ state: 'stored' })
       expect((await submit(a)).body).toEqual({ state: 'under_review' })
       const listed = async () => ((await op('GET', '/api/operator/organisations')).body.organisations as { id: string; people: unknown }[]).find((o) => o.id === a.orgId)
-      expect((await listed())!.people).toEqual(stored(domain))
+      expect((await listed())!.people).toEqual(contacts(domain)) // with how Ophis reaches each one (0026)
       // More information makes no seat; the approval after the next submit does.
       expect((await decideOn(a.orgId, MORE)).body).toEqual({ state: 'unverified' })
       expect(await seatsOf(a.orgId)).toHaveLength(1)
@@ -7778,6 +7800,9 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       expect((await decideOn(a.orgId)).body).toEqual({ state: 'active' })
       expect(await listed()).toBeUndefined()
       expect((await seatsOf(a.orgId)).slice(1)).toEqual(stored(domain).map((p) => ({ id: expect.stringMatching(/^[0-9a-f]{32}$/), ...p, state: 'invited', approved: 1 })))
+      // Each seat keeps the position and contact the application gave; the first Owner's seat holds its own since the application.
+      const contactRows = (await db.prepare('SELECT position, phone, telegram FROM seats WHERE org_id = ? ORDER BY rowid').bind(a.orgId).all()).results
+      expect(contactRows).toEqual([{ position: 'Chief Operating Officer', phone: '+352621123456', telegram: null }, ...contacts(domain).map(({ position, phone, telegram }) => ({ position, phone, telegram }))])
       expect([await count('enrolment_tickets', a.orgId), await count('credentials', a.orgId)]).toEqual([0, 2])
       // The log says that Ophis approved them with the organisation; the Owner sees them as invited seats, approved by Ophis.
       expect(await row('SELECT action, detail FROM audit_log WHERE org_id = ? ORDER BY seq DESC', a.orgId)).toEqual({ action: 'kyb.approve', detail: 'ab'.repeat(32) })
@@ -8838,7 +8863,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
         await noLists()
       }
       // The words of this part: no claim about a licence or about what a check makes of anything, no em-dash, the sentences of the page.
-      const section = pagesSource.slice(pagesSource.indexOf('function Screening('), pagesSource.indexOf('// Rows of the approved mockup'))
+      const section = pagesSource.slice(pagesSource.indexOf('function Screening('), pagesSource.indexOf('interface Ready {'))
       const said = [routes.find((r) => r.path === '/api/screening')!.can, ...Object.values(onboarding.LISTS), EVENTS['kyb.screen'], EVENTS['kyb.screen/clear'], EVENTS['screening.wallet'], section].join('\n')
       for (const banned of [/licen[cs]ed|regulated|authori[sz]ed|MiCA|compliant|compliance with|\bsafe\b|guarantee|\bclean\b/i, /—/, /honest/i]) expect(said).not.toMatch(banned)
       for (const sentence of ['No screening is recorded yet.', 'Result: no match.', 'Linked wallets are compared with the addresses of:', 'No address list is loaded yet. Wallets have not been compared.', 'Not on a loaded list',
