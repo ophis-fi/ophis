@@ -818,10 +818,11 @@ async function orderPage(c: Context) {
   if (stop) return stop
   const t = r.terms
   let validTo = r.validTo
-  // The expiry is fixed when the page first reads a signing link, and stored: every later read signs the same order.
+  // The expiry is fixed when the page first reads a signing link, and stored: every later read signs the same order. It
+  // may be a second or two later than asked: no two orders share one (#1648).
   if (r.purpose === 'sign' && validTo === null) {
-    validTo = Math.floor(c.now / 1000) + t.validFor
-    if (!(await data.orderOpened(c.env.DB, r, r.hash, validTo, c.now))) return fail(409, 'try_again')
+    validTo = await data.orderOpened(c.env.DB, r, r.hash, Math.floor(c.now / 1000) + t.validFor, c.now)
+    if (validTo === null) return fail(409, 'try_again')
   }
   const built = orders.gpv2(t, validTo!)
   const chain = orders.CHAINS[t.chainId]
