@@ -42,6 +42,8 @@ const COUNTER = 'proof_checks'
 const CHECKS = 'audit_checks'
 // And the used bot-check tokens (0022): the one write of the two recovery forms, after a passed check (section P).
 const TOKENS = 'used_tokens'
+// And the pieces of each sealed file (0024), with no org_id: written and taken out with its sealed_items row, which the snapshots hold.
+const PIECES = 'sealed_chunks'
 const db = env.DB
 // The challenge key is made per run: no secret lives in the repository.
 // The static files: a stand-in that answers every path, with a header only the console's pages may keep.
@@ -53,14 +55,14 @@ const RECIPIENT = await age.identityToRecipient(IDENTITY)
 let humanSerial = 0
 const humanOk = () => `XXXX.DUMMY.TOKEN.XXXX.${++humanSerial}` // a new token each time: the server uses each once
 const TURNSTILE_TEST = '1x0000000000000000000000000000000AA'
-const testEnv = { DB: db, ASSETS, SEALED: env.SEALED, ENVIRONMENT: 'local', CHALLENGE_KEY: crypto.randomUUID() + crypto.randomUUID(), SEAL_RECIPIENT: RECIPIENT, TURNSTILE_URL: 'http://127.0.0.1:8796', TURNSTILE_SECRET: TURNSTILE_TEST } as unknown as Env
+const testEnv = { DB: db, ASSETS, ENVIRONMENT: 'local', CHALLENGE_KEY: crypto.randomUUID() + crypto.randomUUID(), SEAL_RECIPIENT: RECIPIENT, TURNSTILE_URL: 'http://127.0.0.1:8796', TURNSTILE_SECRET: TURNSTILE_TEST } as unknown as Env
 const SIGN = configFor('local').signOrigin
 let now = START
 
 // ---- the Free plan of Cloudflare Workers (ARCHITECTURE.md, "Free plan"): every invocation of this suite is metered ----
 // d1: one per round trip to the database (D1DatabaseSession._wrappedFetch: once per first, all, run or raw, once per
 // batch whatever its statements, once per exec, a failed one too). fetch: every fetch() (external subrequests).
-// internal: the R2 calls and the static files (subrequests to Cloudflare services). read, written: the rows D1 reports
+// internal: the static files (subrequests to Cloudflare services; the sealed files are D1 queries, sealed_chunks). read, written: the rows D1 reports
 // in the meta of each result. Section K checks the largest of each. Two invocations in flight at once share their
 // counts: an overcount, never an undercount.
 // Rows are limited per day (5,000,000 read, 100,000 written; past either every query fails until 00:00 UTC), not per
@@ -101,7 +103,6 @@ tally((db as unknown as { alwaysPrimarySession: object }).alwaysPrimarySession, 
     return results
   }
 }
-tally(env.SEALED, ['head', 'get', 'put', 'delete', 'list', 'createMultipartUpload'], 'internal')
 tally(ASSETS, ['fetch'], 'internal')
 let realFetch = globalThis.fetch
 const countingFetch = ((...args: Parameters<typeof fetch>) => (counts.fetch++, realFetch(...args))) as typeof fetch
@@ -1433,7 +1434,7 @@ describe('g. security headers', () => {
 describe('h. sign-in start', () => {
   it('the snapshot below covers every table', async () => {
     const { results } = await db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name <> 'd1_migrations' ORDER BY name`).all<{ name: string }>()
-    expect(results.map((row) => row.name)).toEqual([...TABLES, ...GLOBAL, COUNTER, CHECKS, TOKENS].sort())
+    expect(results.map((row) => row.name)).toEqual([...TABLES, ...GLOBAL, COUNTER, CHECKS, TOKENS, PIECES].sort())
   })
   it('writes no row, however often it is called, signed in or not', async () => {
     const m = await member()
@@ -5885,7 +5886,6 @@ import packageJson from '../package.json'
 const serverSources = import.meta.glob('../src/server/*.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 const sealEnv = { ENVIRONMENT: 'local', SEAL_RECIPIENT: RECIPIENT }
 const KEY = await data.sha256Hex(RECIPIENT) // the fingerprint of this run's sealing key
-const bucket = env.SEALED
 // What a browser makes: a file sealed with the age library to a recipient. MARKER stands in the clear file only.
 const MARKER = 'CLEAR-TEXT-MARKER-5b'
 async function sealedFile(text = `%PDF-1.7 ${MARKER} ${crypto.randomUUID()}`, recipient = RECIPIENT) {
@@ -5896,7 +5896,7 @@ async function sealedFile(text = `%PDF-1.7 ${MARKER} ${crypto.randomUUID()}`, re
 const latin1 = (bytes: Uint8Array) => Array.from(bytes, (byte) => String.fromCharCode(byte)).join('')
 const fromLatin1 = (text: string) => Uint8Array.from(text, (char) => char.charCodeAt(0))
 const sha256Of = async (bytes: Uint8Array) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), (byte) => byte.toString(16).padStart(2, '0')).join('')
-const objects = async () => (await bucket.list()).objects.map((object) => object.key).sort()
+const objects = async () => (await db.prepare('SELECT DISTINCT item_id FROM sealed_chunks').raw<[string]>()).map(([id]) => id).sort()
 const objectOf = async (id: string) => {
   const object = await bucket.get(id)
   return object ? new Uint8Array(await object.arrayBuffer()) : null
@@ -5905,6 +5905,7 @@ const upload = (m: Holder, bytes: Uint8Array, options: Options = {}) => call('PO
 interface Item { id: string; org_id: string; kind: string; key_generation: string; key_fingerprint: string; size: number; sha256: string; uploaded_by_seat_id: string | null; kyb_record_id: string | null; created_at: number }
 const itemsOf = async (orgId: string) => (await db.prepare('SELECT * FROM sealed_items WHERE org_id = ? ORDER BY created_at, id').bind(orgId).all<Item>()).results
 import * as onboarding from '../src/server/onboarding.ts'
+const bucket = onboarding.sealedStore(db)
 import signHtml from '../sign/index.html?raw'
 
 describe('E. onboarding: a company applies, proves its domain, is activated and reviewed', () => {
@@ -7444,11 +7445,23 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect(bundle ? await data.sha256Hex(bundle) : '').toBe(PRODUCTION_FINGERPRINT)
   })
 
-  // An env whose bucket runs something just before an object is stored: after the gates of the router, before the commit.
+  // An env that runs something just before the first piece of a file is stored: after the gates of the router, before the commit.
   const storing = (before: () => Promise<unknown>, puts: string[] = []) => ({
     ...testEnv,
-    SEALED: new Proxy(bucket, { get: (target, property) => (property !== 'put' ? (typeof Reflect.get(target, property) === 'function' ? Reflect.get(target, property).bind(target) : Reflect.get(target, property))
-      : async (key: string, value: Uint8Array) => { puts.push(key); await before(); return target.put(key, value) }) }),
+    DB: new Proxy(db, {
+      get(target, property) {
+        const value = Reflect.get(target, property)
+        if (property !== 'prepare') return typeof value === 'function' ? value.bind(target) : value
+        return (sql: string) => {
+          const statement = target.prepare(sql)
+          if (!sql.startsWith('INSERT INTO sealed_chunks')) return statement
+          return { bind: (id: string, n: number, piece: string) => ({
+            // The piece goes as hex text: bytes bound to D1 become an Array of numbers in the Worker (CPU of the Free plan).
+            run: async () => { expect(typeof piece).toBe('string'); if (n === 0) { puts.push(id); await before() } return statement.bind(id, n, piece).run() },
+          }) }
+        }
+      },
+    }),
   }) as unknown as Env
 
   it('B3: the upload is an age file with one hybrid stanza; the Worker stores the ciphertext under a random key and a row with its own SHA-256, and never a clear byte', async () => {
@@ -7552,6 +7565,11 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     const b = await again(a)
     const exact = await upload(b, sized(onboarding.SEAL.maxBytes))
     expect([exact.status, exact.body.size]).toEqual([200, onboarding.SEAL.maxBytes])
+    // In 11 pieces (0024): the hex() of each, as the download reads it, fits D1's 2,000,000 bytes per string (the local
+    // SQLite has no such cap, so it is measured here). And read back whole, byte for byte.
+    const pieces = await row<{ n: number; widest: number }>('SELECT count(*) AS n, max(length(hex(data))) AS widest FROM sealed_chunks WHERE item_id = ?', exact.body.id)
+    expect([pieces?.n, pieces!.widest <= 2_000_000]).toEqual([11, true])
+    expect(await sha256Of((await objectOf(exact.body.id))!)).toBe(exact.body.sha256)
     await bucket.delete(exact.body.id) // 10 MB: not left behind for the other tests
   })
 

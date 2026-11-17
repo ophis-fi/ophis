@@ -25,6 +25,7 @@ import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer, request as httpRequest } from 'node:http'
+import { DatabaseSync } from 'node:sqlite' // the sealed file, read back from the local D1's own SQLite file
 import { Decrypter } from 'age-encryption' // milestone 5b: opens the downloaded file with the local test identity, as the operator would offline
 import { chromium } from 'playwright-core'
 import { mnemonicToAccount } from 'viem/accounts'
@@ -896,8 +897,10 @@ try {
   const stepText = await on.locator('.srow', { hasText: 'Uploaded on' }).innerText()
   const shownSha = /SHA-256 of the sealed file\s+([0-9a-f]{64})/.exec(stepText)?.[1]
   const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex')
-  // The local R2 simulation keeps each object as one file under the state folder.
-  const stored = readdirSync(STATE, { recursive: true }).filter((name) => /r2.*blobs.[^/\\]+$/.test(name)).map((name) => readFileSync(`${STATE}/${name}`))
+  // The local D1 is one SQLite file under the state folder: the sealed file is its pieces in sealed_chunks, in order.
+  const d1 = readdirSync(STATE, { recursive: true }).filter((name) => /D1DatabaseObject.[0-9a-f]+\.sqlite$/.test(name))
+  const pieces = d1.flatMap((name) => new DatabaseSync(`${STATE}/${name}`, { readOnly: true }).prepare('SELECT item_id, data FROM sealed_chunks ORDER BY item_id, n').all())
+  const stored = Object.values(Object.groupBy(pieces, (piece) => piece.item_id)).map((own) => Buffer.concat(own.map((piece) => piece.data)))
   check('what left the browser is the sealed file: the age header, no marker, and neither the name nor the type of the clear file', sent.length === 1 && sent[0].subarray(0, 22).toString('latin1') === 'age-encryption.org/v1\n' && !sent[0].includes(MARKER)
     && around.length === 1 && !/declaration\.pdf|application\/pdf/i.test(around[0] + sent[0].toString('latin1')))
   check('the stored object is that sealed file: it starts with the age header, it does not hold the marker, and the step shows its date, size and SHA-256',

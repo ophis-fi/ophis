@@ -53,6 +53,12 @@ ignore = [
     # signer hosts. Re-checked 2026-11-03; re-review by 2026-12-03 (enforced by the dated OSV --ignore in
     # security.yml); mirrors .cargo/audit.toml. RUSTSEC-2026-0387.
     "RUSTSEC-2026-0387",
+    # chrono (RUSTSEC-2026-0543) and humantime, which wraps it (RUSTSEC-2026-0542): declared
+    # unmaintained on 2026-11-17, all versions; maintenance-only advisories, no vulnerability.
+    # Transitive (chrono 0.4.42, humantime-serde 1.1.1); no maintained drop-in yet.
+    # Reviewed 2026-11-17; remove when the upstreams move off them.
+    "RUSTSEC-2026-0543",
+    "RUSTSEC-2026-0542",
 ]
 
 # ---------------------------------------------------------------------------

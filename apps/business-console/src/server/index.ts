@@ -8,7 +8,7 @@ import * as orders from './orders.ts'
 import * as partner from './partner.ts'
 import { activateIntent, activationIntent, activationProof, apply, applyCheck, DOWNLOAD_REASONS, ofacStale, onboarding, ONBOARDING_EVENTS, operator, OPERATOR, screening, SEAL, sealDeclaration, submit, sync } from './onboarding.ts'
 
-export interface Env { DB: D1Database; ASSETS: Fetcher; SEALED: R2Bucket; ENVIRONMENT: string; CHALLENGE_KEY: string; SEAL_RECIPIENT?: string; INDEXER_URL?: string; INDEXER_TOKEN?: string; SANCTIONS_URL?: string; ORDERBOOK_URL?: string; RPC_URL?: string; TURNSTILE_URL?: string; TURNSTILE_SECRET?: string }
+export interface Env { DB: D1Database; ASSETS: Fetcher; ENVIRONMENT: string; CHALLENGE_KEY: string; SEAL_RECIPIENT?: string; INDEXER_URL?: string; INDEXER_TOKEN?: string; SANCTIONS_URL?: string; ORDERBOOK_URL?: string; RPC_URL?: string; TURNSTILE_URL?: string; TURNSTILE_SECRET?: string }
 
 const IDLE_MS = 15 * 60_000
 const ABSOLUTE_MS = 12 * 60 * 60_000
