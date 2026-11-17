@@ -131,7 +131,7 @@ build passed.
 
 | Required gate                                 | Current status                                                                                                                                                                    |
 | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Trail of Bits differential-review methodology | Pass for the reviewed worktree; no open critical or high finding. See `OPHIS_DIFFERENTIAL_REVIEW_2026-08-17.md`.                                                                  |
+| Trail of Bits differential-review methodology | Pass for the reviewed worktree; no open critical or high finding. See `docs/audits/OPHIS_DIFFERENTIAL_REVIEW_2026-08-17.md`.                                                                  |
 | Verity Lang                                   | Pass for the existing `AllowListGuardian` formal model. The local workspace has no model for these TypeScript-only changes, so it does not prove the wallet, token, or name code. |
 | Pashov Solidity auditor                       | Pass/not applicable for this differential scope: no `.sol` file changed. This is not an approval of TypeScript.                                                                   |
 

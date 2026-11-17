@@ -195,7 +195,7 @@ Page requirements (from spec §Navigation/Browse/Detail/Accessibility):
 - [ ] Append all new/modified frontend files to `apps/frontend/.ophis-divergences.md` under "Added (Ophis-only)".
 - [ ] Full gates from `apps/frontend/`: `pnpm typecheck`, scoped jest suites, `pnpm exec nx run cowswap-frontend:lint` (scoped if slow), `pnpm build:cowswap` (production build must succeed — this is what frontend CI runs).
 - [ ] Visual verification (feedback_verify_ui_visually_before_shipping): `pnpm start` (or vite dev), navigate `/#/otc` locally (isLocal ⇒ mounted), screenshot browse/detail/empty/unavailable states via Playwright/Chrome MCP; check mobile viewport.
-- [ ] Adversarial review workflow on the full diff (correctness / security / spec-compliance / a11y lenses, verify each finding), fix confirmed findings; write `OPHIS_OTC_DIFFERENTIAL_REVIEW_2026-08-19.md` (house template: Date/Baseline/Review target/Deployment: Not authorized).
+- [ ] Adversarial review workflow on the full diff (correctness / security / spec-compliance / a11y lenses, verify each finding), fix confirmed findings; write `docs/audits/OPHIS_OTC_DIFFERENTIAL_REVIEW_2026-08-19.md` (house template: Date/Baseline/Review target/Deployment: Not authorized).
 - [ ] Push branch, open **draft** PR `feat(otc): OTC milestones A+B — pinned manifest, read-only adapter, /otc read-only UI` with template sections + Safety boundaries (PR #1200 style). Do NOT merge.
 
 ## Self-Review

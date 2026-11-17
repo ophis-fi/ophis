@@ -427,7 +427,7 @@ jobs:
           # of agentkit-ophis/plugin-goat; reown appkit) carry the local backport
           # patches/zod@3.*.patch, tested by scripts/test-zod3-security.cjs in CI;
           # osv matches by version and cannot see it. Drop when those SDKs ship
-          # zod 4. Review: audit/dependency-review-2026-11-03.md
+          # zod 4. Review: docs/audits/dependency-review-2026-11-03.md
           python3 scripts/osv-gate.py /tmp/osv-root.json --mode advisories \
             --osv-rc "$rc" --ignore GHSA-3gc7-fjrx-p6mg \
             --ignore GHSA-mrhx-c7xc-m3w5:2026-12-03
@@ -463,7 +463,7 @@ jobs:
           # local backport patches/zod@3.*.patch, tested by
           # scripts/test-zod3-security.cjs in frontend CI; osv cannot see it.
           # Drop when reown and cdp-sdk ship zod 4.
-          # Review: audit/dependency-review-2026-11-03.md
+          # Review: docs/audits/dependency-review-2026-11-03.md
           # braces GHSA-vfj7-8cjw-p6xm was withdrawn by GitHub on 2026-10-23, so its
           # exception is gone; the pnpm braces backport and its regression stay.
 
@@ -524,7 +524,7 @@ jobs:
           # zod 3.22.4/3.25.76 GHSA-mrhx-c7xc-m3w5: patches/zod@3.*.patch.
           # @graphql-tools/utils 8.13.1/9.2.1 GHSA-7mx3-vvmw-hjmv: mergeDeep backport.
           # @libp2p/peer-store 11.2.7 GHSA-vrf4-mx87-p53w: peer-record identity backport.
-          # Review: audit/dependency-review-2026-11-03.md, apps/railgun/DEPENDENCIES.md
+          # Review: docs/audits/dependency-review-2026-11-03.md, apps/railgun/DEPENDENCIES.md
           exceptions=(--ignore GHSA-mrhx-c7xc-m3w5:2026-12-03 --ignore GHSA-7mx3-vvmw-hjmv:2026-12-03)
           if [ "$PROJECT_DIR" = apps/railgun ]; then
             exceptions+=(--ignore GHSA-vrf4-mx87-p53w:2026-12-03)

@@ -65,7 +65,7 @@ The five existing package patches were introduced in security commit `ee010d31`.
 The braces patch moved unchanged to root `patches/` on 2026-10-12 for reuse by docs;
 the accompanying evidence JSON retains its original path and hash.
 The previous braces exception and caller review are recorded in
-[the October 4 assessment](../../../../audit/dependency-review-2026-10-04.md).
+[the October 4 assessment](../../../../docs/audits/dependency-review-2026-10-04.md).
 
 The braces backport follows [contributor PR #72](https://github.com/micromatch/braces/pull/72)
 at `28d440b5dd449dbf1fe6f3506cf94ecca4d02660`. It is **not a released or merged upstream

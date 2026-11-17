@@ -35,7 +35,7 @@ Thanks for contributing to Ophis. Before opening: please skim CONTRIBUTING.md â€
 - [ ] No new attacker-controlled input reaches privileged code
 - [ ] No new signing/approval surface added without justification
 - [ ] Partner-fee math invariants preserved (if touched)
-- [ ] Audit-doc impact noted in `docs/audit/` (if material)
+- [ ] Audit-doc impact noted in `docs/audits/` (if material)
 
 ## Deployment notes
 

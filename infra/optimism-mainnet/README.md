@@ -458,7 +458,7 @@ For PRs touching Solidity, Rust solver code, deploy scripts, or the chain stack:
 
 - **Codex second-opinion review** via `mcp__plugin_second-opinion_codex__codex`. Feed it the diff + the relevant module's existing code for comparison. Get severity-tagged findings, address before merging.
 
-The KyberSwap branch (`feat/kyberswap-solver`) was reviewed this way — see `audit/kyberswap-review-2026-05-13.md`.
+The KyberSwap branch (`feat/kyberswap-solver`) was reviewed this way — see `docs/audits/kyberswap-review-2026-05-13.md`.
 
 ### Monthly (manual, full audit pass)
 
@@ -467,7 +467,7 @@ First Monday of each month:
 - **Slither** full pass — diff the output against the previous month's audit. Any new findings = investigate.
 - **pnpm audit --prod** + **cargo audit** — full advisories list, even non-HIGH
 - **Trail of Bits `building-secure-contracts` checklist** — re-run if any contract changed
-- Regenerate `audit/audit-report-YYYY-MM-DD.md` with the month's status + any new findings
+- Add `docs/audits/audit-report-YYYY-MM-DD.md` with the month's status + any new findings
 - File issues for anything new, link to the audit report
 
 ### Verity formal verification
@@ -494,7 +494,7 @@ Worst-case scenario — a HIGH finding lands on a contract we deployed. Process:
 
 5. **Update infra**: change the contract addresses in `infra/optimism/.env`, `infra/optimism-mainnet/configs/{orderbook,autopilot,driver}.toml`. `./render-configs.sh && docker compose up -d`.
 
-6. **Sunset old contracts**: optional — call `addSolver(0x0)` to brick the old AuthList, or simply leave it dormant. Document in `audit/` which address is current.
+6. **Sunset old contracts**: optional — call `addSolver(0x0)` to brick the old AuthList, or simply leave it dormant. Document in `docs/audits/` which address is current.
 
 This procedure has been rehearsed with the testnet → mainnet migration on 2026-05-13. Process took ~3 hours including the audit + ceremony.
 

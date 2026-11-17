@@ -58,6 +58,10 @@ Echidna properties live in `contracts/echidna/` — extend them when adding new 
 
 ## Branch + PR hygiene
 
+Store dated review reports in `docs/audits/` and add them to its index. Keep
+machine-readable scan baselines in `audit/`. Verify co-author email addresses
+against the contributor's GitHub identity; do not infer them from a display name.
+
 - **Branch names**: `fix/<short-slug>`, `feat/<short-slug>`, `docs/<short-slug>`, `chore/<short-slug>`. Prefix matches the conventional-commit `type:` you'll use in the title.
 - **PR titles**: conventional commits. Example: `fix(driver): close panic in settlement state-machine on recover_owner failure`.
 - **PR scope**: one concern per PR. Test fixes + behavior changes go in separate PRs. Refactor + feature go in separate PRs. Mass renames go alone.
@@ -102,7 +106,8 @@ GitHub Actions runs:
 - `Security CI` — cargo audit + cargo deny + slither + frontend-deps audit
 - `Deploy to Cloudflare Pages` — deploys docs site preview
 
-**Known issue (as of 2026-05-20):** the org GitHub Actions billing is currently failing → CI runners refuse to start → every PR shows red CI in 4-6 seconds. This is a billing issue, not a code issue. PRs are merging on local-test + agent-review until billing is restored.
+The protected `main` branch requires its configured CI checks and applicable
+review gates to pass before merge.
 
 ## Security disclosure
 

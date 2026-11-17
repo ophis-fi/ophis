@@ -13,7 +13,7 @@ The engine 9.9.1, wallet 11.2.0, shared-models 8.2.1, ethers 6.14.3, snarkjs 0.7
 | `zod` 3.25.76 | Uses Ophis's existing oversized-collection backport. Tests resolve the SDK's own `http → fets → zod-to-json-schema → zod` path, then run the shared CJS and ESM security/ordinary-behavior regressions. No incompatible zod 4 override is added to v3 consumers. |
 | `vitest` | 4.1.12 replaces 4.1.11 and its affected mocker; this changes test tooling, not the production signing/proof SDK. |
 | `elliptic` 6.6.1 | Retains the existing nonce-byte-length backport; the version-only LOW advisory remains. |
-| `minimatch` 5.1.9 | Retains the previously reviewed MODERATE advisory disposition in `audit/dependency-review-2026-11-03.md`: this release lacks the advisory's amplification implementation. It is not excluded by the HIGH/CRITICAL gate. |
+| `minimatch` 5.1.9 | Retains the previously reviewed MODERATE advisory disposition in `docs/audits/dependency-review-2026-11-03.md`: this release lacks the advisory's amplification implementation. It is not excluded by the HIGH/CRITICAL gate. |
 
 Fresh OSV results retain three HIGH version matches: GraphQL-utils 8.13.1 and 9.2.1 (GHSA-7mx3-vvmw-hjmv) and zod 3.25.76 (GHSA-mrhx-c7xc-m3w5). All three are patched and exercised through their actual consumers. The gate exceptions expire on **3 December 2026**; the workflow additionally rejects an ignored advisory on any package/version not registered in that project's `patchedDependencies`. Review or remove the exceptions before expiry and after any SDK, GraphQL or bundler change.
 
