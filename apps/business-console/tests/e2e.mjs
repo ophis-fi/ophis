@@ -166,7 +166,7 @@ try {
     page.on('request', (request) => request.url().startsWith(`${ORIGIN}/`) || (request.frame().url().startsWith(`${ORIGIN}/recover`) && request.url().startsWith('http://127.0.0.1:8796/turnstile/')) || foreign.push(request.url()))
     return { context, page, devtools, authenticatorId }
   }
-  const FOOTER = 'Ophis is a software provider. It is not a crypto-asset service provider.'
+  const FOOTER = 'Ophis © 2026'
   const { context, page, devtools, authenticatorId } = await person()
   const status = (path, on = page) => on.evaluate((url) => fetch(url).then((response) => response.status), path)
   const sessionCookie = async () => (await context.cookies()).find((c) => c.name === '__Host-session')
@@ -483,7 +483,7 @@ try {
   await bo.page.getByRole('button', { name: 'Review' }).click()
   check('the second person sees what will change in plain words before approving', await bo.page.getByText('Unfreezes the seat of Ada Viewer (Viewer).').isVisible() && await bo.page.getByText('Requested by Maren Okafor (Owner)').first().isVisible() && await both(bo.page, '12-approvals'))
   await bo.page.getByRole('button', { name: 'Approve' }).click()
-  await bo.page.getByText('Nothing waits.').waitFor()
+  await bo.page.getByRole('button', { name: 'Approve' }).first().waitFor({ state: 'detached' }) // the request left Approvals
   check('two people unfroze the seat', await bo.page.getByRole('row', { name: /Ada Viewer.*Active/ }).first().isVisible())
 
   // The Admin asks for a role change of the Viewer; an Owner approves it.
@@ -496,7 +496,7 @@ try {
   await arrive(owner, false)
   check('the Owner is shown the change in plain words', await page.getByText('Changes the role of Ada Viewer from Viewer to Trader.').isVisible() && await page.getByText('Requested by Cy Admin (Admin)').isVisible())
   await page.getByRole('button', { name: 'Approve' }).click()
-  await page.getByText('Nothing waits.').waitFor()
+  await page.getByRole('button', { name: 'Approve' }).first().waitFor({ state: 'detached' }) // the request left Approvals
   check('the Owner approved it: the Viewer is a Trader', await page.getByRole('row', { name: /Ada Viewer.*Trader/ }).first().isVisible())
 
   // The audit log: rows in plain words, the chain state, and the export.
@@ -581,8 +581,8 @@ try {
     ['Link this wallet to this organisation', 'localhost', 'OP Mainnet (chain id 10)', key.address, 'UTC'].every((text) => shown.includes(text)) && /[0-9a-f]{32}/.test(shown))
   check('the signing page carries the footer line and fits a phone', await signing.locator(".foot-line", { hasText: FOOTER }).isVisible() && await both(signing, '16-signing-page'))
   const at = (url, on) => on.evaluate((target) => fetch(target).then((response) => response.status, () => 0), url)
-  check('the signing host serves no console page and no console route; the console host serves no signing page',
-    (await at('/', signing)) === 404 && (await at('/api/me', signing)) === 404 && (await at('/assets/', signing)) === 404 && (await status('/sign/')) === 404 && (await status('/sign/manifest.json')) === 404)
+  check('the signing host serves no console page and no console route, its own name opens the signing page; the console host serves no signing page',
+    (await at('/index.html', signing)) === 404 && (await signing.evaluate(() => fetch('/').then((response) => new URL(response.url).pathname))) === '/sign/' && (await at('/api/me', signing)) === 404 && (await at('/assets/', signing)) === 404 && (await status('/sign/')) === 404 && (await status('/sign/manifest.json')) === 404)
   const manifest = await signing.evaluate(() => fetch('/sign/manifest.json').then(async (response) => ({ grant: response.headers.get('access-control-allow-origin'), ...(await response.json()) })))
   check('the manifest for the Safe interface is there, readable from any origin', manifest.grant === '*' && manifest.iconPath === 'icon.svg' && manifest.name.startsWith('Ophis Business'))
   check('no cookie of the console exists on the signing host', (await holder.cookies()).length === 0 && (await signing.evaluate(() => document.cookie)) === '')
@@ -605,7 +605,7 @@ try {
   check('the second person reads what the link does, in plain words, before approving',
     await bo.page.getByText(`Links the wallet Custody wallet (${key.address} on OP Mainnet, Custodian wallet (declared, not checked by Ophis)) to the organisation.`).isVisible() && await both(bo.page, '18-approve-wallet'))
   await bo.page.getByRole('button', { name: 'Approve' }).click()
-  await bo.page.getByText('Nothing waits.').waitFor()
+  await bo.page.getByRole('button', { name: 'Approve' }).first().waitFor({ state: 'detached' }) // the request left Approvals
   check('two people linked the wallet', await bo.page.getByRole('row', { name: /Custody wallet.*Linked/ }).isVisible())
 
   // The recovery wallet: one Owner asks, the other approves; in force 72 hours later.
@@ -619,7 +619,7 @@ try {
   await arrive(bo, false)
   check('the second person reads what the recovery wallet is before approving', await bo.page.getByText('It is in force 72 hours after the approval.').first().isVisible())
   await bo.page.getByRole('button', { name: 'Approve' }).click()
-  await bo.page.getByText('Nothing waits.').waitFor()
+  await bo.page.getByRole('button', { name: 'Approve' }).first().waitFor({ state: 'detached' }) // the request left Approvals
   check('the wallet carries the "Recovery wallet" badge with the date it is in force, and an Owner can still cancel',
     await bo.page.getByRole('row', { name: /Custody wallet.*Linked.*Recovery wallet.*In force from \d{4}-\d\d-\d\d \d\d:\d\d UTC/ }).isVisible()
       && await bo.page.locator('#wallets .table-wrap').evaluate((wrap) => wrap.scrollWidth <= wrap.clientWidth) // at 1440 the whole row shows, Manage included
@@ -931,7 +931,7 @@ try {
   const paper = on.locator('article.sheet')
   const paperText = await paper.innerText()
   check('the declaration holds the server\'s values, a line for the signatory and the sentence that the signatory may bind the company; nothing on it can be typed',
-    ['Alder Custody S.A.', domain, key.address, 'OP Mainnet', `Ben Okoro, Head of Treasury, Admin, ben@${domain}`, 'Registered address', '2 rue de la Gare, L-1611 Luxembourg', '5493001KJTIIGC8Y1R12', 'Ada Applicant, Chief Executive Officer', 'each person named above acts for the company', 'Name of the signatory', 'Role', 'Date', 'Signature', 'the undersigned may bind the company', FOOTER].every((text) => paperText.includes(text))
+    ['Alder Custody S.A.', domain, key.address, 'OP Mainnet', `Ben Okoro, Head of Treasury, Admin, ben@${domain}`, 'Registered address', '2 rue de la Gare, L-1611 Luxembourg', '5493001KJTIIGC8Y1R12', 'Ada Applicant, Chief Executive Officer', 'each person named above acts for the company', 'Name of the signatory', 'Role', 'Date', 'Signature', 'the undersigned may bind the company', 'Ophis is a software provider. It is not a crypto-asset service provider.'].every((text) => paperText.includes(text))
       && /[0-9a-f]{64}/.test(paperText) && (await paper.locator('input, textarea, select, button, [contenteditable]').count()) === 0)
   await on.emulateMedia({ media: 'print' })
   check('printed, the declaration stands alone', await paper.isVisible() && await on.getByRole('button', { name: 'Print the declaration' }).isHidden() && await on.locator('.bar').isHidden() && await on.locator('.band').isHidden() && await on.getByRole('button', { name: 'Submit for review' }).isHidden())

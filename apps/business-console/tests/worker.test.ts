@@ -4193,7 +4193,7 @@ describe('y. wallets and the recovery wallet', () => {
   it('the console holds no wallet code: its built bundle and its sources never name viem, the Safe SDK or a wallet call', () => {
     const bundle = Object.values(builtConsole).join('\n')
     expect(bundle.length, 'build the app first: pnpm build').toBeGreaterThan(50_000)
-    expect(bundle).toContain('Ophis is a software provider')
+    expect(bundle).toContain('Ophis © 2026')
     for (const mark of ['eth_signTypedData', 'eth_requestAccounts', 'wallet_switchEthereumChain', 'safe-apps-sdk', 'getOffChainSignature', 'secp256k1', 'isValidSignature', 'EIP712Domain']) expect(bundle, mark).not.toContain(mark)
     // The signing page does hold it, and nothing of the console's session.
     const page = Object.values(signSource).join('\n')
@@ -9418,7 +9418,7 @@ describe('H. the institution: overview from its wallets and orders, the desk and
     expect(pagesSource).toContain('<dt>Settle from</dt><dd>{order.terms.label}, <span className="mono">{order.terms.wallet}</span></dd>')
     // No example figure is left: no banner, no example tag, no example table. The footer line is the shell's, so it is on every screen.
     expect(deskPage + uiSource + demoSource).not.toMatch(/Banner|Example|Illustrative|totalEur|example wallets/)
-    expect(shellPage).toContain('<footer className="foot-line">Ophis is a software provider. It is not a crypto-asset service provider.</footer>')
+    expect(shellPage).toContain('<footer className="foot-line">Ophis © 2026</footer>')
     expect(shellPage).not.toMatch(/Later/)
   })
 })
