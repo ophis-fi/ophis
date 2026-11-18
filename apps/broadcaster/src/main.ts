@@ -68,7 +68,7 @@ async function run(): Promise<void> {
   let waku: WakuRelay | undefined
   let lock: ReturnType<typeof LevelDOWN> | undefined
   let server: ReturnType<typeof createServer> | undefined
-  let reconcile: Promise<void> | undefined
+  let reconcile: Promise<void> | undefined, refresh: Promise<void> | undefined
   let stopping = false
   const abort = new AbortController()
   const stop = () => { stopping = true; abort.abort() }
@@ -302,33 +302,33 @@ async function run(): Promise<void> {
     let lastRefresh = 0, failures = 0, syncReported = false
     while (!stopping) {
       assertDisk(config.state)
-      try {
-        try {
-          if (Date.now() - lastRefresh >= 30_000) {
-            lastRefresh = Date.now()
-            if (command === 'run' && !reconcile) reconcile = broadcaster.reconcile()
-              .catch(() => { metrics.errors++ }).finally(() => { reconcile = undefined })
-            metrics.ready = command === 'run' ? false : await broadcaster.available()
-            if (sdk.ready()) {
-              metrics.feeBalances = await sdk.balances(); metrics.feeBalancesAt = Date.now()
-              if (command === 'sync' && !syncReported) {
-                const credit = initializeCredit ? await broadcaster.creditInfo() : undefined
-                console.log(JSON.stringify({ ...identity, status: initializeCredit ? 'credit-ledger-ready' : 'sync-ready',
-                  feeIdentity: sdk.address, credit, signingEnabled: false, fundsTransferred: false }))
-                syncReported = true
-              }
-            }
-            else { delete metrics.feeBalances; delete metrics.feeBalancesAt }
-            if (command === 'run' && sdk.ready()) {
-              const advertisement = await broadcaster.feeAdvertisement()
-              await waku!.publish(TOPICS.fees, advertisement.message)
-              metrics.ready = advertisement.available
+      if (Date.now() - lastRefresh >= 30_000) {
+        lastRefresh = Date.now()
+        if (command === 'run' && !reconcile) reconcile = broadcaster.reconcile()
+          .catch(() => { metrics.errors++ }).finally(() => { reconcile = undefined })
+        // Slow balance/fee requests must not delay relay polling or receipt reconciliation.
+        if (!refresh) refresh = (async () => {
+          metrics.ready = command === 'run' ? false : await broadcaster.available()
+          if (sdk.ready()) {
+            metrics.feeBalances = await sdk.balances(); metrics.feeBalancesAt = Date.now()
+            if (command === 'sync' && !syncReported) {
+              const credit = initializeCredit ? await broadcaster.creditInfo() : undefined
+              console.log(JSON.stringify({ ...identity, status: initializeCredit ? 'credit-ledger-ready' : 'sync-ready',
+                feeIdentity: sdk.address, credit, signingEnabled: false, fundsTransferred: false }))
+              syncReported = true
             }
           }
-        } finally {
-          // Each handler enforces admission and fresh chain state independently of fee advertisements.
-          if (command === 'run') await waku!.dispatch(payload => broadcaster.handle(payload), abort.signal)
-        }
+          else { delete metrics.feeBalances; delete metrics.feeBalancesAt }
+          if (command === 'run' && sdk.ready()) {
+            const advertisement = await broadcaster.feeAdvertisement()
+            await waku!.publish(TOPICS.fees, advertisement.message)
+            metrics.ready = advertisement.available && failures === 0
+          }
+        })().catch(() => { metrics.errors++; metrics.ready = false }).finally(() => { refresh = undefined })
+      }
+      try {
+        // Each handler enforces admission and fresh chain state independently of fee advertisements.
+        if (command === 'run') await waku!.dispatch(payload => broadcaster.handle(payload), abort.signal)
         failures = 0
       } catch { metrics.errors++; metrics.ready = false; failures++ }
       await delay(Math.min(30_000, 1000 * 2 ** Math.min(failures, 5)))
@@ -336,6 +336,7 @@ async function run(): Promise<void> {
   } finally {
     process.off('SIGINT', stop); process.off('SIGTERM', stop)
     if (server?.listening) await new Promise<void>((resolve) => server!.close(() => resolve()))
+    await refresh
     await reconcile
     try { await sdk?.stop() } finally {
       sender?.destroy(); provider.destroy(); store?.close()
