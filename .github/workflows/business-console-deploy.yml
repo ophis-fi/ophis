@@ -15,10 +15,14 @@ on:
     branches: [main]
     paths:
       - 'apps/business-console/**'
+      - 'patches/picomatch@*.patch'
+      - 'scripts/test-picomatch-security.cjs'
       - '.github/workflows/business-console-deploy.yml'
   pull_request:
     paths:
       - 'apps/business-console/**'
+      - 'patches/picomatch@*.patch'
+      - 'scripts/test-picomatch-security.cjs'
       - '.github/workflows/business-console-deploy.yml'
 
 permissions:
@@ -48,6 +52,7 @@ jobs:
 
       # The app has its own lockfile (--ignore-workspace). --ignore-scripts: the deploy step below carries the token.
       - run: pnpm install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - run: node ../../scripts/test-picomatch-security.cjs .
 
       - run: pnpm typecheck
       # Builds dist/ (console + signing page), then the unit tests.

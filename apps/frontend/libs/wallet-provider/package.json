@@ -39,10 +39,15 @@
   },
   "dependencies": {
     "@cowprotocol/common-const": "workspace:*",
+    "@cowprotocol/common-utils": "workspace:*",
     "@ethersproject/providers": "5.7.0",
     "@web3-react/core": "^8.2.3",
     "ethers": "5.7.2",
+    "react": "19.1.2",
     "viem": "^2.42.1",
     "wagmi": "^3.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.3"
   }
 }

@@ -14,7 +14,7 @@ All 14 were probed over HTTPS. Cloudflare authentication was expired, so complet
 rests on owner confirmation and repository discovery, not an authenticated DNS export.
 Nine historical/test hostnames found in repository history did not resolve.
 
-[URL coverage](./website-coverage-2026-10-04.csv) records 66 discovered HTML URLs and
+[URL coverage](../../audit/website-coverage-2026-10-04.csv) records 66 discovered HTML URLs and
 56 app-route examples, each visited at 1440×1000 and 390×844. These groups overlap;
 they are not 122 distinct page templates. The static crawl fetched 134 resources
 including slash variants, API roots, sitemaps and discovery documents. No discovered

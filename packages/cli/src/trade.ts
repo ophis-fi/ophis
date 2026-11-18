@@ -20,6 +20,8 @@ import {
   type TransactionReceipt,
 } from 'viem'
 import {
+  appendOphisBaseBuilderCode,
+  OPHIS_BASE_DATA_SUFFIX,
   buildOphisFullAppData,
   buildOrder,
   enrollOphisTrader,
@@ -504,12 +506,13 @@ export async function checkFunds(t: Funding): Promise<Prep> {
   if (await waiting(client, t.owner)) throw new UserError('A transaction from this wallet is still waiting to confirm. Try again once it is through.')
 
   try {
+    const dataSuffix = t.net.id === 8453 ? OPHIS_BASE_DATA_SUFFIX : undefined
     if (prep.wrap) {
-      prep.gas.wrap = plus20(await client.estimateContractGas({ account: t.owner, address: t.pay.address, abi: WRAPPED_ABI, functionName: 'deposit', value: t.atoms }))
+      prep.gas.wrap = plus20(await client.estimateContractGas({ account: t.owner, address: t.pay.address, abi: WRAPPED_ABI, functionName: 'deposit', value: t.atoms, dataSuffix }))
     }
     if (prep.approve) {
       const estimate = (value: bigint) =>
-        client.estimateContractGas({ account: t.owner, address: t.pay.address, abi: erc20Abi, functionName: 'approve', args: [spender, value] })
+        client.estimateContractGas({ account: t.owner, address: t.pay.address, abi: erc20Abi, functionName: 'approve', args: [spender, value], dataSuffix })
       const direct = await estimate(prep.approve).catch(() => null)
       if (direct === null && allowance === 0n) throw new UserError(`${t.pay.symbol} refuses the approval (it may be paused or block Ophis). Nothing was sent.`)
       prep.resetFirst = direct === null // some tokens refuse to change a non-zero approval
@@ -519,7 +522,7 @@ export async function checkFunds(t: Funding): Promise<Prep> {
     }
     prep.fees = await feesNow(client)
     const txs = (prep.wrap ? 1n : 0n) + (prep.approve ? (prep.resetFirst ? 2n : 1n) : 0n)
-    const l1 = txs * (await l1Fee(client, t.net, 200n))
+    const l1 = txs * (await l1Fee(client, t.net, 200n + BigInt(dataSuffix ? (dataSuffix.length - 2) / 2 : 0)))
     const perGas = 'gasPrice' in prep.fees ? prep.fees.gasPrice : prep.fees.maxFeePerGas
     prep.maxFee = (prep.gas.wrap + prep.gas.approve * (prep.resetFirst ? 2n : 1n)) * perGas + l1
   } catch (err) {
@@ -550,6 +553,7 @@ export async function checkFunds(t: Funding): Promise<Prep> {
  * wallet sees it.
  */
 export async function priceTx(net: Network, owner: Address, tx: TxRequest): Promise<{ gas: bigint; fees: Fees; maxFee: bigint; feeText: string }> {
+  tx = { ...tx, ...(tx.data ? { data: appendOphisBaseBuilderCode(tx.data, net.id) } : {}) }
   const client = reader(net)
   if ((await client.getChainId()) !== net.id) throw new UserError('The RPC answers for a different chain. Check --rpc.')
   if (await waiting(client, owner)) throw new UserError('A transaction from this wallet is still waiting to confirm. Try again once it is through.')
@@ -607,6 +611,7 @@ export async function fund(t: Funding, prep: Prep, signer: Signer): Promise<void
  * receipt. Checked again before each one: the user may have waited, or started another one meanwhile.
  */
 export async function sendTx(net: Network, signer: Signer, fees: Fees, label: string, tx: TxRequest, client: Client = reader(net), onPending?: (pending: boolean) => void): Promise<TransactionReceipt> {
+  tx = { ...tx, ...(tx.data ? { data: appendOphisBaseBuilderCode(tx.data, net.id) } : {}) }
   if (await waiting(client, signer.address)) throw new UserError('Another transaction from this wallet is waiting to confirm, so the next one was not sent.')
   if ('maxFeePerGas' in fees) {
     const base = (await client.getBlock()).baseFeePerGas ?? 0n

@@ -90,9 +90,9 @@ impl Transaction {
         /// auction id.
         const META_DATA_LEN: usize = 8;
 
-        let (data, metadata) = calldata.0.split_at(
+        let calldata = shared::builder_attribution::without_attribution(&calldata.0);
+        let (data, metadata) = calldata.split_at(
             calldata
-                .0
                 .len()
                 .checked_sub(META_DATA_LEN)
                 // should contain at META_DATA_LEN bytes for auction id

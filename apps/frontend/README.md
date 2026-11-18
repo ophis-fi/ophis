@@ -21,7 +21,7 @@ providing MEV protection.
 
 # 🐮 Run CoW Swap
 
-First install Dependencies:
+Use Node.js 22.23.4 or newer (`nvm use` in this directory), then install dependencies:
 
 ```bash
 pnpm install

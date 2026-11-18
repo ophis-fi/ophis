@@ -156,6 +156,17 @@ impl Mempools {
         let tx = settlement.transaction(settlement::Internalization::Enable);
         let tx = prepare_submission(tx, mode);
         let signer = tx.from;
+        if matches!(mode, SubmissionMode::Delegated { .. })
+            && tx
+                .input
+                .ends_with(&shared::builder_attribution::SETTLEMENT_SUFFIX)
+        {
+            // The outer forward call is built after the competition's gas estimate.
+            validate_attributed_delegation_gas(
+                self.ethereum.estimate_gas(tx.clone()).await,
+                settlement.gas.limit,
+            )?;
+        }
 
         // Instantiate block stream and skip the current block before we submit the
         // settlement. This way we only run iterations in blocks that can potentially
@@ -972,6 +983,84 @@ fn check_cap(estimate: Eip1559Estimation, cap: eth::U256) -> Option<(eth::U256, 
 mod tests {
     use {super::*, alloy::eips::eip1559::Eip1559Estimation};
 
+    #[test]
+    fn delegated_submission_preserves_outer_attribution_and_inner_call() {
+        let mut settlement = vec![0x13, 0xd7, 0x9a, 0x0b];
+        settlement.extend_from_slice(&7u64.to_be_bytes());
+        let flashloan = contracts::FlashLoanRouter::FlashLoanRouter::flashLoanAndSettleCall {
+            loans: vec![],
+            settlement: settlement.clone().into(),
+        }
+        .abi_encode();
+        for (mut calldata, attributed) in [
+            (settlement.clone(), false),
+            (settlement, true),
+            (flashloan.clone(), false),
+            (flashloan, true),
+        ] {
+            if attributed {
+                shared::builder_attribution::append_to_settlement(&mut calldata, 10);
+            }
+            let original = eth::Tx {
+                from: eth::Address::repeat_byte(1),
+                to: eth::Address::repeat_byte(2),
+                input: calldata.into(),
+                value: eth::Ether(eth::U256::ZERO),
+                access_list: Default::default(),
+            };
+            let direct = prepare_submission(&original, &SubmissionMode::Direct(original.from));
+            assert_eq!(direct.input, original.input);
+            let submitter = eth::Address::repeat_byte(3);
+            let delegated = prepare_submission(
+                &original,
+                &SubmissionMode::Delegated {
+                    submitter_eoa: submitter,
+                    solver_eoa: original.from,
+                },
+            );
+            assert_eq!(delegated.from, submitter);
+            assert_eq!(delegated.to, original.from);
+            assert_eq!(delegated.value, original.value);
+            assert_eq!(
+                delegated
+                    .input
+                    .ends_with(&shared::builder_attribution::SETTLEMENT_SUFFIX),
+                attributed
+            );
+            let decoded = CowSettlementForwarder::forwardCall::abi_decode(
+                shared::builder_attribution::without_attribution(&delegated.input),
+            )
+            .unwrap();
+            assert_eq!(decoded.target, original.to);
+            assert_eq!(decoded.data, original.input);
+        }
+    }
+
+    #[test]
+    fn attributed_delegation_requires_successful_estimation_within_the_cap() {
+        let limit = eth::Gas(eth::U256::from(100_000u64));
+        assert!(validate_attributed_delegation_gas(Ok(limit), limit).is_ok());
+        assert!(
+            validate_attributed_delegation_gas(Ok(eth::Gas(eth::U256::from(100_001u64))), limit).is_err()
+        );
+        assert!(
+            validate_attributed_delegation_gas(
+                Err(blockchain::Error::AccessList("execution reverted".into())),
+                limit,
+            )
+            .is_err()
+        );
+        assert!(
+            validate_attributed_delegation_gas(
+                Err(blockchain::Error::Rpc(
+                    alloy::transports::TransportErrorKind::custom_str("RPC unavailable")
+                )),
+                limit,
+            )
+            .is_err()
+        );
+    }
+
     #[tokio::test]
     async fn lanes_share_signer_lock_including_delegated_accounts() {
         let first_lane = SubmissionLocks::default();
@@ -1356,15 +1445,34 @@ fn prepare_submission(tx: &eth::Tx, mode: &SubmissionMode) -> eth::Tx {
             let original_target = tx.to;
             tx.from = *submitter_eoa;
             tx.to = *solver_eoa;
-            tx.input = CowSettlementForwarder::forwardCall {
+            let attributed = tx
+                .input
+                .ends_with(&shared::builder_attribution::SETTLEMENT_SUFFIX);
+            let mut input = CowSettlementForwarder::forwardCall {
                 target: original_target,
                 data: tx.input.clone(),
             }
-            .abi_encode()
-            .into();
+            .abi_encode();
+            if attributed {
+                input.extend_from_slice(&shared::builder_attribution::SETTLEMENT_SUFFIX);
+            }
+            tx.input = input.into();
             tx
         }
     }
+}
+
+fn validate_attributed_delegation_gas(
+    estimate: Result<eth::Gas, blockchain::Error>,
+    limit: eth::Gas,
+) -> Result<(), Error> {
+    let gas = estimate.context("attributed delegated settlement preflight failed")?;
+    if gas > limit {
+        return Err(
+            anyhow::anyhow!("attributed delegated settlement exceeds reviewed gas limit").into(),
+        );
+    }
+    Ok(())
 }
 
 pub struct SubmissionSuccess {

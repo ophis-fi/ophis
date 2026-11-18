@@ -1,0 +1,15 @@
+--- a/lib/parse.js
++++ b/lib/parse.js
+@@ -511,7 +511,11 @@
+     const body = input.slice(token.startIndex + 2, state.index);
+     const analysis = analyzeRepeatedExtglob(body, opts);
+
+-    if ((token.type === 'plus' || token.type === 'star') && analysis.risky) {
++    // Repeating a wildcard also backtracks exponentially with only one branch.
++    const repeatsWildcard = tokens.slice(token.tokensIndex + 1)
++      .some(inner => (inner.type === 'star' || inner.type === 'globstar') && inner.value !== '');
++
++    if ((token.type === 'plus' || token.type === 'star') && (analysis.risky || repeatsWildcard)) {
+       const safeOutput = analysis.safeOutput
+         ? (token.output ? '' : ONE_CHAR) + (opts.capture ? `(${analysis.safeOutput})` : analysis.safeOutput)
+         : undefined;

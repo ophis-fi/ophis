@@ -16,7 +16,11 @@ const { updated } = canonicalPage('/security/')
 const FAQS = [
   {
     q: 'Is Ophis custodial?',
-    a: `Signing keys stay with the trader or agent. Standard signed ERC-20 orders keep funds in the wallet until settlement. Native-token orders, bridge routes and optional external OTC escrow can require deposits and gas, with separate recovery rules. Review each wallet authorization.`,
+    a: `Signing keys stay with the trader or agent. Standard signed ERC-20 orders keep funds in the wallet until settlement. Native-token orders, bridge routes and optional external OTC escrow can require deposits and gas, with separate recovery rules. Private-mode assets use a separate shielded wallet. Its prepaid broadcaster gas credit is custodial: the operator holds it, and unused credit refunds depend on the operator's signing service and minimum refund limits. Review each wallet authorization.`,
+  },
+  {
+    q: 'Can anyone settle orders or use every Ophis service?',
+    a: `Ophis-operated batch settlement requires an authorized solver. Optimism and Unichain use 24-hour timelocks for allowlist administration, with immediate solver removal; Robinhood Chain and Arc use direct multisig control. Hosted APIs and private services have their own screening and availability dependencies. The Business console separately requires an invitation and operator review; its company checks do not apply to every retail swap. See the security documentation for the dated governance evidence and each service's scope.`,
   },
   {
     q: 'Is Ophis audited?',
@@ -39,7 +43,7 @@ const FAQS = [
 
 <ContentPage
   title="Security | Ophis"
-  description="How Ophis handles security: non-custodial EIP-712 intents, per-chain settlement deployments and scoped reviews, qualified MEV protection, agent safety rules, and vulnerability disclosure."
+  description="Ophis wallet authorization, custodial gas-credit limits, solver governance, scoped security reviews, MEV protection and vulnerability disclosure."
   path="/security/"
   heading="Security"
   lede="Wallet-authorized trading with signed execution limits. Understand the differences between offchain orders, deposits and bridge routes, and the scope of security reviews."

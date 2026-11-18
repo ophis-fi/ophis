@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path'
 
 const allowed = ['apps/broadcaster/package.json', 'apps/broadcaster/pnpm-lock.yaml',
   'apps/broadcaster/.npmrc', 'apps/broadcaster/dist/main.mjs', 'apps/railgun/patches/allowed.patch',
-  'patches/elliptic@6.6.1.patch', 'patches/zod@3.25.76.patch']
+  'patches/zod@3.25.76.patch', 'patches/picomatch@2.3.2.patch', 'patches/picomatch@4.0.7.patch']
 const denied = ['apps/broadcaster/.env.context-canary', 'apps/broadcaster/data/context-canary',
   'apps/broadcaster/node_modules/context-canary', 'apps/broadcaster/dist/main.mjs.map',
   'apps/railgun/patches/context-canary', 'apps/unrelated/context-canary', 'patches/context-canary']

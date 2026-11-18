@@ -29,6 +29,44 @@ Concretely, it is responsible for "cutting" new auctions (i.e. determining aucti
 
 The `autopilot` connects to the same PostgreSQL database as the `orderbook` and uses it to query orders as well as storing the most recent auction and settlement competition.
 
+## Ophis settlement attribution
+
+The driver appends ERC-8021 attribution for `bc_8j4gt5x6` to settlement
+transactions on Optimism (10), Robinhood Chain (4663) and Arc (5042). Other
+chains, including Unichain, retain their existing settlement format.
+
+The 52-byte schema-1 suffix explicitly references Base (8453) and registry
+`0x000000BC7E6457e610fe52Dcc0ca5b3ce59C8E80`, as specified by the
+[Base deployment source](https://github.com/base/builder-codes/blob/f4c883a43074a726b90f21ffe08504d342fd969d/script/DeployBuilderCodes.s.sol#L48)
+and [ERC-8021 cross-chain registry format](https://raw.githubusercontent.com/ethereum/ERCs/refs/pull/1209/head/ERCS/erc-8021.md).
+This differs from the smaller schema-0 suffix used by the Base frontend and CLI.
+The driver adds the suffix before settlement simulation and gas estimation.
+Flashloan and delegated submissions retain attribution on the outer call;
+nested execution payloads remain intact. Delegated submissions additionally
+require successful estimation of the final outer calldata within the existing
+gas limit, including when using private mempools.
+
+**Rollout requirements:**
+
+1. Verify the code's registration and intended identity in the referenced
+   registry before deployment. On 2026-11-17, two Base RPC endpoints returned
+   `isRegistered("bc_8j4gt5x6") = false` at block 58606825 in this verified
+   deployment. That does not establish the code's status in Base Dashboard or
+   any other registry. Dashboard recognition and rewards on other chains are
+   unverified; calldata tags alone do not establish either.
+2. Deploy the suffix-aware autopilot indexer before deploying the new driver.
+   It strips the exact recognized suffix before reading the auction ID and
+   continues to accept historical untagged settlements. No contract or database
+   migration is required.
+3. Verify a normal settlement's final calldata suffix, receipt and indexed
+   auction association on each chain. During rollback, roll back the driver
+   first; retain the updated indexer until all attributed transactions are
+   indexed, and for any replay of that history.
+
+Local end-to-end regressions run swaps on isolated Anvil chains 10, 4663 and
+5042, then verify the mined suffix and auction indexing. They do not broadcast
+to production networks or prove external attribution recognition.
+
 ## Other Crates
 
 There are additional crates that live in the cargo workspace.

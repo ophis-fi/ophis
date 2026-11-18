@@ -24,6 +24,8 @@ on:
       - 'patches/deepmerge@4.3.1.patch'
       - 'scripts/test-deepmerge-security.cjs'
       - 'scripts/test-dependency-advisories.cjs'
+      - 'patches/picomatch@*.patch'
+      - 'scripts/test-picomatch-security.cjs'
       - 'scripts/check-published-agent-docs.mjs'
       - '.github/workflows/docs-deploy.yml'
   # Package releases are intentionally separate protected-tag workflows. A
@@ -45,6 +47,8 @@ on:
       - 'patches/braces@3.0.3.patch'
       - 'patches/deepmerge@4.3.1.patch'
       - '.github/workflows/docs-deploy.yml'
+      - 'patches/picomatch@*.patch'
+      - 'scripts/test-picomatch-security.cjs'
 
 permissions:
   contents: read
@@ -81,6 +85,8 @@ jobs:
       - name: install docs deps
         working-directory: apps/docs-ophis
         run: pnpm install --frozen-lockfile
+
+      - run: node scripts/test-picomatch-security.cjs apps/docs-ophis
 
       - name: build docs
         working-directory: apps/docs-ophis
@@ -120,6 +126,8 @@ jobs:
       - name: install docs deps
         working-directory: apps/docs-ophis
         run: pnpm install --frozen-lockfile
+
+      - run: node scripts/test-picomatch-security.cjs apps/docs-ophis
 
       - name: dependency security regression
         run: |

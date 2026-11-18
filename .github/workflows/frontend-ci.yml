@@ -83,6 +83,8 @@ jobs:
       - name: dependency security regressions
         run: |
           node scripts/test-security-dependencies.cjs --workspace frontend
+          node scripts/test-picomatch-security.cjs apps/frontend
+          node apps/frontend/scripts/test-minimatch-security.cjs apps/frontend
           node scripts/test-dependency-advisories.cjs apps/frontend
           node scripts/test-http-cache-semantics.cjs apps/frontend
           node apps/frontend/scripts/test-advisory-remediation.cjs
@@ -113,6 +115,12 @@ jobs:
           pnpm exec nx run multicall:test --testPathPatterns 'useMultiCallRpcProvider.test' --passWithNoTests=false --runInBand
           pnpm exec nx run cowswap-frontend:test --testPathPatterns 'arcBridge.test|ophisBridgeProviders.test|ophisBridgeChains.test|getQuoteCurrency/arc.test|useMenuItems.arc.test|getTwapFormState.test|TwapConfirmModal/unsupportedChain.test' --passWithNoTests=false --runInBand
           pnpm exec nx run explorer:test --testPathPatterns 'cowSdk.arc.test' --passWithNoTests=false --runInBand
+
+      - name: Base builder attribution and wallet regressions
+        working-directory: apps/frontend
+        run: |
+          pnpm exec nx run wallet-provider:test --testPathPatterns 'baseBuilderCode.*test' --passWithNoTests=false --runInBand
+          pnpm exec nx run cowswap-frontend:test --testPathPatterns 'cowSdk.utils.test|useBatchPresign.test|useApproveCallback|useWrapCallback' --passWithNoTests=false --runInBand
 
       - name: CCTP transfer, recovery and polling regressions
         working-directory: apps/frontend

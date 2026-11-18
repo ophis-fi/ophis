@@ -16,7 +16,7 @@
     "picomatch@4.0.5 GHSA-fc5q-39xc-vjpf high"
   ],
   "notes": [
-    "Reviewed 2026-11-01: GHSA-g3hv-75wg-m249 overmatches minimatch 3.1.5 and 5.1.9; neither contains the firstPhasePreProcess/secondPhasePreProcess amplification described for 10.2.6. Installed legacy consumers are guarded by test:dependencies. See audit/dependency-review-2026-11-01.md; re-review by 2026-11-15 and remove these exact fingerprints when the advisory range is corrected.",
+    "Reviewed 2026-11-01: GHSA-g3hv-75wg-m249 overmatches minimatch 3.1.5 and 5.1.9; neither contains the firstPhasePreProcess/secondPhasePreProcess amplification described for 10.2.6. Installed legacy consumers are guarded by test:dependencies. See docs/audits/dependency-review-2026-11-01.md; re-review by 2026-11-15 and remove these exact fingerprints when the advisory range is corrected.",
     "2026-11-03: GitHub withdrew braces GHSA-vfj7-8cjw-p6xm on 2026-10-23; its fingerprint is removed and the high ceiling lowered from 2 to 1.",
     "Reviewed 2026-09-20: removal of unused Safe/Slack packages, Waffle 4/Hardhat-Waffle 2.0.6 migration and compatible overrides reduced 21 findings to 6. No new advisories were accepted.",
     "The five OpenZeppelin advisories retain the prior fixture-only reachability assessment; the affected ERC165Checker, Initializable, TimelockController and TransparentUpgradeableProxy components are not imported by production contracts. The patch release changes fingerprints only. Elliptic 6.6.1 has no fixed compatible release; signing compatibility and negative-message rejection are tested.",

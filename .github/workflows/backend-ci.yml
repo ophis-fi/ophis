@@ -196,6 +196,14 @@ jobs:
           cargo test --offline --locked -p e2e --test e2e \
             wrapper::local_node_unsupported_wrappers -- --ignored --exact --test-threads=1
 
+      - name: Builder attribution preserves settlement and auction indexing
+        working-directory: apps/backend
+        run: |
+          cargo test --offline --locked -p e2e --test e2e \
+            solver_competition::local_node_builder_attribution_ -- --ignored --test-threads=1
+          cargo test --offline --locked -p e2e --test e2e \
+            solver_competition::local_node_solver_competition -- --ignored --exact --test-threads=1
+
       - name: Provisioned partner fees settle while public registration stays closed
         working-directory: apps/backend
         run: |

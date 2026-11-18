@@ -1,5 +1,9 @@
 use {
-    ::alloy::primitives::{U256, address},
+    ::alloy::{
+        consensus::Transaction,
+        primitives::{U256, address},
+        providers::Provider,
+    },
     configs::{
         autopilot::{
             Configuration,
@@ -31,6 +35,32 @@ async fn local_node_solver_competition() {
 
 #[tokio::test]
 #[ignore]
+async fn local_node_builder_attribution_optimism() {
+    run_test(|web3| solver_competition_on_chain(web3, 10)).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn local_node_builder_attribution_robinhood() {
+    run_test(|web3| solver_competition_on_chain(web3, 4663)).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn local_node_builder_attribution_arc() {
+    run_test(|web3| solver_competition_on_chain(web3, 5042)).await;
+}
+
+async fn solver_competition_on_chain(web3: Web3, chain_id: u64) {
+    web3.provider
+        .raw_request::<_, serde_json::Value>("anvil_setChainId".into(), [chain_id])
+        .await
+        .unwrap();
+    solver_competition(web3).await;
+}
+
+#[tokio::test]
+#[ignore]
 async fn local_node_wrong_solution_submission_address() {
     run_test(wrong_solution_submission_address).await;
 }
@@ -42,6 +72,8 @@ async fn local_node_store_filtered_solutions() {
 }
 
 async fn solver_competition(web3: Web3) {
+    let provider = web3.provider.clone();
+    let chain_id = provider.get_chain_id().await.unwrap();
     let mut onchain = OnchainComponents::deploy(web3).await;
 
     let [solver] = onchain.make_solvers(1u64.eth()).await;
@@ -191,6 +223,20 @@ async fn solver_competition(web3: Web3) {
     wait_for_condition(TIMEOUT, indexed_trades).await.unwrap();
 
     let trades = services.get_trades(&uid).await.unwrap();
+    let tx = provider
+        .get_transaction_by_hash(trades[0].tx_hash.unwrap())
+        .await
+        .unwrap()
+        .unwrap();
+    let calldata = tx.inner.input();
+    assert_eq!(
+        calldata.ends_with(&shared::builder_attribution::SETTLEMENT_SUFFIX),
+        matches!(chain_id, 10 | 4663 | 5042)
+    );
+    assert!(
+        shared::builder_attribution::without_attribution(calldata)
+            .ends_with(&auction_id.to_be_bytes())
+    );
     let competition = services
         .get_solver_competition(trades[0].tx_hash.unwrap())
         .await

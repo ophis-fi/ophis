@@ -9,7 +9,7 @@ services:
     environment:
       - ANVIL_IP_ADDR=0.0.0.0
     ports:
-      - 8545:8545
+      - 127.0.0.1:8545:8545
     healthcheck:
       # The healthcheck is actually a little hack that replaces the allow-list manager
       # with simple bytecode that always returns a solidity `true` value, alleviating
@@ -44,13 +44,13 @@ services:
     volumes:
       - postgres:/var/lib/postgresql/data
     ports:
-      - 5432:5432
+      - 127.0.0.1:5432:5432
 
   adminer:
     image: adminer
     restart: always
     ports:
-      - 8082:8080
+      - 127.0.0.1:8082:8080
     depends_on:
       - db
 
@@ -91,9 +91,9 @@ services:
     depends_on:
       - db-migrations
     ports:
-      - 8080:80 # API
-      - 9586:9586 # metrics
-      - 6669:6669 # tokio console
+      - 127.0.0.1:8080:80 # API
+      - 127.0.0.1:9586:9586 # metrics
+      - 127.0.0.1:6669:6669 # tokio console
 
   autopilot:
     build:
@@ -124,8 +124,8 @@ services:
       chain:
         condition: service_healthy
     ports:
-      - 9589:9589 # metrics
-      - 6670:6669 # tokio console
+      - 127.0.0.1:9589:9589 # metrics
+      - 127.0.0.1:6670:6669 # tokio console
 
   driver:
     build:
@@ -152,8 +152,8 @@ services:
     volumes:
       - ../:/src
     ports:
-      - 9000:80 # API & metrics
-      - 6671:6669 # tokio console
+      - 127.0.0.1:9000:80 # API & metrics
+      - 127.0.0.1:6671:6669 # tokio console
     depends_on:
       chain:
         condition: service_healthy
@@ -183,8 +183,8 @@ services:
     volumes:
       - ../:/src
     ports:
-      - 9001:80 # API & metrics
-      - 6672:6669 # tokio console
+      - 127.0.0.1:9001:80 # API & metrics
+      - 127.0.0.1:6672:6669 # tokio console
 
   frontend:
     build:
@@ -194,7 +194,7 @@ services:
         - CHAIN=$CHAIN
         - ETH_RPC_URL=http://127.0.0.1:8545
     ports:
-      - 8000:80
+      - 127.0.0.1:8000:80
 
   # Sourcify - Contract verification service
   sourcify-db:
@@ -230,7 +230,7 @@ services:
     volumes:
       - ./sourcify-chains.json:/sourcify/services/server/dist/sourcify-chains.json
     ports:
-      - 5555:5555
+      - 127.0.0.1:5555:5555
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5555/health"]
       interval: 10s
@@ -248,7 +248,7 @@ services:
       - SOURCIFY_MODE=${SOURCIFY_MODE:-cloud}
       - LOCAL_SOURCIFY_URL=http://sourcify:5555
     ports:
-      - 8003:80
+      - 127.0.0.1:8003:80
     depends_on:
       chain:
         condition: service_healthy
@@ -263,12 +263,12 @@ services:
         - CHAIN=$CHAIN
         - ETH_RPC_URL=http://chain:8545
     ports:
-      - 8001:80
+      - 127.0.0.1:8001:80
 
   tempo:
     image: grafana/tempo:latest
     ports:
-      - "4317:4317" # OTLP gRPC
+      - "127.0.0.1:4317:4317" # OTLP gRPC
     command: ["-config.file=/etc/tempo.yaml"]
     volumes:
       - ./tempo.yaml:/etc/tempo.yaml
@@ -276,7 +276,7 @@ services:
   grafana:
     image: grafana/grafana:latest
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
@@ -289,7 +289,7 @@ services:
     container_name: prometheus
     restart: always
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
 

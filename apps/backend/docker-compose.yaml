@@ -12,13 +12,13 @@ services:
     volumes:
       - postgres:/var/lib/postgresql/data
     ports:
-      - 5432:5432
+      - 127.0.0.1:5432:5432
 
   adminer:
     image: adminer
     restart: always
     ports:
-      - 7402:8080
+      - 127.0.0.1:7402:8080
 
   migrations:
     build:

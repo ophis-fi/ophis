@@ -1,5 +1,14 @@
 import { getRpcProvider } from '@cowprotocol/common-const'
+import { ViemAdapter } from '@cowprotocol/sdk-viem-adapter'
+import {
+  OPHIS_BASE_DATA_SUFFIX,
+  withOphisBasePublicClient,
+  withOphisBaseWalletClient,
+} from '@cowprotocol/wallet-provider'
 import type { JsonRpcProvider } from '@ethersproject/providers'
+
+import { createPublicClient, createWalletClient, custom, type Chain } from 'viem'
+import { base } from 'viem/chains'
 
 import { WalletFirstReadProvider, withAppRpcFallback } from './cowSdk.utils'
 
@@ -30,6 +39,16 @@ const revert = rpcError('Internal JSON-RPC error.', {
 })
 
 describe('WalletFirstReadProvider: the wallet RPC first, the app RPC only when a READ fails there', () => {
+  it('retains Base attribution when gas estimation falls back to the app RPC', async () => {
+    const wallet = throwing(dead, '0x2105')
+    const app = appRpc()
+    const tx = { to: '0x1111111111111111111111111111111111111111', data: '0xd0e30db0', value: '0x1' }
+    await new WalletFirstReadProvider(wallet, app, 8453).send('eth_estimateGas', [tx])
+    const expected = [{ ...tx, data: tx.data + OPHIS_BASE_DATA_SUFFIX.slice(2) }]
+    expect(wallet.send).toHaveBeenCalledWith('eth_estimateGas', expected)
+    expect(app.send).toHaveBeenCalledWith('eth_estimateGas', expected)
+    expect(tx.data).toBe('0xd0e30db0')
+  })
   it('reads through the wallet while it answers, never touching the app RPC', async () => {
     const app = appRpc()
     await expect(
@@ -126,4 +145,32 @@ describe('withAppRpcFallback', () => {
     expect(withAppRpcFallback(999, wallet)).toBe(wallet)
     expect(withAppRpcFallback(undefined, wallet)).toBe(wallet)
   })
+})
+
+it('tags raw estimation requests made by the installed CoW viem adapter', async () => {
+  const address = '0x1111111111111111111111111111111111111111'
+  const data = '0xd0e30db0'
+  const tagged = `${data}${OPHIS_BASE_DATA_SUFFIX.slice(2)}`
+  const hash = `0x${'12'.repeat(32)}`
+  const request = jest.fn(async ({ method }: { method: string; params?: unknown }) =>
+    method === 'eth_chainId' ? '0x2105' : method === 'eth_estimateGas' ? '0x6000' : hash,
+  )
+  const chain: Chain = base
+  const client = createPublicClient({ chain, transport: custom({ request }) })
+  const wallet = createWalletClient({ account: address, chain, transport: custom({ request }) })
+  const adapter = new ViemAdapter({
+    provider: withOphisBasePublicClient(client),
+    walletClient: withOphisBaseWalletClient(wallet),
+  })
+  const signer = adapter.signer
+  if (!signer) throw new Error('Missing test signer')
+  const gasLimit = await signer.estimateGas({ to: address, data })
+  await signer.sendTransaction({ to: address, data, gasLimit })
+  const transactionCalls = request.mock.calls
+    .map(([call]) => call)
+    .filter(({ method }) => ['eth_estimateGas', 'eth_sendTransaction'].includes(method))
+  expect(transactionCalls.length).toBeGreaterThanOrEqual(3)
+  for (const call of transactionCalls) {
+    expect(call.params).toEqual([expect.objectContaining({ to: address, data: tagged })])
+  }
 })

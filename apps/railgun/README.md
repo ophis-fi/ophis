@@ -125,7 +125,9 @@ Before a mainnet deposit, the runtime requires a fresh compatible broadcaster of
 4. The proof unshields into a derived temporary account. Exact ERC20 and Permit2 allowances enable a single router call containing swap, 10 bp (0.1%) output-token fee to the existing Ophis fee recipient, and token sweeps. No allow-revert command bits are set inside that router call, so a reverted swap pays no Ophis fee. Allowances are revoked and input, output and any intermediate route tokens are reshielded to the original private wallet. This private-swap fee is independent of the SDK's public-swap base fee.
 5. Before disclosing the signed batch to the RPC, the browser saves recovery metadata encrypted. Simulation traces that same execution. The outer receipt and the exact committed output note are checked; an outer successful receipt alone does not establish a successful private swap.
 
-The public DEX swap, its amounts and Ophis fee remain visible. The route does not promise sandwich protection. The broadcaster pays public gas and receives the committed private fee. The trusted simulation RPC sees the user's IP and the signed executable batch; it could submit that batch. Do not point it at an arbitrary third-party provider when using real funds.
+The public DEX swap, its amounts and Ophis fee remain visible. The route does not promise sandwich protection. In the production native-prepaid flow, the broadcaster pays public gas against operator-held fee credit; legacy private-fee flows instead pay the committed private fee. Unused prepaid credit is custodial and refunds require the operator's running signing service, subject to the [refund policy](../broadcaster/PREPAID-REFUNDS.md). This credit is separate from shielded wallet assets.
+
+The Ophis gateway and Cloudflare can see the client's IP. The gateway does not forward that IP header to its simulation upstream; the upstream receives the signed executable batch and could submit it. A direct connection to another RPC can expose both. Do not point simulation at an arbitrary third-party provider when using real funds.
 
 ## Interrupted transactions
 
