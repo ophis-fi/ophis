@@ -186,7 +186,7 @@ try {
   const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1'
   const handset = await browser.newContext({ userAgent: IPHONE, viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' })
   const small = await handset.newPage()
-  const refused = (path) => small.evaluate((url) => fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }).then((r) => r.json()), path).then((body) => body.error === 'computer_only')
+  const refused = (path) => small.evaluate((url) => fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }).then(async (r) => r.status === 403 && (await r.json()).error === 'computer_only'), path)
   const ticketLink = `#/enrol/${'A'.repeat(43)}`
   await small.goto(`${ORIGIN}/${ticketLink}`)
   check('a phone is told the dashboard is only available from a computer, with no sign-in',
