@@ -303,31 +303,31 @@ async function run(): Promise<void> {
     while (!stopping) {
       assertDisk(config.state)
       try {
-        // A saved reply needs no fresh RPC reads; new handlers still wait for refresh.
-        if (command === 'run') await waku!.retryReply()
-        if (Date.now() - lastRefresh >= 30_000) {
-          metrics.ready = command === 'run' ? false : await broadcaster.available()
-          if (sdk.ready()) {
-            metrics.feeBalances = await sdk.balances(); metrics.feeBalancesAt = Date.now()
-            if (command === 'sync' && !syncReported) {
-              const credit = initializeCredit ? await broadcaster.creditInfo() : undefined
-              console.log(JSON.stringify({ ...identity, status: initializeCredit ? 'credit-ledger-ready' : 'sync-ready',
-                feeIdentity: sdk.address, credit, signingEnabled: false, fundsTransferred: false }))
-              syncReported = true
+        try {
+          if (Date.now() - lastRefresh >= 30_000) {
+            lastRefresh = Date.now()
+            if (command === 'run' && !reconcile) reconcile = broadcaster.reconcile()
+              .catch(() => { metrics.errors++ }).finally(() => { reconcile = undefined })
+            metrics.ready = command === 'run' ? false : await broadcaster.available()
+            if (sdk.ready()) {
+              metrics.feeBalances = await sdk.balances(); metrics.feeBalancesAt = Date.now()
+              if (command === 'sync' && !syncReported) {
+                const credit = initializeCredit ? await broadcaster.creditInfo() : undefined
+                console.log(JSON.stringify({ ...identity, status: initializeCredit ? 'credit-ledger-ready' : 'sync-ready',
+                  feeIdentity: sdk.address, credit, signingEnabled: false, fundsTransferred: false }))
+                syncReported = true
+              }
+            }
+            else { delete metrics.feeBalances; delete metrics.feeBalancesAt }
+            if (command === 'run' && sdk.ready()) {
+              const advertisement = await broadcaster.feeAdvertisement()
+              await waku!.publish(TOPICS.fees, advertisement.message)
+              metrics.ready = advertisement.available
             }
           }
-          else { delete metrics.feeBalances; delete metrics.feeBalancesAt }
-          if (command === 'run' && !reconcile) reconcile = broadcaster.reconcile()
-            .catch(() => { metrics.errors++ }).finally(() => { reconcile = undefined })
-          if (command === 'run' && sdk.ready()) {
-            const advertisement = await broadcaster.feeAdvertisement()
-            await waku!.publish(TOPICS.fees, advertisement.message)
-            metrics.ready = advertisement.available
-          }
-          lastRefresh = Date.now()
-        }
-        if (command === 'run') {
-          await waku!.dispatch(payload => broadcaster.handle(payload), abort.signal)
+        } finally {
+          // Each handler enforces admission and fresh chain state independently of fee advertisements.
+          if (command === 'run') await waku!.dispatch(payload => broadcaster.handle(payload), abort.signal)
         }
         failures = 0
       } catch { metrics.errors++; metrics.ready = false; failures++ }

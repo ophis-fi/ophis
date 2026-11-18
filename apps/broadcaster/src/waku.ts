@@ -80,17 +80,12 @@ export class WakuRelay {
         message.reply = await handle(message.payload)
         message.handled = true
       }
-      await this.retryReply()
-    }
-  }
-  async retryReply(): Promise<void> {
-    const message = this.pending[0]
-    if (!message?.handled) return
-    if (message.reply && message.reply.length > MAX_MESSAGE_BYTES) {
+      if (message.reply && message.reply.length > MAX_MESSAGE_BYTES) {
+        this.pending.shift()
+        throw new Error('Waku reply exceeds its size limit.')
+      }
+      if (message.reply) await this.publish(message.responseTopic, message.reply)
       this.pending.shift()
-      throw new Error('Waku reply exceeds its size limit.')
     }
-    if (message.reply) await this.publish(message.responseTopic, message.reply)
-    this.pending.shift()
   }
 }

@@ -136,11 +136,6 @@ it('retries a saved reply and retains the remaining batch without running its ha
   expect(waku.pendingMessages).toBe(2)
   expect(handle).toHaveBeenCalledTimes(1)
   vi.mocked(fetch).mockImplementation(async () => new Response(null, { status: 200 }))
-  // Main can retry this reply even while fee refresh prevents admission of new handlers.
-  await waku.retryReply()
-  await waku.retryReply()
-  expect(handle).toHaveBeenCalledTimes(1)
-  expect(waku.pendingMessages).toBe(1)
   await waku.dispatch(handle, signal)
   expect(waku.pendingMessages).toBe(0)
   expect(handle.mock.calls.map(([payload]) => Buffer.from(payload).toString())).toEqual(['first', 'second'])
