@@ -181,17 +181,27 @@ try {
   await page.evaluate(() => document.fonts.ready)
   await page.screenshot({ path: '.shots/01-signin.png' })
 
-  // Owner, 2026-11-18: the console is for computers. A phone gets the message and no sign-in, and its API calls are refused.
+  // Owner, 2026-11-18: Ophis Business is for computers. A phone gets the message and no form on either page, and the API
+  // of both hosts refuses it. An invitation link opened on a phone keeps its ticket, for a computer (Codex, PR #1665).
   const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1'
   const handset = await browser.newContext({ userAgent: IPHONE, viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' })
   const small = await handset.newPage()
-  await small.goto(ORIGIN)
+  const refused = (path) => small.evaluate((url) => fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }).then((r) => r.json()), path).then((body) => body.error === 'computer_only')
+  const ticketLink = `#/enrol/${'A'.repeat(43)}`
+  await small.goto(`${ORIGIN}/${ticketLink}`)
   check('a phone is told the dashboard is only available from a computer, with no sign-in',
     await small.getByRole('heading', { name: 'The Ophis dashboard is only available from a computer.' }).waitFor({ timeout: 10000 }).then(() => true, () => false)
     && (await small.getByRole('button', { name: 'Sign in with a passkey' }).count()) === 0
     && await small.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
-  check('the API refuses a phone', (await small.evaluate(() => fetch('/api/signin/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }).then((r) => r.json()))).error === 'computer_only')
+  check('a phone leaves an invitation link whole, to open on a computer', (await small.evaluate(() => location.hash)) === ticketLink)
+  check('the API refuses a phone', await refused('/api/signin/start'))
   await small.screenshot({ path: '.shots/01-phone-computer-only.png' })
+  await small.goto(`${SIGN}/sign/`)
+  check('the signing page tells a phone it is only available from a computer, with no form, and its API refuses it',
+    await small.getByRole('heading', { name: 'This page is only available from a computer.' }).waitFor({ timeout: 10000 }).then(() => true, () => false)
+    && !(await small.locator('#paste').isVisible()) && await small.evaluate(() => document.documentElement.scrollWidth <= innerWidth)
+    && await refused('/api/proof'))
+  await small.screenshot({ path: '.shots/01-phone-signing-computer-only.png' })
   await handset.close()
 
   await page.goto(link)

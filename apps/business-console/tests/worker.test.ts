@@ -783,9 +783,9 @@ describe('c. sessions', () => {
 })
 
 describe('d. request checks', () => {
-  // Owner, 2026-11-18: the console is for computers. A phone or tablet, as it names itself, gets no answer from the
-  // console's API. The signing host is not the console: a wallet on a phone may still sign there.
-  it('refuses every console API call from a phone, and only from a phone', async () => {
+  // Owner, 2026-11-18: Ophis Business is for computers. A phone or tablet, as it names itself, gets no answer from the
+  // API of either host, the console's or the signing page's.
+  it('refuses every API call from a phone, on both hosts, and only from a phone', async () => {
     const m = await member()
     const phones: Record<string, string>[] = [
       { 'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1' },
@@ -793,14 +793,14 @@ describe('d. request checks', () => {
       { 'sec-ch-ua-mobile': '?1' },
     ]
     for (const headers of phones) {
-      for (const route of routes.filter((r) => !r.sign)) {
-        const out = await call(route.method, route.path.replace(':id', m.sessionId), { cookie: m.cookie, headers })
+      for (const route of routes) {
+        const out = await call(route.method, route.path.replace(':id', m.sessionId), { cookie: m.cookie, headers, sign: route.sign })
         expect([out.status, out.body.error], `${route.method} ${route.path} ${JSON.stringify(headers)}`).toEqual([403, 'computer_only'])
       }
-      for (const route of routes.filter((r) => r.sign)) expect((await call(route.method, route.path, { headers, sign: true })).body.error, route.path).not.toBe('computer_only')
     }
     const computer = { 'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36', 'sec-ch-ua-mobile': '?0' }
     expect((await call('GET', '/api/me', { cookie: m.cookie, headers: computer })).status).toBe(200)
+    expect((await call('POST', '/api/proof', { headers: computer, sign: true })).body.error).not.toBe('computer_only')
   })
   for (const site of ['same-site', 'cross-site', 'none', null]) {
     it(`refuses an API call with Sec-Fetch-Site ${site ?? 'missing'}`, async () => {

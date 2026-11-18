@@ -10,6 +10,7 @@ import { api, Icon, ROLE } from './ui.tsx'
 import { Desk, Overview } from './desk.tsx'
 import { Support } from './support.tsx'
 import { Apply, KybRecord, Onboarding } from './onboarding.tsx'
+import { onPhone } from './phone.ts'
 
 const onHashChange = (listener: () => void) => {
   addEventListener('hashchange', listener)
@@ -22,7 +23,10 @@ function takeTicket() {
   if (ticket) history.replaceState(null, '', '#/enrol')
   return ticket
 }
-const firstTicket = takeTicket() ?? ''
+// Owner, 2026-11-18: the console is for computers (phone.ts; the server refuses the API too). A phone leaves the
+// ticket in the address, so the link still works once opened on a computer (Codex, PR #1665).
+const phone = onPhone()
+const firstTicket = phone ? '' : takeTicket() ?? ''
 
 // Alerts this browser has shown and the member has confirmed. Kept per browser on purpose: an alert read
 // on someone else's device is still shown on the member's own.
@@ -161,8 +165,6 @@ function App() {
   )
 }
 
-// Owner, 2026-11-18: the console is for computers. The same test as the server's (index.ts, phone), which refuses the API too.
-const phone = (navigator as Navigator & { userAgentData?: { mobile?: boolean } }).userAgentData?.mobile === true || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
 const ComputerOnly = () => (<>
   <header className="bar"><span className="brand"><img src={mark} alt="" />ophis.<small>Business</small></span></header>
   <main id="main" className="col">
