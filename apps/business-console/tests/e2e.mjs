@@ -188,12 +188,16 @@ try {
   const small = await handset.newPage()
   const refused = (path) => small.evaluate((url) => fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }).then(async (r) => r.status === 403 && (await r.json()).error === 'computer_only'), path)
   const ticketLink = `#/enrol/${'A'.repeat(43)}`
-  await small.goto(`${ORIGIN}/${ticketLink}`)
+  const blocked = (on) => on.getByRole('heading', { name: 'The Ophis dashboard is only available from a computer.' }).waitFor({ timeout: 10000 }).then(() => true, () => false)
+  await small.goto(ORIGIN)
   check('a phone is told the dashboard is only available from a computer, with no sign-in',
-    await small.getByRole('heading', { name: 'The Ophis dashboard is only available from a computer.' }).waitFor({ timeout: 10000 }).then(() => true, () => false)
-    && (await small.getByRole('button', { name: 'Sign in with a passkey' }).count()) === 0
+    await blocked(small) && (await small.getByRole('button', { name: 'Sign in with a passkey' }).count()) === 0
     && await small.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
-  check('a phone leaves an invitation link whole, to open on a computer', (await small.evaluate(() => location.hash)) === ticketLink)
+  // A page of its own: a fresh load, as from a message (a goto that changes only the fragment would not load the app again).
+  const invited = await handset.newPage()
+  await invited.goto(`${ORIGIN}/${ticketLink}`)
+  check('a phone opening an invitation link gets no enrolment form, and the link stays whole, to open on a computer',
+    await blocked(invited) && (await invited.getByRole('button', { name: 'Create passkey' }).count()) === 0 && (await invited.evaluate(() => location.hash)) === ticketLink)
   check('the API refuses a phone', await refused('/api/signin/start'))
   await small.screenshot({ path: '.shots/01-phone-computer-only.png' })
   await small.goto(`${SIGN}/sign/`)

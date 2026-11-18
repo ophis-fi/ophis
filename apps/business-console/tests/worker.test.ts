@@ -800,7 +800,9 @@ describe('d. request checks', () => {
     }
     const computer = { 'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36', 'sec-ch-ua-mobile': '?0' }
     expect((await call('GET', '/api/me', { cookie: m.cookie, headers: computer })).status).toBe(200)
-    expect((await call('POST', '/api/proof', { headers: computer, sign: true })).body.error).not.toBe('computer_only')
+    // The route itself answers a computer: its own refusal of an empty request, not the phone's.
+    const proof = await call('POST', '/api/proof', { headers: computer, sign: true })
+    expect([proof.status, proof.body.error]).toEqual([400, 'intent_invalid'])
   })
   for (const site of ['same-site', 'cross-site', 'none', null]) {
     it(`refuses an API call with Sec-Fetch-Site ${site ?? 'missing'}`, async () => {
