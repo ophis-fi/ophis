@@ -52,6 +52,7 @@ it.each([
   [401, {}, 'unauthorized'],
   [503, {}, 'unavailable'],
   [429, { 'retry-after': '60' }, 'limited'],
+  [429, { 'retry-after': '9'.repeat(400) }, 'limited'],
   [429, {}, 'Validation Cloud shared CU budget reached.'],
 ] as const)('does not retry a permanent error or a wait outside its budget (%s)', async (status, headers, error) => {
   const { transport, sent } = probe([status], headers, error)

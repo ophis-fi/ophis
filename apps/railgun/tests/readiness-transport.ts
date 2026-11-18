@@ -17,7 +17,7 @@ export function configureReadinessTransport(transport: FetchRequest, throttles: 
     const header = response.headers['retry-after']
     const retryAfter = header === undefined ? 0 : /^\d+$/.test(header)
       ? Number(header) * 1000 : Math.max(0, Date.parse(header) - Date.now())
-    const wait = Math.max(2000 * 2 ** attempt, Number.isFinite(retryAfter) ? retryAfter : 0)
+    const wait = Math.max(2000 * 2 ** attempt, Number.isNaN(retryAfter) ? 0 : retryAfter)
     const retry = attempt < 3 && wait <= 8000 && reason !== 'shared-provider-quota'
     throttles.push({ attempt: attempt + 1, reason, retryInMs: retry ? wait : null })
     if (!retry) return false
