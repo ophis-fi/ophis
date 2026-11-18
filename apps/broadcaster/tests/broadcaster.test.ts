@@ -1253,6 +1253,7 @@ describe('signing gate and duplicate recovery', () => {
     const published = await f.service.feeAdvertisement()
     const envelope = JSON.parse(Buffer.from(published.message).toString())
     const advertisement = JSON.parse(Buffer.from(envelope.data, 'hex').toString())
+    expect(published.expiration).toBe(advertisement.feeExpiration)
     expect(advertisement.fees[TOKENS[0].address.toLowerCase()]).toBe('0xde0b6b3a7640000')
     expect(Object.keys(advertisement.fees).every((token) => token === token.toLowerCase())).toBe(true)
     const stored = store.db.prepare('SELECT rates FROM fees WHERE id=?').get(advertisement.feesID) as { rates: string }

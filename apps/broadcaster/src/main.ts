@@ -69,6 +69,7 @@ async function run(): Promise<void> {
   let lock: ReturnType<typeof LevelDOWN> | undefined
   let server: ReturnType<typeof createServer> | undefined
   let reconcile: Promise<void> | undefined, refresh: Promise<void> | undefined
+  let maintenance: ReturnType<typeof setInterval> | undefined
   let stopping = false
   const abort = new AbortController()
   const stop = () => { stopping = true; abort.abort() }
@@ -194,14 +195,15 @@ async function run(): Promise<void> {
         })), feeAssurancePending: pending.filter((r) => r.confirmed && !r.assured).length }))
       return
     }
-    const metrics: { ready: boolean; feeReadyUntil: number; errors: number; locked: boolean; feeBalances?: Record<string, string>; feeBalancesAt?: number } =
-      { ready: false, feeReadyUntil: 0, errors: 0, locked: config.mode === 'mainnet' }
+    const metrics: { ready: boolean; deliveryReady: boolean; feeReadyUntil: number; feeExpiresAt: number; errors: number; locked: boolean; feeBalances?: Record<string, string>; feeBalancesAt?: number } =
+      { ready: false, deliveryReady: false, feeReadyUntil: 0, feeExpiresAt: 0, errors: 0, locked: config.mode === 'mainnet' }
     server = createServer((request, response) => {
       if (request.url !== '/health') { response.writeHead(404).end(); return }
       response.setHeader('Content-Type', 'application/json')
       const pending = store!.pending()
       response.end(JSON.stringify({ ...identity, mode: config.mode, admission: config.admission, enabled: config.enabled,
-        ready: metrics.ready && (command !== 'run' || (sdk?.ready() === true && performance.now() < metrics.feeReadyUntil)), locked: metrics.locked,
+        ready: command === 'run' ? metrics.deliveryReady && sdk?.ready() === true &&
+          performance.now() < metrics.feeReadyUntil && Date.now() < metrics.feeExpiresAt : metrics.ready, locked: metrics.locked,
         synchronized: sdk?.ready() ?? false,
         wakuSaturated: waku?.saturated ?? false,
         wakuFullBatches: waku?.fullBatches ?? 0, wakuLastFullBatchAt: waku?.lastFullBatchAt ?? 0,
@@ -301,8 +303,9 @@ async function run(): Promise<void> {
       await waku.subscribe()
     }
     let lastRefresh = -Infinity, lastReconcile = -Infinity, failures = 0, syncReported = false
-    while (!stopping) {
-      assertDisk(config.state)
+    const activeSDK = sdk
+    const maintain = () => {
+      if (stopping) return
       if (command === 'run' && !reconcile && performance.now() - lastReconcile >= 30_000) {
         lastReconcile = performance.now()
         reconcile = broadcaster.reconcile()
@@ -313,35 +316,44 @@ async function run(): Promise<void> {
         lastRefresh = performance.now()
         refresh = (async () => {
           if (command !== 'run') metrics.ready = await broadcaster.available()
-          if (sdk.ready()) {
-            metrics.feeBalances = await sdk.balances(); metrics.feeBalancesAt = Date.now()
+          if (activeSDK.ready()) {
+            metrics.feeBalances = await activeSDK.balances(); metrics.feeBalancesAt = Date.now()
             if (command === 'sync' && !syncReported) {
               const credit = initializeCredit ? await broadcaster.creditInfo() : undefined
               console.log(JSON.stringify({ ...identity, status: initializeCredit ? 'credit-ledger-ready' : 'sync-ready',
-                feeIdentity: sdk.address, credit, signingEnabled: false, fundsTransferred: false }))
+                feeIdentity: activeSDK.address, credit, signingEnabled: false, fundsTransferred: false }))
               syncReported = true
             }
           }
           else { delete metrics.feeBalances; delete metrics.feeBalancesAt; metrics.feeReadyUntil = 0; metrics.ready = false }
-          if (command === 'run' && sdk.ready()) {
+          if (command === 'run' && activeSDK.ready() && !stopping) {
             // Cached discovery readiness cannot outlive the advertised quote lifetime.
             const readyUntil = performance.now() + FEE_LIFETIME_MS
             const advertisement = await broadcaster.feeAdvertisement()
             if (!advertisement.available) { metrics.feeReadyUntil = 0; metrics.ready = false }
+            if (stopping) return
             await waku!.publish(TOPICS.fees, advertisement.message)
             metrics.feeReadyUntil = advertisement.available ? readyUntil : 0
+            metrics.feeExpiresAt = advertisement.expiration
           }
         })().catch(() => { metrics.errors++; metrics.ready = false; metrics.feeReadyUntil = 0 }).finally(() => { refresh = undefined })
       }
+    }
+    maintenance = setInterval(maintain, 1000)
+    maintain()
+    while (!stopping) {
+      assertDisk(config.state)
       try {
         // Each handler enforces admission and fresh chain state independently of fee advertisements.
         if (command === 'run') await waku!.dispatch(payload => broadcaster.handle(payload), abort.signal)
         failures = 0
-      } catch { metrics.errors++; metrics.ready = false; failures++ }
-      if (command === 'run') metrics.ready = failures === 0 && sdk.ready() && performance.now() < metrics.feeReadyUntil
+        metrics.deliveryReady = true
+      } catch { metrics.errors++; metrics.deliveryReady = false; failures++ }
       await delay(Math.min(30_000, 1000 * 2 ** Math.min(failures, 5)))
     }
   } finally {
+    stopping = true
+    if (maintenance) clearInterval(maintenance)
     process.off('SIGINT', stop); process.off('SIGTERM', stop)
     if (server?.listening) await new Promise<void>((resolve) => server!.close(() => resolve()))
     await refresh

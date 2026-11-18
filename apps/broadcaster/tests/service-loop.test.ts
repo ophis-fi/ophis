@@ -14,23 +14,38 @@ function visit(node: ts.Node): void {
 }
 visit(source)
 if (loops.length !== 1) throw new Error('Expected exactly one broadcaster dispatch loop.')
-const loop = ts.transpileModule(loops[0].getText(source), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
+const block = loops[0].parent as ts.Block
+const first = block.statements.findIndex(node => ts.isVariableStatement(node) && node.getText(source).startsWith('let lastRefresh'))
+if (first < 0 || !ts.isTryStatement(block.parent) || !block.parent.finallyBlock) throw new Error('Expected service scheduling and cleanup.')
+const compile = (text: string) => ts.transpileModule(text, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
+const service = compile(block.statements.slice(first, block.statements.indexOf(loops[0]) + 1).map(node => node.getText(source)).join('\n'))
+const cleanup = compile(block.parent.finallyBlock.getText(source))
+if (health.length !== 1) throw new Error('Expected exactly one health handler.')
+const healthSource = compile(`(${health[0].getText(source)})`)
 const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor
 const runLoop = new AsyncFunction('fixture', `
-  const { broadcaster, sdk, waku, advance, stopAfter } = fixture;
+  const { broadcaster, sdk, waku, advance, stopAfter, provider, store } = fixture;
   const config = { state: '/unused' }, command = 'run', abort = new AbortController();
   const TOPICS = { fees: 'fees' }, FEE_LIFETIME_MS = 5 * 60000, assertDisk = () => {};
-  const metrics = { ready: false, feeReadyUntil: 0, errors: 0 };
-  let stopping = false, lastRefresh = -Infinity, lastReconcile = -Infinity, failures = 0, syncReported = false, reconcile, refresh;
+  const metrics = { ready: false, deliveryReady: false, feeReadyUntil: 0, feeExpiresAt: 0, errors: 0 };
+  let stopping = false, reconcile, refresh, maintenance;
+  const stop = () => { stopping = true; abort.abort(); };
+  const process = { off: () => {} }, identity = {}, server = undefined, sender = undefined, lock = undefined;
+  const healthHandler = ${healthSource}
+  const readHealth = () => {
+    let result;
+    healthHandler({ url: '/health' }, { setHeader: () => {}, end: value => { result = JSON.parse(value); } });
+    return result;
+  };
+  fixture.readHealth = readHealth; fixture.stop = stop;
   let iterations = 0;
   const delay = async (milliseconds) => {
-    fixture.observed.push({ ...metrics });
-    await advance(++iterations, milliseconds); stopping = iterations === stopAfter;
+    fixture.observed.push(readHealth());
+    if (++iterations === stopAfter) stop();
+    await advance(iterations, milliseconds);
   };
-  ${loop}
-  await refresh;
-  await reconcile;
-  return metrics;
+  try { ${service} } finally ${cleanup}
+  return readHealth();
 `) as (input: ReturnType<typeof fixture>) => Promise<{ ready: boolean; errors: number }>
 
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
@@ -40,17 +55,24 @@ function fixture() {
   vi.setSystemTime(new Date('2026-11-18T12:00:00Z'))
   const broadcaster = {
     reconcile: vi.fn(async () => {}),
-    feeAdvertisement: vi.fn(async () => ({ available: true, message: new Uint8Array() })),
+    feeAdvertisement: vi.fn(async () => advertisement()),
     handle: vi.fn(async (_payload: Uint8Array) => undefined),
   }
-  const sdk = { ready: () => true, balances: vi.fn(async () => ({})) }
+  const sdk = { ready: () => true, balances: vi.fn(async () => ({})), stop: vi.fn(async () => {}) }
+  const provider = { destroy: vi.fn() }, store = { pending: () => [], close: vi.fn() }
   const waku = {
     publish: vi.fn(async () => {}),
     dispatch: vi.fn(async (handle: typeof broadcaster.handle) => { await handle(new Uint8Array()) }),
   }
-  return { broadcaster, sdk, waku, stopAfter: 3, observed: [] as { ready: boolean; errors: number }[], advance: vi.fn(async (_iteration: number, _milliseconds: number) => {
+  return { broadcaster, sdk, waku, provider, store, stopAfter: 3, observed: [] as { ready: boolean; errors: number }[],
+    readHealth: undefined as (() => { ready: boolean; errors: number }) | undefined, stop: undefined as (() => void) | undefined,
+    advance: vi.fn(async (_iteration: number, _milliseconds: number) => {
     await vi.advanceTimersByTimeAsync(31_000)
   }) }
+}
+
+function advertisement(available = true) {
+  return { available, expiration: Date.now() + 300_000, message: new Uint8Array() }
 }
 
 it.each(['balances', 'advertisement', 'publication', 'dispatch'])('keeps reconciliation and delivery running after %s failures', async (failure) => {
@@ -134,11 +156,14 @@ it('starts the next due refresh as soon as a slow refresh finishes', async () =>
   f.sdk.balances.mockImplementation(async () => { samples.push(performance.now()); return {} })
   f.broadcaster.feeAdvertisement.mockImplementationOnce(async () => {
     await new Promise(resolve => setTimeout(resolve, 35_000))
-    return { available: true, message: new Uint8Array() }
+    return advertisement()
   })
   f.advance.mockImplementation(async (_iteration, milliseconds) => { await vi.advanceTimersByTimeAsync(milliseconds) })
   await runLoop(f)
-  expect(samples).toEqual([0, 35_000])
+  expect(samples).toHaveLength(2)
+  expect(samples[0]).toBe(0)
+  expect(samples[1]).toBeGreaterThanOrEqual(35_000)
+  expect(samples[1]).toBeLessThanOrEqual(36_000)
   expect(f.broadcaster.reconcile).toHaveBeenCalledTimes(2)
 })
 
@@ -159,9 +184,9 @@ it('keeps cached readiness during a slow routine refresh and restores it after d
 it.each(['failed', 'unavailable'])('does not restore readiness from a %s fee refresh', async (failure) => {
   const f = fixture()
   f.stopAfter = 36
-  f.broadcaster.feeAdvertisement.mockResolvedValueOnce({ available: true, message: new Uint8Array() })
+  f.broadcaster.feeAdvertisement.mockResolvedValueOnce(advertisement())
   if (failure === 'failed') f.broadcaster.feeAdvertisement.mockRejectedValue(new Error('Unavailable fees'))
-  else f.broadcaster.feeAdvertisement.mockResolvedValue({ available: false, message: new Uint8Array() })
+  else f.broadcaster.feeAdvertisement.mockResolvedValue(advertisement(false))
   f.advance.mockImplementation(async (_iteration, milliseconds) => { await vi.advanceTimersByTimeAsync(milliseconds) })
   const metrics = await runLoop(f)
   expect(f.observed[2].ready).toBe(true)
@@ -185,20 +210,81 @@ it('expires cached readiness at the existing quote lifetime if refresh remains p
   expect(f.sdk.balances).toHaveBeenCalledTimes(2)
 })
 
-it('expires readiness in the actual health response even if dispatch cannot advance the loop', () => {
+it.each(['monotonic', 'signed'] as const)('enforces the %s expiration in health even if dispatch cannot advance the loop', (clock) => {
   vi.useFakeTimers()
   expect(health).toHaveLength(1)
-  const handlerSource = ts.transpileModule(`(${health[0].getText(source)})`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
   const handle = new Function('metrics', `
     const command = 'run', identity = {}, config = {}, sdk = { ready: () => true }, waku = undefined;
     const store = { pending: () => [] };
-    return ${handlerSource}
-  `)({ ready: true, feeReadyUntil: 1000 })
+    return ${healthSource}
+  `)({ deliveryReady: true, feeReadyUntil: 1000, feeExpiresAt: Date.now() + 1000 })
   let body: { ready: boolean }
   const response = { setHeader: () => {}, end: (json: string) => { body = JSON.parse(json) } }
   handle({ url: '/health' }, response)
   expect(body!.ready).toBe(true)
-  vi.advanceTimersByTime(1000)
+  if (clock === 'monotonic') vi.advanceTimersByTime(1000)
+  else vi.setSystemTime(Date.now() + 1000)
   handle({ url: '/health' }, response)
   expect(body!.ready).toBe(false)
+})
+
+it('runs due maintenance while a 64-second delivery batch is still draining', async () => {
+  const f = fixture()
+  f.stopAfter = 1
+  const reconciled: number[] = []
+  f.broadcaster.reconcile.mockImplementation(async () => { reconciled.push(performance.now()) })
+  f.waku.dispatch.mockImplementation(async () => { await new Promise(resolve => setTimeout(resolve, 64_000)) })
+  f.advance.mockResolvedValue(undefined)
+  const run = runLoop(f)
+  await vi.advanceTimersByTimeAsync(64_000)
+  await run
+  expect(reconciled).toEqual([0, 30_000, 60_000])
+  expect(f.sdk.balances).toHaveBeenCalledTimes(3)
+  expect(f.waku.dispatch).toHaveBeenCalledOnce()
+  expect(vi.getTimerCount()).toBe(0)
+})
+
+it('reflects a successful fee publication while the next dispatch is still pending', async () => {
+  const f = fixture()
+  f.stopAfter = 2
+  f.waku.publish.mockImplementation(async () => { await new Promise(resolve => setTimeout(resolve, 2000)) })
+  f.waku.dispatch.mockResolvedValueOnce(undefined)
+    .mockImplementation(async () => { await new Promise(resolve => setTimeout(resolve, 10_000)) })
+  f.advance.mockResolvedValue(undefined)
+  const run = runLoop(f)
+  await vi.advanceTimersByTimeAsync(0)
+  expect(f.readHealth!().ready).toBe(false)
+  await vi.advanceTimersByTimeAsync(2000)
+  expect(f.readHealth!().ready).toBe(true)
+  expect(f.waku.dispatch).toHaveBeenCalledTimes(2)
+  await vi.advanceTimersByTimeAsync(8000)
+  await run
+})
+
+it('stops scheduling on shutdown and drains all active work before closing resources', async () => {
+  const f = fixture()
+  f.stopAfter = 1
+  let finishDelivery!: () => void, finishRefresh!: () => void, finishReconcile!: () => void
+  f.waku.dispatch.mockImplementation(() => new Promise(resolve => { finishDelivery = resolve }))
+  f.sdk.balances.mockImplementation(() => new Promise(resolve => { finishRefresh = () => resolve({}) }))
+  f.broadcaster.reconcile.mockImplementation(() => new Promise(resolve => { finishReconcile = resolve }))
+  f.advance.mockResolvedValue(undefined)
+  const run = runLoop(f)
+  f.stop!()
+  await vi.advanceTimersByTimeAsync(64_000)
+  expect(f.sdk.balances).toHaveBeenCalledOnce()
+  expect(f.broadcaster.reconcile).toHaveBeenCalledOnce()
+  finishDelivery()
+  await vi.advanceTimersByTimeAsync(0)
+  expect(f.sdk.stop).not.toHaveBeenCalled()
+  finishRefresh()
+  await vi.advanceTimersByTimeAsync(0)
+  expect(f.store.close).not.toHaveBeenCalled()
+  expect(f.waku.publish).not.toHaveBeenCalled()
+  finishReconcile()
+  await run
+  expect(f.sdk.stop).toHaveBeenCalledOnce()
+  expect(f.provider.destroy).toHaveBeenCalledOnce()
+  expect(f.store.close).toHaveBeenCalledOnce()
+  expect(vi.getTimerCount()).toBe(0)
 })
