@@ -57,6 +57,7 @@
       ]
     },
     "overrides": {
+      "@libp2p/crypto@<5.1.22": "5.2.0",
       "axios": "^1.20.0",
       "ws": "^8.21.0",
       "protobufjs": "^7.6.5",

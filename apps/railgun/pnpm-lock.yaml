@@ -5,6 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
+  '@libp2p/crypto@<5.1.22': 5.2.0
   axios: ^1.20.0
   ws: ^8.21.0
   protobufjs: ^7.6.5
@@ -826,9 +827,6 @@ packages:
 
   '@libp2p/bootstrap@11.0.42':
     resolution: {integrity: sha512-xe5LMZrXR2cnFcR69ax/cHqNCc8zwSvqDWOf82u/ifAsUae7M0eeoEVi15lfrPewWst4YPkTqYDkZSPWC65I3Q==}
-
-  '@libp2p/crypto@5.1.6':
-    resolution: {integrity: sha512-hCNDInAsjfFTOr1ZlVTVuRKpkGEbR1GC+cDbmn2Vslwd0dHZHqhKv5ye7l6NZaiNUxxqUCVmqvJIWqVLuTPDdg==}
 
   '@libp2p/crypto@5.2.0':
     resolution: {integrity: sha512-nLKTzyX6PKQoGFrb+OKds4NyFnedBcCgr50jYd5sIwFPVOEiQiCYBeQSdBbqjn9crFFca/l7dxBcFtXQ5qKiVw==}
@@ -4813,16 +4811,6 @@ snapshots:
       '@multiformats/multiaddr': 12.5.1
       main-event: 1.0.5
 
-  '@libp2p/crypto@5.1.6':
-    dependencies:
-      '@libp2p/interface': 2.11.0
-      '@noble/curves': 1.9.7
-      '@noble/hashes': 1.8.0
-      multiformats: 13.4.2
-      protons-runtime: 5.6.0
-      uint8arraylist: 2.4.9
-      uint8arrays: 5.1.1
-
   '@libp2p/crypto@5.2.0':
     dependencies:
       '@libp2p/interface': 3.4.0
@@ -4928,7 +4916,7 @@ snapshots:
 
   '@libp2p/peer-id@5.1.7':
     dependencies:
-      '@libp2p/crypto': 5.1.6
+      '@libp2p/crypto': 5.2.0
       '@libp2p/interface': 2.11.0
       multiformats: 13.4.2
       uint8arrays: 5.1.1
@@ -6324,7 +6312,7 @@ snapshots:
   '@waku/enr@0.0.33':
     dependencies:
       '@ethersproject/rlp': 5.8.0
-      '@libp2p/crypto': 5.1.6
+      '@libp2p/crypto': 5.2.0
       '@libp2p/peer-id': 5.1.7
       '@multiformats/multiaddr': 12.5.1
       '@noble/secp256k1': 1.7.2

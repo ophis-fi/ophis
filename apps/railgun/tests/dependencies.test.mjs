@@ -28,6 +28,30 @@ async function importDependency(loader, name, subpath = '.') {
 }
 
 describe('browser dependency security backports', () => {
+  it('rejects malformed DER in Waku crypto while preserving secp256k1 peer identities', async () => {
+    const broadcaster = childLoader(root, '@railgun-community/waku-broadcaster-client-web')
+    const waku = childLoader(broadcaster, '@waku/sdk')
+    const core = childLoader(waku, '@waku/core')
+    const enr = childLoader(core, '@waku/enr')
+    const peerId = childLoader(enr, '@libp2p/peer-id')
+    const { peerIdFromPublicKey } = await importDependency(enr, '@libp2p/peer-id')
+    const { createPeerIdFromPublicKey } = await import(
+      pathToFileURL(join(dirname(manifest(core, '@waku/enr')), 'dist/peer_id.js')).href
+    )
+    for (const loader of [enr, peerId]) {
+      const { generateKeyPair, publicKeyFromRaw } = await importDependency(loader, '@libp2p/crypto', './keys')
+      // Keep the claimed length small so a regressed decoder is safe to exercise.
+      expect(() => publicKeyFromRaw(Uint8Array.from([0x02, 0x82, 0x00, 0x10, 0x01])))
+        .toThrow('invalid DER element length')
+      expect(() => publicKeyFromRaw(Uint8Array.from([0x02, 0x80])))
+        .toThrow('invalid DER element length')
+      const key = await generateKeyPair('secp256k1')
+      const publicKey = publicKeyFromRaw(key.publicKey.raw)
+      expect(createPeerIdFromPublicKey(key.publicKey.raw).toString()).toBe(peerIdFromPublicKey(publicKey).toString())
+      const message = Uint8Array.from([1, 2, 3])
+      expect(await publicKey.verify(message, await key.sign(message))).toBe(true)
+    }
+  })
   it('preserves leading nonce bytes during RFC6979 truncation on P-521', () => {
     const crypto = childLoader(wallet, 'crypto-browserify')
     const sign = childLoader(crypto, 'browserify-sign')
