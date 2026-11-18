@@ -843,12 +843,13 @@ try {
   await on.getByLabel('Phone of person 2').fill('+352 621 000 001')
   await on.getByLabel('Role of person 2').selectOption('admin')
   check('the form names a second person: a name, a position, a work email at the domain, a phone, the role Owner or Admin; it fits a phone', await both(on, '59-apply-people', 'fieldset'))
-  check('the application page carries the footer line and says nothing is stored yet', await on.locator(".foot-line", { hasText: FOOTER }).isVisible() && await on.getByText('Nothing is stored until you create the organisation').isVisible())
+  check('the application page carries the footer line and says nothing is stored yet', await on.locator(".foot-line", { hasText: FOOTER }).isVisible() && await on.getByText('Ophis stores nothing until you create the organisation').isVisible())
   await on.getByRole('button', { name: 'Create the passkey', exact: true }).click()
   await on.getByRole('heading', { name: 'Your passkey is ready. Create the organisation.' }).waitFor()
   // Owner, 2026-11-18: the page asks for no DNS record.
-  check('the page offers one action, no DNS record, and fits a phone', await on.getByRole('button', { name: 'Create the organisation' }).isVisible()
-    && (await on.getByText(/DNS|_ophis-verify/).count()) === 0 && await both(on, '32-apply-create'))
+  check('the panel offers exactly Create the organisation and Start again, and fits a phone',
+    (await on.locator('section.recover .panel').getByRole('button').allInnerTexts()).map((text) => text.trim()).join('|') === 'Create the organisation|Start again' && await both(on, '32-apply-create'))
+  check('the page shows no DNS record', (await on.getByText(/DNS|_ophis-verify/).count()) === 0)
   // A reload keeps the application (this browser remembers it).
   await on.reload()
   await on.getByRole('button', { name: 'Create the organisation' }).click()

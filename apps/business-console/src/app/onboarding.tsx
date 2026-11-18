@@ -143,7 +143,7 @@ export function Apply() {
       <header className="ph"><div>
         <span className="cap eyebrow">Apply</span>
         <h1 className="h-page">Open an organisation <em>for your company</em>.</h1>
-        <p className="lede">For companies, by invitation only. Enter your invitation code and the company's details, then create a passkey on this device, your phone or a security key. Nothing is stored until you create the organisation, and Ophis reviews the company before anything else opens.</p>
+        <p className="lede">For companies, by invitation only. Enter your invitation code and the company's details, then create a passkey on this device, your phone or a security key. Ophis stores nothing until you create the organisation, and reviews the company before anything else opens.</p>
       </div></header>
       {problem && <Problem>{problem}</Problem>}
       {done ? (
@@ -248,7 +248,7 @@ export function Apply() {
               {people.length < 4 && <div><button className="btn ghost md" type="button" onClick={() => setPeople([...people, { ...NOBODY }])}><Icon name="user" size={16} />Add a person</button></div>}
             </div>
           </fieldset>
-          <p>The next step creates your passkey, which makes you the first Owner: on this device, your phone or a security key. Then you create the organisation; until then this browser keeps your application.</p>
+          <p>The next step creates your passkey, which makes you the first Owner: on this device, your phone or a security key. Then you create the organisation.</p>
           <div><button className="btn primary md" type="submit" disabled={busy || typeof PublicKeyCredential === 'undefined'}><Icon name="key-round" size={16} />Create the passkey</button></div>
         </form>
       )}
