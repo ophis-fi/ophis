@@ -151,7 +151,7 @@ function App() {
             : me ? <Organisation me={me} onSignedOut={signedOut} onChanged={loadMe} />
             : <SignIn onSignedIn={loadMe} />}
           </main>
-          <footer className="foot-line">Ophis is a software provider. It is not a crypto-asset service provider.</footer>
+          <footer className="foot-line">Ophis © 2026</footer>
         </div>
       </div>
 
@@ -174,7 +174,7 @@ const ComputerOnly = () => (<>
         <p className="lede">Open pro.ophis.fi on a computer. Your phone can still confirm a passkey there: scan the code the computer shows.</p>
       </div></header>
     </section>
-    <footer className="foot-line">Ophis is a software provider. It is not a crypto-asset service provider.</footer>
+    <footer className="foot-line">Ophis © 2026</footer>
   </main>
 </>)
 

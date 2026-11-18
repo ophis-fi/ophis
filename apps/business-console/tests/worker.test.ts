@@ -4133,9 +4133,12 @@ describe('y. wallets and the recovery wallet', () => {
       })
       expect((await get(SITE.origin, path)).status, path).toBe(404)
     }
+    // The signing host's own name sends to the signing page, and nowhere else.
+    const root = await get(SIGN, '/')
+    expect([root.status, root.headers.get('location'), root.text]).toEqual([302, '/sign/', ''])
     // The console's pages: not on the signing host. On their own host they pass through untouched.
     for (const path of ['/', '/index.html', '/assets/index-abc.js', '/ophis-icon.svg', '/signs', '/sign.html']) {
-      expect((await get(SIGN, path)).status, path).toBe(404)
+      if (path !== '/') expect((await get(SIGN, path)).status, path).toBe(404)
       const page = await get(SITE.origin, path)
       expect([page.status, page.text, page.headers.get('x-frame-options'), page.headers.get('access-control-allow-origin')], path).toEqual([200, `file ${path}`, 'DENY', null])
     }
@@ -4161,8 +4164,8 @@ describe('y. wallets and the recovery wallet', () => {
     const env = { ...testEnv, ENVIRONMENT: 'production' }
     const get = async (url: string) => (await handle(new Request(url, { headers: { 'sec-fetch-site': 'same-origin' } }), env, () => now)).status
     expect(configFor('production')).toMatchObject({ rpId: 'pro.ophis.fi', origin: 'https://pro.ophis.fi', signOrigin: 'https://sign.ophis.fi' })
-    expect([await get('https://pro.ophis.fi/'), await get('https://sign.ophis.fi/sign/'), await get('https://operator.ophis.fi/')]).toEqual([200, 200, 403])
-    for (const url of ['https://sign.ophis.fi/', 'https://pro.ophis.fi/sign/', 'http://pro.ophis.fi/', 'https://ophis.fi/', `${SITE.origin}/`, `${SIGN}/sign/`]) expect(await get(url), url).toBe(404)
+    expect([await get('https://pro.ophis.fi/'), await get('https://sign.ophis.fi/sign/'), await get('https://sign.ophis.fi/'), await get('https://operator.ophis.fi/')]).toEqual([200, 200, 302, 403])
+    for (const url of ['https://sign.ophis.fi/index.html', 'https://pro.ophis.fi/sign/', 'http://pro.ophis.fi/', 'https://ophis.fi/', `${SITE.origin}/`, `${SIGN}/sign/`]) expect(await get(url), url).toBe(404)
     // Every table kept per environment has its entry, so no route of production meets a missing constant.
     for (const environment of ['local', 'production']) {
       expect(Object.keys(configFor(environment).chains), environment).toEqual(['1', '10', '8453', '42161'])
@@ -4190,7 +4193,7 @@ describe('y. wallets and the recovery wallet', () => {
   it('the console holds no wallet code: its built bundle and its sources never name viem, the Safe SDK or a wallet call', () => {
     const bundle = Object.values(builtConsole).join('\n')
     expect(bundle.length, 'build the app first: pnpm build').toBeGreaterThan(50_000)
-    expect(bundle).toContain('Ophis is a software provider')
+    expect(bundle).toContain('Ophis © 2026')
     for (const mark of ['eth_signTypedData', 'eth_requestAccounts', 'wallet_switchEthereumChain', 'safe-apps-sdk', 'getOffChainSignature', 'secp256k1', 'isValidSignature', 'EIP712Domain']) expect(bundle, mark).not.toContain(mark)
     // The signing page does hold it, and nothing of the console's session.
     const page = Object.values(signSource).join('\n')
@@ -7129,7 +7132,8 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
     await noLists()
     const written = [...new Set([...onboardingSource.matchAll(/'([a-z_]+(?:\.[a-z_]+)+)'/g)].map((match) => match[1]))]
     // organisation.apply_unproved is read, never written: the first rows of 2026-11-17 and 18 (Codex, PR #1660).
-    expect(written.sort()).toEqual([...steps.map(([action]) => action), 'organisation.unfreeze', 'organisation.apply_unproved'].sort())
+    // organisation.correct is written by hand by the operator (2026-11-19), never by code: it only needs its words.
+    expect(written.sort()).toEqual([...steps.map(([action]) => action), 'organisation.unfreeze', 'organisation.apply_unproved', 'organisation.correct'].sort())
     for (const action of written) expect(EVENTS[action], action).toEqual(expect.any(String))
     expect(Object.keys(onboarding.ONBOARDING_EVENTS).sort()).toEqual(written)
     // Every statement of this file is prepared with bound parameters: no value of a request is written into SQL text.
@@ -9415,7 +9419,7 @@ describe('H. the institution: overview from its wallets and orders, the desk and
     expect(pagesSource).toContain('<dt>Settle from</dt><dd>{order.terms.label}, <span className="mono">{order.terms.wallet}</span></dd>')
     // No example figure is left: no banner, no example tag, no example table. The footer line is the shell's, so it is on every screen.
     expect(deskPage + uiSource + demoSource).not.toMatch(/Banner|Example|Illustrative|totalEur|example wallets/)
-    expect(shellPage).toContain('<footer className="foot-line">Ophis is a software provider. It is not a crypto-asset service provider.</footer>')
+    expect(shellPage).toContain('<footer className="foot-line">Ophis © 2026</footer>')
     expect(shellPage).not.toMatch(/Later/)
   })
 })

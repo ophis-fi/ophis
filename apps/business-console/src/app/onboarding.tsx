@@ -531,7 +531,7 @@ export function KybRecord() {
           <h3 className="h-panel sub">Signed declaration</h3>
           {view.sealed ? <SealedItem item={view.sealed} /> : <p className="fine">None uploaded. See <a href="/#/onboarding">Onboarding</a>.</p>}
           <h3 className="h-panel sub">Downloads by the Ophis operator</h3>
-          {view.downloads.length === 0 ? <p className="fine">None. Each download of the sealed file is listed here and in the audit log, with its reason.</p> : (
+          {view.downloads.length === 0 ? <p className="fine">Ophis has not downloaded your signed declaration. If it does, you will see it here and in the audit log, with the reason.</p> : (
             <ul className="stack">
               {view.downloads.map((d) => <li key={`${d.at}${d.item}${d.reason}`}>{stamp(d.at)}: still sealed, for {d.reason}. <span className="fine">Item <span className="mono">{d.item.slice(0, 8)}</span>{d.item === view.sealed?.id ? '' : ', since replaced'}</span></li>)}
             </ul>

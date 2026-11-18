@@ -775,7 +775,6 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
               const about = view.wallets.find((w) => w.id === request.subjectId)
               return <Approval key={request.id} request={request} wallet={about} on={about ? chain(about.chainId) : ''} mayDecide={KEY_ROLES.includes(me.seat.role) && ready && !quarantined} act={act} />
             })}
-            {view.approvals.length === 0 && <p className="note ok"><Icon name="circle-check" /><span className="grow"><b>Nothing waits.</b> A request to unfreeze a seat, remove a member, change a role, change the passkey rule, link a wallet or set the recovery wallet appears here, and in the audit log.</span></p>}
           </div>
         </Section>
       )}
