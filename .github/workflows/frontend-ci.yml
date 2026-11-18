@@ -117,7 +117,7 @@ jobs:
       - name: Base builder attribution and wallet regressions
         working-directory: apps/frontend
         run: |
-          pnpm exec nx run wallet-provider:test --testPathPatterns 'baseBuilderCode.test' --passWithNoTests=false --runInBand
+          pnpm exec nx run wallet-provider:test --testPathPatterns 'baseBuilderCode.*test' --passWithNoTests=false --runInBand
           pnpm exec nx run cowswap-frontend:test --testPathPatterns 'cowSdk.utils.test|useBatchPresign.test|useApproveCallback|useWrapCallback' --passWithNoTests=false --runInBand
 
       - name: CCTP transfer, recovery and polling regressions

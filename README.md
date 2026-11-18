@@ -101,8 +101,10 @@ for signing policies and trust boundaries.
 | [`apps/frontend/`](apps/frontend)             | Swap app, Explorer and landing site; a separate pnpm workspace based on CoW Swap.        |
 | [`apps/backend/`](apps/backend)               | Rust orderbook, autopilot, driver and solvers, based on CoW Protocol services.           |
 | [`apps/mcp-server/`](apps/mcp-server)         | Hosted MCP integration.                                                                  |
+| [`apps/business-console/`](apps/business-console) | Business onboarding, roles, approvals and partner reporting at pro.ophis.fi.          |
 | [`apps/rebate-indexer/`](apps/rebate-indexer) | Trade indexing, referral attribution and rewards.                                        |
 | [`apps/railgun/`](apps/railgun)               | Private-swap application and release documentation.                                      |
+| [`apps/broadcaster/`](apps/broadcaster)       | Private transaction submission, prepaid gas credit and refunds.                          |
 | [`apps/docs-ophis/`](apps/docs-ophis)         | Public documentation site.                                                               |
 | [`packages/`](packages)                       | SDK, CLI, wallet-policy packages and integration adapters.                               |
 | [`contracts/`](contracts)                     | Settlement contracts, deployment records and contract tests.                             |
@@ -161,7 +163,9 @@ recorded releases.
 
 ## License
 
-[GNU General Public License v3.0](LICENSE). Ophis includes code derived from
+[GNU General Public License v3.0](LICENSE) at the repository root; component
+licenses and upstream notices also apply. The SDK declares GPL-3.0-or-later,
+the contracts LGPL-3.0-or-later and the frontend workspace ISC. Ophis includes code derived from
 [CoW Swap](https://github.com/cowprotocol/cowswap),
 [CoW Protocol services](https://github.com/cowprotocol/services) and
 [CoW Protocol contracts](https://github.com/cowprotocol/contracts).

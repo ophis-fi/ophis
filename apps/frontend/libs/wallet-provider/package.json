@@ -39,6 +39,7 @@
   },
   "dependencies": {
     "@cowprotocol/common-const": "workspace:*",
+    "@cowprotocol/common-utils": "workspace:*",
     "@ethersproject/providers": "5.7.0",
     "@web3-react/core": "^8.2.3",
     "ethers": "5.7.2",

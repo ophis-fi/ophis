@@ -2214,6 +2214,9 @@ importers:
       '@cowprotocol/common-const':
         specifier: workspace:*
         version: link:../common-const
+      '@cowprotocol/common-utils':
+        specifier: workspace:*
+        version: link:../common-utils
       '@ethersproject/providers':
         specifier: 5.7.0
         version: 5.7.0(bufferutil@4.0.8)(utf-8-validate@5.0.10)

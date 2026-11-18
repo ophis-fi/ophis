@@ -14,6 +14,7 @@ For vulnerability disclosure, see [SECURITY.md](../../SECURITY.md).
 
 | Date       | Report                                                                                                                   |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------ |
+| 2026-11-17 | [Picomatch advisory review](picomatch-GHSA-fc5q-2026-11-17.md) |
 | 2026-11-09 | [Public native prepayment — implementation and release review](2026-11-09-public-native-prepayment.md)                   |
 | 2026-11-09 | [Ethereum and BNB prepaid broadcaster — release overview](2026-11-09-prepaid-release-review.md)                          |
 | 2026-11-07 | [Owner broadcaster release review — 7 November 2026](2026-11-07-owner-broadcaster-release-review.md)                     |

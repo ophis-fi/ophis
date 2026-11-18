@@ -1,11 +1,15 @@
 import { Web3Provider } from '@ethersproject/providers'
 
 import { assertAttributedTransactionGas, withOphisBaseTransactionParams } from './baseBuilderCode'
+import { WalletFirstReadProvider, withAppRpcFallback } from './WalletFirstReadProvider'
 
 export class OphisBaseProvider extends Web3Provider {
+  private readonly reads: Web3Provider | WalletFirstReadProvider
+
   constructor(provider: Web3Provider) {
     // Keep the raw EIP-1193 provider available to third-party hook iframes.
     super(provider.provider, 8453)
+    this.reads = withAppRpcFallback(8453, provider)
   }
 
   async send(method: string, params: unknown[]): Promise<unknown> {
@@ -15,7 +19,7 @@ export class OphisBaseProvider extends Web3Provider {
       }
       const attributed = withOphisBaseTransactionParams(method, params, 8453)
       if (['eth_sendTransaction', 'wallet_sendTransaction'].includes(method) && attributed !== params) {
-        await assertAttributedTransactionGas(attributed, (method, params) => super.send(method, params))
+        await assertAttributedTransactionGas(attributed, (method, params) => this.reads.send(method, params))
         if (Number(await super.send('eth_chainId', [])) !== 8453)
           throw new Error('Wallet network changed. Please retry.')
       }

@@ -7,3 +7,10 @@ export {
   appendOphisBaseBuilderCode,
   withOphisBaseTransactionParams,
 } from './baseBuilderCode'
+export {
+  WalletFirstReadProvider,
+  withAppRpcFallback,
+  isExecutionError,
+  isTransportError,
+  WALLET_READ_TIMEOUT_MS,
+} from './WalletFirstReadProvider'

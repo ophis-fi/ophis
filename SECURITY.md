@@ -15,6 +15,21 @@ These are the Ophis-operated settlement networks. The frontend at
 https://swap.ophis.fi also supports CoW-hosted networks; see the
 [network overview](README.md#networks) and [SDK chain configuration](packages/sdk/src/config.ts).
 
+The disclosure policy also covers Ophis integrations and services outside this
+settlement stack:
+
+| Component | Security scope |
+| --- | --- |
+| Private wallet (`apps/railgun/`) | Key storage, proof generation, RPC gateway, private swaps and recovery on Ethereum, BNB Chain and Arbitrum. Other configured networks are not production-enabled by that configuration alone. |
+| Broadcaster (`apps/broadcaster/`) | Transaction validation, signing, prepaid gas-credit accounting and refunds. Prepaid credit is held by the operator; it is separate from shielded wallet assets and has no operator-independent withdrawal. |
+| Business console (`apps/business-console/`) | Passkeys, roles, approvals, onboarding, sealed KYB records, sanctions screening and signing links. This is an invitation-based service with operator review, separate from public retail swaps. |
+| SDK, CLI, MCP and bridge integrations | Order construction, wallet authorization, transaction submission and provider-specific recovery. |
+
+See the [security documentation](https://docs.ophis.fi/audits) for governance
+controls and custody boundaries, and the [gas-credit refund policy](apps/broadcaster/PREPAID-REFUNDS.md)
+for operator dependencies and minimum refund limits. Upstream audits do not
+certify these Ophis-specific services or their deployments.
+
 ## Reporting a vulnerability
 
 **Do NOT open a public GitHub issue.** For anything that could affect users' funds, the protocol's solver budget, partner-fee accrual, or could enable settlement-on-forged-state:
