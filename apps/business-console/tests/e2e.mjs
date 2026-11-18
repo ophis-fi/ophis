@@ -569,8 +569,8 @@ try {
   const opened = await signing.goto(signingLink)
   await signing.getByRole('heading', { name: 'What the wallet will sign' }).waitFor()
   const policy = opened.headers()['content-security-policy'] ?? ''
-  check('the signing page carries its own policy and may be framed by the Safe interface only',
-    policy === "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; frame-ancestors https://app.safe.global https://*.safe.global" && !opened.headers()['x-frame-options'])
+  check('the signing page carries its own policy, names only WalletConnect\'s relay and its Verify frame, and may be framed by the Safe interface only',
+    policy === "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self' wss://relay.walletconnect.org; frame-src https://verify.walletconnect.org; frame-ancestors https://app.safe.global https://*.safe.global" && !opened.headers()['x-frame-options'])
   await signing.evaluate(() => document.fonts.ready)
   check('the signing page shows the black logo of the console and the brand font, both from its own folder',
     await signing.evaluate(() => { const logo = document.querySelector('.brand img'); return logo.naturalWidth > 0 && new URL(logo.src).pathname.startsWith('/sign/assets/ophis-icon-mono-dark') })
@@ -674,12 +674,13 @@ try {
     await on.getByRole('heading', { name: 'What the wallet will sign' }).waitFor()
     const before = await on.locator('main').innerText()
     const fits = !shot || await both(on, shot)
+    const walletConnect = await on.getByRole('button', { name: 'Sign with WalletConnect' }).isVisible() // owner, 2026-11-18
     await on.getByRole('button', { name: 'Sign with the wallet in this browser' }).click()
     await on.getByRole('status').filter({ hasText: /Signed and checked|Refused/ }).waitFor()
     const after = await on.locator('main').innerText()
     if (shot) await both(on, `${shot}-done`)
     await context.close()
-    return { before, after, asked: asked.join(), fits }
+    return { before, after, asked: asked.join(), fits, walletConnect }
   }
   // The requester: somebody the console does not know, on the public page, with a new security key.
   async function ask(shot) {
@@ -700,10 +701,12 @@ try {
   }
   const lost = await ask('22-recover')
   check('/recover is public: no session, the footer line, each button preceded by what it does, and it fits a phone', lost.open)
-  check('the requester gets a link to the signing page, and is told to send it by a channel the signers trust',
-    lost.link.startsWith(`${SIGN}/sign/#`) && await lost.page.getByText('Send it by a channel the signers trust, so that they know it comes from you.').isVisible() && await both(lost.page, '23-recover-link'))
+  check('the requester gets a link to the signing page, is told to send it by a channel the signers trust, and is not pointed at WalletConnect (the signing page offers none for the recovery wallet)',
+    lost.link.startsWith(`${SIGN}/sign/#`) && await lost.page.getByText('Send it by a channel the signers trust, so that they know it comes from you.').isVisible()
+      && (await lost.page.getByText(/WalletConnect/).count()) === 0 && await both(lost.page, '23-recover-link'))
   check('nothing is stored and no member sees anything before the wallet signs', !(await page.evaluate(() => fetch('/api/me').then((response) => response.json()).then((me) => me.alerts.some((alert) => alert.kind.startsWith('recovery'))))))
   const signed = await sign(lost.link, '24-recovery-signing')
+  check('a recovery names no chain, so the signing page offers no WalletConnect: the browser wallet or the Safe fills it in', !signed.walletConnect)
   check('the signing page shows the Proof fields as text, says what to check, names no wallet before the wallet answers, and shows no words',
     ['Restore access to an organisation.', 'Replace all Owner passkeys of this organisation', 'localhost', organisationId, 'The wallet that signs', 'New passkey (hash)', 'Request number (nonce)',
       'Sign only if the request comes from your colleague by a channel you trust, and the organisation id matches the recovery sheet.'].every((text) => signed.before.includes(text)) && !/three words/i.test(signed.before) && signed.fits)
@@ -911,12 +914,16 @@ try {
   const firstHash = await on.locator('article.sheet dt:has-text("First Owner passkey (hash)") + dd').innerText()
   await on.getByRole('button', { name: 'Create the signing link' }).click()
   const activationLink = await on.getByLabel(/Signing link/).inputValue()
+  const signNow = on.getByRole('link', { name: 'Sign with your wallet' })
+  check('"Sign with your wallet" opens that same signing link in a new tab, with no opener (owner, 2026-11-18)',
+    await signNow.getAttribute('href') === activationLink && await signNow.getAttribute('target') === '_blank' && (await signNow.getAttribute('rel'))?.includes('noopener'))
   check('the Onboarding page gives a signing link on the signing host and the first Owner\'s passkey hash', activationLink.startsWith(`${SIGN}/sign/#`) && /^0x[0-9a-f]{64}$/.test(firstHash) && await both(on, '33-onboarding'))
   const activated = await sign(activationLink, '34-activation-sign')
   check('the signing page shows the fourth action, the organisation id, the same passkey hash and what to check, and the wallet signs',
     activated.before.includes('Activate this organisation and confirm its first Owner passkey') && activated.before.includes('First Owner passkey (hash)') && !activated.before.includes('New passkey (hash)') && activated.before.includes(newOrg.id) && activated.before.includes(firstHash) && activated.before.includes(key.address)
     && activated.before.includes('Sign only if the request comes from your colleague by a channel you trust, and the organisation named is theirs.') && !/three words/i.test(activated.before)
     && activated.after.includes('Signed and checked. The wallet is stored') && activated.asked.includes('eth_signTypedData_v4') && activated.fits)
+  check('an activation names its wallet and chain, so the signing page offers WalletConnect first', activated.walletConnect)
   await on.getByRole('button', { name: 'The wallet has signed' }).click()
   await on.getByText('It signed the activation.').waitFor()
   // Milestone 5b: the declaration, printed alone; the signed scan, sealed in this browser; the Worker keeps it sealed.

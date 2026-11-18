@@ -109,9 +109,14 @@ export function Status({ children }: { children: string }) {
   return <span className={`badge bi ${tone}`}><Icon name={icon} size={16} />{children}</span>
 }
 
-/** The two ways the people who hold a wallet open a signing link: a wallet in a browser, or the Safe interface. */
-export const Ways = ({ link }: { link: string }) => (
-  <><b>A wallet in a browser, or a custodian's browser extension:</b> open the link in that browser. <b>A Safe:</b> in the Safe interface open Apps, add <span className="mono">{link.split('#')[0]}</span> as a custom app, open it and paste the link.</>
+/** The ways the people who hold a wallet open a signing link: WalletConnect (not for orders yet), a wallet in a browser, or the Safe interface. */
+export const Ways = ({ link, walletConnect = true }: { link: string; walletConnect?: boolean }) => (
+  <>{walletConnect && <><b>Any wallet that supports WalletConnect, a phone wallet included:</b> open the link and choose "Sign with WalletConnect". </>}<b>A wallet in a browser, or a custodian's browser extension:</b> open the link in that browser. <b>A Safe:</b> in the Safe interface open Apps, add <span className="mono">{link.split('#')[0]}</span> as a custom app, open it and paste the link.</>
+)
+
+/** Owner, 2026-11-18: the person at this computer who holds the wallet opens the signing page at once, in a new tab. */
+export const SignNow = ({ link }: { link: string }) => (
+  <a className="btn primary md" href={link} target="_blank" rel="noopener noreferrer"><Icon name="wallet" size={16} />Sign with your wallet</a>
 )
 
 /** Hands a file the server built to the browser's download. */

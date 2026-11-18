@@ -4,7 +4,7 @@
 // live figures from the Ophis rebate service, checked and rebuilt by the server (src/server/partner.ts). This file holds
 // no price and builds no order.
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { api, CANCELLED, capital, Icon, ROLE, save, say, sensitive, Section, stamp, Status, Tile, Ways } from './ui.tsx'
+import { api, CANCELLED, capital, Icon, ROLE, save, say, sensitive, Section, stamp, SignNow, Status, Tile, Ways } from './ui.tsx'
 
 // What an approval binds (the server's terms; amounts in atoms) and the same in words, made by the server.
 interface Terms { type: 'market' | 'limit'; chainId: number; walletId: string; wallet: string; label: string; scheme: 'eip712' | 'presign'; sell: { symbol: string; amount: string }; buy: { symbol: string; minimum: string }; quoted: string; slippageBips: number | null; limitPrice: string | null; validFor: number }
@@ -478,8 +478,8 @@ function OrderRecord({ o, v, onClose, onChanged, onSignedOut }: { o: Order; v: D
           {link && (
             <>
               <label className="field">Link for the wallet<input className="input mono" readOnly value={link} onFocus={(event) => event.target.select()} /></label>
-              <div><button className="btn ghost md" type="button" onClick={() => navigator.clipboard.writeText(link).then(() => setCopied(true), () => setCopied(false))}><Icon name="clipboard-check" size={16} />{copied ? 'Copied' : 'Copy the link'}</button></div>
-              <p className="fine"><Icon name="info" size={16} /><span><Ways link={link} />{o.terms.scheme === 'presign' && ' This wallet is a Safe: use the Safe interface.'}</span></p>
+              <div className="acts"><SignNow link={link} /><button className="btn ghost md" type="button" onClick={() => navigator.clipboard.writeText(link).then(() => setCopied(true), () => setCopied(false))}><Icon name="clipboard-check" size={16} />{copied ? 'Copied' : 'Copy the link'}</button></div>
+              <p className="fine"><Icon name="info" size={16} /><span><Ways link={link} walletConnect={false} />{o.terms.scheme === 'presign' && ' This wallet is a Safe: use the Safe interface.'}</span></p>
             </>
           )}
         </div>
