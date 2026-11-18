@@ -181,6 +181,19 @@ try {
   await page.evaluate(() => document.fonts.ready)
   await page.screenshot({ path: '.shots/01-signin.png' })
 
+  // Owner, 2026-11-18: the console is for computers. A phone gets the message and no sign-in, and its API calls are refused.
+  const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1'
+  const handset = await browser.newContext({ userAgent: IPHONE, viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' })
+  const small = await handset.newPage()
+  await small.goto(ORIGIN)
+  check('a phone is told the dashboard is only available from a computer, with no sign-in',
+    await small.getByRole('heading', { name: 'The Ophis dashboard is only available from a computer.' }).waitFor({ timeout: 10000 }).then(() => true, () => false)
+    && (await small.getByRole('button', { name: 'Sign in with a passkey' }).count()) === 0
+    && await small.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+  check('the API refuses a phone', (await small.evaluate(() => fetch('/api/signin/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }).then((r) => r.json()))).error === 'computer_only')
+  await small.screenshot({ path: '.shots/01-phone-computer-only.png' })
+  await handset.close()
+
   await page.goto(link)
   await page.getByRole('button', { name: 'Create passkey' }).waitFor()
   check('the ticket left the address bar', (await page.evaluate(() => location.hash)) === '#/enrol')
@@ -276,9 +289,12 @@ try {
     await page.getByText('Add your second hardware key.').isVisible() && (await page.getByRole('button', { name: 'Invite member' }).count()) === 0)
   // The only key plugged in already holds the seat's first passkey: the browser refuses (excludeCredentials), and the page
   // says why instead of "cancelled or timed out" (an Owner with a synced passkey hit this on every device, 2026-11-18).
+  // /api/me is the action's last step (onChanged): once it is asked, the action is over and the next click is not ignored (CodeRabbit, PR #1665).
+  const settled = page.waitForRequest((request) => request.url().endsWith('/api/me'))
   await page.getByRole('button', { name: 'Add a passkey' }).click()
   check('adding a passkey on the key that holds the first says the second goes elsewhere',
     await page.getByText('already holds a passkey of your seat').waitFor({ timeout: 10000 }).then(() => true, () => false))
+  await settled
   // The first key goes back in the drawer; a second security key is plugged in.
   await devtools.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId })
   await devtools.send('WebAuthn.addVirtualAuthenticator', { options: KEY })

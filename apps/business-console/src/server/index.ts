@@ -67,6 +67,10 @@ interface Route {
 
 const json = (status: number, body: unknown, headers: Record<string, string> = {}) => Response.json(body, { status, headers })
 const fail = (status: number, error: string) => json(status, { error })
+// A phone or tablet, as it names itself: Chromium's hint, else the user agent (main.tsx reads the same). One set to
+// "desktop site" passes: this keeps the console off small screens, the passkey stays the lock.
+export const phone = (request: Request) =>
+  request.headers.get('sec-ch-ua-mobile') === '?1' || /Mobi|Android|iPhone|iPad|iPod/i.test(request.headers.get('user-agent') ?? '')
 const LABEL = /^[\p{L}\p{N} ._()-]{1,40}$/u
 const NAME = /^[\p{L}\p{N} .'-]{1,60}$/u
 
@@ -1203,7 +1207,9 @@ export async function handle(request: Request, env: Env, now: () => number = Dat
     // Any other host is not ours: a request that arrives under another name gets nothing, not even a refusal with a reason.
     if (!signing && origin !== config.origin) return new Response('Not found', { status: 404, headers: HEADERS })
     if (!pathname.startsWith('/api/')) return await pages(request, env, signing)
-    response = await api(request, env, now, config, signing, ctx)
+    // Owner, 2026-11-18: the console is for computers. Its page tells a phone or tablet so (main.tsx), and its API answers
+    // none. The signing host is not the console: a wallet on a phone may still sign there.
+    response = !signing && phone(request) ? fail(403, 'computer_only') : await api(request, env, now, config, signing, ctx)
   } catch (error) {
     // Logs carry route names and error names only: no ids of people, no values, no tokens.
     console.error('api failure', request.method, pathname, error instanceof Error ? error.name : 'unknown')

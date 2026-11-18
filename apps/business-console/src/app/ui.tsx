@@ -35,6 +35,7 @@ const SAY: Record<string, string> = {
   requester_quarantine: 'The member who asked for this is in quarantine after a re-enrolment. It can be approved when the quarantine ends. Until then that member can cancel it.',
   seat_in_quarantine: 'That seat was re-enrolled and is still in quarantine. Its role can change when quarantine ends.',
   forbidden: 'Your role cannot do this.',
+  computer_only: 'The Ophis dashboard is only available from a computer.',
   ticket_limit: 'Three links for one member in 24 hours is the limit. Another Owner or Admin can issue one.',
   not_found: 'This is no longer open. Reload the page.',
   being_sent: 'The wallet is sending this order now. Its link no longer works: withdrawn if the orderbook does not take it; if it does, it shows Open and you can cancel it.',

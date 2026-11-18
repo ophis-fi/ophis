@@ -161,4 +161,19 @@ function App() {
   )
 }
 
-createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>)
+// Owner, 2026-11-18: the console is for computers. The same test as the server's (index.ts, phone), which refuses the API too.
+const phone = (navigator as Navigator & { userAgentData?: { mobile?: boolean } }).userAgentData?.mobile === true || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+const ComputerOnly = () => (<>
+  <header className="bar"><span className="brand"><img src={mark} alt="" />ophis.<small>Business</small></span></header>
+  <main id="main" className="col">
+    <section className="recover">
+      <header className="ph"><div>
+        <h1 className="h-page">The Ophis dashboard is <em>only available from a computer</em>.</h1>
+        <p className="lede">Open pro.ophis.fi on a computer. Your phone can still confirm a passkey there: scan the code the computer shows.</p>
+      </div></header>
+    </section>
+    <footer className="foot-line">Ophis is a software provider. It is not a crypto-asset service provider.</footer>
+  </main>
+</>)
+
+createRoot(document.getElementById('root')!).render(<StrictMode>{phone ? <ComputerOnly /> : <App />}</StrictMode>)
