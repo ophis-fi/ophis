@@ -29,7 +29,7 @@ const SAY: Record<string, string> = {
   invite_invalid: 'This invitation code is not one Ophis issued, or it is older than 48 hours. Check the 12 characters, or ask Ophis for a new one.',
   invite_used: 'This invitation code was already used. Ask Ophis for a new one.',
   not_stored: 'This application was already used. Sign in with the passkey you created for it.',
-  owner_key: 'The first Owner holds no active passkey. Sign in with one, or have the new one confirmed, first.',
+  owner_key: 'The first Owner needs an active passkey that meets the passkey rule (a hardware key where the organisation requires one). Add one under Organisation, My passkeys, or have the new one confirmed.',
   proof_or_owner: 'One of two things is still missing: the signature of the recovery wallet, or a second Owner.',
   single_key: 'A recovery wallet with a single key is accepted only while the organisation has one member and its application names nobody else. Name a Safe or a custodian wallet instead.',
   declaration: 'The signed declaration is still missing. Print it, have it signed, then seal and upload the scan.',
@@ -423,7 +423,7 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
               : 'Ophis checks them with the company. When Ophis approves, each gets a seat. Do not invite them yourself.'}</p>}
           </Step>
           <Step icon="key-round" title="Passkeys" done={keys}>
-            <p>{keys ? 'The first Owner holds a passkey.' : 'The first Owner holds no active passkey. Sign in with one, or have the new one confirmed, first.'}</p>
+            <p>{keys ? 'The first Owner enrolled a passkey.' : 'The first Owner needs an active passkey that meets the passkey rule (a hardware key where the organisation requires one). Add one under Organisation, My passkeys, or have the new one confirmed.'}</p>
             {!keys && <p><a className="btn ghost sm" href="/#/organisation">Open Organisation, My passkeys</a></p>}
           </Step>
           <Step icon="wallet" title="Recovery wallet or second Owner" done={proved}>

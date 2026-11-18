@@ -655,7 +655,7 @@ function WalletDialog({ wallet, on, may, act, onClose }: { wallet: Wallet; on: s
           )}
           <li><Tile name="x" /><h3 className="h-card">Unlink</h3>
             <div className="body">{wallet.recovery ? <p>This is the recovery wallet{wallet.recovery === 'waiting' ? ', waiting for its 72 hours' : ''}. It cannot be unlinked. Two people replace it first.</p>
-              : !may.unlink ? <p>An Owner or Admin unlinks a wallet.</p>
+              : !may.unlink ? <p>An Owner or Admin unlinks a wallet. Where this organisation requires hardware keys, an Owner needs one first, under My passkeys.</p>
               : <p>{walletEffect('wallet.unlink', wallet, on)}</p>}
               <button className="btn primary md" type="button" disabled={Boolean(wallet.recovery) || !may.unlink} onClick={() => run('unlink')}><Icon name="x" size={16} />Unlink now</button></div></li>
         </ul>
@@ -1300,8 +1300,8 @@ function Sheet({ sheet }: { sheet: Ready['sheet'] }) {
     ['1. You still hold one of your passkeys', [
       `Sign in at ${host} with the passkey you still hold.`,
       'Open Organisation, My passkeys.',
-      'Revoke the passkey you lost.',
       'Use "Add a passkey" for a new passkey, and name it.',
+      'Then revoke the passkey you lost.',
       'Nothing waits: this works at once.',
     ]],
     ['2. You lost every passkey, and a colleague can sign in', [

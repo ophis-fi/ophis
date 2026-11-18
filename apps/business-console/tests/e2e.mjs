@@ -430,10 +430,11 @@ try {
   async function secondKey(who) {
     await who.devtools.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId: who.authenticatorId })
     await who.devtools.send('WebAuthn.addVirtualAuthenticator', { options: KEY })
-    // /api/me is the action's last step: once it is asked, the key is stored (Invite member shows before it: one key is enough).
-    const settled = who.page.waitForRequest((request) => request.url().endsWith('/api/me'))
+    // The key is stored when its finish answers 200 (Invite member shows before it: one key is enough, and a failed
+    // registration also reloads /api/me, CodeRabbit PR #1667).
+    const stored = who.page.waitForResponse((response) => response.url().endsWith('/api/passkeys/finish') && response.status() === 200)
     await who.page.getByRole('button', { name: 'Add a passkey' }).click()
-    await settled
+    await stored
   }
   const invite = (name, role) => issue(async () => {
     await page.getByRole('button', { name: 'Invite member' }).click()

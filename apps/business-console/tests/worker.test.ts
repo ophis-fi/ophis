@@ -4277,7 +4277,7 @@ describe('z. attacks tried by the review of milestone 4a', () => {
     await db.prepare('UPDATE credentials SET device_bound = 0 WHERE id = ?').bind(lone.key.id).run() // its organisation requires hardware keys
     expect(await ready(lone)).toMatchObject({ overall: 'not_recoverable', step: 'owner_key', owners: { level: 'red', count: 1 } })
     // Two Owners with one key each, and no recovery wallet: ready (one passkey is enough, owner 2026-11-18).
-    const o = await owner()
+    const o = await member()
     const seat = await invite(o.orgId, o.seatId, 'owner')
     expect((await enrol(seat.ticket, await softwareAuthenticator(SITE))).status).toBe(200)
     await data.devActivatePending(db, 'local', now)
