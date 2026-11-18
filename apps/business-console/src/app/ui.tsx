@@ -42,6 +42,7 @@ const SAY: Record<string, string> = {
   device_bound_required: 'This role needs a hardware security key. A passkey that syncs to a cloud account is not accepted.',
   label_invalid: 'Give the key a short name: letters, digits and spaces, 40 characters at most.',
   not_stored: 'The passkey was not stored. It may already be on this seat.',
+  passkey_held: 'This device or password manager already holds a passkey of your seat. A passkey that syncs is on every device signed in to that account. Add the second one elsewhere: a security key, a phone signed in to another account, or another password manager.',
   last_passkey: 'This is the last passkey of the seat and cannot be revoked. Add another first. In an emergency, freeze the seat.',
   label_taken: 'This seat already has a passkey with that name. Choose another name.',
   last_owner: 'This is the last active Owner. An organisation always keeps one.',

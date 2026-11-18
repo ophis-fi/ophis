@@ -274,6 +274,11 @@ try {
 
   check('an Owner with one key is asked for the second and cannot invite yet',
     await page.getByText('Add your second hardware key.').isVisible() && (await page.getByRole('button', { name: 'Invite member' }).count()) === 0)
+  // The only key plugged in already holds the seat's first passkey: the browser refuses (excludeCredentials), and the page
+  // says why instead of "cancelled or timed out" (an Owner with a synced passkey hit this on every device, 2026-11-18).
+  await page.getByRole('button', { name: 'Add a passkey' }).click()
+  check('adding a passkey on the key that holds the first says the second goes elsewhere',
+    await page.getByText('already holds a passkey of your seat').waitFor({ timeout: 10000 }).then(() => true, () => false))
   // The first key goes back in the drawer; a second security key is plugged in.
   await devtools.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId })
   await devtools.send('WebAuthn.addVirtualAuthenticator', { options: KEY })
