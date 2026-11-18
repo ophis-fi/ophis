@@ -1046,7 +1046,7 @@ export function Recover() {
             <input className="input mono" readOnly value={issued.link} onFocus={(event) => event.target.select()} />
           </label>
           <div className="acts"><SignNow link={issued.link} /><button className="btn ghost md" type="button" onClick={() => navigator.clipboard.writeText(issued.link).then(() => setCopied(true), () => setCopied(false))}><Icon name="clipboard-check" size={16} />{copied ? 'Copied' : 'Copy the link'}</button></div>
-          <p className="fine"><Icon name="info" size={16} /><span><Ways link={issued.link} walletConnect={!issued.recovery} /></span></p>
+          <p className="fine"><Icon name="info" size={16} /><span><Ways link={issued.link} walletConnect={false} /></span></p>
           {issued.recovery && <p className="fine"><Icon name="clock" size={16} />Once the wallet has signed, every member of the organisation sees the request at sign-in. 72 hours later, come back to this page on this device and use "Continue with the new passkey". Keep the security key you just used.</p>}
         </div>
       ) : (

@@ -124,7 +124,7 @@ async function post(signature: string) {
 
 // Route A: the wallet this browser holds (an extension, or a custodian's extension), or one connected by WalletConnect.
 async function byWallet(ethereum = (window as { ethereum?: Provider }).ethereum, which = 'The wallet in this browser') {
-  if (!ethereum) return say('No wallet was found in this browser. Use WalletConnect, open this page in the browser that holds the wallet, or inside the Safe interface.', 'warn')
+  if (!ethereum) return say(`No wallet was found in this browser. ${named() ? 'Use WalletConnect, open' : 'Open'} this page in the browser that holds the wallet, or inside the Safe interface.`, 'warn')
   const [account] = (await ethereum.request({ method: 'eth_requestAccounts' })) as string[]
   if (!named()) show({ wallet: account, chainId: Number(await ethereum.request({ method: 'eth_chainId' })) })
   else {

@@ -701,8 +701,9 @@ try {
   }
   const lost = await ask('22-recover')
   check('/recover is public: no session, the footer line, each button preceded by what it does, and it fits a phone', lost.open)
-  check('the requester gets a link to the signing page, and is told to send it by a channel the signers trust',
-    lost.link.startsWith(`${SIGN}/sign/#`) && await lost.page.getByText('Send it by a channel the signers trust, so that they know it comes from you.').isVisible() && await both(lost.page, '23-recover-link'))
+  check('the requester gets a link to the signing page, is told to send it by a channel the signers trust, and is not pointed at WalletConnect (the signing page offers none for the recovery wallet)',
+    lost.link.startsWith(`${SIGN}/sign/#`) && await lost.page.getByText('Send it by a channel the signers trust, so that they know it comes from you.').isVisible()
+      && (await lost.page.getByText(/WalletConnect/).count()) === 0 && await both(lost.page, '23-recover-link'))
   check('nothing is stored and no member sees anything before the wallet signs', !(await page.evaluate(() => fetch('/api/me').then((response) => response.json()).then((me) => me.alerts.some((alert) => alert.kind.startsWith('recovery'))))))
   const signed = await sign(lost.link, '24-recovery-signing')
   check('a recovery names no chain, so the signing page offers no WalletConnect: the browser wallet or the Safe fills it in', !signed.walletConnect)
