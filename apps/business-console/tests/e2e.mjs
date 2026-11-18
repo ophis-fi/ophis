@@ -299,25 +299,24 @@ try {
   // The colleague's side: the card of that member, and a passkey check.
   const confirmAt = (name, on = page) => on.locator('article.appr', { hasText: name }).getByRole('button', { name: 'Confirm with passkey' }).click()
 
-  check('an Owner with one key is asked for the second and cannot invite yet',
-    await page.getByText('Add your second hardware key.').isVisible() && (await page.getByRole('button', { name: 'Invite member' }).count()) === 0)
+  check('an Owner with one key is asked for nothing more and may invite at once: one passkey is enough (owner, 2026-11-18)',
+    (await page.getByText('Add a hardware key.').count()) === 0 && await page.getByRole('button', { name: 'Invite member' }).isVisible())
   // The only key plugged in already holds the seat's first passkey: the browser refuses (excludeCredentials), and the page
   // says why instead of "cancelled or timed out" (an Owner with a synced passkey hit this on every device, 2026-11-18).
   // /api/me is the action's last step (onChanged): once it is asked, the action is over and the next click is not ignored (CodeRabbit, PR #1665).
   const settled = page.waitForRequest((request) => request.url().endsWith('/api/me'))
   await page.getByRole('button', { name: 'Add a passkey' }).click()
-  check('adding a passkey on the key that holds the first says the second goes elsewhere',
+  check('adding a passkey on the key that holds the first says another one goes elsewhere',
     await page.getByText('already holds a passkey of your seat').waitFor({ timeout: 10000 }).then(() => true, () => false))
   await settled
   // The first key goes back in the drawer; a second security key is plugged in.
   await devtools.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId })
   await devtools.send('WebAuthn.addVirtualAuthenticator', { options: KEY })
-  // Recovery readiness sits on this page now: it says so before the key, and reads again after it with no page reload (Codex, PR #1653).
-  await page.locator('#readiness', { hasText: 'An Owner holds fewer than two passkeys.' }).waitFor()
+  // Recovery readiness sits on this page: one Owner with one key is amber, not red. (It reads again after an action with
+  // no page reload, Codex PR #1653: the failed read further down shows that.)
+  check('the readiness block on Organisation: one Owner, and no recovery wallet yet', await page.locator('#readiness', { hasText: 'One Owner. If that person is locked out' }).waitFor({ timeout: 5000 }).then(() => true, () => false))
   await page.getByRole('button', { name: 'Add a passkey' }).click()
-  await page.getByRole('button', { name: 'Invite member' }).waitFor()
-  check('the readiness block on Organisation reads again after the action: one Owner with two keys', await page.locator('#readiness', { hasText: 'One Owner, with two passkeys.' }).waitFor({ timeout: 5000 }).then(() => true, () => false))
-  check('the Owner added a second hardware key and may now invite', await page.getByText('2: Security key 1, Security key 2').isVisible() && (await page.getByText('Add your second hardware key.').count()) === 0)
+  check('the Owner may still add a second hardware key', await page.getByText('2: Security key 1, Security key 2').waitFor({ timeout: 10000 }).then(() => true, () => false))
 
   // Invite a Viewer. The first try is answered "step-up required", as it would be 5 minutes after the last
   // passkey check: the app must run a real passkey check, get a new session token, and try again.
@@ -431,8 +430,11 @@ try {
   async function secondKey(who) {
     await who.devtools.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId: who.authenticatorId })
     await who.devtools.send('WebAuthn.addVirtualAuthenticator', { options: KEY })
+    // The key is stored when its finish answers 200 (Invite member shows before it: one key is enough, and a failed
+    // registration also reloads /api/me, CodeRabbit PR #1667).
+    const stored = who.page.waitForResponse((response) => response.url().endsWith('/api/passkeys/finish') && response.status() === 200)
     await who.page.getByRole('button', { name: 'Add a passkey' }).click()
-    await who.page.getByRole('button', { name: 'Invite member' }).waitFor()
+    await stored
   }
   const invite = (name, role) => issue(async () => {
     await page.getByRole('button', { name: 'Invite member' }).click()
@@ -628,19 +630,19 @@ try {
   await page.goto(`${ORIGIN}/#/organisation`)
   await page.getByRole('heading', { name: 'Recovery readiness' }).waitFor()
   const readiness = await page.locator('#readiness').innerText()
-  check('the Organisation page shows an Owner the readiness state: two Owners with two hardware keys are Ready, and a recovery wallet that still waits is amber and says so',
-    ['Ready', '2 Owners, each with two passkeys.', 'Amber', 'Custody wallet is in force from', 'Until then it does not count.'].every((text) => readiness.includes(text)) && await both(page, '21-readiness'))
+  check('the Organisation page shows an Owner the readiness state: two Owners are Ready, and a recovery wallet that still waits is amber and says so',
+    ['Ready', '2 Owners.', 'Amber', 'Custody wallet is in force from', 'Until then it does not count.'].every((text) => readiness.includes(text)) && await both(page, '21-readiness'))
   check('an Admin gets no readiness block', (await status('/api/readiness', cy.page)) === 403)
   // A read that fails clears the earlier answer and offers a retry: no old assessment is shown as current (CodeRabbit, PR #1653).
   await page.route('**/api/readiness', (route) => route.fulfill({ status: 500, contentType: 'application/json', body: '{}' }))
   await page.getByRole('button', { name: 'Invite member' }).click()
   await page.getByRole('button', { name: 'Close' }).last().click() // the page reads its state again, and readiness with it
   await page.locator('#readiness', { hasText: 'It could not be read just now' }).waitFor()
-  check('a readiness read that fails shows no earlier answer, and offers Try again', !(await page.locator('#readiness').innerText()).includes('2 Owners, each with two passkeys.')
+  check('a readiness read that fails shows no earlier answer, and offers Try again', !(await page.locator('#readiness').innerText()).includes('2 Owners.')
     && await page.locator('#readiness').getByRole('button', { name: 'Try again' }).isVisible())
   await page.unroute('**/api/readiness')
   await page.locator('#readiness').getByRole('button', { name: 'Try again' }).click()
-  check('Try again reads it again', await page.locator('#readiness', { hasText: '2 Owners, each with two passkeys.' }).waitFor({ timeout: 5000 }).then(() => true, () => false))
+  check('Try again reads it again', await page.locator('#readiness', { hasText: '2 Owners.' }).waitFor({ timeout: 5000 }).then(() => true, () => false))
 
   // Unlinking the recovery wallet is refused: by the page, and by the server when asked directly.
   await arrive(owner, false)
@@ -796,11 +798,11 @@ try {
   await page.getByRole('button', { name: 'Ask' }).click()
   check('a recovery phrase typed into the box is refused, and the page says that it was not passed on',
     await page.getByText('This looks like a wallet recovery phrase (seed phrase): 12 or more of its words in a row. It was not passed on and not stored.').waitFor({ timeout: 5000 }).then(() => true, () => false) && !(await write.count()))
-  await page.getByLabel('Your question').fill('How do I add a second passkey?')
+  await page.getByLabel('Your question').fill('How do I add another passkey?')
   await page.getByRole('button', { name: 'Ask' }).click()
   await page.getByText('Did this answer your question?').or(write).first().waitFor({ timeout: 10000 })
   if (withKey) {
-    check('a question gets a help text of the answer base', await page.getByRole('heading', { name: 'Add a second passkey' }).isVisible())
+    check('a question gets a help text of the answer base', await page.getByRole('heading', { name: 'Add another passkey' }).isVisible())
     check('the help text fits at 1440 and at 390, and its link drawn as a button is not underlined',
       await both(page, '30-support-answer', '#sp-answer') && await page.getByRole('link', { name: /^Open / }).evaluate((a) => getComputedStyle(a).textDecorationLine === 'none'))
     // "No" shows the second best once, if the server sent one, then the hand-over card: two presses at most.
@@ -845,7 +847,7 @@ try {
 
   // ---- milestone 5a (first run 2026-11-11, on E2E_PORT=8797) ----
   // A company applies on /apply and creates the organisation (no DNS record since 2026-11-18); the applicant signs in,
-  // adds the second passkey and names the recovery wallet, which signs the activation on the signing page; the Owner
+  // names the recovery wallet with its one passkey, and the wallet signs the activation on the signing page; the Owner
   // submits; the operator approves through its command; the organisation is active and the KYB record shows.
   const applicant = await person()
   const on = applicant.page
@@ -899,8 +901,7 @@ try {
     && await on.getByText(`Other people named in the application: Ben Okoro, Head of Treasury (Admin, ben@${domain}). Ophis checks them with the company. When Ophis approves, each gets a seat. Do not invite them yourself.`).isVisible())
   check('an unverified organisation does not reach the audit log', (await status('/api/audit', on)) === 403)
   check('its menu shows Overview and Desk switched off', await on.getByRole('button', { name: 'Overview', exact: true }).isDisabled() && await on.getByRole('button', { name: 'Desk', exact: true }).isDisabled())
-  await arrive(applicant, false)
-  await secondKey(applicant)
+  // One passkey is enough (owner, 2026-11-18): the applicant names the recovery wallet with the passkey it applied with.
   await on.goto(`${ORIGIN}/#/onboarding`)
   await on.reload()
   await on.getByLabel('Wallet address').fill(key.address)

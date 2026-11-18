@@ -1,6 +1,6 @@
 // Milestone 5a: how an organisation comes to exist and becomes active (recovery.md section 3).
 //   /apply            a company applies with an invitation code: its details and the first Owner's passkey
-//   Onboarding        the Owner adds a second passkey, names the recovery wallet (which signs) or enrols a second Owner, submits
+//   Onboarding        the Owner names the recovery wallet (which signs) or enrols a second Owner, submits
 //   operator's API    on its own hostname: the KYB decision, freeze and unfreeze; each a row in the client's own audit log
 // This file holds its own handlers and, in its first half, its own rows: every statement is prepared with bound
 // parameters, and every change goes through commit() of the data module, with what decides it read inside the plan.
@@ -145,24 +145,24 @@ const peopleOf = async (db: D1Database, orgId: string) =>
   (await db.prepare('SELECT display_name AS name, email, role, position, phone, telegram FROM application_people WHERE org_id = ? ORDER BY rowid').bind(orgId).all<Person>()).results
 
 /**
- * A7: what a review needs, from the rows as they are now. Two device-bound passkeys on the first Owner's seat, and
- * either the activation proof (a wallet stored as pending, while the passkey it confirmed is still active) or a second
- * Owner with two device-bound passkeys. G5: a named wallet with a single key is refused when the organisation has
+ * A7: what a review needs, from the rows as they are now. An active passkey on the first Owner's seat (one is enough,
+ * owner 2026-11-18; device-bound where the organisation requires hardware keys), and either the activation proof (a
+ * wallet stored as pending, while the passkey it confirmed is still active) or a second Owner with one. G5: a named wallet with a single key is refused when the organisation has
  * other members, by the rule of a recovery (PEOPLE), or when its application names other people: the approval makes
  * them members. Milestone 5b: and the signed declaration, sealed. Null: it holds.
  * Read when the Owner submits and again when the operator approves.
  */
-async function missing(db: D1Database, orgId: string, now: number): Promise<null | 'not_found' | 'second_key' | 'proof_or_owner' | 'single_key' | 'declaration'> {
+async function missing(db: D1Database, orgId: string, now: number): Promise<null | 'not_found' | 'owner_key' | 'proof_or_owner' | 'single_key' | 'declaration'> {
   const first = await firstOf(db, orgId)
   if (!first) return 'not_found'
-  const owner = `s.org_id = ?1 AND s.role = 'owner' AND s.state = 'active' AND (SELECT count(*) FROM credentials k WHERE k.org_id = s.org_id AND k.seat_id = s.id AND k.state = 'active' AND (k.device_bound = 1 OR (SELECT synced_keys_allowed FROM organisations WHERE id = s.org_id) = 1)) >= 2`
+  const owner = `s.org_id = ?1 AND s.role = 'owner' AND s.state = 'active' AND (SELECT count(*) FROM credentials k WHERE k.org_id = s.org_id AND k.seat_id = s.id AND k.state = 'active' AND (k.device_bound = 1 OR (SELECT synced_keys_allowed FROM organisations WHERE id = s.org_id) = 1)) >= 1`
   const seen = (await db.prepare(`SELECT (SELECT count(*) FROM seats s WHERE ${owner} AND s.id = ?2) AS own, (SELECT count(*) FROM seats s WHERE ${owner} AND s.id <> ?2) AS others,
                                          (SELECT count(*) FROM wallets w WHERE w.org_id = ?1 AND w.state = 'pending') AS proof,
                                          (SELECT count(*) FROM wallets w WHERE w.org_id = ?1 AND w.state = 'pending' AND w.kind = 'single_key') AS single, ${PEOPLE('?1', '?3')} AS people,
                                          (SELECT count(*) FROM application_people p WHERE p.org_id = ?1) AS named,
                                          (SELECT count(*) FROM sealed_items i WHERE i.org_id = ?1 AND i.kind = 'declaration') AS declared`)
     .bind(orgId, first.seatId, now).first<{ own: number; others: number; proof: number; single: number; people: number; named: number; declared: number }>())!
-  return !seen.own ? 'second_key' : !((seen.proof && first.active) || seen.others) ? 'proof_or_owner' : seen.single && (seen.people > 1 || seen.named) ? 'single_key' : !seen.declared ? 'declaration' : null
+  return !seen.own ? 'owner_key' : !((seen.proof && first.active) || seen.others) ? 'proof_or_owner' : seen.single && (seen.people > 1 || seen.named) ? 'single_key' : !seen.declared ? 'declaration' : null
 }
 
 interface Proved { orgId: string; seatId: string; chainId: number; address: string; kind: WalletKind; label: string; snapshot: string | null; credentialHash: string; nonce: string; digest: string; signature: string; by: 'key' | 'contract' }
@@ -737,7 +737,7 @@ export interface ActivateIntent {
   kind: 'activate'; org: string; seat: string; chainId: number; wallet: string; label: string; custodian: boolean
   credentialHash: string; nonce: string; issuedAt: number; expiresAt: number; site: string
 }
-// POST /api/onboarding/wallet (Owner, fresh, two passkeys): chain and address of the recovery wallet in, a signing
+// POST /api/onboarding/wallet (Owner, fresh, strong key): chain and address of the recovery wallet in, a signing
 // link out. Writes nothing. The passkey is the first Owner's, read from the rows, never from the caller.
 export async function activationIntent(c: Member) {
   const { chainId, custodian } = c.body
@@ -782,7 +782,7 @@ export async function activationProof(c: Ctx, intent: ActivateIntent, signature:
   return outcome === 'stored' ? json(200, { state: 'stored' }) : refuse(outcome)
 }
 
-// POST /api/onboarding/declaration (Owner, fresh, two passkeys). The body is the sealed file and nothing else; the
+// POST /api/onboarding/declaration (Owner, fresh, strong key). The body is the sealed file and nothing else; the
 // router has capped its size. The header x-seal-key names the key the browser sealed to: a console built for another
 // key is told so, and a row never names a key that this console's page did not use. The SHA-256 is computed here, of
 // the bytes that arrived. The pieces go into sealed_chunks first, under the item's random id, then the row: when a
@@ -807,7 +807,7 @@ export async function sealDeclaration(c: Member & { request: Request; bytes: Uin
   return stored.outcome === 'ok' ? json(200, { ...item, at: c.now, generation: SEAL.generation }) : refuse(stored.outcome)
 }
 
-// POST /api/onboarding/submit (Owner, fresh, two passkeys).
+// POST /api/onboarding/submit (Owner, fresh, strong key).
 export async function submit(c: Member) {
   const outcome = await submitForReview(c.env.DB, c.actor, c.now)
   if (outcome !== 'ok') return refuse(outcome)

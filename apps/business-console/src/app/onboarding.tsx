@@ -29,8 +29,8 @@ const SAY: Record<string, string> = {
   invite_invalid: 'This invitation code is not one Ophis issued, or it is older than 48 hours. Check the 12 characters, or ask Ophis for a new one.',
   invite_used: 'This invitation code was already used. Ask Ophis for a new one.',
   not_stored: 'This application was already used. Sign in with the passkey you created for it.',
-  second_key: 'The first Owner needs two passkeys. Add the second under Organisation, My passkeys.',
-  proof_or_owner: 'One of two things is still missing: the signature of the recovery wallet, or a second Owner with two passkeys.',
+  owner_key: 'The first Owner needs an active passkey that meets the passkey rule (a hardware key where the organisation requires one). Add one under Organisation, My passkeys, or have the new one confirmed.',
+  proof_or_owner: 'One of two things is still missing: the signature of the recovery wallet, or a second Owner.',
   single_key: 'A recovery wallet with a single key is accepted only while the organisation has one member and its application names nobody else. Name a Safe or a custodian wallet instead.',
   declaration: 'The signed declaration is still missing. Print it, have it signed, then seal and upload the scan.',
   not_sealed: 'This is not a file sealed by this page. Choose the scan again and use "Seal and upload".',
@@ -39,7 +39,7 @@ const SAY: Record<string, string> = {
   key_changed: 'This page was built for another sealing key. Reload it and try again.',
   already_submitted: 'The organisation is already under review.',
   not_unverified: 'The organisation is already verified.',
-  first_passkey_gone: 'The first Owner passkey is no longer active, so a wallet cannot confirm it. Enrol a second Owner with two passkeys instead.',
+  first_passkey_gone: 'The first Owner passkey is no longer active, so a wallet cannot confirm it. Enrol a second Owner instead.',
   unverified: 'This opens once Ophis has verified the organisation.',
 }
 const told = (data: { error?: string }) => SAY[data.error ?? ''] ?? say(data)
@@ -149,7 +149,7 @@ export function Apply() {
       {done ? (
         <div className="panel stack">
           <h2 className="h-panel">The organisation exists.</h2>
-          <p>It is not yet verified. Sign in with the passkey you just created, add a second passkey, and follow the Onboarding page.</p>
+          <p>It is not yet verified. Sign in with the passkey you just created and follow the Onboarding page.</p>
           <div><a className="btn primary md" href="/#/"><Icon name="fingerprint" size={16} />Sign in</a></div>
         </div>
       ) : intent ? (
@@ -400,7 +400,7 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
   if (!view) return problem ? <div className="stack"><Problem>{problem}</Problem></div> : null
   const { company, first, review, missing } = view
   const verified = review.status === 'verified'
-  const keys = verified || (missing !== 'second_key' && missing !== 'not_found')
+  const keys = verified || (missing !== 'owner_key' && missing !== 'not_found')
   const proved = verified || missing === null || missing === 'declaration' // the declaration is asked for last
 
   return (
@@ -423,12 +423,12 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
               : 'Ophis checks them with the company. When Ophis approves, each gets a seat. Do not invite them yourself.'}</p>}
           </Step>
           <Step icon="key-round" title="Passkeys" done={keys}>
-            <p>{keys ? 'The first Owner holds two passkeys.' : 'The first Owner needs two passkeys, for example this computer and a phone. Add the second one now: until then this seat can do nothing else.'}</p>
+            <p>{keys ? 'The first Owner enrolled a passkey.' : 'The first Owner needs an active passkey that meets the passkey rule (a hardware key where the organisation requires one). Add one under Organisation, My passkeys, or have the new one confirmed.'}</p>
             {!keys && <p><a className="btn ghost sm" href="/#/organisation">Open Organisation, My passkeys</a></p>}
           </Step>
           <Step icon="wallet" title="Recovery wallet or second Owner" done={proved}>
             {view.wallet ? <p>{view.wallet.label}: {kindOf(view.wallet)}, <span className="mono">{view.wallet.address}</span> on {view.wallet.chain}. {view.wallet.inForce ? 'It is the recovery wallet in force.' : 'It signed the activation. It becomes the recovery wallet when Ophis approves the organisation.'}</p>
-              : <p>{proved ? 'A second Owner with two passkeys is enrolled. No recovery wallet is named.' : 'Name the wallet that restores access if every Owner is locked out, and let it sign once. Or invite a second Owner, who needs two passkeys.'}</p>}
+              : <p>{proved ? 'A second Owner is enrolled. No recovery wallet is named.' : 'Name the wallet that restores access if every Owner is locked out, and let it sign once. Or invite a second Owner.'}</p>}
             {!verified && owner && keys && first?.active && !issued && (
               <form className="stack" onSubmit={name}>
                 <label className="field">Chain

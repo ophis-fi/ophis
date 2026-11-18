@@ -1605,14 +1605,14 @@ describe('k. step-up: a fresh passkey check before a sensitive action', () => {
   })
 
   it('the routes that need a fresh check, and the routes that need two passkeys, are these', () => {
-    const paths = (flag: 'fresh' | 'twoKeys') => routes.filter((route) => route[flag]).map((route) => route.path).sort()
+    const paths = (flag: 'fresh' | 'strongKey') => routes.filter((route) => route[flag]).map((route) => route.path).sort()
     const m3 = ['/api/approvals/:id/approve', '/api/approvals/:id/reject', '/api/members/:id/freeze', '/api/members/:id/remove', '/api/members/:id/role', '/api/members/:id/unfreeze']
     const m4 = ['/api/wallets/:id/anchor', '/api/wallets/:id/anchor/cancel', '/api/wallets/:id/unlink', '/api/wallets/intent']
     const m5 = ['/api/onboarding/declaration', '/api/onboarding/submit', '/api/onboarding/wallet']
     expect(paths('fresh')).toEqual([...m3.slice(0, 2), '/api/audit/export', '/api/desk/orders/:id/link', '/api/desk/orders/:id/withdraw', ...m3.slice(2), ...m5, '/api/passkeys/:id/revoke', '/api/passkeys/finish', '/api/passkeys/start', '/api/policy', '/api/recovery/:id/cancel', '/api/recovery/:id/object', '/api/tickets', '/api/tickets/:id/cancel', ...m4])
     // Confirming carries its own passkey check, made for the ticket.
-    expect(paths('twoKeys')).toEqual([...m3, ...m5, '/api/passkeys/:id/revoke', '/api/policy', '/api/tickets', '/api/tickets/:id/cancel', '/api/tickets/:id/confirm', '/api/tickets/:id/confirm/start', ...m4])
-    expect(routes.filter((route) => (route.fresh || route.twoKeys || route.settled || route.second) && route.roles === 'public')).toEqual([])
+    expect(paths('strongKey')).toEqual([...m3, ...m5, '/api/passkeys/:id/revoke', '/api/policy', '/api/tickets', '/api/tickets/:id/cancel', '/api/tickets/:id/confirm', '/api/tickets/:id/confirm/start', ...m4])
+    expect(routes.filter((route) => (route.fresh || route.strongKey || route.settled || route.second) && route.roles === 'public')).toEqual([])
   })
 
   it('step-up gives the session a new token: the old one is dead at once', async () => {
@@ -1683,9 +1683,10 @@ describe('k. step-up: a fresh passkey check before a sensitive action', () => {
     expect(second.headers.get('set-cookie')).toBeNull()
   })
 
-  it('an Owner seat with fewer than two device-bound keys can sign in and add its second key, and nothing else that is sensitive', async () => {
+  it('one passkey is enough (owner, 2026-11-18); where hardware keys are required, an Owner whose passkeys sync can sign in and add a hardware key, and nothing else that is sensitive', async () => {
     const m = await member()
-    expect((await call('GET', '/api/me', { cookie: m.cookie })).body.seat.keys).toBe(1)
+    const keys = async () => (await call('GET', '/api/me', { cookie: m.cookie })).body.seat.keys
+    expect(await keys()).toBe(1)
     const calls: [string, unknown?][] = [
       ['/api/tickets', viewer('Ada Viewer')], ['/api/tickets/0000/confirm/start'], ['/api/tickets/0000/confirm'],
       ['/api/tickets/0000/cancel'], [`/api/passkeys/${m.key.id}/revoke`],
@@ -1694,36 +1695,34 @@ describe('k. step-up: a fresh passkey check before a sensitive action', () => {
       for (const [path, body] of calls) {
         const refused = await post(path, m, body)
         expect(refused.status, path).toBe(403)
-        expect(refused.body).toEqual({ error: 'second_key_required' })
+        expect(refused.body).toEqual({ error: 'hardware_key_required' })
       }
     }
+    // The organisation requires hardware keys, and the Owner's only passkey syncs.
+    await db.prepare('UPDATE credentials SET device_bound = 0 WHERE id = ?').bind(m.key.id).run()
+    expect(await keys()).toBe(0)
     await refusedAll()
     expect(await count('seats', m.orgId)).toBe(1)
     expect(await credentialState(m.key)).toBe('active')
-    // Reading, a passkey check and the second key stay open.
+    // Reading, a passkey check and a hardware key stay open.
     expect((await call('GET', '/api/org', { cookie: m.cookie })).status).toBe(200)
     expect((await stepUp(m, m.key)).status).toBe(200)
-    const second = await addKey(m)
-    expect(second.status).toBe(200)
-    expect((await call('GET', '/api/me', { cookie: m.cookie })).body.seat.keys).toBe(2)
+    const hardware = await addKey(m)
+    expect(hardware.status).toBe(200)
+    expect(await keys()).toBe(1)
     expect((await issue(m, viewer('Ada Viewer'))).status).toBe(200)
-    // Two keys, but only one bound to its device: not enough for an Owner.
-    await db.prepare('UPDATE credentials SET device_bound = 0 WHERE id = ?').bind(second.key.id).run()
-    await refusedAll()
-    // A key that is no longer active does not count either.
-    await db.prepare(`UPDATE credentials SET device_bound = 1, state = 'revoked' WHERE id = ?`).bind(second.key.id).run()
+    // A key that is no longer active does not count.
+    await db.prepare(`UPDATE credentials SET state = 'revoked' WHERE id = ?`).bind(hardware.key.id).run()
     await refusedAll()
   })
 
-  it('every seat needs two active passkeys before a sensitive action (recovery.md section 1)', async () => {
+  it('a seat with one passkey takes a sensitive action (recovery.md section 1, owner 2026-11-18)', async () => {
     const o = await owner()
     const seat = await invite(o.orgId, o.seatId, 'admin')
     const key = await softwareAuthenticator(SITE)
     await enrol(seat.ticket, key)
     await data.devActivatePending(db, 'local', now)
     const admin = await again({ key, cookie: '' })
-    expect((await issue(admin, viewer('Ada Viewer'))).body).toEqual({ error: 'second_key_required' })
-    expect((await addKey(admin)).status).toBe(200)
     expect((await issue(admin, viewer('Ada Viewer'))).status).toBe(200)
   })
 })
@@ -1803,12 +1802,12 @@ describe('l. a member adds and revokes passkeys on their own seat', () => {
     expect((await revoke(o, viewer.key2)).status).toBe(404)
     expect(await credentialState(viewer.key2)).toBe('suspended')
     await db.prepare(`UPDATE credentials SET state = 'active', stop_right_until = NULL WHERE id = ?`).bind(viewer.key2.id).run()
-    // The member's own: a fresh check, then gone. With one passkey left the seat is restricted, so the last one stays.
+    // The member's own: a fresh check, then gone. The last one stays.
     now += 5 * MIN + 1
     expect((await revoke(viewer, viewer.key2)).body).toEqual({ error: 'step_up_required' })
     await stepUp(viewer, viewer.key)
     expect((await revoke(viewer, viewer.key2)).status).toBe(200)
-    expect((await revoke(viewer, viewer.key)).body).toEqual({ error: 'second_key_required' })
+    expect((await revoke(viewer, viewer.key)).body).toEqual({ error: 'last_passkey' })
     const sessionId = (await row<{ id: string }>('SELECT id FROM sessions WHERE seat_id = ? AND revoked_at IS NULL', viewer.seatId))!.id // the write reads it again
     const actor = { orgId: o.orgId, seatId: viewer.seatId, sessionId, role: 'viewer' as const, quarantineUntil: null, country: null, asn: null }
     expect(await data.revokeCredential(db, actor, viewer.key.id, now)).toBe('last_passkey')
@@ -2510,7 +2509,7 @@ describe('q. attacks tried by the reviewer', () => {
     expect((await call('GET', '/api/org', { cookie: (await again(o)).cookie })).body.tickets).toEqual([])
   })
 
-  it('replaced and pending passkeys do not count: not toward the two a seat needs, not toward the 10 it may hold', async () => {
+  it('replaced and pending passkeys do not count: not toward the last one a seat keeps, not toward the 10 it may hold', async () => {
     const o = await owner()
     const admin = await colleague(o, 'admin')
     const viewer = await colleague(o, 'viewer')
@@ -2520,8 +2519,8 @@ describe('q. attacks tried by the reviewer', () => {
     await enrolLink((await issue(o, { seatId: viewer.seatId })).body.link)
     expect(await row(`SELECT group_concat(state) AS states FROM (SELECT state FROM credentials WHERE seat_id = ? ORDER BY state)`, viewer.seatId)).toEqual({ states: 'active,pending,suspended,suspended' })
     expect((await call('GET', '/api/me', { cookie: fresh.cookie })).body.seat.keys).toBe(1)
-    expect((await post(`/api/passkeys/${done.key.id}/revoke`, fresh)).body).toEqual({ error: 'second_key_required' })
-    // Eight replaced passkeys from earlier rounds do not stop the member from adding the second one.
+    expect((await post(`/api/passkeys/${done.key.id}/revoke`, fresh)).body).toEqual({ error: 'last_passkey' })
+    // Eight replaced passkeys from earlier rounds do not stop the member from adding another one.
     for (let n = 0; n < 6; n++) {
       await db.prepare(`INSERT INTO credentials (id, org_id, seat_id, public_key, counter, device_bound, transports, label, state, created_at) VALUES (?, ?, ?, 'AA', 0, 1, '[]', ?, 'suspended', ?)`)
         .bind(data.randomId(), o.orgId, viewer.seatId, `Old key ${n}`, now).run()
@@ -2603,26 +2602,26 @@ async function trio() {
 
 describe('r. the role table', () => {
   const rule = (r: (typeof routes)[number]) =>
-    [r.roles === 'public' ? 'public' : r.roles.join(','), r.fresh && 'fresh', r.twoKeys && 'twoKeys', r.settled && 'settled', r.second && `second:${r.second}`].filter(Boolean).join(' ')
+    [r.roles === 'public' ? 'public' : r.roles.join(','), r.fresh && 'fresh', r.strongKey && 'strongKey', r.settled && 'settled', r.second && `second:${r.second}`].filter(Boolean).join(' ')
 
   it('names every route: who may call it, the fresh passkey check, the two passkeys, the quarantine gate, the second person', () => {
     const any = 'owner,admin,trader,approver,compliance,viewer'
     const key = 'owner,admin,approver,compliance'
-    const change = 'owner,admin fresh twoKeys settled'
+    const change = 'owner,admin fresh strongKey settled'
     expect(Object.fromEntries(routes.map((r) => [`${r.method} ${r.path}`, rule(r)]))).toEqual({
       'POST /api/enrol/start': 'public', 'POST /api/enrol/finish': 'public', 'POST /api/signin/start': 'public', 'POST /api/signin/finish': 'public',
       'POST /api/stop/start': 'public', 'POST /api/stop/finish': 'public',
       'GET /api/me': any, 'GET /api/org': any, 'POST /api/sessions/:id/revoke': any, 'POST /api/signout': any, 'POST /api/stepup/start': any, 'POST /api/stepup/finish': any,
-      'POST /api/passkeys/start': `${any} fresh`, 'POST /api/passkeys/finish': `${any} fresh`, 'POST /api/passkeys/:id/revoke': `${any} fresh twoKeys`,
-      'POST /api/tickets': 'owner,admin fresh twoKeys', 'POST /api/tickets/:id/confirm/start': `${key} twoKeys`, 'POST /api/tickets/:id/confirm': `${key} twoKeys`,
-      'POST /api/tickets/:id/cancel': 'owner fresh twoKeys',
+      'POST /api/passkeys/start': `${any} fresh`, 'POST /api/passkeys/finish': `${any} fresh`, 'POST /api/passkeys/:id/revoke': `${any} fresh strongKey`,
+      'POST /api/tickets': 'owner,admin fresh strongKey', 'POST /api/tickets/:id/confirm/start': `${key} strongKey`, 'POST /api/tickets/:id/confirm': `${key} strongKey`,
+      'POST /api/tickets/:id/cancel': 'owner fresh strongKey',
       'POST /api/members/:id/freeze': change, 'POST /api/members/:id/unfreeze': `${change} second:seat.unfreeze`,
       'POST /api/members/:id/role': `${change} second:seat.role`, 'POST /api/members/:id/remove': `${change} second:seat.remove`,
-      'POST /api/policy': 'owner fresh twoKeys settled second:policy.synced_keys',
-      'POST /api/approvals/:id/approve': `${key} fresh twoKeys settled`, 'POST /api/approvals/:id/reject': `${key} fresh twoKeys`, 'POST /api/approvals/:id/cancel': 'owner,admin,trader',
+      'POST /api/policy': 'owner fresh strongKey settled second:policy.synced_keys',
+      'POST /api/approvals/:id/approve': `${key} fresh strongKey settled`, 'POST /api/approvals/:id/reject': `${key} fresh strongKey`, 'POST /api/approvals/:id/cancel': 'owner,admin,trader',
       'GET /api/audit': 'owner,compliance,viewer', 'POST /api/audit/export': 'owner,compliance,viewer fresh', 'GET /api/screening': 'owner,compliance,viewer',
-      'POST /api/wallets/intent': change, 'POST /api/wallets/:id/unlink': 'owner,admin fresh twoKeys',
-      'POST /api/wallets/:id/anchor': 'owner fresh twoKeys settled second:anchor.set', 'POST /api/wallets/:id/anchor/cancel': 'owner fresh twoKeys',
+      'POST /api/wallets/intent': change, 'POST /api/wallets/:id/unlink': 'owner,admin fresh strongKey',
+      'POST /api/wallets/:id/anchor': 'owner fresh strongKey settled second:anchor.set', 'POST /api/wallets/:id/anchor/cancel': 'owner fresh strongKey',
       'GET /api/readiness': 'owner', 'POST /api/proof': 'public',
       'POST /api/recover/intent': 'public', 'POST /api/recover/cancel-intent': 'public', 'POST /api/recover/continue/start': 'public', 'POST /api/recover/continue/finish': 'public',
       'POST /api/recovery/:id/cancel': 'owner fresh', 'POST /api/recovery/:id/object': 'admin,approver,compliance fresh',
@@ -2631,7 +2630,7 @@ describe('r. the role table', () => {
       'POST /api/desk/orders/:id/link': 'owner,admin,trader,approver,compliance fresh settled', 'POST /api/desk/orders/:id/withdraw': 'owner,admin,trader,approver,compliance fresh settled',
       'POST /api/order': 'public', 'POST /api/order/send': 'public',
       'POST /api/apply': 'public', 'POST /api/apply/check': 'public',
-      'GET /api/onboarding': 'owner,compliance', 'POST /api/onboarding/wallet': 'owner fresh twoKeys', 'POST /api/onboarding/submit': 'owner fresh twoKeys', 'POST /api/onboarding/declaration': 'owner fresh twoKeys',
+      'GET /api/onboarding': 'owner,compliance', 'POST /api/onboarding/wallet': 'owner fresh strongKey', 'POST /api/onboarding/submit': 'owner fresh strongKey', 'POST /api/onboarding/declaration': 'owner fresh strongKey',
     })
     // The signing host has three routes (the proof, and the real desk's read and send of an order), and they are the only ones without the console.
     expect(routes.filter((r) => r.sign).map((r) => r.path)).toEqual(['/api/proof', '/api/order', '/api/order/send'])
@@ -2745,7 +2744,7 @@ describe('s. two-person approval', () => {
     expect((await decide(a, id, 'approve')).status).toBe(200)
   })
 
-  it('the second person passes a fresh passkey check and holds two passkeys; a seat in quarantine neither freezes, asks nor approves', async () => {
+  it('the second person passes a fresh passkey check, one passkey is enough; a seat in quarantine neither freezes, asks nor approves', async () => {
     const { o, a, v } = await trio()
     const { id } = (await act(o, v.seatId, 'role', { role: 'trader' })).body
     now += 5 * MIN + 1
@@ -2760,10 +2759,14 @@ describe('s. two-person approval', () => {
     for (const what of ['freeze', 'unfreeze', 'role', 'remove'] as const) expect((await act(o, v.seatId, what, { role: 'admin' })).body, what).toEqual({ error: 'quarantine' })
     expect((await post('/api/policy', o, { syncedKeys: true })).body).toEqual({ error: 'quarantine' })
     await quarantine(a.seatId, null)
-    expect((await post(`/api/passkeys/${a.key2.id}/revoke`, a)).status).toBe(200)
-    expect((await decide(a, id, 'approve')).body).toEqual({ error: 'second_key_required' })
     expect(await seatOf(v.seatId)).toEqual({ role: 'viewer', state: 'active' })
     expect(await approvalOf(id)).toEqual({ state: 'pending', checker_seat_id: null })
+    // With one passkey left (owner, 2026-11-18) the second person still approves.
+    expect((await post(`/api/passkeys/${a.key2.id}/revoke`, a)).status).toBe(200)
+    await quarantine(o.seatId, null)
+    expect((await decide(a, id, 'approve')).status).toBe(200)
+    expect(await seatOf(v.seatId)).toEqual({ role: 'trader', state: 'active' })
+    expect(await approvalOf(id)).toEqual({ state: 'applied', checker_seat_id: a.seatId })
   })
 
   it('two approvers at the same instant: the change is applied once', async () => {
@@ -4075,10 +4078,8 @@ describe('y. wallets and the recovery wallet', () => {
   it('readiness, for an Owner, read from both endpoints on demand: Ready, At risk with the next step, or Not recoverable', async () => {
     const o = await member()
     const ready = async (m: Holder = o) => (await call('GET', '/api/readiness', { cookie: m.cookie })).body
-    // One Owner with one key and no recovery wallet.
-    expect(await ready()).toEqual({ owners: { level: 'red', count: 1 }, wallet: { level: 'none', why: null, label: null, at: null }, overall: 'not_recoverable', step: 'second_key', sheet: { organisationId: o.orgId, console: SITE.origin, signPage: `${SIGN}/sign/`, wallet: null } })
-    expect((await addKey(o)).status).toBe(200)
-    expect(await ready()).toMatchObject({ owners: { level: 'amber', count: 1 }, overall: 'not_recoverable' })
+    // One Owner with one key (enough, owner 2026-11-18) and no recovery wallet.
+    expect(await ready()).toEqual({ owners: { level: 'amber', count: 1 }, wallet: { level: 'none', why: null, label: null, at: null }, overall: 'not_recoverable', step: 'recovery_wallet', sheet: { organisationId: o.orgId, console: SITE.origin, signPage: `${SIGN}/sign/`, wallet: null } })
     // A Safe as recovery wallet: amber while it waits, green once in force.
     const address = accounts[4].address
     const wallet = await linkedSafe(o)
@@ -4103,14 +4104,14 @@ describe('y. wallets and the recovery wallet', () => {
     expect((await ready()).wallet).toMatchObject({ level: 'amber', why: 'changed' })
     chain.twist = (url, method, result) => (url === RPC2 && method === 'eth_call' ? `0x${'0'.repeat(63)}3` : result)
     expect((await ready()).wallet).toMatchObject({ level: 'amber', why: 'unreadable' })
-    // Owners: a second Owner with two keys is green and Ready whatever the wallet; one of them with one key is red.
+    // Owners: a second Owner is green and Ready whatever the wallet, with one key as with two.
     const o2 = await colleague(o, 'owner')
     expect(await ready(o2)).toMatchObject({ owners: { level: 'green', count: 2 }, overall: 'ready', step: null })
     await db.prepare(`UPDATE credentials SET state = 'revoked' WHERE id = ?`).bind(o2.key2.id).run()
-    expect(await ready()).toMatchObject({ owners: { level: 'red', count: 2 }, overall: 'at_risk', step: 'second_key' })
-    // A synced passkey does not count for an Owner; a frozen Owner is not counted.
-    await db.prepare(`UPDATE credentials SET state = 'active', device_bound = 0 WHERE id = ?`).bind(o2.key2.id).run()
-    expect((await ready()).owners).toEqual({ level: 'red', count: 2 })
+    expect(await ready()).toMatchObject({ owners: { level: 'green', count: 2 }, overall: 'ready', step: null })
+    // Where hardware keys are required a synced passkey does not count for an Owner: one with none is red. A frozen Owner is not counted.
+    await db.prepare(`UPDATE credentials SET device_bound = 0 WHERE id = ?`).bind(o2.key.id).run()
+    expect(await ready()).toMatchObject({ owners: { level: 'red', count: 2 }, overall: 'at_risk', step: 'owner_key' })
     await db.prepare(`UPDATE seats SET state = 'frozen' WHERE id = ?`).bind(o2.seatId).run()
     expect((await ready()).owners).toEqual({ level: 'amber', count: 1 })
   })
@@ -4269,16 +4270,18 @@ describe('z. attacks tried by the review of milestone 4a', () => {
     }
   })
 
-  it('readiness names what is true now: the wallet in force before one that waits, a wait before a kind, and the second key before any other step', async () => {
+  it('readiness names what is true now: the wallet in force before one that waits, a wait before a kind, and a required hardware key before any other step', async () => {
     const ready = async (m: Holder) => (await call('GET', '/api/readiness', { cookie: m.cookie })).body
     const lone = await member()
-    expect(await ready(lone)).toMatchObject({ overall: 'not_recoverable', step: 'second_key' })
-    // Two Owners, one of them with one key, and no recovery wallet: at risk, not lost.
-    const o = await owner()
+    expect(await ready(lone)).toMatchObject({ overall: 'not_recoverable', step: 'recovery_wallet' })
+    await db.prepare('UPDATE credentials SET device_bound = 0 WHERE id = ?').bind(lone.key.id).run() // its organisation requires hardware keys
+    expect(await ready(lone)).toMatchObject({ overall: 'not_recoverable', step: 'owner_key', owners: { level: 'red', count: 1 } })
+    // Two Owners with one key each, and no recovery wallet: ready (one passkey is enough, owner 2026-11-18).
+    const o = await member()
     const seat = await invite(o.orgId, o.seatId, 'owner')
     expect((await enrol(seat.ticket, await softwareAuthenticator(SITE))).status).toBe(200)
     await data.devActivatePending(db, 'local', now)
-    expect(await ready(o)).toMatchObject({ overall: 'at_risk', step: 'second_key', owners: { level: 'red', count: 2 } })
+    expect(await ready(o)).toMatchObject({ overall: 'ready', step: null, owners: { level: 'green', count: 2 } })
     // One Owner. A custodian wallet that waits is amber because it waits; once in force, because of its kind.
     const one = await owner()
     expect(await ready(one)).toMatchObject({ overall: 'not_recoverable', step: 'recovery_wallet' })
@@ -5989,7 +5992,7 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
     const me = await call('GET', '/api/me', { cookie: session.cookie })
     return { orgId: me.body.organisation.id as string, seatId: a.seat, key: a.key, cookie: session.cookie, domain: a.domain, intent: a.intent, name: 'Alder Custody S.A.', sessionId: me.body.session.id as string, ticket: '' }
   }
-  // The same with two passkeys on the Owner seat: what every further step needs. Milestone 5b: and with the signed
+  // The same with a second passkey on the Owner seat (one is enough since 2026-11-18). Milestone 5b: and with the signed
   // declaration, sealed and uploaded, which "Submit for review" needs; `declare: false` leaves that step open.
   async function applicantWithTwoKeys(domain?: string, declare = true, more: Record<string, unknown> = {}) {
     const a = await applied(domain, more)
@@ -6010,8 +6013,8 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
     const keysOf = async () => (await call('GET', '/api/me', { cookie: m.cookie })).body.seat.keys as number
     expect(await keysOf()).toBe(1)
     expect((await addKey(m, { backupEligible: true })).status).toBe(200)
-    expect(await keysOf()).toBe(2) // two passkeys that sync: what every further step of an Owner needs
-    expect((await upload(m, await sealedFile())).status).toBe(200) // a route that needs two keys
+    expect(await keysOf()).toBe(2) // two passkeys that sync: both count
+    expect((await upload(m, await sealedFile())).status).toBe(200) // a route that needs a strong key
     // Its Owners require hardware keys: the two no longer count, and a third that syncs is refused.
     await db.prepare('UPDATE organisations SET synced_keys_allowed = 0 WHERE id = ?').bind(org.id).run()
     expect(await keysOf()).toBe(0)
@@ -6395,10 +6398,11 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
     expect((await call('GET', '/api/me', { cookie: out[4].cookie })).body.organisation.state).toBe('active')
   })
 
-  it('A5: what an unverified organisation is for: a second passkey, a colleague invited and enrolled, Support, and its own page', async () => {
+  it('A5: what an unverified organisation is for: its recovery wallet, another passkey, a colleague invited and enrolled, Support, and its own page', async () => {
     const a = await applied()
-    expect((await nameWallet(a, accounts[0].address)).body).toEqual({ error: 'second_key_required' })
-    expect((await submit(a)).body).toEqual({ error: 'second_key_required' })
+    // One passkey is enough (owner, 2026-11-18): the Owner names the wallet at once; Submit waits for what is missing.
+    expect((await nameWallet(a, accounts[0].address)).status).toBe(200)
+    expect((await submit(a)).body).toEqual({ error: 'proof_or_owner' })
     expect((await addKey(a)).status).toBe(200)
     const viewer = await ceremony(a, { displayName: 'Vera Lindqvist', role: 'viewer' })
     expect(viewer.state).toBe('active')
@@ -6551,7 +6555,7 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
 
   // ---- A7: submit for review ----
 
-  it('A7: "Submit for review" needs two passkeys on the Owner seat, and the activation proof or a second Owner with two passkeys', async () => {
+  it('A7: "Submit for review" needs a passkey on the Owner seat, and the activation proof or a second Owner', async () => {
     const a = await applicantWithTwoKeys()
     const rows = await snapshot()
     expect((await submit(a)).body).toEqual({ error: 'proof_or_owner' })
@@ -6567,7 +6571,7 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
     // A new proof is a new thing to review: the organisation is no longer submitted.
     expect((await activation(a, accounts[1])).body).toEqual({ state: 'stored' })
     expect(await orgRow(a.orgId)).toEqual({ state: 'unverified', review_at: null })
-    // The proof counts while the passkey it confirmed is active. The second key alone is not two.
+    // The proof counts while the passkey it confirmed is active: another key does not stand in for it.
     expect((await addKey(a)).status).toBe(200)
     expect((await post(`/api/passkeys/${a.key.id}/revoke`, a)).status).toBe(200)
     expect((await submit(await again({ ...a, key: a.key2 }))).body).toEqual({ error: 'proof_or_owner' })
@@ -6575,18 +6579,16 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
     expect((await submit(await owner())).body).toEqual({ error: 'not_unverified' })
   })
 
-  it('A7: without a wallet, a second Owner with two passkeys; the first Owner\'s seat needs its two as well, read inside the commit', async () => {
+  it('A7: without a wallet, a second Owner; the first Owner\'s seat needs an active passkey as well, read inside the commit', async () => {
     const a = await applicantWithTwoKeys()
     const second = await ceremony(a, { displayName: 'Second Owner', role: 'owner' })
     expect(second.state).toBe('wait') // nobody else holds a key role: 72 hours
     now += WAIT + MIN
     expect((await again(second)).cookie).not.toBe('')
-    expect((await submit(await again(a))).body).toEqual({ error: 'proof_or_owner' }) // the second Owner holds one passkey
-    expect((await addKey(second)).status).toBe(200)
-    // The second Owner submits while the first holds one passkey: the router's gate reads the caller's seat, the commit the first Owner's.
-    expect((await post(`/api/passkeys/${a.key2.id}/revoke`, a)).status).toBe(200)
-    expect((await submit(second)).body).toEqual({ error: 'second_key' })
-    expect((await addKey(a)).status).toBe(200)
+    // The second Owner submits while the first holds no active passkey: the router's gate reads the caller's seat, the commit the first Owner's.
+    await db.prepare(`UPDATE credentials SET state = 'revoked' WHERE seat_id = ?`).bind(a.seatId).run()
+    expect((await submit(second)).body).toEqual({ error: 'owner_key' })
+    await db.prepare(`UPDATE credentials SET state = 'active' WHERE id = ?`).bind(a.key.id).run()
     // The Owner is lowered at the same instant: the role is read inside the commit.
     // (A sign-in of the first Owner takes the next audit number, as the commit of a real role change would.)
     const lowered = racing(async () => {
@@ -6951,11 +6953,11 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
     // A7 no longer holds, with the organisation still under review. (Through the routes a revoked passkey takes it out
     // of review, G3: this second line is reached only by a row changed underneath.)
     const a = await underReview()
-    await db.prepare(`UPDATE credentials SET state = 'revoked' WHERE id = ?`).bind(a.key2.id).run()
+    await db.prepare(`UPDATE credentials SET state = 'revoked' WHERE seat_id = ?`).bind(a.seatId).run()
     let rows = await snapshot()
     expect((await decideOn(a.orgId)).body).toEqual({ error: 'not_ready' })
     expect(await snapshot()).toBe(rows)
-    expect((await op('GET', '/api/operator/organisations')).body.organisations.find((o: { id: string }) => o.id === a.orgId)).toMatchObject({ missing: 'second_key' })
+    expect((await op('GET', '/api/operator/organisations')).body.organisations.find((o: { id: string }) => o.id === a.orgId)).toMatchObject({ missing: 'owner_key' })
     expect((await decideOn(a.orgId, MORE)).body).toEqual({ state: 'unverified' }) // the other decisions do not need it
     // A Safe that signed onchain.
     const b = await applicantWithTwoKeys()
@@ -7533,7 +7535,7 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
   it('B3: the size cap is the server\'s: 10 MB of clear file and the age overhead, read only after the gates, and a session that ends while the file arrives stores nothing', async () => {
     const a = await undeclared()
     expect(onboarding.SEAL.maxBytes).toBe(10 * 1024 * 1024 + 8192)
-    expect(routes.find((r) => r.path === '/api/onboarding/declaration')).toMatchObject({ method: 'POST', roles: ['owner'], fresh: true, twoKeys: true, unverified: true, raw: onboarding.SEAL.maxBytes })
+    expect(routes.find((r) => r.path === '/api/onboarding/declaration')).toMatchObject({ method: 'POST', roles: ['owner'], fresh: true, strongKey: true, unverified: true, raw: onboarding.SEAL.maxBytes })
     expect(routes.filter((r) => r.raw).length).toBe(1) // every other route takes JSON of 64 KB at most
     // What the age library adds to 10 MB fits under the cap: the header, a nonce, and a tag per 64 KiB.
     const small = await sealedFile('')
@@ -7575,7 +7577,7 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
     await bucket.delete(exact.body.id) // 10 MB: not left behind for the other tests
   })
 
-  it('B3: only an Owner uploads, with a fresh check and two passkeys, while the organisation is unverified; role and state are read again inside the commit; the key is the environment\'s', async () => {
+  it('B3: only an Owner uploads, with a fresh check and a strong key, while the organisation is unverified; role and state are read again inside the commit; the key is the environment\'s', async () => {
     const a = await undeclared()
     const file = await sealedFile()
     const kept = await objects()
@@ -7594,9 +7596,11 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
     const third = await again(second)
     expect((await upload(third, file, { env: storing(() => db.prepare('UPDATE sessions SET revoked_at = ? WHERE seat_id = ? AND revoked_at IS NULL').bind(now, second.seatId).run(), puts) })).body).toEqual({ error: 'forbidden' })
     expect([await itemsOf(a.orgId), await objects()]).toEqual([[], kept])
-    // The gates of the row: a fresh passkey check, two passkeys.
+    // The gates of the row: a fresh passkey check, and a hardware key for an Owner where the organisation requires them.
     const one = await applied()
-    expect((await upload(one, file)).body).toEqual({ error: 'second_key_required' })
+    await db.prepare('UPDATE organisations SET synced_keys_allowed = 0 WHERE id = ?').bind(one.orgId).run()
+    await db.prepare('UPDATE credentials SET device_bound = 0 WHERE seat_id = ?').bind(one.seatId).run()
+    expect((await upload(one, file)).body).toEqual({ error: 'hardware_key_required' })
     now += 5 * MIN + 1
     const stale = await again(a)
     now += 5 * MIN + 1
@@ -8781,7 +8785,7 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
 
     it('S5: GET /api/screening answers the organisation\'s own screening when it is clear, the loaded address lists and each linked wallet, to the roles that read the audit log, in an active organisation', async () => {
       const route = routes.find((r) => r.path === '/api/screening')!
-      expect([route.method, route.roles, route.unverified, route.fresh, route.twoKeys]).toEqual(['GET', ['owner', 'compliance', 'viewer'], undefined, undefined, undefined])
+      expect([route.method, route.roles, route.unverified, route.fresh, route.strongKey]).toEqual(['GET', ['owner', 'compliance', 'viewer'], undefined, undefined, undefined])
       const { o, a, v } = await trio()
       const others = [a, await colleague(o, 'admin'), await colleague(o, 'trader')]
       const readers = [o, await colleague(o, 'compliance'), v]
