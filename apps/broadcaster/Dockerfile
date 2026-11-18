@@ -8,7 +8,7 @@ RUN apt-get -o Acquire::Retries=0 update \
 
 WORKDIR /opt/ophis/apps/broadcaster
 COPY apps/broadcaster/package.json apps/broadcaster/pnpm-lock.yaml apps/broadcaster/.npmrc ./
-COPY patches/elliptic@6.6.1.patch patches/zod@3.25.76.patch /opt/ophis/patches/
+COPY patches/zod@3.25.76.patch patches/picomatch@2.3.2.patch patches/picomatch@4.0.7.patch /opt/ophis/patches/
 COPY apps/railgun/patches/ /opt/ophis/apps/railgun/patches/
 RUN corepack pnpm install --prod --frozen-lockfile --ignore-scripts --store-dir /tmp/pnpm-store \
     && rm -rf /tmp/pnpm-store /root/.cache \

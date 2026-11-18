@@ -83,6 +83,8 @@ jobs:
       - name: dependency security regressions
         run: |
           node scripts/test-security-dependencies.cjs --workspace frontend
+          node scripts/test-picomatch-security.cjs apps/frontend
+          node apps/frontend/scripts/test-minimatch-security.cjs apps/frontend
           node scripts/test-dependency-advisories.cjs apps/frontend
           node scripts/test-http-cache-semantics.cjs apps/frontend
           node apps/frontend/scripts/test-advisory-remediation.cjs

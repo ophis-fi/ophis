@@ -156,12 +156,6 @@ The [Ophis repository](https://github.com/ophis-fi/ophis) includes the swap fron
 
 Licensing varies by component: the root [LICENSE](https://github.com/ophis-fi/ophis/blob/main/LICENSE) is GPL-3.0, the SDK declares GPL-3.0-or-later, the contracts declare LGPL-3.0-or-later, and the frontend workspace declares ISC. Retain applicable component and upstream license notices; the root badge is not a complete dependency-license inventory.
 
-## CROPS review scope
-
-[ETHBEAT's CROPS guide](https://ethbeat.org/crops/) assesses censorship resistance, open source, privacy and security within a defined scope. This page records Ophis's current limitations; it does not claim an official CROPS rating or ossification score. Permissioned settlement, hosted screening, operator-held gas credit and administrative powers remain relevant to that review. Documentation and builder-attribution changes do not remove those dependencies.
-
-A review submission still needs a defined critical-contract and service inventory, deployed source/build correspondence, independently usable recovery evidence, and evidence of real user activity. Local tests and operator pilot transactions alone do not establish those claims.
-
 ## Report a vulnerability {/* #reporting-a-vulnerability */}
 
 <Steps>

@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module'
+import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -8,6 +9,30 @@ const require = createRequire(import.meta.url)
 const wallet = createRequire(require.resolve('@railgun-community/wallet'))
 const mesh = createRequire(wallet.resolve('@graphql-mesh/graphql'))
 const urlLoader = createRequire(mesh.resolve('@graphql-tools/url-loader'))
+
+it('loads the Node SDK and signs without the unused React Native crypto dependency', () => {
+  const script = `
+    const assert = require('node:assert/strict');
+    const Module = require('node:module');
+    const originalLoad = Module._load;
+    Module._load = function (name, ...args) {
+      assert(!['crypto-browserify', 'react-native-shims', 'elliptic'].some(dependency => name.includes(dependency)),
+        'The broadcaster must not load React Native cryptography: ' + name);
+      return originalLoad.call(this, name, ...args);
+    };
+    const sdk = require('@railgun-community/wallet');
+    assert.equal(typeof sdk.startRailgunEngine, 'function');
+    const { Wallet, verifyMessage } = require('ethers');
+    const signer = new Wallet('0x' + '00'.repeat(31) + '01');
+    const message = 'broadcaster dependency regression';
+    signer.signMessage(message).then(signature => {
+      assert.equal(verifyMessage(message, signature), signer.address);
+    }).catch(error => { console.error(error); process.exitCode = 1; });
+  `
+  execFileSync(process.execPath, ['-e', script], { cwd: dirname(require.resolve('../package.json')), timeout: 20_000 })
+  const lock = readFileSync(new URL('../pnpm-lock.yaml', import.meta.url), 'utf8')
+  expect(lock).not.toMatch(/^  (?:elliptic|crypto-browserify|browserify-sign|create-ecdh)@/m)
+})
 
 it.each(['commonjs', 'module'])('uses a TLS-verified executor with separate authentication and routing (%s)', async (format) => {
   const entry = mesh.resolve('@graphql-tools/url-loader')

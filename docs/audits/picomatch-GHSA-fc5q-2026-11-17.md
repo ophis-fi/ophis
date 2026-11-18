@@ -15,6 +15,12 @@
 | apps/broadcaster | 2.3.2, 4.0.7 | `react-native` code under `@graphql-mesh/cross-helpers`, never loaded in this Node service |
 | contracts/yarn.lock | 2.3.2, 4.0.5 | Hardhat and test tooling, never deployed |
 
-**Verdict.** No running service compiles a glob from untrusted input, so the advisory is not reachable. Gates: a dated `--ignore GHSA-fc5q-39xc-vjpf:2026-12-17` in the root, frontend, docs-ophis, railgun and broadcaster jobs; the two contracts copies are added to `audit/contracts-osv-baseline.json` (high 1 to 3), as that job gates on a reviewed baseline.
+**Remediation, 2026-11-18.** The root, frontend, docs, Railgun, broadcaster and Business console now register exact-version pnpm patches for every resolved picomatch copy (2.3.2, 4.0.4 or 4.0.7). The parser's existing repeated-extglob protection missed single-branch wildcard patterns such as `+(*)z` and `+(*a)z`. The patch detects wildcard tokens inside a repeated extglob and uses the existing safe rewrite/literalization path. Escaped stars, character classes and ordinary negation patterns retain their behavior. Repeated wildcard extglobs that cannot be safely rewritten deliberately match their literal text.
+
+`scripts/test-picomatch-security.cjs` tests every installed lockfile version, requires an active pnpm patch, and bounds the whole probe with a child-process timeout. It covers the reported patterns and ordinary matching behavior; removing the new condition reproduces the timeout. Each affected pnpm project's CI runs it, including Business console, which the initial Dependabot inventory did not list.
+
+No reviewed running service accepts an untrusted glob. The two `contracts/yarn.lock` copies remain unpatched Hardhat/test tooling with repository-defined patterns, recorded in `audit/contracts-osv-baseline.json`; they are outside the five open Dependabot alerts. Do not interpret the pnpm fix as a fix for those Yarn copies.
+
+**Scanner handling.** The existing dated `--ignore GHSA-fc5q-39xc-vjpf:2026-12-17` remains because OSV and Dependabot match the upstream version and cannot see the patch. Installed-package regression checks enforce the backport. No alert was dismissed and no expiry was extended. [Upstream advisory](https://github.com/advisories/GHSA-fc5q-39xc-vjpf).
 
 **Re-check by 2026-12-17**, or earlier if picomatch ships a fix (then upgrade and drop the ignores and the baseline lines), or if any service starts matching user-supplied globs.

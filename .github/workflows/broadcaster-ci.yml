@@ -14,6 +14,8 @@ on:
       - 'patches/elliptic@6.6.1.patch'
       - 'patches/zod@3.25.76.patch'
       - 'scripts/test-zod3-security.cjs'
+      - 'patches/picomatch@*.patch'
+      - 'scripts/test-picomatch-security.cjs'
       - 'scripts/test-deployment-boundaries.py'
       - '.github/workflows/broadcaster-ci.yml'
       - '.github/workflows/security.yml'
@@ -53,6 +55,7 @@ jobs:
           version: v1.5.1
           cache: false
       - run: pnpm install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - run: node ../../scripts/test-picomatch-security.cjs .
       - run: pnpm test:guard
       - run: pnpm test
       - name: Additional-chain signatures, fees and settlement
