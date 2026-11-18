@@ -7,7 +7,7 @@ import { proposeRebateBatch, getNextSafeNonce } from '../batch/propose.js';
 import { getProposalStatus, waitForExecution } from '../batch/poll.js';
 import { buildEthCallSimulator, isolateBadRecipients, type Transfer } from '../batch/dryRun.js';
 import { computePartnerFees } from './computePartnerFees.js';
-import { usdFpToWei, usdToFp } from './split.js';
+import { PARTNER_FEE_CHAIN, usdFpToWei, usdToFp } from './split.js';
 import { currentCarriedUsdByRecipient, carriedQuarantinedUsd } from './liability.js';
 import { isScreenedOut, resolveSanctionsList } from './screening.js';
 import { notify, alerts } from '../telegram/alerter.js';
@@ -28,9 +28,6 @@ const ERC20 = parseAbi(['function balanceOf(address) view returns (uint256)']);
 //     the WETH MultiSend on the affiliate Safe rails (decision 18); execution still needs the
 //     2-of-3 human signature. Proposes EVERY un-proposed 'computed' batch (current + any
 //     back-months a previously-off flag left behind), so nothing owed is ever lost.
-
-/** The partner payout chain + Safe rails (decision 18: the existing affiliate Safe rails). */
-export const PARTNER_FEE_CHAIN = 100; // Gnosis, same Ophis Safe as rebate + affiliate
 
 /** Statuses at/after PROPOSAL: a batch here is LOCKED to accrual (never re-accrue / double-pay). */
 const PROPOSED_STATUSES = ['proposing', 'proposed', 'executed', 'failed'] as const;

@@ -1,0 +1,153 @@
+{
+  "copied": "Real answers of the public CoW orderbook (api.cow.fi/mainnet), read-only, 2026-11-14: a quote asked from 0x...dEaD (an address nobody holds) with the desk appData, and one public filled order of another trader with its trades. The stand-ins (tests/worker.test.ts, scripts/orderbook-stub.mjs) answer these, with the fields of the order they are asked about put in.",
+  "quote": {
+    "request": {
+      "sellToken": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "buyToken": "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c",
+      "from": "0x000000000000000000000000000000000000dEaD",
+      "receiver": "0x000000000000000000000000000000000000dEaD",
+      "kind": "sell",
+      "sellAmountBeforeFee": "1000000000000000000",
+      "partiallyFillable": false,
+      "sellTokenBalance": "erc20",
+      "buyTokenBalance": "erc20",
+      "priceQuality": "optimal",
+      "signingScheme": "eip712",
+      "onchainOrder": false,
+      "appData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":[{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},{\"maxVolumeBps\":99,\"priceImprovementBps\":8000,\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\"}],\"quote\":{\"slippageBips\":50}},\"version\":\"1.14.0\"}",
+      "appDataHash": "0x0230cb9b1de9f20ffadb879c58fc5b7533a30372d3067a075e8dbd3d9231b59d",
+      "validFor": 1800
+    },
+    "status": 200,
+    "response": {
+      "quote": {
+        "sellToken": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+        "buyToken": "0x1abaea1f7c830bd89acc67ec4af516284b1bc33c",
+        "receiver": "0x000000000000000000000000000000000000dead",
+        "sellAmount": "999837786911408681",
+        "buyAmount": "1750934062",
+        "validTo": 1794622315,
+        "appData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":[{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},{\"maxVolumeBps\":99,\"priceImprovementBps\":8000,\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\"}],\"quote\":{\"slippageBips\":50}},\"version\":\"1.14.0\"}",
+        "appDataHash": "0x0230cb9b1de9f20ffadb879c58fc5b7533a30372d3067a075e8dbd3d9231b59d",
+        "feeAmount": "162213088591319",
+        "gasAmount": "933599",
+        "gasPrice": "173750281",
+        "sellTokenPrice": "1",
+        "kind": "sell",
+        "partiallyFillable": false,
+        "sellTokenBalance": "erc20",
+        "buyTokenBalance": "erc20",
+        "signingScheme": "eip712"
+      },
+      "from": "0x000000000000000000000000000000000000dead",
+      "expiration": "2026-11-14T01:43:55.430587100Z",
+      "id": 3295284490,
+      "verified": false,
+      "protocolFeeBps": "2"
+    }
+  },
+  "order": {
+    "status": 200,
+    "response": {
+      "creationDate": "2026-11-14T01:38:16.200885Z",
+      "owner": "0x0c3356ba02b893545449044d344059e875776f22",
+      "uid": "0x04d1e5c85d619fe0ce78019191f9e83685d934f38b95c2a421dcf2c2606e18020c3356ba02b893545449044d344059e875776f226af7c27d",
+      "availableBalance": null,
+      "executedBuyAmount": "23890109187103769",
+      "executedSellAmount": "135189716679821552899950470",
+      "executedSellAmountBeforeFees": "135189716679821552899950470",
+      "executedFeeAmount": "0",
+      "executedFee": "1055328174887341191239443",
+      "executedFeeToken": "0x0c37bcf456bc661c14d596683325623076d7e283",
+      "gasCost": "26600786190903",
+      "invalidated": false,
+      "status": "fulfilled",
+      "class": "limit",
+      "settlementContract": "0x9008d19f58aabd9ed0d60971565aa8510560ab41",
+      "isLiquidityOrder": false,
+      "fullAppData": "{\"appCode\":\"Trust wallet\",\"metadata\":{\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":[{\"volumeBps\":70,\"recipient\":\"0xea5B5991f761Ced44Ffa99bEaCb72d691ee334ec\"}],\"quote\":{\"slippageBips\":100,\"smartSlippage\":false}},\"version\":\"1.8.0\"}",
+      "quote": {
+        "gasAmount": "227331",
+        "gasPrice": "150662218",
+        "sellTokenPrice": "2.37168523980160869026647707896141188677052724642635439522564411163330078125E-10",
+        "sellAmount": "135189716679821552899950470",
+        "buyAmount": "24078069229321862",
+        "feeAmount": "144412893015360776699904",
+        "solver": "0xb9332b6301e5983272c30dd5b48a4e3b1664511b",
+        "verified": true
+      },
+      "sellToken": "0x0c37bcf456bc661c14d596683325623076d7e283",
+      "buyToken": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "receiver": "0x0c3356ba02b893545449044d344059e875776f22",
+      "sellAmount": "135189716679821552899950470",
+      "buyAmount": "23640201625429143",
+      "validTo": 1794622077,
+      "appData": "0xbc420e95d57ec7df4378e1f10ea5de0c8df1ad49c8da2aab779856e61b1626ae",
+      "feeAmount": "0",
+      "kind": "sell",
+      "partiallyFillable": false,
+      "sellTokenBalance": "erc20",
+      "buyTokenBalance": "erc20",
+      "signingScheme": "eip712",
+      "signature": "0x64a34d8efcd09cccc0250c8afca8c2c80515410f8abd0658853ec44ee741b4f27a379065ab053c18fa5e9103719b9b5a38b2aa844c8c5556be9d15b85244fda01c",
+      "interactions": {
+        "pre": [],
+        "post": []
+      }
+    }
+  },
+  "trades": {
+    "status": 200,
+    "response": [
+      {
+        "blockNumber": 26409984,
+        "logIndex": 174,
+        "orderUid": "0x04d1e5c85d619fe0ce78019191f9e83685d934f38b95c2a421dcf2c2606e18020c3356ba02b893545449044d344059e875776f226af7c27d",
+        "buyAmount": "23890109187103769",
+        "sellAmount": "135189716679821552899950470",
+        "sellAmountBeforeFees": "135189716679821552899950470",
+        "owner": "0x0c3356ba02b893545449044d344059e875776f22",
+        "buyToken": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "sellToken": "0x0c37bcf456bc661c14d596683325623076d7e283",
+        "txHash": "0x2620c796daa283a20d9103ef646bf44ee1596b58ebf15bb943e4a8b938f675b7",
+        "executedProtocolFees": [
+          {
+            "policy": {
+              "priceImprovement": {
+                "factor": 0.5,
+                "maxVolumeFactor": 0.0098,
+                "quote": {
+                  "sellAmount": "135189716679821552899950470",
+                  "buyAmount": "24078069229321862",
+                  "fee": "144412893015360783283250"
+                }
+              }
+            },
+            "amount": "10983026007125",
+            "token": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+          },
+          {
+            "policy": {
+              "volume": {
+                "factor": 0.0002
+              }
+            },
+            "amount": "4812666297026",
+            "token": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+          },
+          {
+            "policy": {
+              "volume": {
+                "factor": 0.007
+              }
+            },
+            "amount": "168409631731849",
+            "token": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+          }
+        ],
+        "gasCost": "26600786190903",
+        "penaltyCapNative": "3206274556493"
+      }
+    ]
+  }
+}

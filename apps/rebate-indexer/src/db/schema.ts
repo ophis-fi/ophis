@@ -145,6 +145,9 @@ export const defillamaFills = pgTable(
     // the public endpoint fails closed if a verified row is missing either field.
     transactionHash: bytea('transaction_hash'),
     userAddress: bytea('user_address'),
+    // Where user_address came from: 'owner', 'onchain_user' (the eth-flow payer) or 'receiver'
+    // (the eth-flow fallback). NULL = not recorded (rows before 0051, or copied from trades).
+    userSource: text('user_source').$type<'owner' | 'onchain_user' | 'receiver'>(),
     settlementTimestamp: timestamp('settlement_timestamp', { withTimezone: true }).notNull(),
     sellToken: bytea('sell_token').notNull(),
     sellAmount: uint256('sell_amount').notNull(),

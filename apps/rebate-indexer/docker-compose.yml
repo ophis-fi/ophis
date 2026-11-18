@@ -37,6 +37,11 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       # Operator-approved authority for global contract-wallet identities (JSON).
       CONTRACT_WALLET_AUTH_CHAINS: ${CONTRACT_WALLET_AUTH_CHAINS:-}
+      # Token of the Ophis Business console for POST /business/partner (src/business.ts).
+      # It reads EVERY partner's dashboard. Unset, shorter than 32 characters or equal
+      # to the admin token: the route is off (404). Without this pass-through a value
+      # in the host .env never reaches the process.
+      BUSINESS_API_TOKEN: ${BUSINESS_API_TOKEN:-}
       BATCHER_PROPOSE_ENABLED: ${BATCHER_PROPOSE_ENABLED:-true}
       # Intraday public-data refresh cadence in minutes (default 60, clamped
       # [10,1440] in cron.ts). Without this pass-through the knob is inert:

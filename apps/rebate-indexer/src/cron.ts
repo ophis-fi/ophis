@@ -1,5 +1,5 @@
 import { runFetcher, pruneStaleWallets, withPipelineLock } from './fetcher.js';
-import { repairRouterTrades } from './repair/routerTrades.js';
+import { backfillFillUserSource, repairRouterTrades } from './repair/routerTrades.js';
 import { repairDefiLlamaSettlementIdentity } from './repair/defillamaSettlement.js';
 import { runPricer } from './pricer.js';
 import { runScorer } from './scorer.js';
@@ -136,6 +136,12 @@ async function runPipelineSteps(servicedBoundary: Date): Promise<void> {
     }
   } catch (err) {
     log.error({ err }, 'router repair failed (pipeline continues)');
+  }
+  // Reporting only: record the wallet source of older eth-flow fills (business report). Never retail figures.
+  try {
+    await backfillFillUserSource();
+  } catch (err) {
+    log.error({ err }, 'fill source backfill failed (pipeline continues)');
   }
 
   // Recover DefiLlama settlement transaction/user identity from immutable Trade

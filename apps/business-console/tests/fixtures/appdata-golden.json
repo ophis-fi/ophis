@@ -1,0 +1,403 @@
+{
+  "made": "by @ophis/sdk (packages/sdk/src), scripts/appdata-golden.mjs",
+  "chains": {
+    "1": {
+      "orderbook": "https://api.cow.fi/mainnet",
+      "settlement": "0x9008D19f58AAbD9eD0D60971565AA8510560ab41",
+      "relayer": "0xC92E8bdf79f0507f65a392b0ab4667716BFE0110",
+      "pairs": [
+        {
+          "sell": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+          "buy": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          "stable": false
+        },
+        {
+          "sell": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+          "buy": "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c",
+          "stable": false
+        },
+        {
+          "sell": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+          "buy": "0x39b8B6385416f4cA36a20319F70D28621895279D",
+          "stable": false
+        },
+        {
+          "sell": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+          "buy": "0x5F7827FDeb7c20b443265Fc2F40845B715385Ff2",
+          "stable": false
+        },
+        {
+          "sell": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          "buy": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+          "stable": false
+        },
+        {
+          "sell": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          "buy": "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c",
+          "stable": false
+        },
+        {
+          "sell": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          "buy": "0x39b8B6385416f4cA36a20319F70D28621895279D",
+          "stable": true
+        },
+        {
+          "sell": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          "buy": "0x5F7827FDeb7c20b443265Fc2F40845B715385Ff2",
+          "stable": false
+        },
+        {
+          "sell": "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c",
+          "buy": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+          "stable": false
+        },
+        {
+          "sell": "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c",
+          "buy": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          "stable": false
+        },
+        {
+          "sell": "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c",
+          "buy": "0x39b8B6385416f4cA36a20319F70D28621895279D",
+          "stable": false
+        },
+        {
+          "sell": "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c",
+          "buy": "0x5F7827FDeb7c20b443265Fc2F40845B715385Ff2",
+          "stable": false
+        },
+        {
+          "sell": "0x39b8B6385416f4cA36a20319F70D28621895279D",
+          "buy": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+          "stable": false
+        },
+        {
+          "sell": "0x39b8B6385416f4cA36a20319F70D28621895279D",
+          "buy": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          "stable": true
+        },
+        {
+          "sell": "0x39b8B6385416f4cA36a20319F70D28621895279D",
+          "buy": "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c",
+          "stable": false
+        },
+        {
+          "sell": "0x39b8B6385416f4cA36a20319F70D28621895279D",
+          "buy": "0x5F7827FDeb7c20b443265Fc2F40845B715385Ff2",
+          "stable": false
+        },
+        {
+          "sell": "0x5F7827FDeb7c20b443265Fc2F40845B715385Ff2",
+          "buy": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+          "stable": false
+        },
+        {
+          "sell": "0x5F7827FDeb7c20b443265Fc2F40845B715385Ff2",
+          "buy": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          "stable": false
+        },
+        {
+          "sell": "0x5F7827FDeb7c20b443265Fc2F40845B715385Ff2",
+          "buy": "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c",
+          "stable": false
+        },
+        {
+          "sell": "0x5F7827FDeb7c20b443265Fc2F40845B715385Ff2",
+          "buy": "0x39b8B6385416f4cA36a20319F70D28621895279D",
+          "stable": false
+        }
+      ],
+      "appData": [
+        {
+          "slippageBips": 0,
+          "stable": false,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":[{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},{\"maxVolumeBps\":99,\"priceImprovementBps\":8000,\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\"}],\"quote\":{\"slippageBips\":0}},\"version\":\"1.14.0\"}",
+          "appDataHash": "0xb07729acf14d92ef5fe20bd1198e22cdaf66277fb23152f4f79549e38d2fff75"
+        },
+        {
+          "slippageBips": 0,
+          "stable": true,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":[{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},{\"maxVolumeBps\":20,\"priceImprovementBps\":5000,\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\"}],\"quote\":{\"slippageBips\":0}},\"version\":\"1.14.0\"}",
+          "appDataHash": "0x7b04e0bd7015443d48684cbe6794e10aa52520f082cbcf48961ae419e86d749c"
+        },
+        {
+          "slippageBips": 50,
+          "stable": false,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":[{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},{\"maxVolumeBps\":99,\"priceImprovementBps\":8000,\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\"}],\"quote\":{\"slippageBips\":50}},\"version\":\"1.14.0\"}",
+          "appDataHash": "0x0230cb9b1de9f20ffadb879c58fc5b7533a30372d3067a075e8dbd3d9231b59d"
+        },
+        {
+          "slippageBips": 50,
+          "stable": true,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":[{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},{\"maxVolumeBps\":20,\"priceImprovementBps\":5000,\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\"}],\"quote\":{\"slippageBips\":50}},\"version\":\"1.14.0\"}",
+          "appDataHash": "0x34e79d7102bf9cd824dd4b90868f6ae401ebf81379a745d255453d6871a35d7e"
+        },
+        {
+          "slippageBips": 300,
+          "stable": false,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":[{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},{\"maxVolumeBps\":99,\"priceImprovementBps\":8000,\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\"}],\"quote\":{\"slippageBips\":300}},\"version\":\"1.14.0\"}",
+          "appDataHash": "0x75d9b72f072e0a54e340f1221b192b151e94aba0963f44e303b835dc814d43a4"
+        },
+        {
+          "slippageBips": 300,
+          "stable": true,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":[{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},{\"maxVolumeBps\":20,\"priceImprovementBps\":5000,\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\"}],\"quote\":{\"slippageBips\":300}},\"version\":\"1.14.0\"}",
+          "appDataHash": "0xbddc73e75084af6d19da3ea118f76fd3235ce32ff2d56527932ae59deb401f89"
+        },
+        {
+          "slippageBips": null,
+          "stable": false,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":[{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},{\"maxVolumeBps\":99,\"priceImprovementBps\":8000,\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\"}]},\"version\":\"1.14.0\"}",
+          "appDataHash": "0x3b81e60c79854e2cad8a84366b7636954e595221b17fd78f442ac17517de3b9c"
+        },
+        {
+          "slippageBips": null,
+          "stable": true,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":[{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},{\"maxVolumeBps\":20,\"priceImprovementBps\":5000,\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\"}]},\"version\":\"1.14.0\"}",
+          "appDataHash": "0xe953c91c6fce4b30237bab9ef17cbe33787812874dd45a08db067a0aff85d674"
+        }
+      ]
+    },
+    "10": {
+      "orderbook": "https://optimism-mainnet.ophis.fi",
+      "settlement": "0x310784c7FCE12d578dA6f53460777bAc9718B859",
+      "relayer": "0x83847EaB41ad9ea43809ce71569eB2e9daF51830",
+      "pairs": [
+        {
+          "sell": "0x4200000000000000000000000000000000000006",
+          "buy": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+          "stable": false
+        },
+        {
+          "sell": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+          "buy": "0x4200000000000000000000000000000000000006",
+          "stable": false
+        }
+      ],
+      "appData": [
+        {
+          "slippageBips": 0,
+          "stable": false,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},\"quote\":{\"slippageBips\":0}},\"version\":\"1.14.0\"}",
+          "appDataHash": "0x5bf91e0ef515e669d2429d67a8305bb766da077aa79552c8eebbc0554d1225ae"
+        },
+        {
+          "slippageBips": 0,
+          "stable": true,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},\"quote\":{\"slippageBips\":0}},\"version\":\"1.14.0\"}",
+          "appDataHash": "0x5bf91e0ef515e669d2429d67a8305bb766da077aa79552c8eebbc0554d1225ae"
+        },
+        {
+          "slippageBips": 50,
+          "stable": false,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},\"quote\":{\"slippageBips\":50}},\"version\":\"1.14.0\"}",
+          "appDataHash": "0xfda7dc4d079eebbd020ab1997767d8328a7257f80b8e723bf93b957ca909d98b"
+        },
+        {
+          "slippageBips": 50,
+          "stable": true,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},\"quote\":{\"slippageBips\":50}},\"version\":\"1.14.0\"}",
+          "appDataHash": "0xfda7dc4d079eebbd020ab1997767d8328a7257f80b8e723bf93b957ca909d98b"
+        },
+        {
+          "slippageBips": 300,
+          "stable": false,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},\"quote\":{\"slippageBips\":300}},\"version\":\"1.14.0\"}",
+          "appDataHash": "0xd8556acdeaba57b5e08f91c18c8da22124a9e77a2ab3f91552d01270ea1bd96a"
+        },
+        {
+          "slippageBips": 300,
+          "stable": true,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},\"quote\":{\"slippageBips\":300}},\"version\":\"1.14.0\"}",
+          "appDataHash": "0xd8556acdeaba57b5e08f91c18c8da22124a9e77a2ab3f91552d01270ea1bd96a"
+        },
+        {
+          "slippageBips": null,
+          "stable": false,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1}},\"version\":\"1.14.0\"}",
+          "appDataHash": "0xae29ab0ef24a388802192c022bc12bc41efbe527df2f41c19540855a345434d1"
+        },
+        {
+          "slippageBips": null,
+          "stable": true,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1}},\"version\":\"1.14.0\"}",
+          "appDataHash": "0xae29ab0ef24a388802192c022bc12bc41efbe527df2f41c19540855a345434d1"
+        }
+      ]
+    },
+    "8453": {
+      "orderbook": "https://api.cow.fi/base",
+      "settlement": "0x9008D19f58AAbD9eD0D60971565AA8510560ab41",
+      "relayer": "0xC92E8bdf79f0507f65a392b0ab4667716BFE0110",
+      "pairs": [
+        {
+          "sell": "0x4200000000000000000000000000000000000006",
+          "buy": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "stable": false
+        },
+        {
+          "sell": "0x4200000000000000000000000000000000000006",
+          "buy": "0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42",
+          "stable": false
+        },
+        {
+          "sell": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "buy": "0x4200000000000000000000000000000000000006",
+          "stable": false
+        },
+        {
+          "sell": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "buy": "0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42",
+          "stable": true
+        },
+        {
+          "sell": "0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42",
+          "buy": "0x4200000000000000000000000000000000000006",
+          "stable": false
+        },
+        {
+          "sell": "0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42",
+          "buy": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "stable": true
+        }
+      ],
+      "appData": [
+        {
+          "slippageBips": 0,
+          "stable": false,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":[{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},{\"maxVolumeBps\":99,\"priceImprovementBps\":8000,\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\"}],\"quote\":{\"slippageBips\":0}},\"version\":\"1.14.0\"}",
+          "appDataHash": "0xb07729acf14d92ef5fe20bd1198e22cdaf66277fb23152f4f79549e38d2fff75"
+        },
+        {
+          "slippageBips": 0,
+          "stable": true,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":[{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},{\"maxVolumeBps\":20,\"priceImprovementBps\":5000,\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\"}],\"quote\":{\"slippageBips\":0}},\"version\":\"1.14.0\"}",
+          "appDataHash": "0x7b04e0bd7015443d48684cbe6794e10aa52520f082cbcf48961ae419e86d749c"
+        },
+        {
+          "slippageBips": 50,
+          "stable": false,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":[{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},{\"maxVolumeBps\":99,\"priceImprovementBps\":8000,\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\"}],\"quote\":{\"slippageBips\":50}},\"version\":\"1.14.0\"}",
+          "appDataHash": "0x0230cb9b1de9f20ffadb879c58fc5b7533a30372d3067a075e8dbd3d9231b59d"
+        },
+        {
+          "slippageBips": 50,
+          "stable": true,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":[{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},{\"maxVolumeBps\":20,\"priceImprovementBps\":5000,\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\"}],\"quote\":{\"slippageBips\":50}},\"version\":\"1.14.0\"}",
+          "appDataHash": "0x34e79d7102bf9cd824dd4b90868f6ae401ebf81379a745d255453d6871a35d7e"
+        },
+        {
+          "slippageBips": 300,
+          "stable": false,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":[{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},{\"maxVolumeBps\":99,\"priceImprovementBps\":8000,\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\"}],\"quote\":{\"slippageBips\":300}},\"version\":\"1.14.0\"}",
+          "appDataHash": "0x75d9b72f072e0a54e340f1221b192b151e94aba0963f44e303b835dc814d43a4"
+        },
+        {
+          "slippageBips": 300,
+          "stable": true,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":[{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},{\"maxVolumeBps\":20,\"priceImprovementBps\":5000,\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\"}],\"quote\":{\"slippageBips\":300}},\"version\":\"1.14.0\"}",
+          "appDataHash": "0xbddc73e75084af6d19da3ea118f76fd3235ce32ff2d56527932ae59deb401f89"
+        },
+        {
+          "slippageBips": null,
+          "stable": false,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":[{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},{\"maxVolumeBps\":99,\"priceImprovementBps\":8000,\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\"}]},\"version\":\"1.14.0\"}",
+          "appDataHash": "0x3b81e60c79854e2cad8a84366b7636954e595221b17fd78f442ac17517de3b9c"
+        },
+        {
+          "slippageBips": null,
+          "stable": true,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":[{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},{\"maxVolumeBps\":20,\"priceImprovementBps\":5000,\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\"}]},\"version\":\"1.14.0\"}",
+          "appDataHash": "0xe953c91c6fce4b30237bab9ef17cbe33787812874dd45a08db067a0aff85d674"
+        }
+      ]
+    },
+    "42161": {
+      "orderbook": "https://api.cow.fi/arbitrum_one",
+      "settlement": "0x9008D19f58AAbD9eD0D60971565AA8510560ab41",
+      "relayer": "0xC92E8bdf79f0507f65a392b0ab4667716BFE0110",
+      "pairs": [
+        {
+          "sell": "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
+          "buy": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+          "stable": false
+        },
+        {
+          "sell": "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
+          "buy": "0x0c06cCF38114ddfc35e07427B9424adcca9F44F8",
+          "stable": false
+        },
+        {
+          "sell": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+          "buy": "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
+          "stable": false
+        },
+        {
+          "sell": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+          "buy": "0x0c06cCF38114ddfc35e07427B9424adcca9F44F8",
+          "stable": true
+        },
+        {
+          "sell": "0x0c06cCF38114ddfc35e07427B9424adcca9F44F8",
+          "buy": "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
+          "stable": false
+        },
+        {
+          "sell": "0x0c06cCF38114ddfc35e07427B9424adcca9F44F8",
+          "buy": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+          "stable": true
+        }
+      ],
+      "appData": [
+        {
+          "slippageBips": 0,
+          "stable": false,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":[{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},{\"maxVolumeBps\":99,\"priceImprovementBps\":8000,\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\"}],\"quote\":{\"slippageBips\":0}},\"version\":\"1.14.0\"}",
+          "appDataHash": "0xb07729acf14d92ef5fe20bd1198e22cdaf66277fb23152f4f79549e38d2fff75"
+        },
+        {
+          "slippageBips": 0,
+          "stable": true,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":[{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},{\"maxVolumeBps\":20,\"priceImprovementBps\":5000,\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\"}],\"quote\":{\"slippageBips\":0}},\"version\":\"1.14.0\"}",
+          "appDataHash": "0x7b04e0bd7015443d48684cbe6794e10aa52520f082cbcf48961ae419e86d749c"
+        },
+        {
+          "slippageBips": 50,
+          "stable": false,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":[{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},{\"maxVolumeBps\":99,\"priceImprovementBps\":8000,\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\"}],\"quote\":{\"slippageBips\":50}},\"version\":\"1.14.0\"}",
+          "appDataHash": "0x0230cb9b1de9f20ffadb879c58fc5b7533a30372d3067a075e8dbd3d9231b59d"
+        },
+        {
+          "slippageBips": 50,
+          "stable": true,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":[{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},{\"maxVolumeBps\":20,\"priceImprovementBps\":5000,\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\"}],\"quote\":{\"slippageBips\":50}},\"version\":\"1.14.0\"}",
+          "appDataHash": "0x34e79d7102bf9cd824dd4b90868f6ae401ebf81379a745d255453d6871a35d7e"
+        },
+        {
+          "slippageBips": 300,
+          "stable": false,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":[{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},{\"maxVolumeBps\":99,\"priceImprovementBps\":8000,\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\"}],\"quote\":{\"slippageBips\":300}},\"version\":\"1.14.0\"}",
+          "appDataHash": "0x75d9b72f072e0a54e340f1221b192b151e94aba0963f44e303b835dc814d43a4"
+        },
+        {
+          "slippageBips": 300,
+          "stable": true,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":[{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},{\"maxVolumeBps\":20,\"priceImprovementBps\":5000,\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\"}],\"quote\":{\"slippageBips\":300}},\"version\":\"1.14.0\"}",
+          "appDataHash": "0xbddc73e75084af6d19da3ea118f76fd3235ce32ff2d56527932ae59deb401f89"
+        },
+        {
+          "slippageBips": null,
+          "stable": false,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":[{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},{\"maxVolumeBps\":99,\"priceImprovementBps\":8000,\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\"}]},\"version\":\"1.14.0\"}",
+          "appDataHash": "0x3b81e60c79854e2cad8a84366b7636954e595221b17fd78f442ac17517de3b9c"
+        },
+        {
+          "slippageBips": null,
+          "stable": true,
+          "fullAppData": "{\"appCode\":\"ophis\",\"metadata\":{\"ophisSource\":{\"app\":\"business\"},\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":[{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},{\"maxVolumeBps\":20,\"priceImprovementBps\":5000,\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\"}]},\"version\":\"1.14.0\"}",
+          "appDataHash": "0xe953c91c6fce4b30237bab9ef17cbe33787812874dd45a08db067a0aff85d674"
+        }
+      ]
+    }
+  }
+}

@@ -33,6 +33,7 @@ vi.mock('../../src/fetcher.js', () => ({
 }));
 vi.mock('../../src/repair/routerTrades.js', () => ({
   repairRouterTrades: vi.fn(async () => ({ scanned: 0, repaired: 0, skipped: 0, dequeued: 0 })),
+  backfillFillUserSource: vi.fn(async () => ({ asked: 0, tagged: 0 })),
 }));
 vi.mock('../../src/pricer.js', () => ({ runPricer: vi.fn(async () => ({ priced: 0, failed: 0 })) }));
 vi.mock('../../src/scorer.js', () => ({ runScorer: vi.fn(async () => ({})) }));

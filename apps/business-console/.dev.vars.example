@@ -1,0 +1,15 @@
+# Copy to .dev.vars (git-ignored). "pnpm seed" creates the file with a fresh random key when it is missing.
+# HMAC key for the stateless passkey challenges. At least 32 random bytes: openssl rand -base64 32
+CHALLENGE_KEY=
+# Milestone 6, Support: the key of the provider (TypeSafe AI). Optional locally: without it every question is a hand-over.
+TYPESAFE_API_KEY=
+# Milestone 5, the operator's local API: a bearer token of 32 characters or more. "pnpm seed" adds one when it is missing.
+OPERATOR_TOKEN=
+# Milestone 5b, sealing: the public recipient (age1pq1...) of the LOCAL test key. "pnpm seed" makes the key pair: the
+# identity goes to .dev.seal-identity, the recipient here and to .env.local (VITE_SEAL_LOCAL) for the console's build.
+SEAL_RECIPIENT=
+# Partner figures: the Ophis rebate indexer. INDEXER_URL is a plain variable (https; locally the stand-in of
+# scripts/indexer-stub.mjs). INDEXER_TOKEN is a secret: the indexer's BUSINESS_API_TOKEN, which reads every partner's
+# dashboard. "pnpm seed" adds both for the local stand-in when they are missing. Without them Overview says "not connected".
+INDEXER_URL=http://127.0.0.1:8793
+INDEXER_TOKEN=

@@ -13,6 +13,7 @@ import {
   upsertDefillamaFills,
   verifiedHostedZeroAssessment,
   type PendingDefiLlamaFill,
+  type WalletSource,
 } from '../fetcher.js';
 import { affiliateFeeBpsForOrderCreatedAt } from '../affiliate/rates.js';
 import { logger } from '../logger.js';
@@ -479,6 +480,17 @@ function usableUserAddress(address: string | null | undefined): `0x${string}` | 
   return address.toLowerCase() as `0x${string}`;
 }
 
+/** The first usable candidate wallet (usableUserAddress), with the source recorded for it. */
+export function pickFillUser(
+  candidates: readonly (readonly [string | null | undefined, WalletSource | null])[],
+): { userAddress: `0x${string}` | null; userSource: WalletSource | null } {
+  for (const [address, userSource] of candidates) {
+    const userAddress = usableUserAddress(address);
+    if (userAddress) return { userAddress, userSource };
+  }
+  return { userAddress: null, userSource: null };
+}
+
 /**
  * Repair immutable settlement identity from the exact-UID trade feed, falling back
  * to one complete GPv2Settlement history scan when a retired sovereign orderbook no
@@ -719,6 +731,7 @@ async function repairDefiLlamaSettlementIdentityBatch(
           buy_amount: string | null;
           volume_fee_bps: number | null;
           assessed_fee_bps: string | null;
+          user_source: WalletSource | null;
         }[]
       >`
         SELECT block_number::text, log_index,
@@ -726,6 +739,7 @@ async function repairDefiLlamaSettlementIdentityBatch(
                  ELSE '0x' || encode(transaction_hash, 'hex') END AS transaction_hash,
                CASE WHEN user_address IS NULL THEN NULL
                  ELSE '0x' || encode(user_address, 'hex') END AS user_address,
+               user_source,
                settlement_timestamp,
                '0x' || encode(sell_token, 'hex') AS sell_token,
                sell_amount::text,
@@ -865,11 +879,12 @@ async function repairDefiLlamaSettlementIdentityBatch(
           }
         }
 
-        const userAddress =
-          usableUserAddress(attributed?.wallet) ??
-          usableUserAddress(existing?.user_address) ??
-          usableUserAddress(row.user_address) ??
-          usableUserAddress(source.owner);
+        const { userAddress, userSource } = pickFillUser([
+          [attributed?.wallet, attributed?.walletSource ?? null],
+          [existing?.user_address, existing?.user_source ?? null],
+          [row.user_address, null], // the trades row records no source
+          [source.owner, 'owner'],
+        ]);
         const exactAssessment =
           source.apiTrade && order && meta !== null
             ? readAssessedOphisFeeBps(row.chain_id, order.class, meta, source.apiTrade)
@@ -896,6 +911,7 @@ async function repairDefiLlamaSettlementIdentityBatch(
           tradeUid: uid,
           transactionHash: source.transactionHash,
           userAddress,
+          userSource,
           settlementTimestamp,
           sellToken: source.sellToken,
           sellAmount: source.sellAmount,
@@ -1033,6 +1049,7 @@ async function repairDefiLlamaSettlementIdentityBatch(
           tradeUid: uid,
           transactionHash: row.transaction_hash as `0x${string}`,
           userAddress: attributed.wallet,
+          userSource: attributed.walletSource ?? null,
           settlementTimestamp: row.settlement_timestamp,
           sellToken: row.sell_token as `0x${string}`,
           sellAmount: BigInt(row.sell_amount),
