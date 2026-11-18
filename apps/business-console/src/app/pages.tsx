@@ -1,6 +1,6 @@
 // The screens of milestones 1 to 4, with the markup and classes of the approved mockup.
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { api, CANCELLED, capital, day, Icon, minute, passkeyCheck, ROLE, save, say, Section, sensitive, stamp, Status, Tile, Ways } from './ui.tsx'
+import { api, CANCELLED, capital, day, Icon, minute, passkeyCheck, ROLE, save, say, Section, sensitive, stamp, SignNow, Status, Tile, Ways } from './ui.tsx'
 import { orderWords, type OrderBody } from './desk.tsx'
 
 export interface Alert {
@@ -614,7 +614,7 @@ function LinkDialog({ chains, onClose }: { chains: View['chains']; onClose: () =
                   <label className="field">Signing link
                     <input className="input mono" readOnly value={issued.link} onFocus={(event) => event.target.select()} />
                   </label>
-                  <button className="btn ghost md" type="button" onClick={() => navigator.clipboard.writeText(issued.link).then(() => setCopied(true), () => setCopied(false))}><Icon name="clipboard-check" size={16} />{copied ? 'Copied' : 'Copy the link'}</button>
+                  <div className="acts"><SignNow link={issued.link} /><button className="btn ghost md" type="button" onClick={() => navigator.clipboard.writeText(issued.link).then(() => setCopied(true), () => setCopied(false))}><Icon name="clipboard-check" size={16} />{copied ? 'Copied' : 'Copy the link'}</button></div>
                   <p><Ways link={issued.link} /> The page shows what will be signed, on its own address, and holds no session of this console.</p>
                 </>
               ) : <p>The link appears here. It works for 7 days.</p>}
@@ -1045,8 +1045,8 @@ export function Recover() {
           <label className="field">Signing link, valid until {minute(issued.expiresAt)}
             <input className="input mono" readOnly value={issued.link} onFocus={(event) => event.target.select()} />
           </label>
-          <div><button className="btn ghost md" type="button" onClick={() => navigator.clipboard.writeText(issued.link).then(() => setCopied(true), () => setCopied(false))}><Icon name="clipboard-check" size={16} />{copied ? 'Copied' : 'Copy the link'}</button></div>
-          <p className="fine"><Icon name="info" size={16} /><span><Ways link={issued.link} /></span></p>
+          <div className="acts"><SignNow link={issued.link} /><button className="btn ghost md" type="button" onClick={() => navigator.clipboard.writeText(issued.link).then(() => setCopied(true), () => setCopied(false))}><Icon name="clipboard-check" size={16} />{copied ? 'Copied' : 'Copy the link'}</button></div>
+          <p className="fine"><Icon name="info" size={16} /><span><Ways link={issued.link} walletConnect={!issued.recovery} /></span></p>
           {issued.recovery && <p className="fine"><Icon name="clock" size={16} />Once the wallet has signed, every member of the organisation sees the request at sign-in. 72 hours later, come back to this page on this device and use "Continue with the new passkey". Keep the security key you just used.</p>}
         </div>
       ) : (

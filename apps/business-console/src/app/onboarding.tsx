@@ -2,7 +2,7 @@
 // page, and the plain page of an organisation that is frozen or closed. Every value shown comes from the server.
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { kindOf } from './pages.tsx'
-import { api, CANCELLED, day, Icon, minute, ROLE, say, Section, sensitive, stamp, Status, Tile } from './ui.tsx'
+import { api, CANCELLED, day, Icon, minute, ROLE, say, Section, sensitive, SignNow, stamp, Status, Tile } from './ui.tsx'
 
 const Problem = ({ children }: { children: string }) => <p className="note bad" role="alert"><Icon name="triangle-alert" /><span className="grow">{children}</span></p>
 
@@ -452,10 +452,11 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
                   <input className="input mono" readOnly value={issued.link} onFocus={(event) => event.target.select()} />
                 </label>
                 <div className="acts">
+                  <SignNow link={issued.link} />
                   <button className="btn ghost md" type="button" onClick={() => navigator.clipboard.writeText(issued.link).then(() => setCopied(true), () => setCopied(false))}><Icon name="clipboard-check" size={16} />{copied ? 'Copied' : 'Copy the link'}</button>
                   <button className="btn ghost md" type="button" onClick={() => { setIssued(undefined); void load() }}>The wallet has signed</button>
                 </div>
-                <p className="fine"><Icon name="info" size={16} /><span>Give the link to the people who hold the wallet, by a channel they trust. A Safe signs inside the Safe interface: add the signing page as a custom app and paste the link.</span></p>
+                <p className="fine"><Icon name="info" size={16} /><span>Hold the wallet yourself? "Sign with your wallet" opens the signing page: sign there with WalletConnect (a phone wallet included) or the wallet of this browser. Otherwise give the link to the people who hold the wallet, by a channel they trust. A Safe signs inside the Safe interface: add the signing page as a custom app and paste the link.</span></p>
               </>
             )}
           </Step>

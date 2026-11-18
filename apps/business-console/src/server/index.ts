@@ -33,8 +33,11 @@ const HEADERS = {
 }
 // The signing page, on its own hostname: its own scripts and styles only, and it may be framed by the Safe interface,
 // which is how Safe owners sign. No cross-origin grant but one: the Safe interface reads manifest.json.
+// WalletConnect (owner, 2026-11-18): its relay, and its Verify service (a hidden frame and its key), which lets the wallet
+// show that the request comes from this hostname. Telemetry is off in sign/walletconnect.ts, so nothing else is named.
+const WALLETCONNECT = 'wss://relay.walletconnect.org https://verify.walletconnect.org https://verify.walletconnect.com'
 const SIGN_HEADERS = {
-  'content-security-policy': "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; frame-ancestors https://app.safe.global https://*.safe.global",
+  'content-security-policy': `default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self' ${WALLETCONNECT}; frame-src https://verify.walletconnect.org https://verify.walletconnect.com; frame-ancestors https://app.safe.global https://*.safe.global`,
   'cache-control': 'no-cache',
   'x-content-type-options': 'nosniff',
   'referrer-policy': 'no-referrer',

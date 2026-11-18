@@ -40,9 +40,15 @@
     </dl>
     <p class="fine" id="advice">Your wallet shows the same fields. Sign only if they match, and if a colleague you know asked for this link.</p>
     <div class="methods wide">
-      <button id="by-wallet" class="btn primary" type="button">Sign with the wallet in this browser</button>
+      <button id="by-wc" class="btn primary" type="button">Sign with WalletConnect</button>
+      <button id="by-wallet" class="btn ghost" type="button">Sign with the wallet in this browser</button>
       <button id="by-safe" class="btn primary" type="button" hidden>Sign with this Safe</button>
       <button id="check" class="btn ghost" type="button">Check again</button>
+    </div>
+    <div id="wc" class="wc" hidden>
+      <p class="fine">Scan this code with the WalletConnect scanner inside your wallet app, not with the phone's camera. Approve the connection, then the signature, in the wallet.</p>
+      <div id="wc-qr" class="wc-qr"></div>
+      <div><button id="wc-copy" class="btn ghost sm" type="button">Copy the WalletConnect link</button></div>
     </div>
     <p class="fine">"Check again" is for a Safe that signed onchain: press it once the owners have executed the transaction. It sends no signature, and the server asks the Safe.</p>
   </section>

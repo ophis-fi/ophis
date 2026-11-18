@@ -100,6 +100,7 @@ function read(code: string) {
   $('f-expires').textContent = `${new Date(request.expiresAt * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC`
   $('by-safe').hidden = !safe
   $('by-wallet').hidden = Boolean(safe)
+  $('by-wc').hidden = Boolean(safe) || !named() // a recovery names no chain: its wallet fills it in, in this browser or the Safe
   $('status').hidden = true
   $('request').hidden = false
   $('paste').hidden = true
@@ -121,17 +122,36 @@ async function post(signature: string) {
   say(SAY[answer.state ?? answer.error ?? ''] ?? 'The check could not be made. Try again in a minute.', answer.state ? 'ok' : 'bad')
 }
 
-// Route A: the wallet this browser holds (an extension, or a custodian's extension).
-async function byWallet() {
-  const { ethereum } = window as { ethereum?: Provider }
-  if (!ethereum) return say('No wallet was found in this browser. Open this page in the browser that holds the wallet, or inside the Safe interface.', 'warn')
+// Route A: the wallet this browser holds (an extension, or a custodian's extension), or one connected by WalletConnect.
+async function byWallet(ethereum = (window as { ethereum?: Provider }).ethereum, which = 'The wallet in this browser') {
+  if (!ethereum) return say('No wallet was found in this browser. Use WalletConnect, open this page in the browser that holds the wallet, or inside the Safe interface.', 'warn')
   const [account] = (await ethereum.request({ method: 'eth_requestAccounts' })) as string[]
   if (!named()) show({ wallet: account, chainId: Number(await ethereum.request({ method: 'eth_chainId' })) })
   else {
-    if (!same(account, request.wallet)) return say(`The wallet in this browser is ${account}. The request is for ${request.wallet}. Switch the account and try again.`, 'bad')
+    if (!same(account, request.wallet)) return say(`${which} is ${account}. The request is for ${request.wallet}. Switch the account and try again.`, 'bad')
     await ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: `0x${request.chainId.toString(16)}` }] })
   }
   await post((await ethereum.request({ method: 'eth_signTypedData_v4', params: [account, JSON.stringify(typed)] })) as string)
+}
+
+// Route A by WalletConnect (owner, 2026-11-18): a request that names its wallet and chain (a link, an activation). The
+// QR code shows until the wallet approves the connection; the wallet then shows the same fields and signs.
+let pairingLink = ''
+async function byWalletConnect() {
+  say('Preparing WalletConnect.')
+  const { walletConnect, qr } = await import('./walletconnect.ts')
+  const provider = walletConnect(request.chainId, (uri) => {
+    pairingLink = uri ?? ''
+    $('wc').hidden = !uri
+    $('wc-qr').replaceChildren(...(uri ? [qr(uri)] : []))
+    if (uri) say('Scan the code with your wallet.')
+  })
+  try {
+    await byWallet(provider, 'The wallet that connected')
+  } catch (error) {
+    if (error instanceof Error && error.message === 'chain') return say(`The wallet did not connect on ${CHAIN_NAME[request.chainId] ?? `chain ${request.chainId}`}. Choose that network in the wallet and try again.`, 'bad')
+    throw error
+  }
 }
 
 // Route B: inside the Safe interface. Offchain signing is asked for; a Safe set to sign onchain sends a transaction
@@ -303,7 +323,9 @@ $('paste').addEventListener('submit', (event) => {
   event.preventDefault()
   read(($('code') as HTMLTextAreaElement).value)
 })
-$('by-wallet').addEventListener('click', run(byWallet))
+$('by-wallet').addEventListener('click', run(() => byWallet()))
+$('by-wc').addEventListener('click', run(byWalletConnect))
+$('wc-copy').addEventListener('click', () => void navigator.clipboard.writeText(pairingLink).catch(() => undefined))
 $('by-safe').addEventListener('click', run(bySafe))
 // "Check again" sends no signature: for a recovery inside the Safe interface, the Safe that is open is the wallet meant.
 $('check').addEventListener('click', run(() => post('0x')))

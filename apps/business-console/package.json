@@ -27,19 +27,23 @@
   "dependencies": {
     "@safe-global/safe-apps-sdk": "9.1.0",
     "@simplewebauthn/server": "14.0.3",
+    "@walletconnect/sign-client": "2.25.0",
     "age-encryption": "0.3.1",
+    "qrcode": "1.5.4",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "viem": "2.57.16"
   },
   "pnpm": {
     "patchedDependencies": {
+      "picomatch@2.3.2": "../../patches/picomatch@2.3.2.patch",
       "picomatch@4.0.7": "../../patches/picomatch@4.0.7.patch"
     }
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "1.5.0",
     "@cloudflare/workers-types": "5.20261102.1",
+    "@types/qrcode": "1.5.6",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "playwright-core": "1.64.1",
