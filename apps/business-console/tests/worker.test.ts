@@ -6084,7 +6084,7 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
 
   // ---- A1, A2: the application ----
 
-  it('A1, A2: /apply is public, reads and writes nothing, asks no outside service; the intent is the server\'s own text', async () => {
+  it('A1, A2: /apply is public, writes nothing and asks no outside service; the intent is the server\'s own text', async () => {
     const rows = await snapshot([...TABLES, COUNTER])
     outside.length = 0
     const a = await applyFor('alder.example')
@@ -6154,6 +6154,7 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
   it('A3: the MAC is checked first, then the expiry; no outside service is asked', async () => {
     const a = await applyFor()
     const rows = await snapshot()
+    outside.length = 0
     const forged = [
       resealed(a.intent, { domain: 'birch.example' }), resealed(a.intent, { expiresAt: START / 1000 + 365 * 24 * 3600 }), resealed(a.intent, {}).replace(/\.(.)/, (_, c) => (c === 'A' ? '.B' : '.A')), // the first character of the MAC: the last one carries two unused bits
       await seal(testEnv.CHALLENGE_KEY, 'recover-intent', fieldsOf<object>(a.intent)), await seal(`${testEnv.CHALLENGE_KEY}x`, 'apply-intent', fieldsOf<object>(a.intent)),
@@ -6167,8 +6168,8 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
     now = START + 7 * DAY
     expect((await create(a.intent)).body).toEqual({ error: 'intent_expired' })
     expect(await snapshot()).toBe(rows)
+    expect(outside).toEqual([]) // no refusal asks anyone
     now -= 1000
-    outside.length = 0
     expect((await create(a.intent)).body).toEqual({ state: 'unverified' })
     expect(outside).toEqual([]) // nothing about the applicant leaves
   })
@@ -6203,10 +6204,26 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
     expect((await call('POST', '/api/apply/check', { body: { intent: a.intent, skipDns: true } })).body).toEqual({ state: 'unverified' })
     expect(await row('SELECT domain_challenge, domain_verified_at FROM organisations WHERE email_domain = ?', 'alder-skip.example')).toEqual({ domain_challenge: null, domain_verified_at: null })
     expect(onboarding.ONBOARDING_EVENTS['organisation.apply']).not.toMatch(/DNS/)
-    expect(Object.keys(onboarding.ONBOARDING_EVENTS)).not.toContain('organisation.apply_unproved')
+    expect(await row('SELECT action FROM audit_log WHERE org_id = (SELECT id FROM organisations WHERE email_domain = ?) AND seq = 1', 'alder-skip.example')).toEqual({ action: 'organisation.apply' })
     const session = await signIn(a.key)
     expect((await call('GET', '/api/onboarding', { cookie: session.cookie })).body.company).toMatchObject({ domain: 'alder-skip.example' })
     expect((await call('GET', '/api/onboarding', { cookie: session.cookie })).body.company).not.toHaveProperty('domainVerifiedAt')
+  })
+
+  it('Codex, PR #1660: an organisation made on 2026-11-17 or 18, whose first row is organisation.apply_unproved, keeps its first Owner: its Onboarding page, its submit and the operator list read it, and the row has words', async () => {
+    const a = await applicantWithTwoKeys()
+    // The first row as the server of those days wrote it. The log is append-only: its trigger is lifted for this one rewrite.
+    await db.batch([
+      db.prepare('DROP TRIGGER audit_log_no_update'),
+      db.prepare(`UPDATE audit_log SET action = 'organisation.apply_unproved' WHERE org_id = ? AND seq = 1`).bind(a.orgId),
+      db.prepare(`CREATE TRIGGER audit_log_no_update BEFORE UPDATE ON audit_log BEGIN SELECT RAISE(ABORT, 'audit_log is append-only'); END`),
+    ])
+    expect(await row('SELECT action FROM audit_log WHERE org_id = ? AND seq = 1', a.orgId)).toEqual({ action: 'organisation.apply_unproved' })
+    expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body.first).toMatchObject({ active: true, name: 'Maren Okafor' })
+    expect((await activation(a)).body).toEqual({ state: 'stored' })
+    expect((await submit(a)).body).toEqual({ state: 'under_review' })
+    expect((await op('GET', '/api/operator/organisations')).body.organisations.find((o: { id: string }) => o.id === a.orgId)).toMatchObject({ applicant: { name: 'Maren Okafor' } })
+    expect(onboarding.ONBOARDING_EVENTS['organisation.apply_unproved']).toMatch(/without a DNS proof/)
   })
 
   it('A3: one commit: the organisation, unverified, with its fields and domain, its first Owner seat, the active passkey and one audit row; the applicant then signs in', async () => {
@@ -7088,7 +7105,8 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
     expect(await objects()).toEqual(kept) // milestone 5b: an upload whose row failed leaves no object behind
     await noLists()
     const written = [...new Set([...onboardingSource.matchAll(/'([a-z_]+(?:\.[a-z_]+)+)'/g)].map((match) => match[1]))]
-    expect(written.sort()).toEqual([...steps.map(([action]) => action), 'organisation.unfreeze'].sort())
+    // organisation.apply_unproved is read, never written: the first rows of 2026-11-17 and 18 (Codex, PR #1660).
+    expect(written.sort()).toEqual([...steps.map(([action]) => action), 'organisation.unfreeze', 'organisation.apply_unproved'].sort())
     for (const action of written) expect(EVENTS[action], action).toEqual(expect.any(String))
     expect(Object.keys(onboarding.ONBOARDING_EVENTS).sort()).toEqual(written)
     // Every statement of this file is prepared with bound parameters: no value of a request is written into SQL text.

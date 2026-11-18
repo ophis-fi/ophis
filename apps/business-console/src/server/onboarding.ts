@@ -58,6 +58,8 @@ const listable = (addresses: unknown): addresses is string[] => Array.isArray(ad
 // The words of this file's audit actions, for the audit page and the export (spread into EVENTS of index.ts).
 export const ONBOARDING_EVENTS: Record<string, string> = {
   'organisation.apply': 'Organisation created by an application, first Owner passkey active',
+  // Written from 2026-11-17 until 2026-11-18 ("Create the organisation" without the DNS record); production holds one. Read, never written.
+  'organisation.apply_unproved': 'Organisation created by an application without a DNS proof of its domain, first Owner passkey active',
   'activation.proof': 'Recovery wallet signed the activation and confirmed the first Owner passkey',
   'review.submit': 'Organisation submitted for review',
   'declaration.upload': 'Signed declaration uploaded, sealed in the browser (the detail is the SHA-256 of the sealed file)',
@@ -137,7 +139,7 @@ const firstOf = (db: D1Database, orgId: string) =>
                      (SELECT count(*) FROM credentials k JOIN seats s ON s.org_id = k.org_id AND s.id = k.seat_id AND s.role = 'owner' AND s.state = 'active'
                       WHERE k.org_id = a.org_id AND k.id = a.subject_id AND k.seat_id = a.actor_id AND k.state = 'active') AS active
               FROM audit_log a JOIN organisations o ON o.id = a.org_id LEFT JOIN seats f ON f.org_id = a.org_id AND f.id = a.actor_id
-              WHERE a.org_id = ? AND a.seq = 1 AND a.action = 'organisation.apply'`).bind(orgId).first<First>()
+              WHERE a.org_id = ? AND a.seq = 1 AND a.action IN ('organisation.apply', 'organisation.apply_unproved')`).bind(orgId).first<First>() // the second: ONBOARDING_EVENTS
 /** The people the application named besides its applicant, in the order it gave them. */
 const peopleOf = async (db: D1Database, orgId: string) =>
   (await db.prepare('SELECT display_name AS name, email, role, position, phone, telegram FROM application_people WHERE org_id = ? ORDER BY rowid').bind(orgId).all<Person>()).results
