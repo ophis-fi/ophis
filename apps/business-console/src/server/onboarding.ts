@@ -1,30 +1,23 @@
 // Milestone 5a: how an organisation comes to exist and becomes active (recovery.md section 3).
-//   /apply            a company applies: its details, the first Owner's passkey, and a DNS record that proves the domain
+//   /apply            a company applies with an invitation code: its details and the first Owner's passkey
 //   Onboarding        the Owner adds a second passkey, names the recovery wallet (which signs) or enrols a second Owner, submits
 //   operator's API    on its own hostname: the KYB decision, freeze and unfreeze; each a row in the client's own audit log
 // This file holds its own handlers and, in its first half, its own rows: every statement is prepared with bound
 // parameters, and every change goes through commit() of the data module, with what decides it read inside the plan.
 import { checksum, colour, parseAddress, readCapped, safeState, verify, verifyDigest, type SafeState } from './chain.ts'
-import { commit, countHour, DOMAIN, emailAt, freezing, LISTED, listed, listedWallet, PEOPLE, randomId, REVIEWED, sha256Hex, type Actor, type WalletKind } from './data.ts'
+import { commit, DOMAIN, emailAt, freezing, LISTED, listed, listedWallet, PEOPLE, randomId, REVIEWED, sha256Hex, type Actor, type WalletKind } from './data.ts'
 import { challengeIsOurs, creationOptions, credentialHash, fromBase64Url, newChallenge, seal, unseal, verifyRegistration, type Config } from './passkeys.ts'
 import { indexerBase } from './partner.ts'
 import { standIn } from './orders.ts'
 import { CHAIN_NAME, LISTS, typedProof } from './typed.ts'
 
 // Constants per environment, like those of passkeys.ts, and never read from a request.
-// RESOLVERS: two DNS-over-HTTPS resolvers of different operators, JSON form; both must give the record. The local
-// environment asks two stubs that the dev and end-to-end scripts start (scripts/dns-stub.mjs): no stub lives here.
-// PUBLIC_RESOLVERS: Cloudflare and Google, the production entry; `pnpm test:dns` asks them with this file's parser.
-export const PUBLIC_RESOLVERS = ['https://cloudflare-dns.com/dns-query', 'https://dns.google/resolve'] as const
-export const RESOLVERS: Record<string, readonly [string, string]> = { local: ['http://127.0.0.1:8790/dns-query', 'http://127.0.0.1:8791/resolve'], production: PUBLIC_RESOLVERS }
 // The operator's API has a hostname of its own, as the signing page has. In production Cloudflare Access stands in front of it (accessOk).
 export const OPERATOR: Record<string, string> = { local: 'http://operator.localhost:8787', production: 'https://operator.ophis.fi' }
 
-export const DNS = { timeoutMs: 5000, maxBytes: 16 * 1024 }
 const WEEK_S = 7 * 24 * 60 * 60
 const DUE_MS = 14 * 24 * 60 * 60 * 1000 // a review is due from 14 days before its date
 const INVITE_MS = 48 * 60 * 60 * 1000 // an invitation code lives 48 hours (owner, 2026-11-17)
-const MAX_DNS = 10 // DNS checks per application code per clock hour
 const MAX_BODY = 64 * 1024
 const ID = /^[0-9a-f]{32}$/
 const LABEL = /^[\p{L}\p{N} ._()-]{1,40}$/u
@@ -64,8 +57,7 @@ const listable = (addresses: unknown): addresses is string[] => Array.isArray(ad
 
 // The words of this file's audit actions, for the audit page and the export (spread into EVENTS of index.ts).
 export const ONBOARDING_EVENTS: Record<string, string> = {
-  'organisation.apply': 'Organisation created by an application: its DNS record proved the company domain, first Owner passkey active',
-  'organisation.apply_unproved': 'Organisation created by an application, the company domain not proved by DNS (Ophis checks the company in its review), first Owner passkey active',
+  'organisation.apply': 'Organisation created by an application, first Owner passkey active',
   'activation.proof': 'Recovery wallet signed the activation and confirmed the first Owner passkey',
   'review.submit': 'Organisation submitted for review',
   'declaration.upload': 'Signed declaration uploaded, sealed in the browser (the detail is the SHA-256 of the sealed file)',
@@ -88,7 +80,7 @@ type Decision = keyof typeof KYB_ACTION
 
 const json = (status: number, body: unknown) => Response.json(body, { status })
 const fail = (status: number, error: string) => json(status, { error })
-const STATUS: Record<string, number> = { not_found: 404, forbidden: 403, too_many: 429 }
+const STATUS: Record<string, number> = { not_found: 404, forbidden: 403 }
 const refuse = (error: string) => fail(STATUS[error] ?? 409, error)
 const hex = (bytes: Uint8Array) => [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('')
 
@@ -102,25 +94,24 @@ interface Passkey { id: string; publicKey: string; counter: number; transports: 
 interface Contact { position: string; phone: string; telegram: string | null }
 interface Person extends Contact { name: string; email: string; role: 'owner' | 'admin' }
 interface Applicant extends Contact { businessType: string; legalName: string; country: string; registration: string; lei: string | null; address: string; kind: 'partner' | 'institution'; domain: string; email: string; name: string; people: Person[] }
-/** What /apply asked for, signed by the server and held nowhere: nothing is written before the DNS record is seen. Times are Unix seconds. */
+/** What /apply asked for, signed by the server and held nowhere: nothing is written before "Create the organisation". Times are Unix seconds. */
 interface ApplyIntent extends Applicant { inviteHash: string; seat: string; credential: Passkey; credentialHash: string; issuedAt: number; expiresAt: number; site: string }
 
-// The one write of an application, after its DNS proof: the organisation (unverified), its first Owner seat, that
+// The one write of an application: the organisation (unverified), its first Owner seat, that
 // seat's passkey (active), the other people it named (rows only: their seats come with the approval) and the first
 // row of its audit log, which names the seat, the passkey and the passkey's hash for good. One organisation per domain among those that are not archived is the database's rule (the unique
 // index of 0006), and so are "an intent makes one organisation, once" (the primary keys of its seat and passkey) and
 // "an application code makes one organisation, once" (the unique index of 0007 on its hash).
-// value: the DNS record the resolvers showed, or null when the applicant went on without it (the domain is not proved).
-async function createOrganisation(db: D1Database, a: ApplyIntent, value: string | null, now: number) {
+// The domain is stored, not proved (owner, 2026-11-18: no DNS record; the invitation and Ophis's review stand for it).
+async function createOrganisation(db: D1Database, a: ApplyIntent, now: number) {
   const orgId = randomId()
   let outcome = 'not_stored'
   try {
     await commit(db, orgId, () => {
       outcome = 'ok'
-      // The first row says how the domain stood (owner, 2026-11-17): proved by DNS, or not; the row is hashed into the chain.
-      return [{ at: now, actorKind: 'seat', actorId: a.seat, sessionId: null, action: value === null ? 'organisation.apply_unproved' : 'organisation.apply', subjectId: a.credential.id, detail: a.credentialHash }, [
-        db.prepare(`INSERT INTO organisations (id, kind, business_type, name, state, email_domain, domain_challenge, domain_verified_at, country, registration_number, lei, registered_address, invite_hash, synced_keys_allowed, created_at)
-                    VALUES (?, ?, ?, ?, 'unverified', ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`).bind(orgId, a.kind, a.businessType ?? null, a.legalName, a.domain, value, value === null ? null : now, a.country, a.registration, a.lei ?? null, a.address ?? null, a.inviteHash, now),
+      return [{ at: now, actorKind: 'seat', actorId: a.seat, sessionId: null, action: 'organisation.apply', subjectId: a.credential.id, detail: a.credentialHash }, [
+        db.prepare(`INSERT INTO organisations (id, kind, business_type, name, state, email_domain, country, registration_number, lei, registered_address, invite_hash, synced_keys_allowed, created_at)
+                    VALUES (?, ?, ?, ?, 'unverified', ?, ?, ?, ?, ?, ?, 1, ?)`).bind(orgId, a.kind, a.businessType ?? null, a.legalName, a.domain, a.country, a.registration, a.lei ?? null, a.address ?? null, a.inviteHash, now),
         db.prepare(`INSERT INTO seats (id, org_id, display_name, email, role, state, position, phone, telegram, created_at) VALUES (?, ?, ?, ?, 'owner', 'active', ?, ?, ?, ?)`)
           .bind(a.seat, orgId, a.name, a.email, a.position ?? null, a.phone ?? null, a.telegram ?? null, now),
         db.prepare(`INSERT INTO credentials (id, org_id, seat_id, public_key, counter, device_bound, transports, label, state, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'First key', 'active', ?)`)
@@ -146,7 +137,7 @@ const firstOf = (db: D1Database, orgId: string) =>
                      (SELECT count(*) FROM credentials k JOIN seats s ON s.org_id = k.org_id AND s.id = k.seat_id AND s.role = 'owner' AND s.state = 'active'
                       WHERE k.org_id = a.org_id AND k.id = a.subject_id AND k.seat_id = a.actor_id AND k.state = 'active') AS active
               FROM audit_log a JOIN organisations o ON o.id = a.org_id LEFT JOIN seats f ON f.org_id = a.org_id AND f.id = a.actor_id
-              WHERE a.org_id = ? AND a.seq = 1 AND a.action IN ('organisation.apply', 'organisation.apply_unproved')`).bind(orgId).first<First>()
+              WHERE a.org_id = ? AND a.seq = 1 AND a.action = 'organisation.apply'`).bind(orgId).first<First>()
 /** The people the application named besides its applicant, in the order it gave them. */
 const peopleOf = async (db: D1Database, orgId: string) =>
   (await db.prepare('SELECT display_name AS name, email, role, position, phone, telegram FROM application_people WHERE org_id = ? ORDER BY rowid').bind(orgId).all<Person>()).results
@@ -227,8 +218,8 @@ const walletOf = (db: D1Database, orgId: string) =>
               FROM wallets w JOIN organisations o ON o.id = w.org_id WHERE w.org_id = ? AND ((o.state = 'unverified' AND w.state = 'pending') OR (o.state <> 'unverified' AND w.anchor IS NOT NULL))
               ORDER BY w.rowid DESC LIMIT 1`).bind(orgId).first<WalletRow>()
 
-interface Company { id: string; legalName: string; kind: string; businessType: string | null; state: string; country: string | null; registration: string | null; lei: string | null; address: string | null; domain: string | null; domainVerifiedAt: number | null; reviewAt: number | null; print: string | null }
-const COMPANY = `id, name AS legalName, kind, business_type AS businessType, state, country, registration_number AS registration, lei, registered_address AS address, email_domain AS domain, domain_verified_at AS domainVerifiedAt, review_at AS reviewAt, review_print AS print FROM organisations`
+interface Company { id: string; legalName: string; kind: string; businessType: string | null; state: string; country: string | null; registration: string | null; lei: string | null; address: string | null; domain: string | null; reviewAt: number | null; print: string | null }
+const COMPANY = `id, name AS legalName, kind, business_type AS businessType, state, country, registration_number AS registration, lei, registered_address AS address, email_domain AS domain, review_at AS reviewAt, review_print AS print FROM organisations`
 interface KybRow { legalName: string; registration: string | null; country: string; tier: string; source: string; evidenceSha256: string | null; decision: string; reason: string | null; decidedAt: number | null; nextReview: number | null }
 /** The newest KYB row of one organisation (bind its id): the row that says how the organisation stands. */
 const NEWEST = `FROM kyb_records WHERE org_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`
@@ -513,8 +504,8 @@ function contactOf(x: Record<string, unknown>): Contact | null {
   return { position, phone, telegram: telegram ? `@${telegram}` : null }
 }
 /**
- * The form, checked. The contact address must be at the company's domain or a subdomain of it: the DNS proof of that
- * domain is then the proof that this is a company address, and no list of mail providers is needed. `people`: 0 to 4
+ * The form, checked. The contact address must be at the company's domain or a subdomain of it, which Ophis checks
+ * with the company in its review: no list of mail providers is needed. `people`: 0 to 4
  * more people, each a name, a work email by the same rule, the role Owner or Admin, and a contact (contactOf); no address
  * twice, none the applicant's. The LEI is optional; the registered address is required (owner, 2026-11-17).
  */
@@ -551,8 +542,8 @@ const APPLY = 'apply-intent' // the labels of this file's texts under the challe
 // base32 (32 symbols, no I, L, O or U: 60 random bits), made by the operator's command, valid 48 hours, good for one
 // organisation. The server keeps the SHA-256 of its 12 characters (invites, 0027); the organisation it makes stores the
 // same hash, unique (0007). Read the way a person types it: any case, spaces and dashes ignored, O read as 0, I and L as
-// 1. Checked before anything else on every call of /apply; the DNS step then has the 7 days of the intent, which carries
-// the hash. ponytail: no count of wrong guesses: 60 bits are out of reach at the Free plan's 100,000 requests a day.
+// 1. Checked before anything else on every call of /apply; "Create the organisation" then has the 7 days of the intent,
+// which carries the hash. ponytail: no count of wrong guesses: 60 bits are out of reach at the Free plan's 100,000 requests a day.
 const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
 export const inviteText = (raw: unknown) => {
   const text = typeof raw === 'string' ? raw.toUpperCase().replace(/[\s-]/g, '').replace(/O/g, '0').replace(/[IL]/g, '1') : ''
@@ -567,12 +558,9 @@ async function invited(c: Ctx) {
   return !row || row.expiresAt <= c.now ? 'invite_invalid' : row.used ? 'invite_used' : { hash }
 }
 const ACTIVATE = 'activate-intent'
-export const dnsName = (domain: string) => `_ophis-verify.${domain}`
-/** What the DNS administrator publishes: a MAC over the domain and the hash of this passkey. A record left by another application, or made for another domain, proves nothing. */
-export const dnsValue = async (key: string, domain: string, hash: string) => `ophis-verify=${(await seal(key, 'apply-dns', { domain, credentialHash: hash })).split('.')[1].slice(0, 20)}`
 
 // POST /api/apply, two calls, no session. First: the form in, the options for a device-bound passkey out, for a seat
-// id made here. Second: the form and that passkey's registration in, a MAC-signed intent and the DNS record out.
+// id made here. Second: the form and that passkey's registration in, a MAC-signed intent out.
 // Nothing is written, and the one read is whether the application code was used.
 // ponytail: Turnstile comes before this route in production; it is not built. Each intent costs a code and a passkey registration.
 export async function apply(c: Ctx) {
@@ -598,63 +586,17 @@ export async function apply(c: Ctx) {
     ...a, inviteHash: code.hash, seat, credential: { id: credential.id, publicKey: credential.publicKey, counter: credential.counter, transports: credential.transports, deviceBound: credential.deviceBound },
     credentialHash: hash, issuedAt, expiresAt: issuedAt + WEEK_S, site: c.config.rpId,
   }
-  return json(200, {
-    intent: await seal(c.env.CHALLENGE_KEY, APPLY, intent), expiresAt: intent.expiresAt * 1000,
-    record: { name: dnsName(a.domain), type: 'TXT', value: await dnsValue(c.env.CHALLENGE_KEY, a.domain, hash) },
-  })
+  return json(200, { intent: await seal(c.env.CHALLENGE_KEY, APPLY, intent), expiresAt: intent.expiresAt * 1000 })
 }
 
-/**
- * The TXT values a resolver's JSON answer holds for exactly this name, or null when the text is not an answer with
- * status 0. Cloudflare quotes each character string ("\"a\" \"b\""), Google does not: both give the same value here.
- * ponytail: a record reached through a CNAME carries the target's name and is not accepted.
- */
-export function txtValues(text: string | null, name: string): string[] | null {
-  let answer: { Status?: unknown; Answer?: unknown }
-  try {
-    answer = JSON.parse(text ?? '')
-  } catch {
-    return null
-  }
-  if (!answer || typeof answer !== 'object' || answer.Status !== 0 || (answer.Answer !== undefined && !Array.isArray(answer.Answer))) return null
-  const plain = (data: string) => (data.startsWith('"') ? [...data.matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((part) => part[1].replace(/\\(.)/g, '$1')).join('') : data)
-  return ((answer.Answer ?? []) as { name?: unknown; type?: unknown; data?: unknown }[])
-    .filter((r) => r?.type === 16 && typeof r.data === 'string' && typeof r.name === 'string' && r.name.toLowerCase().replace(/\.$/, '') === name)
-    .map((r) => plain(r.data as string))
-}
-// One resolver, asked once: 5 seconds, 16 KB. An error, a redirect (not followed: each hop would be one more
-// subrequest), a timeout, an oversized or malformed answer is null.
-export async function lookup(resolver: string, name: string) {
-  try {
-    const response = await fetch(`${resolver}?name=${encodeURIComponent(name)}&type=TXT`, { headers: { accept: 'application/dns-json' }, redirect: 'manual', signal: AbortSignal.timeout(DNS.timeoutMs) })
-    return response.ok ? txtValues(await readCapped(response.body, DNS.maxBytes), name) : null
-  } catch {
-    return null
-  }
-}
-
-// POST /api/apply/check, "Check DNS". The MAC first, before any lookup; the expiry; then both resolvers must return
-// the exact value, which is made again here from the intent's domain and passkey. Only then the one commit.
-// G6: at most 10 checks per application code per clock hour, whatever the domain (countHour, under the key
-// "dns:<hash of the code's id>"): the one write before the proof, made after the MAC and the expiry and before any
-// lookup. Per code, not per domain: an applicant uses up its own checks, never those of the company whose domain it names.
+// POST /api/apply/check, "Create the organisation". The MAC first, then the expiry, then the one commit. The invitation
+// still has to be unused, and one organisation per domain holds (the database's rules). The route keeps its name: a
+// page loaded before 2026-11-18 calls it, with a `skipDns` field that is now ignored. No outside service is asked.
 export async function applyCheck(c: Ctx) {
   const intent = (await unseal(c.env.CHALLENGE_KEY, APPLY, typeof c.body.intent === 'string' ? c.body.intent : '')) as ApplyIntent | null
   if (!intent) return fail(400, 'intent_invalid')
   if (intent.expiresAt * 1000 <= c.now) return fail(410, 'intent_expired')
-  // Owner, 2026-11-17: the DNS record is optional, as many companies will not publish one. `skipDns: true` makes the
-  // organisation now, its domain not proved (Ophis checks the company in its review, as for every organisation); no
-  // resolver is asked. The invitation still has to be valid and unused, and one organisation per domain still holds.
-  if (c.body.skipDns === true) {
-    const outcome = await createOrganisation(c.env.DB, intent, null, c.now)
-    return outcome === 'ok' ? json(200, { state: 'unverified' }) : refuse(outcome)
-  }
-  if (!(await countHour(c.env.DB, `dns:${intent.inviteHash}`, c.now, MAX_DNS))) return fail(429, 'too_many')
-  const value = await dnsValue(c.env.CHALLENGE_KEY, intent.domain, intent.credentialHash)
-  const answers = await Promise.all(RESOLVERS[c.env.ENVIRONMENT].map((resolver) => lookup(resolver, dnsName(intent.domain))))
-  // The refusal names the record again: whoever holds the intent may know what to publish (a resumed application reads it here).
-  if (!answers.every((values) => values?.includes(value))) return json(409, { error: 'dns_not_proved', record: { name: dnsName(intent.domain), type: 'TXT', value } })
-  const outcome = await createOrganisation(c.env.DB, intent, value, c.now)
+  const outcome = await createOrganisation(c.env.DB, intent, c.now)
   return outcome === 'ok' ? json(200, { state: 'unverified' }) : refuse(outcome)
 }
 
@@ -674,7 +616,7 @@ export async function onboarding(c: Member) {
   const sealed = await sealedOf(c.env.DB, orgId)
   const status = company.state !== 'unverified' ? 'verified' : company.reviewAt !== null ? 'under_review' : record?.decision === 'pending' ? 'more_information' : 'not_submitted'
   return json(200, {
-    company: { legalName: company.legalName, kind: company.kind, businessType: company.businessType, country: company.country, registration: company.registration, lei: company.lei, address: company.address, domain: company.domain, domainVerifiedAt: company.domainVerifiedAt },
+    company: { legalName: company.legalName, kind: company.kind, businessType: company.businessType, country: company.country, registration: company.registration, lei: company.lei, address: company.address, domain: company.domain },
     first: first && { credentialHash: first.hash, active: first.active === 1, name: first.name, position: first.position },
     people: await peopleOf(c.env.DB, orgId), // the people the application named besides the first Owner: Ophis approves them with the organisation
     // Milestone 5b: the sealing key of this environment (its fingerprint; null: none configured), and the sealed declaration as the server knows it.
@@ -920,7 +862,7 @@ async function list(c: Ctx) {
     const endpoints = wallet?.kind === 'safe' ? c.config.chains[wallet.chainId] : undefined
     const live = endpoints ? await safeState(endpoints, wallet!.chainId, wallet!.address) : null
     organisations.push({
-      id: o.id, legalName: o.legalName, kind: o.kind, businessType: o.businessType, country: o.country, registration: o.registration, lei: o.lei, address: o.address, domain: o.domain, domainVerifiedAt: o.domainVerifiedAt, submittedAt: o.reviewAt, submission: await submissionOf(o.print),
+      id: o.id, legalName: o.legalName, kind: o.kind, businessType: o.businessType, country: o.country, registration: o.registration, lei: o.lei, address: o.address, domain: o.domain, submittedAt: o.reviewAt, submission: await submissionOf(o.print),
       applicant: { name: first.name, email: first.email, position: first.position, phone: first.phone, telegram: first.telegram },
       credentialHash: first.hash, people: await peopleOf(c.env.DB, o.id), missing: await missing(c.env.DB, o.id, c.now),
       // Milestone 5b: that the sealed declaration exists, and what the server knows of it. "items" and "get" are the way to the file.

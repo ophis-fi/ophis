@@ -110,9 +110,9 @@ export function Apply() {
       setBusy(false)
     }
   }
-  // Owner, 2026-11-18: the page offers no DNS record any more (skipDns): the invitation and Ophis's review stand for the domain.
+  // Owner, 2026-11-18: no DNS record: the invitation and Ophis's review stand for the domain.
   const create = () => run(async () => {
-    const result = await api<{ state?: string; error?: string }>('/api/apply/check', { intent, skipDns: true })
+    const result = await api<{ state?: string; error?: string }>('/api/apply/check', { intent })
     if (result.status === 200) {
       keep('')
       return setDone(true)
@@ -261,7 +261,7 @@ export function Apply() {
 
 interface KybRow { legalName: string; registration: string | null; country: string; tier: string; source: string; evidenceSha256: string | null; decision: string; reason: string | null; decidedAt: number | null; nextReview: number | null }
 interface View {
-  company: { legalName: string; kind: string; businessType: string | null; country: string | null; registration: string | null; lei: string | null; address: string | null; domain: string | null; domainVerifiedAt: number | null }
+  company: { legalName: string; kind: string; businessType: string | null; country: string | null; registration: string | null; lei: string | null; address: string | null; domain: string | null; }
   first: { credentialHash: string; active: boolean; name: string; position: string | null } | null
   people: { name: string; email: string; role: string; position: string | null; phone: string | null; telegram: string | null }[]
   wallet: { chainId: number; chain: string; address: string; kind: string; label: string; inForce: boolean; threshold?: number; owners?: number } | null
@@ -417,7 +417,7 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
           <Step icon="building-2" title="Company and domain" done>
             <p>{company.legalName}{company.businessType ? `, ${BUSINESS[company.businessType] ?? company.businessType}` : company.kind ? `, ${KIND[company.kind] ?? company.kind}` : ''}{company.country ? `, incorporated in ${countryName(company.country)}` : ''}{company.registration ? `, number ${company.registration}` : ''}{company.lei ? `, LEI ${company.lei}` : ''}.</p>
             {company.address && <p>Registered address: {company.address}.</p>}
-            <p>{!company.domain ? 'Created by Ophis for this local build, without an application.' : company.domainVerifiedAt ? `Domain ${company.domain}, proved by its DNS record on ${day(company.domainVerifiedAt)}.` : `Domain ${company.domain}.`}</p>
+            <p>{!company.domain ? 'Created by Ophis for this local build, without an application.' : `Domain ${company.domain}.`}</p>
             {view.people.length > 0 && <p>{verified ? 'Approved by Ophis with the organisation' : 'Other people named in the application'}: {view.people.map((p) => `${who(p)} (${ROLE[p.role]}, ${p.email})`).join('; ')}. {verified
               ? 'Each has a seat under Organisation, Members and roles. An Owner or Admin gives each one a link there, then confirms the new passkey. No second person is needed.'
               : 'Ophis checks them with the company. When Ophis approves, each gets a seat. Do not invite them yourself.'}</p>}

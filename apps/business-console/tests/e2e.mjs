@@ -16,7 +16,7 @@
 // Milestone 6: the Owner opens Support, asks a question, reads a help text, presses "No" and gets the hand-over card.
 // Milestone 5b: the declaration prints alone; a scan with a marker is sealed in the browser and uploaded; the stored
 // object is sealed; the operator's command takes it for a reason, and the local test identity opens it: the original.
-// Milestone 5a: an application, its DNS proof, the activation by the recovery wallet, the review and the operator's approval.
+// Milestone 5a: an application, the activation by the recovery wallet, the review and the operator's approval.
 // 2026-11-13: the application names a second person; after the approval the Owner gives that person a link and confirms
 // the passkey, which is active at once (Ophis approved the person: no second person, no wait).
 // Starts and stops its own local server on a throwaway database. Run: pnpm test:e2e
@@ -29,7 +29,6 @@ import { DatabaseSync } from 'node:sqlite' // the sealed file, read back from th
 import { Decrypter } from 'age-encryption' // milestone 5b: opens the downloaded file with the local test identity, as the operator would offline
 import { chromium } from 'playwright-core'
 import { mnemonicToAccount } from 'viem/accounts'
-import { start as startDnsStubs } from '../scripts/dns-stub.mjs' // milestone 5: the two local resolvers of the server's DNS check
 import { CONTRACT, PORT as INDEXER_PORT, start as startIndexer } from '../scripts/indexer-stub.mjs' // partner figures: the local stand-in for the rebate indexer
 import { PORT as LIST_PORT, start as startLists } from '../scripts/list-stub.mjs' // M10: the local stand-in for the place where the OFAC list file lives
 import { start as startTurnstile } from '../scripts/turnstile-stub.mjs' // the local stand-in for Cloudflare Turnstile
@@ -59,7 +58,6 @@ run('node_modules/.bin/wrangler', ['d1', 'migrations', 'apply', 'DB', '--local',
 const link = run('node', ['scripts/dev.mjs', 'seed', '--persist', STATE]).match(/http\S+\/#\/enrol\/\S+/)?.[0]
 check('seed printed an enrolment link', Boolean(link))
 
-const stopDnsStubs = startDnsStubs() // ports 8790 and 8791
 const stopIndexer = startIndexer() // port 8793
 const stopLists = startLists() // port 8794
 const stopOrderbook = startOrderbook() // port 8795
@@ -811,7 +809,7 @@ try {
 
 
   // ---- milestone 5a (first run 2026-11-11, on E2E_PORT=8797) ----
-  // A company applies on /apply and proves its domain by DNS (the two local stub resolvers); the applicant signs in,
+  // A company applies on /apply and creates the organisation (no DNS record since 2026-11-18); the applicant signs in,
   // adds the second passkey and names the recovery wallet, which signs the activation on the signing page; the Owner
   // submits; the operator approves through its command; the organisation is active and the KYB record shows.
   const applicant = await person()
@@ -848,7 +846,7 @@ try {
   check('the application page carries the footer line and says nothing is stored yet', await on.locator(".foot-line", { hasText: FOOTER }).isVisible() && await on.getByText('Nothing is stored until you create the organisation').isVisible())
   await on.getByRole('button', { name: 'Create the passkey', exact: true }).click()
   await on.getByRole('heading', { name: 'Your passkey is ready. Create the organisation.' }).waitFor()
-  // Owner, 2026-11-18: the page asks for no DNS record (the server's DNS path keeps its unit tests).
+  // Owner, 2026-11-18: the page asks for no DNS record.
   check('the page offers one action, no DNS record, and fits a phone', await on.getByRole('button', { name: 'Create the organisation' }).isVisible()
     && (await on.getByText(/DNS|_ophis-verify/).count()) === 0 && await both(on, '32-apply-create'))
   // A reload keeps the application (this browser remembers it).
@@ -1756,7 +1754,6 @@ try {
   console.error(error.message)
   process.exitCode = 1
 } finally {
-  stopDnsStubs()
   stopIndexer()
   stopLists()
   stopTurnstile()
