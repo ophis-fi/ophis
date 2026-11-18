@@ -79,6 +79,17 @@ it('clears its own retry sample when the timer resumes after the deadline', asyn
   expect(otherSample.retryInMs).toBe(4000)
 })
 
+it('clears an abandoned retry and preserves cancellation without another send', async () => {
+  const { transport, sent, throttles } = probe([429, 200])
+  const result = transport.send().catch(error => error)
+  await vi.advanceTimersByTimeAsync(1000)
+  transport.cancel()
+  await vi.runAllTimersAsync()
+  expect(await result).toMatchObject({ code: 'CANCELLED' })
+  expect(sent).toHaveLength(1)
+  expect(throttles).toEqual([{ attempt: 1, reason: 'http-429', retryInMs: null }])
+})
+
 it.each([
   [401, {}, 'unauthorized'],
   [503, {}, 'unavailable'],

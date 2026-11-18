@@ -33,7 +33,11 @@ export function configureReadinessTransport(transport: FetchRequest, throttles: 
       if (!retry) return result
       // Own backoff here: ethers 6.14 retries immediately and interprets Retry-After seconds as milliseconds.
       await new Promise(resolve => setTimeout(resolve, wait))
-      if (performance.now() >= deadline) { sample.retryInMs = null; return result }
+      if (signal?.cancelled || performance.now() >= deadline) {
+        sample.retryInMs = null
+        signal?.checkSignal()
+        return result
+      }
     }
   }
 }
