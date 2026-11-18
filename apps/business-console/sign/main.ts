@@ -11,6 +11,7 @@ import '../src/app/fonts.css' // Inter, copied by this build into /sign/assets/:
 import '../src/app/kit.css'
 import '../src/app/app.css'
 import './sign.css'
+import { onPhone } from '../src/app/phone.ts'
 import { CHAIN_NAME, PROOF_ACTION, typedLink, typedProof, type ProofKind, type Typed } from '../src/server/typed.ts'
 
 interface Request { org: string; chainId: number; wallet: string; nonce: string; issuedAt: number; expiresAt: number; site: string; kind?: ProofKind; credentialHash?: string }
@@ -306,4 +307,6 @@ $('by-wallet').addEventListener('click', run(byWallet))
 $('by-safe').addEventListener('click', run(bySafe))
 // "Check again" sends no signature: for a recovery inside the Safe interface, the Safe that is open is the wallet meant.
 $('check').addEventListener('click', run(() => post('0x')))
-if (location.hash.length > 1) read(location.hash.slice(1))
+// Owner, 2026-11-18: Ophis Business is for computers (src/app/phone.ts; the server refuses this host's API too).
+if (onPhone()) for (const part of document.querySelectorAll<HTMLElement>('main.sign > *')) part.hidden = part.id !== 'computer-only'
+else if (location.hash.length > 1) read(location.hash.slice(1))

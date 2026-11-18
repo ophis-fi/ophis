@@ -713,7 +713,11 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
     await act(async () => {
       const start = await sensitive<{ options: PublicKeyCredentialCreationOptionsJSON }>('/api/passkeys/start')
       if (start.status !== 200) return start
-      const passkey = (await navigator.credentials.create({ publicKey: PublicKeyCredential.parseCreationOptionsFromJSON(start.data.options) })) as PublicKeyCredential
+      // InvalidStateError: the authenticator already holds one of the seat's passkeys (excludeCredentials). With a passkey
+      // that syncs, that is every device of the account: "cancelled or timed out" sent an Owner round in circles (2026-11-18).
+      const passkey = (await navigator.credentials.create({ publicKey: PublicKeyCredential.parseCreationOptionsFromJSON(start.data.options) })
+        .catch((error: unknown) => { if (error instanceof DOMException && error.name === 'InvalidStateError') return null; throw error })) as PublicKeyCredential | null
+      if (!passkey) return { status: 409, data: { error: 'passkey_held' } }
       return api<Result['data']>('/api/passkeys/finish', { label, response: passkey.toJSON() })
     })
   }
