@@ -1241,7 +1241,7 @@ const OVERALL: Record<string, [badge: string, sentence: string]> = {
   not_recoverable: ['Not recoverable', 'One Owner and no recovery wallet: if that Owner is locked out, nobody can restore access.'],
 }
 const STEP: Record<string, string> = {
-  owner_key: 'Next step: every Owner needs a usable passkey: a hardware key where this organisation requires one, under My passkeys, or a re-enrolment for an Owner who lost all of theirs.',
+  owner_key: 'Next step: every Owner needs a usable passkey: a hardware key where this organisation requires one, under My passkeys, or, for an Owner who lost all of theirs, a re-enrolment, which a second key-role member confirms.',
   second_owner: 'Next step: invite a second Owner.',
   recovery_wallet: 'Next step: link a wallet and set it as the recovery wallet, under Organisation, Wallets. A Safe with a threshold of 2 or more and no module is best.',
 }
