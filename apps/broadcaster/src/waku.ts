@@ -21,6 +21,12 @@ export async function boundedJSON(response: Response, maxBytes: number): Promise
 
 export class WakuRelay {
   saturated = false
+  fullBatches = 0
+  lastFullBatchAt = 0
+  private lastPollAt = 0
+  private recoveringSince: number | undefined
+  private pending: { payload: Uint8Array; responseTopic: string; handled?: boolean; reply?: Uint8Array }[] = []
+  get pendingMessages(): number { return this.pending.length }
   private readonly topicPath: string
   constructor(private readonly endpoint: string, private readonly pubsubTopic = PUBSUB_TOPIC) {
     this.topicPath = `relay/v1/messages/${encodeURIComponent(pubsubTopic)}`
@@ -40,10 +46,22 @@ export class WakuRelay {
       contentTopic, version: 0, timestamp: Date.now() * 1_000_000, ephemeral: false })
   }
   async messages(): Promise<{ payload: Uint8Array; responseTopic: string }[]> {
-    const value = await this.request(this.topicPath)
-    if (!Array.isArray(value)) throw new Error('Waku REST returned an invalid message list.')
-    // shortcut: relay GET clears its cache before delivery, use an acknowledged inbox if client retries become insufficient.
-    this.saturated ||= value.length >= 16
+    let value: unknown
+    try {
+      value = await this.request(this.topicPath)
+      if (!Array.isArray(value)) throw new Error('Waku REST returned an invalid message list.')
+    } catch (error) { this.recoveringSince = undefined; throw error }
+    const now = performance.now()
+    if (value.length >= 16) {
+      this.saturated = true
+      this.fullBatches++
+      this.lastFullBatchAt = Date.now()
+      this.recoveringSince = undefined
+    } else {
+      if (this.recoveringSince === undefined || now - this.lastPollAt > 5000) this.recoveringSince = now
+      if (now - this.recoveringSince >= 60_000) this.saturated = false
+    }
+    this.lastPollAt = now
     return value.flatMap((entry) => {
       const prepaid = creditTopics(CHAIN_ID)
       if (!object(entry) || (entry.contentTopic !== TOPICS.transact && entry.contentTopic !== encryptedCreditTopic(prepaid.request)) || typeof entry.payload !== 'string' ||
@@ -52,5 +70,22 @@ export class WakuRelay {
       return bytes.length <= MAX_MESSAGE_BYTES ? [{ payload: bytes, responseTopic: entry.contentTopic === TOPICS.transact
         ? TOPICS.response : encryptedCreditTopic(prepaid.response) }] : []
     })
+  }
+  async dispatch(handle: (payload: Uint8Array) => Promise<Uint8Array | undefined>, signal: AbortSignal): Promise<void> {
+    // shortcut: this batch survives transient errors, not process loss; use a durable inbox if recovery requires it.
+    if (!this.pending.length && !signal.aborted) this.pending = await this.messages()
+    while (this.pending.length && !signal.aborted) {
+      const message = this.pending[0]
+      if (!message.handled) {
+        message.reply = await handle(message.payload)
+        message.handled = true
+      }
+      if (message.reply && message.reply.length > MAX_MESSAGE_BYTES) {
+        this.pending.shift()
+        throw new Error('Waku reply exceeds its size limit.')
+      }
+      if (message.reply) await this.publish(message.responseTopic, message.reply)
+      this.pending.shift()
+    }
   }
 }

@@ -175,11 +175,13 @@ export async function monitor(config: Settings, provider: JsonRpcProvider, oracl
     if (!Number.isSafeInteger(sample.chainId) || typeof sample.operatorAddress !== 'string' || !isAddress(sample.operatorAddress) ||
       typeof sample.ready !== 'boolean' || typeof sample.locked !== 'boolean' || typeof sample.synchronized !== 'boolean' ||
       typeof sample.wakuSaturated !== 'boolean' ||
-      !['pending', 'feeAssurancePending', 'errors'].every((key) => Number.isSafeInteger(sample[key]) && Number(sample[key]) >= 0)) alerts.push('invalid-health')
+      !['pending', 'feeAssurancePending', 'errors', 'wakuFullBatches', 'wakuLastFullBatchAt', 'wakuPendingMessages']
+        .every((key) => Number.isSafeInteger(sample[key]) && Number(sample[key]) >= 0)) alerts.push('invalid-health')
     else if (sample.chainId !== CHAIN_ID || !config.operatorAddress || getAddress(sample.operatorAddress) !== getAddress(config.operatorAddress))
       alerts.push('wrong-service-instance')
     else {
-      health = Object.fromEntries(['chainId', 'operatorAddress', 'ready', 'locked', 'synchronized', 'pending', 'feeAssurancePending', 'errors', 'wakuSaturated']
+      health = Object.fromEntries(['chainId', 'operatorAddress', 'ready', 'locked', 'synchronized', 'pending', 'feeAssurancePending', 'errors',
+        'wakuSaturated', 'wakuFullBatches', 'wakuLastFullBatchAt', 'wakuPendingMessages']
         .map((key) => [key, sample[key]]))
       if (health.locked) alerts.push('signer-locked')
       if (!health.synchronized) alerts.push('history-incomplete')
@@ -206,6 +208,10 @@ export function monitorMetrics(result: Awaited<ReturnType<typeof monitor>>): str
   const labels = `chain_id="${CHAIN_ID}"`
   const lines = [`ophis_broadcaster_monitor_ok{${labels}} ${result.ok ? 1 : 0}`,
     `ophis_broadcaster_last_check_seconds{${labels}} ${Math.floor(Date.now() / 1000)}`]
+  if (result.health) lines.push(
+    `ophis_broadcaster_waku_full_batches_total{${labels}} ${result.health.wakuFullBatches}`,
+    `ophis_broadcaster_waku_last_full_batch_seconds{${labels}} ${Number(result.health.wakuLastFullBatchAt) / 1000}`,
+    `ophis_broadcaster_waku_pending_messages{${labels}} ${result.health.wakuPendingMessages}`)
   for (const reason of result.alerts) {
     if (!/^[a-z-]+$/.test(reason)) throw new Error('Invalid monitor label.')
     lines.push(`ophis_broadcaster_alert{${labels},reason="${reason}"} 1`)

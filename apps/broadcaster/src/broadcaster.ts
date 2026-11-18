@@ -108,7 +108,7 @@ export class Broadcaster {
       !this.store.nonceBlocked(nonce)
   }
 
-  async feeAdvertisement(): Promise<{ available: boolean; message: Uint8Array }> {
+  async feeAdvertisement(): Promise<{ available: boolean; expiration: number; message: Uint8Array }> {
     const available = await this.available()
     const quote = issueFee(this.store, this.config.creditPaymentMode === 'public-native'
       ? { [TOKENS[0].address]: ceilDiv(10n ** 18n * (10_000n + this.config.marginBps), 10_000n) } : await this.oracle.rates())
@@ -120,7 +120,7 @@ export class Broadcaster {
       requiredPOIListKeys: [], reliability: 0.75,
       ophisPaymentProtocol: CREDIT_PROTOCOL,
     }))
-    return { available, message: Buffer.from(JSON.stringify({ data, signature: await this.sdk.sign(data) })) }
+    return { available, expiration: quote.expiration, message: Buffer.from(JSON.stringify({ data, signature: await this.sdk.sign(data) })) }
   }
 
   async handle(payload: Uint8Array): Promise<Uint8Array | undefined> {

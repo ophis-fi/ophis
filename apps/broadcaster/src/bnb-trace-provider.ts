@@ -58,7 +58,7 @@ function callRoot(trace: Record<string, unknown>, call: Record<string, unknown>)
 /** Only tracing uses the secondary. All state, headers and transaction submission retain their original provider. */
 export class BNBTraceProvider extends JsonRpcProvider {
   private readonly traceProvider: JsonRpcProvider
-  constructor(primary: string, secondary: string, mode: 'mainnet' | 'fork' = 'mainnet') {
+  constructor(primary: string | FetchRequest, secondary: string, mode: 'mainnet' | 'fork' = 'mainnet') {
     super(primary, 56, { batchMaxCount: 1, cacheTimeout: -1 })
     const request = new FetchRequest(traceRpcURL(secondary, 56, mode)!)
     request.timeout = 10_000
