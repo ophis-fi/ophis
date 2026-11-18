@@ -655,7 +655,7 @@ function WalletDialog({ wallet, on, may, act, onClose }: { wallet: Wallet; on: s
           )}
           <li><Tile name="x" /><h3 className="h-card">Unlink</h3>
             <div className="body">{wallet.recovery ? <p>This is the recovery wallet{wallet.recovery === 'waiting' ? ', waiting for its 72 hours' : ''}. It cannot be unlinked. Two people replace it first.</p>
-              : !may.unlink ? <p>An Owner or Admin with two passkeys unlinks a wallet.</p>
+              : !may.unlink ? <p>An Owner or Admin unlinks a wallet.</p>
               : <p>{walletEffect('wallet.unlink', wallet, on)}</p>}
               <button className="btn primary md" type="button" disabled={Boolean(wallet.recovery) || !may.unlink} onClick={() => run('unlink')}><Icon name="x" size={16} />Unlink now</button></div></li>
         </ul>
@@ -724,7 +724,7 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
 
   const name = (seatId: string | null) => view?.members.find((member) => member.id === seatId)?.displayName ?? 'A colleague'
   const manages = me.seat.role === 'owner' || me.seat.role === 'admin'
-  const ready = me.seat.keys >= 2
+  const ready = me.seat.keys >= 1 // one passkey is enough (owner, 2026-11-18); an Owner whose organisation requires hardware keys needs one
   const quarantined = (me.seat.quarantineUntil ?? 0) > Date.now()
   const mayManage = (role: string) => me.seat.role === 'owner' || (me.seat.role === 'admin' && role !== 'owner')
   const owner = me.seat.role === 'owner'
@@ -755,7 +755,7 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
         <p className="lede">Members, their passkeys and sessions, linked wallets, and the changes that need a second person.</p>
       </div></header>
       <div className="stack">
-        {!ready && <p className="note warn" role="status"><Icon name="key-round" /><span className="grow"><b>Add your second {hardware ? 'hardware key' : 'passkey'}.</b> A seat needs two before it can invite, confirm or revoke. Use <a href="#my-passkeys">My passkeys</a> below.</span></p>}
+        {!ready && <p className="note warn" role="status"><Icon name="key-round" /><span className="grow"><b>Add a hardware key.</b> This organisation requires one for Owners before they can invite, confirm or revoke. Use <a href="#my-passkeys">My passkeys</a> below.</span></p>}
         {quarantined && (me.organisation.quarantineUntil === me.seat.quarantineUntil
           ? <p className="note warn" role="status"><Icon name="clock" /><span className="grow"><b>The organisation is in quarantine until {minute(me.seat.quarantineUntil!)}.</b> The recovery wallet replaced all Owner passkeys. Until then nobody adds or removes a member, changes a role, links a wallet, sets the recovery wallet or approves a change, and a replaced Owner passkey can still stop the recovery. Re-enrolling an existing member stays open.</span></p>
           : <p className="note warn" role="status"><Icon name="clock" /><span className="grow"><b>Your seat is in quarantine until {minute(me.seat.quarantineUntil!)}.</b> It was re-enrolled. Until then it cannot add a member or revoke a colleague's passkey, and a replaced passkey can still stop the replacement.</span></p>)}
@@ -838,7 +838,7 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
             <input className="input" value={label} maxLength={40} required autoComplete="off" onChange={(event) => setLabel(event.target.value)} />
           </label>
           <button className="btn primary md" type="submit" disabled={!passkeysWork()}><Icon name="key-round" size={16} />Add a passkey</button>
-          <p className="fine"><Icon name="info" size={16} />Asks for a passkey you already hold, then for the new one{hardware ? ', which must be a second hardware key' : ''}. Your other sessions end.</p>
+          <p className="fine"><Icon name="info" size={16} />Asks for a passkey you already hold, then for the new one{hardware ? ', which must be a hardware key' : ''}. Your other sessions end.</p>
         </form>
       </Section>
 
@@ -1241,8 +1241,8 @@ const OVERALL: Record<string, [badge: string, sentence: string]> = {
   not_recoverable: ['Not recoverable', 'One Owner and no recovery wallet: if that Owner is locked out, nobody can restore access.'],
 }
 const STEP: Record<string, string> = {
-  second_key: 'Next step: every Owner adds a second passkey, under Organisation, My passkeys.',
-  second_owner: 'Next step: invite a second Owner, who enrols two passkeys.',
+  hardware_key: 'Next step: every Owner adds a hardware key, under Organisation, My passkeys.',
+  second_owner: 'Next step: invite a second Owner.',
   recovery_wallet: 'Next step: link a wallet and set it as the recovery wallet, under Organisation, Wallets. A Safe with a threshold of 2 or more and no module is best.',
 }
 const WHY: Record<string, (w: Ready['wallet']) => string> = {
@@ -1282,7 +1282,7 @@ function Readiness({ after }: { after: unknown }) {
       <header><Tile name="life-buoy" /><div><h2 className="h-panel" id="rd-h">Recovery readiness</h2><p><Status>{badge}</Status></p><p>{sentence} {ready.step && STEP[ready.step]}</p></div></header>
       <div>
         <div className="srow"><Icon name="users" size={20} /><b>Owners</b><Status>{LEVEL[owners.level]}</Status>
-          <p>{owners.level === 'green' ? `${owners.count} Owners, each with two passkeys.` : owners.level === 'amber' ? 'One Owner, with two passkeys. If that person is locked out, only the recovery wallet restores access.' : 'An Owner holds fewer than two passkeys. One lost passkey locks that Owner out.'}</p></div>
+          <p>{owners.level === 'green' ? `${owners.count} Owners.` : owners.level === 'amber' ? 'One Owner. If that person is locked out, only the recovery wallet restores access.' : 'An Owner holds no hardware key, which this organisation requires.'}</p></div>
         <div className="srow"><Icon name="key-round" size={20} /><b>Last-Owner recovery</b><Status>{ready.sheet.wallet ? 'In place today' : 'None'}</Status>
           <p>{ready.sheet.wallet ? `If no Owner can sign in, the signers of ${wallet.label} can replace all Owner passkeys: 72 hours of wait, which an Owner or the wallet can cancel, then 7 days in which a replaced Owner passkey can stop it. Print the recovery sheet below and keep it where the signers find it.` : 'Not possible yet: no recovery wallet is in force. If every Owner is locked out, nobody can restore access.'}</p></div>
         <div className="srow"><Icon name="wallet" size={20} /><b>Recovery wallet</b><Status>{LEVEL[wallet.level]}</Status>
@@ -1302,21 +1302,21 @@ function Sheet({ sheet }: { sheet: Ready['sheet'] }) {
       'Open Organisation, My passkeys.',
       'Revoke the passkey you lost.',
       'Use "Add a passkey" for a new passkey, and name it.',
-      'Keep the two keys in different places. Nothing waits: this works at once.',
+      'Nothing waits: this works at once.',
     ]],
     ['2. You lost every passkey, and a colleague can sign in', [
       'Ask an Owner or an Admin (an Owner, if you are one) to use "Re-enrol" on your seat. You get a one-time link.',
       'Open the link on your own device and create a new passkey.',
       'The colleague checks with you, by a channel you both trust, and confirms with a passkey.',
       'For an Owner, Admin, Approver or Compliance officer a second member with such a role does the same.',
-      'Your old passkeys can stop the replacement for 24 hours (72 hours for those roles). Sign in with the new passkey and add a second one.',
+      'Your old passkeys can stop the replacement for 24 hours (72 hours for those roles). Sign in with the new passkey.',
     ]],
     ['3. No Owner can sign in: the recovery wallet', [
       `Open ${host}/recover, enter the organisation id above and create a new passkey.`,
       'Give the signing link to the signers of the recovery wallet, by a channel they trust.',
       `They open ${sheet.signPage} (a Safe: as a custom app in the Safe interface), compare the organisation id, and sign.`,
       'A wait of 72 hours follows. Every member sees it at sign-in. An Owner or the recovery wallet can cancel it. An Admin, Approver or Compliance officer can add 72 hours, once.',
-      `Then open ${host}/recover again within 7 days and continue with the new passkey. Add a second key. For 7 days a replaced Owner passkey can stop the recovery.`,
+      `Then open ${host}/recover again within 7 days and continue with the new passkey. For 7 days a replaced Owner passkey can stop the recovery.`,
     ]],
   ]
   return (

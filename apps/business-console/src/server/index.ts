@@ -51,14 +51,15 @@ interface Context {
 }
 // The role table: one row per route, enforced by api() below and nowhere else.
 // roles: 'public' (no session: the handler says what proves the caller), or the roles whose session may call it.
-// fresh: a passkey check in the last 5 minutes (step-up). twoKeys: the seat holds two active passkeys, device-bound
-// ones for an Owner; until then it can sign in, pass a check and add its second key, and nothing else that is sensitive.
+// fresh: a passkey check in the last 5 minutes (step-up). strongKey: the seat holds an active passkey of the kind its
+// role needs, which only matters for an Owner where the organisation requires hardware keys: an Owner with only synced
+// ones can sign in, pass a check and add a hardware key, and nothing else that is sensitive. One passkey is enough (owner, 2026-11-18).
 // settled: refused while the seat is in quarantine after a re-enrolment.
 // second: the change needs a second person. Such a route has no handler: the router files the request.
 // sign: the route lives on the signing host, and only there; every other route lives on the console host only.
 // can: the sentence of this row on the page "What each role can do", which is built from this table.
 interface Route {
-  method: 'GET' | 'POST'; path: string; roles: 'public' | readonly data.Role[]; fresh?: boolean; twoKeys?: boolean; settled?: boolean
+  method: 'GET' | 'POST'; path: string; roles: 'public' | readonly data.Role[]; fresh?: boolean; strongKey?: boolean; settled?: boolean
   second?: data.Kind; sign?: boolean; can?: string; handler?: (c: Context) => Promise<Response>
   /** Milestone 5: open to an organisation that is not yet verified. Every other signed-in route answers 403 "unverified" there. */
   unverified?: boolean
@@ -591,14 +592,14 @@ async function snapshotOf(c: Context, id: string) {
 // now, on demand: its colour is never stored.
 async function readiness(c: Context) {
   const { owners, wallet } = await data.readiness(c.env.DB, c.actor, c.now)
-  const people = owners.some((keys) => keys < 2) ? 'red' : owners.length > 1 ? 'green' : 'amber'
+  const people = owners.some((keys) => keys < 1) ? 'red' : owners.length > 1 ? 'green' : 'amber'
   const inForce = wallet?.recovery === 'in_force'
   const endpoints = wallet?.kind === 'safe' && inForce ? c.config.chains[wallet.chainId] : undefined
   const live = endpoints ? await safeState(endpoints, wallet!.chainId, wallet!.address) : null
   const shade = wallet ? colour({ ...wallet, inForce }, live) : { level: 'none' as const, why: null }
   const overall = people === 'green' || (people === 'amber' && shade.level === 'green') ? 'ready' : owners.length === 1 && !wallet ? 'not_recoverable' : 'at_risk'
-  // The one step that comes next: the second key of an Owner (without it that Owner can set nothing), then the recovery wallet where there is one Owner and none, then a second Owner.
-  const step = overall === 'ready' ? null : people === 'red' ? 'second_key' : overall === 'not_recoverable' ? 'recovery_wallet' : 'second_owner'
+  // The one step that comes next: a hardware key for an Owner who has none where the organisation requires them (without it that Owner can set nothing), then the recovery wallet where there is one Owner and none, then a second Owner.
+  const step = overall === 'ready' ? null : people === 'red' ? 'hardware_key' : overall === 'not_recoverable' ? 'recovery_wallet' : 'second_owner'
   return json(200, {
     owners: { level: people, count: owners.length }, overall, step,
     wallet: { ...shade, label: wallet?.label ?? null, at: wallet?.recoveryAt ?? null, ...(live && { threshold: live.threshold, owners: live.owners.length }) },
@@ -1030,25 +1031,25 @@ export const routes: Route[] = [
   { method: 'POST', path: '/api/stepup/finish', roles: ANY, unverified: true, can: SELF, handler: stepupFinish },
   { method: 'POST', path: '/api/passkeys/start', roles: ANY, fresh: true, unverified: true, can: ADD, handler: passkeyStart },
   { method: 'POST', path: '/api/passkeys/finish', roles: ANY, fresh: true, unverified: true, can: ADD, handler: passkeyFinish },
-  { method: 'POST', path: '/api/passkeys/:id/revoke', roles: ANY, fresh: true, twoKeys: true, unverified: true, can: 'Revoke a passkey of the own seat, never the last (Owner and Admin: also of a member at or below their role)', handler: passkeyRevoke },
-  { method: 'POST', path: '/api/tickets', roles: MANAGERS, fresh: true, twoKeys: true, unverified: true, can: 'Invite a member, or re-enrol one who lost every passkey', handler: ticketIssue },
-  { method: 'POST', path: '/api/tickets/:id/confirm/start', roles: data.KEY_ROLES, twoKeys: true, unverified: true, can: CONFIRM, handler: confirmStart },
-  { method: 'POST', path: '/api/tickets/:id/confirm', roles: data.KEY_ROLES, twoKeys: true, unverified: true, can: CONFIRM, handler: confirmFinish },
-  { method: 'POST', path: '/api/tickets/:id/cancel', roles: ['owner'], fresh: true, twoKeys: true, unverified: true, can: 'Cancel an enrolment that waits', handler: ticketCancel },
+  { method: 'POST', path: '/api/passkeys/:id/revoke', roles: ANY, fresh: true, strongKey: true, unverified: true, can: 'Revoke a passkey of the own seat, never the last (Owner and Admin: also of a member at or below their role)', handler: passkeyRevoke },
+  { method: 'POST', path: '/api/tickets', roles: MANAGERS, fresh: true, strongKey: true, unverified: true, can: 'Invite a member, or re-enrol one who lost every passkey', handler: ticketIssue },
+  { method: 'POST', path: '/api/tickets/:id/confirm/start', roles: data.KEY_ROLES, strongKey: true, unverified: true, can: CONFIRM, handler: confirmStart },
+  { method: 'POST', path: '/api/tickets/:id/confirm', roles: data.KEY_ROLES, strongKey: true, unverified: true, can: CONFIRM, handler: confirmFinish },
+  { method: 'POST', path: '/api/tickets/:id/cancel', roles: ['owner'], fresh: true, strongKey: true, unverified: true, can: 'Cancel an enrolment that waits', handler: ticketCancel },
   { method: 'POST', path: '/api/stop/start', roles: 'public', handler: stopStart },
   { method: 'POST', path: '/api/stop/finish', roles: 'public', handler: stopFinish },
-  { method: 'POST', path: '/api/members/:id/freeze', roles: MANAGERS, fresh: true, twoKeys: true, settled: true, can: 'Freeze a seat at once, in an emergency (Admin: a seat at or below Admin)', handler: (c) => change(c, 'seat.freeze') },
-  { method: 'POST', path: '/api/members/:id/unfreeze', roles: MANAGERS, fresh: true, twoKeys: true, settled: true, second: 'seat.unfreeze', can: 'Ask to unfreeze a seat' },
-  { method: 'POST', path: '/api/members/:id/role', roles: MANAGERS, fresh: true, twoKeys: true, settled: true, second: 'seat.role', can: 'Ask to change a member\'s role, never above the own role' },
-  { method: 'POST', path: '/api/members/:id/remove', roles: MANAGERS, fresh: true, twoKeys: true, settled: true, second: 'seat.remove', can: 'Ask to remove a member (an invited seat nobody enrolled on: removed at once)' },
-  { method: 'POST', path: '/api/policy', roles: ['owner'], fresh: true, twoKeys: true, settled: true, second: 'policy.synced_keys', can: 'Ask to change the passkey rule for key roles' },
-  { method: 'POST', path: '/api/approvals/:id/approve', roles: data.KEY_ROLES, fresh: true, twoKeys: true, settled: true, can: 'Approve a colleague\'s request as the second person', handler: decide('approve') },
-  { method: 'POST', path: '/api/approvals/:id/reject', roles: data.KEY_ROLES, fresh: true, twoKeys: true, can: 'Reject a colleague\'s request', handler: decide('reject') },
+  { method: 'POST', path: '/api/members/:id/freeze', roles: MANAGERS, fresh: true, strongKey: true, settled: true, can: 'Freeze a seat at once, in an emergency (Admin: a seat at or below Admin)', handler: (c) => change(c, 'seat.freeze') },
+  { method: 'POST', path: '/api/members/:id/unfreeze', roles: MANAGERS, fresh: true, strongKey: true, settled: true, second: 'seat.unfreeze', can: 'Ask to unfreeze a seat' },
+  { method: 'POST', path: '/api/members/:id/role', roles: MANAGERS, fresh: true, strongKey: true, settled: true, second: 'seat.role', can: 'Ask to change a member\'s role, never above the own role' },
+  { method: 'POST', path: '/api/members/:id/remove', roles: MANAGERS, fresh: true, strongKey: true, settled: true, second: 'seat.remove', can: 'Ask to remove a member (an invited seat nobody enrolled on: removed at once)' },
+  { method: 'POST', path: '/api/policy', roles: ['owner'], fresh: true, strongKey: true, settled: true, second: 'policy.synced_keys', can: 'Ask to change the passkey rule for key roles' },
+  { method: 'POST', path: '/api/approvals/:id/approve', roles: data.KEY_ROLES, fresh: true, strongKey: true, settled: true, can: 'Approve a colleague\'s request as the second person', handler: decide('approve') },
+  { method: 'POST', path: '/api/approvals/:id/reject', roles: data.KEY_ROLES, fresh: true, strongKey: true, can: 'Reject a colleague\'s request', handler: decide('reject') },
   { method: 'POST', path: '/api/approvals/:id/cancel', roles: orders.PREPARERS, can: 'Cancel the own request', handler: decide('cancel') },
-  { method: 'POST', path: '/api/wallets/intent', roles: MANAGERS, fresh: true, twoKeys: true, settled: true, can: 'Start the link of a wallet, which the wallet then proves with a signature', handler: walletIntent },
-  { method: 'POST', path: '/api/wallets/:id/unlink', roles: MANAGERS, fresh: true, twoKeys: true, can: 'Unlink a wallet, never the recovery wallet', handler: (c) => change(c, 'wallet.unlink') },
-  { method: 'POST', path: '/api/wallets/:id/anchor', roles: ['owner'], fresh: true, twoKeys: true, settled: true, second: 'anchor.set', can: 'Ask to make a linked wallet the recovery wallet' },
-  { method: 'POST', path: '/api/wallets/:id/anchor/cancel', roles: ['owner'], fresh: true, twoKeys: true, can: 'Cancel a change of recovery wallet during its 72 hours', handler: (c) => change(c, 'anchor.cancel') },
+  { method: 'POST', path: '/api/wallets/intent', roles: MANAGERS, fresh: true, strongKey: true, settled: true, can: 'Start the link of a wallet, which the wallet then proves with a signature', handler: walletIntent },
+  { method: 'POST', path: '/api/wallets/:id/unlink', roles: MANAGERS, fresh: true, strongKey: true, can: 'Unlink a wallet, never the recovery wallet', handler: (c) => change(c, 'wallet.unlink') },
+  { method: 'POST', path: '/api/wallets/:id/anchor', roles: ['owner'], fresh: true, strongKey: true, settled: true, second: 'anchor.set', can: 'Ask to make a linked wallet the recovery wallet' },
+  { method: 'POST', path: '/api/wallets/:id/anchor/cancel', roles: ['owner'], fresh: true, strongKey: true, can: 'Cancel a change of recovery wallet during its 72 hours', handler: (c) => change(c, 'anchor.cancel') },
   { method: 'GET', path: '/api/readiness', roles: ['owner'], can: 'See how ready the organisation is to recover access', handler: readiness },
   { method: 'POST', path: '/api/proof', roles: 'public', sign: true, handler: proof },
   { method: 'POST', path: '/api/recover/intent', roles: 'public', handler: recoverIntent },
@@ -1074,10 +1075,10 @@ export const routes: Route[] = [
   { method: 'POST', path: '/api/apply', roles: 'public', handler: apply },
   { method: 'POST', path: '/api/apply/check', roles: 'public', handler: applyCheck },
   { method: 'GET', path: '/api/onboarding', roles: ['owner', 'compliance'], unverified: true, can: 'See the onboarding steps, the review status and the KYB record', handler: onboarding },
-  { method: 'POST', path: '/api/onboarding/wallet', roles: ['owner'], fresh: true, twoKeys: true, unverified: true, can: 'Name the recovery wallet of a new organisation, which the wallet then confirms with a signature', handler: activationIntent },
-  { method: 'POST', path: '/api/onboarding/submit', roles: ['owner'], fresh: true, twoKeys: true, unverified: true, can: 'Submit a new organisation for review', handler: submit },
+  { method: 'POST', path: '/api/onboarding/wallet', roles: ['owner'], fresh: true, strongKey: true, unverified: true, can: 'Name the recovery wallet of a new organisation, which the wallet then confirms with a signature', handler: activationIntent },
+  { method: 'POST', path: '/api/onboarding/submit', roles: ['owner'], fresh: true, strongKey: true, unverified: true, can: 'Submit a new organisation for review', handler: submit },
   // Milestone 5b: the one route whose body is not JSON: the signed declaration, sealed in the browser.
-  { method: 'POST', path: '/api/onboarding/declaration', roles: ['owner'], fresh: true, twoKeys: true, unverified: true, raw: SEAL.maxBytes, can: 'Upload the signed declaration of a new organisation, sealed in the browser', handler: sealDeclaration },
+  { method: 'POST', path: '/api/onboarding/declaration', roles: ['owner'], fresh: true, strongKey: true, unverified: true, raw: SEAL.maxBytes, can: 'Upload the signed declaration of a new organisation, sealed in the browser', handler: sealDeclaration },
 ]
 // "What each role can do": the rows of the table above that a session can reach. Routes that share a sentence are one row.
 // An order is the one two-person change with a handler of its own (the estimate first): it carries both marks here.
@@ -1142,7 +1143,7 @@ async function api(request: Request, env: Env, clock: () => number, config: Conf
     if (closed) return fail(403, closed)
     // The role table, enforced here for every route: the role, then the gates of the row.
     if (!route.roles.includes(session.role)) return fail(403, 'forbidden')
-    if (route.twoKeys && session.strong_keys < 2) return fail(403, 'second_key_required')
+    if (route.strongKey && session.strong_keys < 1) return fail(403, 'hardware_key_required')
     if (route.settled && context.actor.quarantineUntil) return fail(403, 'quarantine')
     if (route.fresh && now - session.step_up_at > STEP_UP_MS) return fail(403, 'step_up_required')
   }
