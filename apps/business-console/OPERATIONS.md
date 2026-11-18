@@ -20,7 +20,7 @@ Everything needed to run and update pro.ophis.fi. Live since 2026-11-17. Command
 
 | Secret | Copy kept in | Made by / rotated with |
 |---|---|---|
-| `CHALLENGE_KEY` | Keychain `ophis-console-challenge-key` | Random 32 bytes. Rotating ends pending invitations, sign-ins and DNS checks in progress |
+| `CHALLENGE_KEY` | Keychain `ophis-console-challenge-key` | Random 32 bytes. Rotating ends pending invitations, sign-ins and applications in progress |
 | `INDEXER_TOKEN` | Keychain `business-api-token` | The same value as `BUSINESS_API_TOKEN` in Cadia `/srv/ophis/apps/rebate-indexer/.env`. Change both together |
 | `OPERATOR_TOKEN` | Keychain `ophis-operator-token` | `operator token --production` (new token, Keychain and Worker at once) |
 | `TURNSTILE_SECRET` | Cloudflare (Turnstile, widget of pro.ophis.fi) | Rotate there, then `npx wrangler secret put TURNSTILE_SECRET --env production` (hidden prompt) |
@@ -60,7 +60,7 @@ Download https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/expo
 ## A new client
 
 1. `operator invite --production`: give the client the code and https://pro.ophis.fi/apply.
-2. The client applies (Ophis gets a Telegram message once it is submitted for review): the company (legal name, type, country of incorporation, registration number, LEI if any, registered address), the applicant (name, position, work email, phone, Telegram if any), the company domain, up to 4 more people with the same details and a role, and a passkey on a hardware key. The page shows a TXT record `_ophis-verify.<domain>` = `ophis-verify=<code>`; the client publishes it in its DNS and presses "Check DNS". (For `ophis.fi` the Keychain token `cloudflare-api-token` can publish it.)
+2. The client applies (Ophis gets a Telegram message once it is submitted for review): the company (legal name, type, country of incorporation, registration number, LEI if any, registered address), the applicant (name, position, work email, phone, Telegram if any), the company domain, up to 4 more people with the same details and a role, and a passkey (on the computer, a phone or a security key). Then "Create the organisation": no DNS record (owner, 2026-11-18), so confirm the applicant and the domain with the company before approving.
 3. The client signs in: a second passkey, the recovery wallet (it signs "Activate this organisation ..." on the signing page), the declaration (printed, signed, scanned, sealed in the browser, uploaded), "Submit for review".
 4. The operator: `operator list --production` (compare the domain, the passkey hash, the wallet, the declaration's SHA-256, and each person the application names: on the signed declaration with the same role, an address at the company's domain; the approval approves them all, there is no approval per person), the sanctions screening (README, "Screening, step by step"), then `operator decide <id> approve --submission <16 characters> --tier standard --source registry --evidence "<reference>" --sha256 <64 hex> --next-review <date> --screening clear --list eu=<file> --production`.
 5. The organisation is active. Its Owner invites the members from the console. Ophis sends no email.
