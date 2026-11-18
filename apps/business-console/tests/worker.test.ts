@@ -4133,9 +4133,12 @@ describe('y. wallets and the recovery wallet', () => {
       })
       expect((await get(SITE.origin, path)).status, path).toBe(404)
     }
+    // The signing host's own name sends to the signing page, and nowhere else.
+    const root = await get(SIGN, '/')
+    expect([root.status, root.headers.get('location'), root.text]).toEqual([302, '/sign/', ''])
     // The console's pages: not on the signing host. On their own host they pass through untouched.
     for (const path of ['/', '/index.html', '/assets/index-abc.js', '/ophis-icon.svg', '/signs', '/sign.html']) {
-      expect((await get(SIGN, path)).status, path).toBe(404)
+      if (path !== '/') expect((await get(SIGN, path)).status, path).toBe(404)
       const page = await get(SITE.origin, path)
       expect([page.status, page.text, page.headers.get('x-frame-options'), page.headers.get('access-control-allow-origin')], path).toEqual([200, `file ${path}`, 'DENY', null])
     }
@@ -4161,8 +4164,8 @@ describe('y. wallets and the recovery wallet', () => {
     const env = { ...testEnv, ENVIRONMENT: 'production' }
     const get = async (url: string) => (await handle(new Request(url, { headers: { 'sec-fetch-site': 'same-origin' } }), env, () => now)).status
     expect(configFor('production')).toMatchObject({ rpId: 'pro.ophis.fi', origin: 'https://pro.ophis.fi', signOrigin: 'https://sign.ophis.fi' })
-    expect([await get('https://pro.ophis.fi/'), await get('https://sign.ophis.fi/sign/'), await get('https://operator.ophis.fi/')]).toEqual([200, 200, 403])
-    for (const url of ['https://sign.ophis.fi/', 'https://pro.ophis.fi/sign/', 'http://pro.ophis.fi/', 'https://ophis.fi/', `${SITE.origin}/`, `${SIGN}/sign/`]) expect(await get(url), url).toBe(404)
+    expect([await get('https://pro.ophis.fi/'), await get('https://sign.ophis.fi/sign/'), await get('https://sign.ophis.fi/'), await get('https://operator.ophis.fi/')]).toEqual([200, 200, 302, 403])
+    for (const url of ['https://sign.ophis.fi/index.html', 'https://pro.ophis.fi/sign/', 'http://pro.ophis.fi/', 'https://ophis.fi/', `${SITE.origin}/`, `${SIGN}/sign/`]) expect(await get(url), url).toBe(404)
     // Every table kept per environment has its entry, so no route of production meets a missing constant.
     for (const environment of ['local', 'production']) {
       expect(Object.keys(configFor(environment).chains), environment).toEqual(['1', '10', '8453', '42161'])

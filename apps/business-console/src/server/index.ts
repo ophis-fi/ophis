@@ -1171,6 +1171,8 @@ async function api(request: Request, env: Env, clock: () => number, config: Conf
 // (with its script, style, icon and manifest.json), the console host everything else.
 async function pages(request: Request, env: Env, signing: boolean) {
   const { pathname } = new URL(request.url)
+  // The signing host's own name opens the signing page (owner, 2026-11-18: a bare "Not found" there read as broken).
+  if (signing && pathname === '/') return new Response(null, { status: 302, headers: { ...HEADERS, location: '/sign/' } })
   if (signing !== (pathname === '/sign' || pathname.startsWith('/sign/'))) return new Response('Not found', { status: 404, headers: HEADERS })
   // /recover is a page of the console's one shell (the app reads the path): public, and it needs no session.
   // /recover is rewritten here, so its shell is fetched whole (no conditional header): a page cached before the site
