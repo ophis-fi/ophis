@@ -1,4 +1,5 @@
 import { areAddressesEqual } from '@cowprotocol/cow-sdk'
+import { appendOphisBaseBuilderCode } from '@cowprotocol/wallet-provider'
 
 import { BaseError, encodeFunctionData, erc20Abi, type Address, type Hex, type WalletClient } from 'viem'
 
@@ -68,11 +69,14 @@ export async function approveCctp(
   if (balance < BigInt(quote.amount)) throw new Error('Insufficient token balance')
   if (allowance >= BigInt(quote.amount)) return undefined
   const to = cctpToken(quote.source, quote.asset)
-  const data = encodeFunctionData({
-    abi: erc20Abi,
-    functionName: 'approve',
-    args: [cctpSpender(quote.asset), BigInt(quote.amount)],
-  })
+  const data = appendOphisBaseBuilderCode(
+    encodeFunctionData({
+      abi: erc20Abi,
+      functionName: 'approve',
+      args: [cctpSpender(quote.asset), BigInt(quote.amount)],
+    }),
+    quote.source,
+  )
   await prepareCctpCall(quote, quote.source, to, data, false)
   if (quote.expanded) assertCctpxQuote(quote.expanded, await cctpClient(quote.source).getBlock())
   assertCctpQuote(quote)
@@ -91,7 +95,7 @@ export async function burnCctp(
   const { allowance, balance } = await readCctpFunds(quote)
   if (allowance < BigInt(quote.amount) || balance < BigInt(quote.amount))
     throw new Error('Token approval or balance is insufficient')
-  const data = cctpBurnData(quote)
+  const data = appendOphisBaseBuilderCode(cctpBurnData(quote), quote.source)
   await verifyCctpNetwork(quote.destination, quote.asset, quote.source)
   await verifyCctpUnlock(quote)
   const codes = await Promise.all(
@@ -141,7 +145,10 @@ export async function claimCctp(
 ): Promise<Hex> {
   validateCctpMessage(message, quote, sourceMessage)
   await assertCctpWallet(wallet, quote.owner, quote.destination)
-  const data = encodeFunctionData({ abi: CCTP_ABI, functionName: 'receiveMessage', args: [message, attestation] })
+  const data = appendOphisBaseBuilderCode(
+    encodeFunctionData({ abi: CCTP_ABI, functionName: 'receiveMessage', args: [message, attestation] }),
+    quote.destination,
+  )
   await prepareCctpCall(quote, quote.destination, MESSAGE_TRANSMITTER, data, false)
   const nonce = await cctpClient(quote.destination).getTransactionCount({ address: quote.owner, blockTag: 'pending' })
   await assertCctpWallet(wallet, quote.owner, quote.destination)

@@ -1,314 +1,171 @@
 <p align="center">
-  <img src="apps/frontend/apps/cowswap-frontend/public/ophis-logo-full.svg" alt="Ophis" width="320"/>
+  <img src="apps/frontend/apps/cowswap-frontend/public/ophis-logo-full.svg" alt="Ophis" width="280" />
 </p>
 
 <h1 align="center">Ophis</h1>
 
+<p align="center">Multichain swaps, cross-chain transfers and private trading.</p>
+
 <p align="center">
-  <b>Choose tokens, review the quote, and authorize your swap.</b><br/>
-  An intent-based DEX aggregator with a natural-language layer, built for humans and agents alike.
+  <a href="https://github.com/ophis-fi/ophis/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://github.com/ophis-fi/ophis/actions/workflows/ci.yml/badge.svg?branch=main" alt="Core CI on main" /></a>
+  <a href="https://github.com/ophis-fi/ophis/actions/workflows/frontend-ci.yml?query=branch%3Amain"><img src="https://github.com/ophis-fi/ophis/actions/workflows/frontend-ci.yml/badge.svg?branch=main" alt="Frontend checks on main" /></a>
+  <a href="https://github.com/ophis-fi/ophis/actions/workflows/security.yml?query=branch%3Amain"><img src="https://github.com/ophis-fi/ophis/actions/workflows/security.yml/badge.svg?branch=main" alt="Dependency and security checks on main" /></a>
+  <a href="https://docs.ophis.fi/networks-assets"><img src="https://img.shields.io/badge/networks-14_EVM_mainnets-7c3aed" alt="14 supported EVM mainnets" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="GPL-3.0 license" /></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/ophis-fi/ophis/actions/workflows/ci.yml"><img src="https://github.com/ophis-fi/ophis/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
-  <a href="https://github.com/ophis-fi/ophis/actions/workflows/codeql.yml"><img src="https://github.com/ophis-fi/ophis/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"/></a>
-  <a href="https://github.com/ophis-fi/ophis/actions/workflows/security.yml"><img src="https://github.com/ophis-fi/ophis/actions/workflows/security.yml/badge.svg" alt="Security audits"/></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="GPL-3.0 License"/></a>
-  <a href="https://ophis.fi"><img src="https://img.shields.io/badge/Optimism-live-7c3aed" alt="OP mainnet live"/></a>
-</p>
-
-<p align="center">
-  <a href="https://swap.ophis.fi"><b>Swap App</b></a> ·
-  <a href="https://docs.ophis.fi"><b>Docs</b></a> ·
+  <a href="https://swap.ophis.fi"><b>Swap</b></a> ·
+  <a href="https://docs.ophis.fi"><b>Documentation</b></a> ·
   <a href="https://explorer.ophis.fi"><b>Explorer</b></a> ·
-  <a href="https://docs.ophis.fi/ai-agents"><b>Agents</b></a> ·
-  <a href="packages/sdk"><b>SDK</b></a> ·
+  <a href="CONTRIBUTING.md"><b>Contributing</b></a> ·
   <a href="SECURITY.md"><b>Security</b></a>
 </p>
 
----
+Ophis is a multichain DEX aggregator that brings token swaps, cross-chain
+transfers and private trading into one interface. Users review quotes and
+authorize trades in their wallets. Developers and agents can integrate through
+the SDK, CLI or MCP server; the hosted MCP server does not hold private keys or
+sign orders.
 
-Select tokens and networks in the swap app, review the quote, and authorize
-the displayed flow. The optional Intent API parses requests such as
-`swap 100 USDC for ETH on Base`; it does not execute them. Batch-auction
-orders settle onchain through configured solver routes. It is a fork of [CoW Protocol](https://cow.fi) (orderbook, autopilot,
-driver, and baseline solver) with a natural-language intent layer over a
-rebranded CoW Swap UI. On Optimism, Unichain, Robinhood Chain, and Arc, Ophis runs the whole stack under its own
-settlement contracts and keeps the full fee; on the other supported chains
-(Ethereum, Base, Arbitrum, and more) it routes through CoW Protocol's hosted
-network.
+## Trading
 
-For standard batch-auction orders:
+- **Same-chain swaps:** signed batch-auction orders with solver-based execution
+  and user-defined limits.
+- **Cross-chain trading:** quotes and funding flows across supported bridge
+  providers, including Relay. Availability depends on the asset and route.
+- **Private swaps:** a separate RAILGUN flow with its own network coverage and
+  funding requirements. See the [private-swap documentation](apps/railgun/README.md).
 
-- **Gasless, MEV-protected.** Orders settle in a batch auction where every trade
-  uses uniform prices per token pair. Offchain submission and signed limits
-  mitigate common MEV; they do not eliminate every execution risk.
-- **Solver-aligned pricing.** On every supported chain the base fee is 1 bp.
-  Ophis also earns when execution beats its reference quote: 80% of
-  improvement on volatile pairs (99 bps cap), or 50% on stable pairs (20 bps
-  cap). Hosted chains encode that policy in CIP-75 appData and separately pay
-  CoW Protocol's upstream fees.
-- **Non-custodial, no account, no auth.** Every order is signed in your own
-  wallet (EIP-712 or ERC-1271), or explicitly presigned onchain. Standard ERC-20
-  orders keep funds in the wallet until settlement; native-token, bridge and
-  external OTC flows can require deposits and have separate recovery rules.
-- **Transparent, capped fees.** A 0.01% (1 bp) base plus the capped improvement
-  policy above.
+Standard ERC-20 orders retain funds in the wallet until settlement. Approvals,
+native-token trades, bridges and private swaps can require onchain transactions
+or deposits. The app shows the applicable quote and funding steps before signing.
+See [network and funding coverage](https://docs.ophis.fi/networks-assets).
 
-**Live across 14 EVM chains**, with Ophis-operated settlement on Optimism
-(chain 10), Unichain (130), Robinhood Chain (4663), and Arc (5042), plus CoW-hosted
-settlement on the other ten chains. Arc applies the same capped backend improvement policy for in-market orders; settled trades are indexed for routed volume and referral attribution.
+**Batch-auction fees:**
+On every supported chain, Ophis charges a **0.01% (1 bp)** base fee, plus
+80% of improvement over the reference quote on volatile pairs (99 bps cap),
+or 50% on stable pairs (20 bps cap).
+Hosted chains encode that policy in CIP-75 appData and separately pay
+CoW Protocol's upstream fees. See the [fee guide](https://docs.ophis.fi/fees).
 
-## Quickstart: the Intent API
+## Networks
 
-Ophis's one bespoke API turns natural language into a structured order. No key,
-no account, just POST your request:
+The EVM order infrastructure supports **14 mainnets** across two settlement models:
 
-```bash
+| Settlement model                                                | Networks                                                                            |
+| --------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| **Ophis-operated** orderbooks, solvers and settlement contracts | Optimism (10), Unichain (130), Robinhood Chain (4663), Arc (5042)                   |
+| **CoW-hosted** settlement and solver network                    | Ethereum, BNB Chain, Gnosis, Polygon, Base, Plasma, Arbitrum, Avalanche, Ink, Linea |
+
+The swap app also offers NEAR-powered routes to supported non-EVM networks.
+Those deposit flows have separate asset, deadline and refund requirements.
+Use the [network guide](https://docs.ophis.fi/networks-assets) for coverage and
+[service status](https://docs.ophis.fi/status) for operational details.
+
+## Integrate
+
+| Interface          | Start here                                                                                                                                                 |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **TypeScript SDK** | Install `@ophis/sdk` for chain-specific orderbook URLs, signing domains, partner-fee appData and order validation. [SDK reference](packages/sdk/README.md) |
+| **CLI**            | Run `npx @ophis/cli help` to explore wallet-connected quoting, swaps and bridges. [CLI guide](packages/cli/README.md)                                      |
+| **MCP server**     | Connect a Streamable HTTP client to `https://mcp.ophis.fi/mcp`. [Tools and signing model](apps/mcp-server/README.md)                                       |
+| **Intent API**     | Parse natural-language requests into structured intent data. [API reference](https://docs.ophis.fi/intent-api)                                             |
+
+On Base, eligible public contract transactions from the swap app and CLI carry
+Ophis builder code `bc_8j4gt5x6` using [ERC-8021 attribution](https://docs.base.org/specifications/builder-codes/overview).
+Wallet batches request the optional attribution capability. Offchain order
+signatures and CoW-hosted settlements are outside this client integration.
+Ophis-operated solver settlements on Optimism, Robinhood Chain and Arc also
+include cross-chain ERC-8021 tags. Recognition by Base's dashboard or rewards
+program on these networks is unverified. See the
+[backend rollout requirements](apps/backend/README.md#ophis-settlement-attribution).
+See the [SDK integration notes](packages/sdk/README.md#base-builder-attribution).
+
+For example, parse a request without submitting a trade:
+
+```sh
 curl -sS https://ophis.fi/api/intent \
   -H 'content-type: application/json' \
   -d '{"text":"swap 100 USDC for ETH on Base"}'
 ```
 
-```json
-{
-  "ok": true,
-  "data": {
-    "intent": "swap",
-    "entities": [
-      { "type": "amount",    "value": "100",  "raw": "100",  "start": 5,  "end": 8 },
-      { "type": "sellToken", "value": "USDC", "raw": "USDC", "start": 9,  "end": 13 },
-      { "type": "buyToken",  "value": "ETH",  "raw": "ETH",  "start": 18, "end": 21 },
-      { "type": "chain",     "value": "base", "raw": "Base", "start": 25, "end": 29 }
-    ]
-  }
-}
-```
+The Intent API parses text; the caller presents the result for review and handles
+wallet authorization separately. See the [agent integration guide](https://docs.ophis.fi/ai-agents)
+for signing policies and trust boundaries.
 
-Map the chain slug to a chain ID and hand the user a swap deep link to review and
-sign. The endpoint only normalizes text, it never places, signs, or executes a
-trade. It is rate-limited to 30 requests per minute per IP; non-browser callers
-(no `Origin` header) are allowed, which is the path agents use. Full reference:
-[docs.ophis.fi/intent-api](https://docs.ophis.fi/intent-api).
+## Repository layout
 
-## Agents and SDK
+| Path                                          | Contents                                                                                 |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| [`apps/frontend/`](apps/frontend)             | Swap app, Explorer and landing site; a separate pnpm workspace based on CoW Swap.        |
+| [`apps/backend/`](apps/backend)               | Rust orderbook, autopilot, driver and solvers, based on CoW Protocol services.           |
+| [`apps/mcp-server/`](apps/mcp-server)         | Hosted MCP integration.                                                                  |
+| [`apps/business-console/`](apps/business-console) | Business onboarding, roles, approvals and partner reporting at pro.ophis.fi.          |
+| [`apps/rebate-indexer/`](apps/rebate-indexer) | Trade indexing, referral attribution and rewards.                                        |
+| [`apps/railgun/`](apps/railgun)               | Private-swap application and release documentation.                                      |
+| [`apps/broadcaster/`](apps/broadcaster)       | Private transaction submission, prepaid gas credit and refunds.                          |
+| [`apps/docs-ophis/`](apps/docs-ophis)         | Public documentation site.                                                               |
+| [`packages/`](packages)                       | SDK, CLI, wallet-policy packages and integration adapters.                               |
+| [`contracts/`](contracts)                     | Settlement contracts, deployment records and contract tests.                             |
+| [`functions/`](functions)                     | Cloudflare Pages API endpoints and middleware.                                           |
+| [`infra/`](infra)                             | Network deployments, RPC configuration and operational tooling.                          |
+| [`docs/`](docs)                               | Architecture, development plans, operations and [review reports](docs/audits/README.md). |
+| [`audit/`](audit)                             | Machine-readable scan baselines and verification data used by tooling.                   |
 
-Ophis is built to be traded by autonomous agents, not just people. Pick your
-integration depth, all of it non-custodial and keyless:
+## Local development
 
-### MCP server (recommended)
-
-Point any MCP client (Claude, Cursor, a custom agent) at the hosted Model
-Context Protocol server:
-
-```
-https://mcp.ophis.fi/mcp
-```
-
-It speaks Streamable-HTTP MCP and exposes 13 tools: intent parsing, canonical
-token resolution, chain discovery, quoting, bounded order build/validation and
-submission, integrator volume and fee lookups, balances, portfolios, gas, charts,
-and expected-surplus comparison. The server holds no keys and never signs.
-`build_order` returns a bounded, ready-to-sign EIP-712 order with the receiver
-pinned to the owner; the agent signs locally with its own key and submits. See
-the [complete tool reference](apps/mcp-server/README.md#tools). (A bare request
-without an `Accept: text/event-stream` header returns HTTP 406, that is the
-transport negotiating, not an outage.)
-
-### @ophis/sdk
-
-For agents that build and sign CoW orders directly:
-
-```bash
-npm install @ophis/sdk
-```
-
-The SDK encodes four fork details that fail **silently** if you guess them:
-
-- **`getOphisOrderbookUrl(chainId)`** picks the right host. Optimism self-hosts
-  its orderbook (not `api.cow.fi`); the wrong host bypasses the Ophis solver and
-  zeroes the fee.
-- **`getOphisOrderDomain(chainId)`** gives the EIP-712 domain with the correct
-  `verifyingContract`. The OP settlement is non-canonical, so the cow-sdk default
-  is rejected on-chain.
-- **`buildOphisAppDataPartnerFee(chainId)`** builds the exact CIP-75 volume-fee
-  fragment `{ volumeBps, recipient }`, not the price-improvement shape.
-- **`assertReceiverIsOwner(owner, receiver)`** pins the order receiver. An
-  unpinned receiver is the number one drain vector for an automated signer.
-
-### Discovery and the trust boundary
-
-Ophis publishes machine-readable manifests for agent discovery under
-`https://ophis.fi/.well-known/`: `mcp.json`, `ai-plugin.json`, `agent-skills/`,
-and `api-catalog` (RFC 9727), plus the root-served `auth.md`, `llms.txt`, and
-`openapi.json`.
-
-These off-chain helpers make the safe path the easy path, but they are guards,
-not an authorization boundary: a prompt-injected agent can ignore them. For an
-agent that signs **without a human in the loop**, enforce policy where the agent
-cannot reach it: funds in a Safe smart account, a deterministic policy gate
-(allowlisted tokens, pinned receiver and appData, an oracle-bounded limit price,
-spend caps), a guardian key, and the same policy checked again at orderbook
-ingestion. Full guide: [docs.ophis.fi/ai-agents](https://docs.ophis.fi/ai-agents).
-
-## Status
-
-Ophis settles across two kinds of chains.
-
-**Ophis-operated** (self-hosted orderbook, solver, and settlement; Ophis keeps the
-full fee):
-
-| Chain | Chain ID | Status |
-|---|---|---|
-| Optimism | 10 | **Live**: settlement, solver, partner fee |
-| Unichain | 130 | **Live**: settlement, solver, partner fee |
-| Robinhood Chain | 4663 | **Live**: settlement, solver, partner fee |
-
-**CoW-hosted** (orders route through CoW Protocol's settlement and solver network,
-with the partner fee disbursed by CoW): Ethereum, Base, Arbitrum, Polygon, BNB,
-Gnosis, Avalanche, Linea, and the other CoW-supported chains, all live.
-
-On **BNB Smart Chain (BSC, chain ID 56)** Ophis is live: orders placed through Ophis
-(`SupportedChainId.BNB` in [`cowSdk.ts`](apps/frontend/apps/cowswap-frontend/src/cowSdk.ts),
-mapped from the `bnb` slug in [`chainMap.ts`](apps/frontend/apps/cowswap-frontend/src/ophis/components/intent/chainMap.ts))
-settle on-chain through CoW Protocol's GPv2Settlement at
-`0x9008D19f58AAbD9eD0D60971565AA8510560ab41` on BSC, giving gasless, MEV-protected
-swaps with no Ophis-side custody. Ophis does not deploy its own settlement on BSC;
-BNB trades use CoW Protocol's canonical BSC deployment.
-
-The two have different settlement contracts and orderbook hosts, so resolve them
-per chain via `@ophis/sdk` or the MCP `list_chains` tool rather than assuming.
-Full live status: [docs.ophis.fi/status](https://docs.ophis.fi/status).
-The standalone app also supports Bitcoin, Solana, Monad, Hyperliquid (Hypercore),
-X Layer, Sui, Tron, Starknet and Zcash as NEAR sources and destinations where live
-assets and quotes permit. Selecting an external source opens a deposit flow in
-the same swap form: review the quote and source-chain refund address, confirm,
-then fund the specified deposit before its deadline with any required memo.
-This is separate from SDK/MCP EVM order building. See
-[networks and funding coverage](https://docs.ophis.fi/networks-assets).
-Canonical contract addresses and the disclosure policy live in
-[`SECURITY.md`](SECURITY.md).
-
-## Architecture
-
-| Path | Origin | Purpose |
-|---|---|---|
-| `apps/frontend/` | [`cowprotocol/cowswap`](https://github.com/cowprotocol/cowswap) (subtree) | Vite/Nx monorepo holding several surfaces: `apps/cowswap-frontend` is the swap UI (Ophis code under `src/ophis/` and `src/modules/mevReceipt/`), `apps/explorer` is the order explorer, `apps/ophis-landing` is the ophis.fi landing site. Self-contained pnpm workspace (own lockfile, excluded from the root). |
-| `apps/backend/` | [`cowprotocol/services`](https://github.com/cowprotocol/services) (subtree) | Rust orderbook, autopilot, driver, baseline solver. Ophis additions live in dedicated crates and `ophis::` module paths. |
-| `apps/mcp-server/` | New | `@ophis/mcp-server`: agent-facing MCP server (Streamable-HTTP) deployed as a Cloudflare Worker at `mcp.ophis.fi/mcp`. Holds no keys and never signs. |
-| `apps/rebate-indexer/` | New | `@ophis/rebate-indexer`: trade indexing, referral attribution, routed-volume reports, and the USDG trade-rewards campaign ([rebates.ophis.fi](https://rebates.ophis.fi)). |
-| `apps/docs-ophis/` | New | Docusaurus docs portal ([docs.ophis.fi](https://docs.ophis.fi)). Self-contained app (own lockfile, excluded from the root, like `apps/frontend`). |
-| `packages/sdk/` | New | [`@ophis/sdk`](packages/sdk): dependency-free helpers for the per-chain orderbook host, EIP-712 order domain, CIP-75 partner-fee `appData`, receiver-pinning guards, tier assignment, and the supported-chain registry. |
-| `packages/cli/` | New | [`@ophis/cli`](packages/cli): quote, swap and bridge from your terminal, with approvals in your wallet. Install with `npm install -g @ophis/cli` (Node.js 20 or later). [CLI guide](https://docs.ophis.fi/cli). |
-| `contracts/` | [`cowprotocol/contracts`](https://github.com/cowprotocol/contracts) (subtree) | `GPv2Settlement`, `GPv2VaultRelayer`, `GPv2AllowListAuthentication`, deployed under an Ophis-controlled solver allowlist. Per-network artifacts in `contracts/deployments/`. |
-| `functions/` | New | Cloudflare Pages Functions: `api/intent.ts` (the natural-language parser, shared by swap and landing), `_middleware.ts` (host routing). |
-| `infra/` | New | Per-chain runtime stacks (`optimism-mainnet/`, `unichain-mainnet/`, `robinhood-mainnet/`, `local/`), plus `rpc/` (eRPC) and `cloudflare/` config. |
-
-Upstream subtrees are vendored as-is; Ophis changes are catalogued in
-`apps/frontend/.ophis-divergences.md` and `apps/backend/.ophis-divergences.md`
-so `git subtree pull` stays tractable.
-
-## Repo map
-
-```
-ophis/
-├── apps/
-│   ├── frontend/        cowswap fork: swap UI + explorer + landing site
-│   ├── backend/         cowprotocol/services fork (Rust)
-│   ├── rebate-indexer/  trade indexing, routed-volume reports, USDG trade rewards
-│   ├── docs-ophis/      Docusaurus docs portal
-│   └── mcp-server/      agent-facing MCP Worker (mcp.ophis.fi)
-├── contracts/           GPv2 settlement contracts (+ per-network deployments)
-├── packages/sdk/        @ophis/sdk
-├── packages/cli/        @ophis/cli
-├── functions/           Cloudflare Pages Functions (intent API, middleware)
-├── infra/               per-chain runtime stacks + rpc + cloudflare config
-├── scripts/             repo utility scripts
-└── docs/                specs, plans, audits, operations runbooks
-```
-
-## Build
-
-Root workspace (pnpm 10, Node 20.19+ or 22.12+, turborepo):
+Use Node.js 22 (at least 22.12) and the pnpm version pinned in
+[`package.json`](package.json). Install Bun as well for the CLI tests included in
+`pnpm test`. CI runs on Node.js 22.
 
 ```sh
-pnpm install      # all root-workspace deps
-pnpm build        # builds members with a build step (currently @ophis/sdk)
-pnpm typecheck    # typechecks every member
-pnpm test         # runs the unit suites
+git clone https://github.com/ophis-fi/ophis.git
+cd ophis
+corepack enable
+pnpm install --frozen-lockfile
+pnpm build
+pnpm typecheck
+pnpm test
 ```
 
-Only `packages/sdk` has a build step today. `apps/rebate-indexer`,
-`apps/mcp-server`, and `infra/rpc` run directly (no `build` script) and are
-validated by `pnpm typecheck` and `pnpm test`. The Rust backend (`apps/backend`)
-is a **Cargo** workspace, not a pnpm package, so build and test it with Cargo:
+The frontend and documentation site have independent pnpm workspaces and
+lockfiles. Run their commands from their own directories:
 
 ```sh
-cd apps/backend && cargo build && cargo test
+# Swap app
+cd apps/frontend
+pnpm install --frozen-lockfile
+pnpm run build:cowswap
 ```
-
-`apps/frontend` and `apps/docs-ophis` are self-contained pnpm workspaces with
-their own lockfiles, deliberately excluded from the root. Build them from inside
-their own directory (see each app's README):
 
 ```sh
-cd apps/frontend   && pnpm install --frozen-lockfile && pnpm run build:cowswap
-cd apps/docs-ophis && pnpm install --frozen-lockfile && pnpm run build
+# Documentation site, from the repository root
+cd apps/docs-ophis
+pnpm install --frozen-lockfile
+pnpm run build
 ```
 
-The contracts use Foundry (`forge build`); `forge-std` is a git submodule, so run
-`git submodule update --init` first.
+The backend uses Rust/Cargo; contracts use Foundry. Follow
+[CONTRIBUTING.md](CONTRIBUTING.md) for component-specific setup, tests and review
+requirements. The [release runbook](docs/operations/release-publishing.md) covers
+package publishing; deployment workflows live in [`.github/workflows/`](.github/workflows).
 
-## Deploy
+## Security and contributions
 
-Every surface deploys independently from `main`:
+Report vulnerabilities through the private channels in
+[SECURITY.md](SECURITY.md). Historical reviews are collected in the
+[review index](docs/audits/README.md), with their original scope and findings.
 
-- **Swap app and Explorer** [`cloudflare-deploy.yml`](.github/workflows/cloudflare-deploy.yml): two sequential Cloudflare Pages deploys (swap.ophis.fi / ophis.fi, then explorer.ophis.fi).
-- **Landing** [`landing-deploy.yml`](.github/workflows/landing-deploy.yml): path-filtered build with a Playwright and Lighthouse budget gate, to Cloudflare Pages.
-- **Docs** [`docs-deploy.yml`](.github/workflows/docs-deploy.yml): the Docusaurus site to its own Cloudflare Pages project.
-- **MCP server** [`mcp-deploy.yml`](.github/workflows/mcp-deploy.yml): to Cloudflare Workers (custom domain `mcp.ophis.fi`) with a least-privilege Workers token; [`mcp-registry-release.yml`](.github/workflows/mcp-registry-release.yml) publishes matching versioned metadata to the official MCP Registry from protected `mcp-v*` tags.
-- **Trade indexer** [`rebate-indexer-deploy.yml`](.github/workflows/rebate-indexer-deploy.yml): to self-hosted infrastructure over a private network.
-- **Operated-chain backends**: the Optimism, Unichain, Robinhood Chain, and Arc
-  orderbooks, autopilots, drivers, and solver lanes run on Ophis infrastructure
-  from `infra/optimism-mainnet/`, `infra/unichain-mainnet/`,
-  `infra/robinhood-mainnet/`, and `infra/arc-mainnet/`. They are not deployed by a GitHub workflow.
-
-Quality gates: [`ci.yml`](.github/workflows/ci.yml) (lint, typecheck, tests),
-[`codeql.yml`](.github/workflows/codeql.yml),
-[`security.yml`](.github/workflows/security.yml) (dependency and supply-chain
-scans), and [`echidna.yml`](.github/workflows/echidna.yml) (contract fuzzing).
-[`sdk-release.yml`](.github/workflows/sdk-release.yml) publishes `@ophis/sdk` to npm.
-All package and MCP publishing controls are documented in the
-[release runbook](docs/operations/release-publishing.md).
-
-## Fees, attribution and trade rewards
-
-On every supported chain, Ophis charges a **0.01% (1 bp)** base. It also charges a capped
-share of reference-quote improvement: **80% capped at 99 bps** for volatile
-pairs and **50% capped at 20 bps** for stable pairs. The operated-chain backends
-apply the improvement policy; hosted orders encode it in CIP-75 appData and
-separately pay CoW Protocol's upstream fees.
-
-- **Referral attribution.** Create a code in the
-  [swap app](https://swap.ophis.fi/#/affiliate) and share
-  `https://swap.ophis.fi/?ref=YOURCODE`. Orders carry attribution through
-  `appCode` and referral metadata; MCP clients pass `referrerCode` to `build_order`.
-  Track routed volume in the earnings report at `https://rebates.ophis.fi/earnings/<appCode>`.
-- **Trade rewards.** The USDG campaign is live at
-  [swap.ophis.fi/#/rewards](https://swap.ophis.fi/#/rewards).
-- **Partner fees.** Partners can charge their own fee on CoW-hosted chains.
-  CoW pays it weekly when the weekly amount reaches 0.001 WETH.
-
-Details: [fees](https://docs.ophis.fi/fees),
-[referral attribution](https://docs.ophis.fi/affiliate), and
-[partner integration](https://docs.ophis.fi/partners).
-
-## Security
-
-See [`SECURITY.md`](SECURITY.md) for the disclosure policy, canonical contract
-addresses, the partner-fee recipient and governance model, in-scope components,
-and audit history.
+For changes, follow the [contribution guide](CONTRIBUTING.md), open a pull
+request and complete the required checks. See [CHANGELOG.md](CHANGELOG.md) for
+recorded releases.
 
 ## License
 
-[GPL-3.0](LICENSE), inherited from upstream CoW Protocol.
+[GNU General Public License v3.0](LICENSE) at the repository root; component
+licenses and upstream notices also apply. The SDK declares GPL-3.0-or-later,
+the contracts LGPL-3.0-or-later and the frontend workspace ISC. Ophis includes code derived from
+[CoW Swap](https://github.com/cowprotocol/cowswap),
+[CoW Protocol services](https://github.com/cowprotocol/services) and
+[CoW Protocol contracts](https://github.com/cowprotocol/contracts).

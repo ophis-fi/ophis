@@ -1,5 +1,32 @@
 # Dependabot sweep: 2026-11-03
 
+## Follow-up: 2026-11-18
+
+PR #1650 addresses the 22 alerts open on 18 November. Earlier counts and dismissal decisions below describe the November 3 review, not this follow-up. This update dismisses no alerts and keeps the PR unmerged.
+
+| Alerts | Package | Remediation |
+| --- | --- | --- |
+| 1164 | `@libp2p/crypto` | Reuse 5.2.0 for affected Waku consumers; malformed DER and identity/signature regressions pass. |
+| 1163, 1161, 1160, 1159, 1157 | `picomatch` | Exact-version local parser patches plus bounded regression checks in every affected pnpm project; see the [picomatch review](picomatch-GHSA-fc5q-2026-11-17.md). |
+| 1156, 1155 | `astro` | Upgrade to 7.4.7 with compatible scoped Vite/YAML dependencies and regenerated CSP hashes. |
+| 1154–1150 | `hono` | Upgrade to 4.13.16. |
+| 1149, 1148 | `basic-ftp` | Upgrade to 6.2.4. |
+| 1147, 1146 | `@hono/node-server` | Upgrade to 2.1.6; MCP tests, typecheck and Cloudflare dry build cover the consuming service. |
+| 1145 | `minimatch` | Upgrade affected 7–10 versions to 11.0.4 and adapt Nx's three removed `makeRe` call sites to the bounded matcher. Compatible legacy 3/5 copies lack the reported preprocessing defect. |
+| 1144 | broadcaster `zod` 3 | Retain the existing array/set bound backport and run installed CJS/ESM regressions. A forced major upgrade would break SDK callers. |
+| 1143, 1141 | broadcaster `@graphql-tools/utils` 8/9 | Retain prototype-pollution backports and CJS/ESM regressions. Version 12 removes `AggregateError`, still used by the pinned Mesh stack. |
+| 1142 | broadcaster `elliptic` | Remove the wallet SDK's unused React Native `crypto-browserify` dependency in this Node-only service; exercise the real SDK's import/sign/recover path. |
+
+Thirteen alerts are addressed by fixed upstream versions, one by removing an unused dependency chain, and eight by tested local backports. GitHub evaluates the default branch, so the upgrades do not close its alerts before merge; version-matched backports may stay flagged afterward. No new advisory exception or relaxed severity threshold is introduced.
+
+The wider source review used Trail of Bits rules/Slither, a scoped Pashov and ETHSKILLS review, Semgrep OSS, Cloudflare runtime checks, Trivy, Verity, Gitleaks and a Jev cross-check. It found unauthenticated development services listening on all host interfaces: 40 published ports across the backend and two playground compose files now bind to `127.0.0.1`. Container-to-container connections and all non-port YAML values are unchanged.
+
+Slither reproduced the 58 reviewed baseline fingerprints with no additions. Verity checked the independent Guardian, DirectLiquidity and rewards models (38, 8 and 3 theorem checks, no `sorryAx`); this does not establish deployed-bytecode equivalence. Semgrep OSS lacks Pro interprocedural analysis and reported 34 parsing/analysis errors across the main scans, so its coverage is incomplete. The Pashov review was scoped, not a full protocol audit.
+
+Gitleaks' configured EVM-key scan found no matches in the current tree or 3,369 commits. Default-rule matches in the current tree were public identifiers, addresses, code digests and documented test fixtures; no live credential was confirmed. Trivy still reports 31 package-version matches, including local backports and legacy contract tooling. Its critical OpenZeppelin match is a range false positive: the exact integrity-checked `3.4.2-solc-0.7` package contains the timelock fix. Its Rust `model` match concerns a namesake registry crate, not the local Ophis crate. The retained Yarn picomatch copies and other fixture-only findings remain disclosed; this is not a zero-findings claim.
+
+Validation includes 119 MCP tests and a Cloudflare dry build, 1,319 broadcaster tests (12 optional integrations skipped), 497 Business console tests, Railgun dependency regressions/build, root typechecks, documentation/landing builds and installed backport checks. The Business DNS test initially exceeded its five-second harness budget under concurrent load; the unchanged full suite later passed. Jev's code-risk judgments were partly inconclusive and did not replace reproduction tests or independent review.
+
 ## Decision
 
 All 82 open Dependabot alerts were triaged one by one. **69 are fixed**: the vulnerable versions
@@ -114,3 +141,45 @@ Required by `apps/frontend/AGENTS.md` (dependency management).
 Re-review the zod and crypto-bigint exceptions together by 2026-12-03: remove zod's when the
 listed SDKs ship zod 4, and crypto-bigint's when alloy moves to k256/elliptic-curve 0.14. Re-check
 the railgun residuals after any Railgun SDK, Waku client or bundler change.
+
+
+## Frontend compatibility validation: 2026-11-18
+
+The remaining frontend minimatch 10.2.5 consumers now use 11.0.4, satisfying
+[GHSA-g3hv-75wg-m249](https://github.com/isaacs/minimatch/security/advisories/GHSA-g3hv-75wg-m249).
+Version 11 uses the nonrecursive matcher and removes `makeRe`. Nx 22.7.10 still
+called that API in project selection, generator globs and release-branch selection.
+`patches/nx@22.7.10.patch` changes those three consumers to `new Minimatch(...).match(...)`;
+it does not restore regex compilation or change minimatch's security implementation.
+Empty/comment patterns retain the old rejection or skip behavior by checking the
+compiled pattern set. `apps/frontend/scripts/test-minimatch-security.cjs` executes
+all three real Nx consumers, positive/negative filters and bounded adversarial
+preprocessing. Legacy minimatch 3.1.5/5.1.9 remain unchanged and are outside the
+advisory's current affected range of >=7.0.0, <11.0.1.
+
+[Astro 7.4.7](https://github.com/withastro/astro/releases/tag/astro@7.4.7) fixes
+both frontend Astro alerts. Its dependency requirements need scoped Vite 8.3.5,
+`@astrojs/internal-helpers` YAML 2.9.1 and cookie 2.0.1 overrides; unrelated Vite,
+YAML and cookie consumers retain their existing constraints. The frontend now
+declares Node >=22.23.4 and pins that minimum in its `.nvmrc`. The landing uses
+static output, not the affected Node image adapter. The upgrade still removes
+the vulnerable package version. Regenerating its output replaced three obsolete
+CSP hashes with three exact new hashes; no directives or non-script policies
+were relaxed. The existing gate checks all 41 emitted pages, rejects unknown or
+stale hashes, and continues to reject `unsafe-inline` for scripts.
+
+An isolated frozen installation of the landing and Nx succeeds, and the native
+Nx/picomatch regressions pass on Node 22.23.4. The landing typecheck reports zero errors/warnings (11 deprecation hints), its
+41-page static build succeeds, all 15 CSP guard tests pass, and the FAQ gate
+verifies 181 answers across 36 pages. A separate local FTP server regression
+confirms basic-ftp 6.2.4 accepts normal login, rejects CR/LF/NUL credentials without
+an uncaught exception, and safely ignores prototype-named MLSD facts while still
+parsing normal file metadata. No network deployment or production transaction
+was performed.
+
+The lockfile adds 92 and removes 61 package-version entries. Every addition is
+reachable from the upgraded Astro/basic-ftp/minimatch dependency trees. Astro's
+Rolldown optional WASM bindings introduce `@emnapi/core` and `@emnapi/runtime`
+2.0.0-beta.2, explaining the peer-context changes in Nx/SWC; the required native
+Darwin packages and exercised Node 22 tooling pass. The full swap/explorer builds
+remain covered by repository CI. The existing release-age policy was preserved.

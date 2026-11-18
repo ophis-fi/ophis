@@ -53,6 +53,34 @@ const partnerFee = buildOphisAppDataPartnerFee(chainId, isStablePair);
 assertReceiverIsOwner(owner, order.receiver);         // throws if proceeds would leave the account
 ```
 
+## Base builder attribution
+
+The repository exports `appendOphisBaseBuilderCode`, `OPHIS_BASE_BUILDER_CODE`
+(`bc_8j4gt5x6`) and `OPHIS_BASE_DATA_SUFFIX` for
+[Base builder attribution](https://docs.base.org/specifications/builder-codes/overview).
+Apply the helper to public contract calldata **before** gas estimation, and submit
+the same bytes:
+
+```ts
+import { appendOphisBaseBuilderCode } from '@ophis/sdk';
+
+const transaction = {
+  account,
+  to: contractAddress,
+  data: appendOphisBaseBuilderCode(encodedFunctionCall, 8453),
+};
+const gas = await publicClient.estimateGas(transaction);
+await walletClient.sendTransaction({ ...transaction, gas });
+```
+
+Only Base mainnet (8453) receives the suffix. Empty or short calldata and calls
+with existing ERC-8021 attribution are preserved. Never apply it to contract
+creation, private transactions, typed-data signatures or nested hook payloads.
+For `wallet_sendCalls`, request the optional `dataSuffix` capability with
+`OPHIS_BASE_DATA_SUFFIX`; leave inner calls unchanged. Wallet support determines
+whether batch attribution is included. These helpers cannot tag settlements
+submitted by CoW solvers. Availability in npm requires a subsequent SDK release.
+
 ## Security
 
 These are **off-chain misuse guards, not an authorization boundary** — they make the safe path the easy path, but a caller can ignore them. For an agent that signs **without** a human in the loop, enforce policy on-chain (a Safe + an EIP-1271 policy validator: pinned receiver, pinned appData/hooks, an oracle-bounded limit price, spend caps, and a guardian). See the [AI agent integration guide](https://docs.ophis.fi/ai-agents).

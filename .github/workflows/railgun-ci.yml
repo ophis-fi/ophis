@@ -10,6 +10,8 @@ on:
       - 'patches/zod@3.22.4.patch'
       - 'patches/zod@3.25.76.patch'
       - 'scripts/test-zod3-security.cjs'
+      - 'patches/picomatch@*.patch'
+      - 'scripts/test-picomatch-security.cjs'
       - '.github/workflows/railgun-ci.yml'
       - '.github/workflows/railgun-deploy.yml'
   push:
@@ -22,6 +24,8 @@ on:
       - 'patches/zod@3.22.4.patch'
       - 'patches/zod@3.25.76.patch'
       - 'scripts/test-zod3-security.cjs'
+      - 'patches/picomatch@*.patch'
+      - 'scripts/test-picomatch-security.cjs'
       - '.github/workflows/railgun-ci.yml'
       - '.github/workflows/railgun-deploy.yml'
   workflow_dispatch:
@@ -57,6 +61,7 @@ jobs:
         with:
           node-version: 22
       - run: pnpm install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - run: node ../../scripts/test-picomatch-security.cjs .
       - run: pnpm test
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:layout

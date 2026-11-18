@@ -4,13 +4,31 @@
 
 Ophis Finance runs a fork of [cowprotocol/services](https://github.com/cowprotocol/services). The operational deployment set is:
 
-| Chain | Status | Settlement contract |
-|---|---|---|
-| Optimism mainnet (10) | LIVE | `0x310784c7FCE12d578dA6f53460777bAc9718B859` |
-| Unichain mainnet (130) | LIVE | See `contracts/deployments/unichain-mainnet/` |
-| Robinhood Chain (4663) | LIVE | See `contracts/deployments/robinhood-mainnet/` |
+| Chain                  | Status | Settlement contract                            |
+| ---------------------- | ------ | ---------------------------------------------- |
+| Optimism mainnet (10)  | LIVE   | `0x310784c7FCE12d578dA6f53460777bAc9718B859`   |
+| Unichain mainnet (130) | LIVE   | See `contracts/deployments/unichain-mainnet/`  |
+| Robinhood Chain (4663) | LIVE   | See `contracts/deployments/robinhood-mainnet/` |
+| Arc (5042)             | LIVE   | `0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A`   |
 
-The frontend at https://ophis.fi targets only this live chain set.
+These are the Ophis-operated settlement networks. The frontend at
+https://swap.ophis.fi also supports CoW-hosted networks; see the
+[network overview](README.md#networks) and [SDK chain configuration](packages/sdk/src/config.ts).
+
+The disclosure policy also covers Ophis integrations and services outside this
+settlement stack:
+
+| Component | Security scope |
+| --- | --- |
+| Private wallet (`apps/railgun/`) | Key storage, proof generation, RPC gateway, private swaps and recovery on Ethereum, BNB Chain and Arbitrum. Other configured networks are not production-enabled by that configuration alone. |
+| Broadcaster (`apps/broadcaster/`) | Transaction validation, signing, prepaid gas-credit accounting and refunds. Prepaid credit is held by the operator; it is separate from shielded wallet assets and has no operator-independent withdrawal. |
+| Business console (`apps/business-console/`) | Passkeys, roles, approvals, onboarding, sealed KYB records, sanctions screening and signing links. This is an invitation-based service with operator review, separate from public retail swaps. |
+| SDK, CLI, MCP and bridge integrations | Order construction, wallet authorization, transaction submission and provider-specific recovery. |
+
+See the [security documentation](https://docs.ophis.fi/audits) for governance
+controls and custody boundaries, and the [gas-credit refund policy](apps/broadcaster/PREPAID-REFUNDS.md)
+for operator dependencies and minimum refund limits. Upstream audits do not
+certify these Ophis-specific services or their deployments.
 
 ## Reporting a vulnerability
 
@@ -58,9 +76,12 @@ Examples of what we consider in scope (non-exhaustive):
 
 ## Audit history
 
-| Date | Scope | Reviewers | Findings doc |
-|---|---|---|---|
-| 2026-05-18 | Phase 2 — Rust backend | sharp-edges + Codex | `docs/audits/2026-05-18-phase2-backend.md` |
+The complete [review index](docs/audits/README.md) includes dated security,
+differential and release assessments. Each report states its own scope.
+
+| Date       | Scope                                  | Reviewers                                    | Findings doc                                                 |
+| ---------- | -------------------------------------- | -------------------------------------------- | ------------------------------------------------------------ |
+| 2026-05-18 | Phase 2 — Rust backend                 | sharp-edges + Codex                          | `docs/audits/2026-05-18-phase2-backend.md`                   |
 | 2026-05-19 | Phase 3 — Frontend; Phase 4 — OP infra | sharp-edges × 2 (Codex unavailable that day) | `docs/audits/2026-05-19-phase3-frontend-and-phase4-infra.md` |
 
 Phase 3 + 4 follow-ups were shipped across PRs #120-#138.

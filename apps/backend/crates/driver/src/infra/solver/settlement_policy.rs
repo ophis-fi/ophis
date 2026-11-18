@@ -159,6 +159,17 @@ mod tests {
     }
 
     #[test]
+    fn attribution_does_not_change_settlement_signing_permissions() {
+        let mut input = settle_calldata();
+        shared::builder_attribution::append_to_settlement(&mut input, 10);
+        assert_eq!(settle_only().check(OWN, Some(SETTLEMENT), &input, U256::ZERO), Ok(()));
+        assert!(settle_only().check(OWN, Some(OWN), &input, U256::ZERO).is_err());
+        assert!(settle_only().check(OWN, Some(SETTLEMENT), &input, U256::from(1)).is_err());
+        input[..4].copy_from_slice(&APPROVE);
+        assert!(settle_only().check(OWN, Some(SETTLEMENT), &input, U256::ZERO).is_err());
+    }
+
+    #[test]
     fn rejects_value_transfer_to_self() {
         // A self-send WITH value is not a cancellation — refused.
         assert_eq!(

@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 
 import { Command } from '@cowprotocol/types'
 import { useIsSmartContractWallet, useWalletInfo } from '@cowprotocol/wallet'
-import { useWalletProvider } from '@cowprotocol/wallet-provider'
+import { useWeb3React } from '@web3-react/core'
 
 import { useOrderParams } from 'entities/orderHooks/useOrderParams'
 
@@ -39,7 +39,8 @@ export function HookDappContainer({ dapp, isPreHook, onDismiss, hookToEdit }: Ho
   const isSmartContract = useIsSmartContractWallet()
   // TODO M-6 COW-573
   // This flow will be reviewed and updated later, to include a wagmi alternative
-  const provider = useWalletProvider()
+  // External hook apps own their calldata and attribution.
+  const { provider } = useWeb3React()
   const tradeState = useTradeState()
   const tradeNavigate = useTradeNavigate()
   const isDarkMode = useIsDarkMode()

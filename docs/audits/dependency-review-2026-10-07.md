@@ -23,13 +23,13 @@ Status checked on 2026-10-07:
   [github/advisory-database#10132](https://github.com/github/advisory-database/pull/10132), is
   open and unmerged.
 - Since the 2026-10-04 review, #1532 patched the frontend copy locally
-  ([braces patch](../patches/braces@3.0.3.patch), moved unchanged to root `patches/` on
+  ([braces patch](../../patches/braces@3.0.3.patch), moved unchanged to root `patches/` on
   2026-10-12: nesting capped at 100, cyclic parent chains
   rejected), covered by `apps/frontend/scripts/test-advisory-remediation.cjs`. OSV still reports
   3.0.3 because it cannot see pnpm patches. For the frontend, this supersedes the 2026-10-04 note
   that a local patch was unnecessary.
 - The docs and contracts copies remain unpatched. Their reachability is unchanged from
-  `audit/dependency-review-2026-10-04.md`: patterns come only from repository-owned build, watch
+  `docs/audits/dependency-review-2026-10-04.md`: patterns come only from repository-owned build, watch
   and test configuration, and nothing deployed accepts a user-supplied glob.
 
 The contracts baseline keeps the same exact fingerprint and severity ceilings; only its review

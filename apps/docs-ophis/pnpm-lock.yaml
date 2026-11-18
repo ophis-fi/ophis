@@ -47,6 +47,9 @@ patchedDependencies:
   gray-matter@4.0.3:
     hash: 6867093d18e007f9f610b1c4c6871b64734503b546ffcd3bc7a3675dd11f2188
     path: patches/gray-matter@4.0.3.patch
+  picomatch@2.3.2:
+    hash: cd211535d66c7fad0bbe726fb390976b87c6d1808c0da2867f22938eed0fddd4
+    path: ../../patches/picomatch@2.3.2.patch
 
 importers:
 
@@ -9186,7 +9189,7 @@ snapshots:
   anymatch@3.1.3:
     dependencies:
       normalize-path: 3.0.0
-      picomatch: 2.3.2
+      picomatch: 2.3.2(patch_hash=cd211535d66c7fad0bbe726fb390976b87c6d1808c0da2867f22938eed0fddd4)
 
   arg@5.0.2: {}
 
@@ -10642,7 +10645,7 @@ snapshots:
       chalk: 4.1.2
       ci-info: 3.9.0
       graceful-fs: 4.2.11
-      picomatch: 2.3.2
+      picomatch: 2.3.2(patch_hash=cd211535d66c7fad0bbe726fb390976b87c6d1808c0da2867f22938eed0fddd4)
 
   jest-worker@27.5.1:
     dependencies:
@@ -11333,7 +11336,7 @@ snapshots:
   micromatch@4.0.8:
     dependencies:
       braces: 3.0.3(patch_hash=bfdb0c171556074c2785f98d0a7355209223df8e29dbc2ff489240c16a47da97)
-      picomatch: 2.3.2
+      picomatch: 2.3.2(patch_hash=cd211535d66c7fad0bbe726fb390976b87c6d1808c0da2867f22938eed0fddd4)
 
   mime-db@1.33.0: {}
 
@@ -11576,7 +11579,7 @@ snapshots:
 
   picocolors@1.1.1: {}
 
-  picomatch@2.3.2: {}
+  picomatch@2.3.2(patch_hash=cd211535d66c7fad0bbe726fb390976b87c6d1808c0da2867f22938eed0fddd4): {}
 
   pkg-dir@7.0.0:
     dependencies:
@@ -12172,7 +12175,7 @@ snapshots:
 
   readdirp@3.6.0:
     dependencies:
-      picomatch: 2.3.2
+      picomatch: 2.3.2(patch_hash=cd211535d66c7fad0bbe726fb390976b87c6d1808c0da2867f22938eed0fddd4)
 
   recma-build-jsx@1.0.0:
     dependencies:

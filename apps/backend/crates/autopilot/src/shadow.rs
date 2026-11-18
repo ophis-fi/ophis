@@ -246,7 +246,9 @@ impl RunLoop {
                 }
             };
 
-            if !calldata.ends_with(&auction_id.to_be_bytes()) {
+            if !shared::builder_attribution::without_attribution(&calldata)
+                .ends_with(&auction_id.to_be_bytes())
+            {
                 tracing::warn!(driver = %driver.name, "solver did append auction id to the calldata");
             }
             tracing::debug!(

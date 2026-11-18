@@ -61,6 +61,16 @@ Arbitrum One, Arc, Avalanche, Base, BNB Chain, Ethereum, Gnosis, Ink, Linea, Opt
 Chain, Unichain, and the Sepolia testnet. Bridges can start from Ethereum, Arbitrum or Base. In the terminal, each
 chain shows with a dot in its brand colour.
 
+## Base builder attribution
+
+Base mainnet wrapping, approvals and outer recovery transactions include Ophis
+builder code `bc_8j4gt5x6` using
+[ERC-8021](https://docs.base.org/specifications/builder-codes/overview). Gas
+estimation and submission use the same calldata, with the suffix included in
+Base L1 data-fee sizing. Signed orders and inner recovery calls stay unchanged;
+solver-submitted settlements are outside this integration. Other chains are
+unaffected. This behavior ships with the next CLI release.
+
 ## How it keeps you safe
 
 - **Keys stay in your wallet.** The CLI only asks your wallet to sign, and checks what it asks for first: the order,

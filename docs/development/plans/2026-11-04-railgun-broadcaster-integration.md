@@ -12,7 +12,7 @@ Deliver Ethereum private swaps and withdrawals through Ophis's own broadcaster a
 
 `origin/main` advanced on 4 November to `a46e940fd1453de9294ee77aee3f8d460ff130e1`; #1627 is merged into this integration alongside #1623, #1624 and #1626. The original `fix/private-mev-protection` checkout at `f6792c6932f750cb433ee5193d17b659fc84eac4` and its uncommitted pilot changes are preserved. Work now uses `fix/railgun-broadcaster-security-integration`, based on current main. Recheck main before release if it advances.
 
-Reference: [review of the three security PRs](../../../OPHIS_DIFFERENTIAL_REVIEW_2026-11-03.md).
+Reference: [review of the three security PRs](../../audits/OPHIS_DIFFERENTIAL_REVIEW_2026-11-03.md).
 
 Completed evidence:
 

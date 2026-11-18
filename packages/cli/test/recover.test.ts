@@ -3,14 +3,14 @@ import { chmodSync, existsSync, readFileSync, unlinkSync, writeFileSync } from '
 import { getGlobalAdapter, setGlobalAdapter } from '@cowprotocol/cow-sdk'
 import { CowShedHooks } from '@cowprotocol/sdk-cow-shed'
 import { ViemAdapter } from '@cowprotocol/sdk-viem-adapter'
-import { getOphisOrderbookUrl, getOphisOrderDomain, NATIVE_TOKEN_SENTINEL } from '@ophis/sdk'
+import { getOphisOrderbookUrl, getOphisOrderDomain, NATIVE_TOKEN_SENTINEL, OPHIS_BASE_DATA_SUFFIX } from '@ophis/sdk'
 import { createPublicClient, decodeFunctionData, encodeAbiParameters, encodeEventTopics, encodeFunctionData, encodeFunctionResult, erc20Abi, getAddress, http, multicall3Abi, numberToHex, pad, parseAbi, recoverTypedDataAddress, type Address, type Hex } from 'viem'
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from 'viem/accounts'
 import { bridgeStatus, checkEarlierHooks, checkLeftover, openBridge, placeBridge, saidStatus, same, shedOf } from '../src/bridge.ts'
 import { network } from '../src/network.ts'
-import type { Signer, TypedDataJson } from '../src/phone.ts'
+import type { Signer, TxRequest, TypedDataJson } from '../src/phone.ts'
 import { checkRecovery, recover, recoveryCalls, shedHoldings, signRecovery, type Holding, type Recovery, type ShedCall } from '../src/recover.ts'
-import { findToken, priceTx, sendTx, status, type Token } from '../src/trade.ts'
+import { checkFunds, findToken, fund, priceTx, sendTx, status, WRAPPED, type Token } from '../src/trade.ts'
 
 const realFetch = globalThis.fetch
 afterEach(() => {
@@ -522,16 +522,71 @@ describe('reading the chain before asking anything (RPC answered here)', () => {
   })
   const tx = { to: X, data: '0x12345678' as Hex, value: 0n }
 
+  test.each([[8453, true, false], [8453, false, true], [1, true, false]] as const)('funding chain %i, wrap %s, reset %s estimates the exact submitted bytes', async (chainId, wrap, reset) => {
+    const net = network(String(chainId), RPC)
+    const pay: Token = { address: WRAPPED[chainId]![0], symbol: 'WETH', decimals: 18, listed: true, native: false }
+    const funding = { net, owner: OWNER, atoms: 100n, pay, sell: wrap ? { ...pay, native: true, address: NATIVE_TOKEN_SENTINEL as Address } : pay }
+    const estimates: Hex[] = [], sent: TxRequest[] = [], sizes: bigint[] = []
+    const hash = `0x${'ac'.repeat(32)}` as Hex
+    serve(answers({
+      eth_chainId: chain(chainId),
+      eth_estimateGas: ([call]) => {
+        const data = (call as { data: Hex }).data
+        estimates.push(data)
+        if (reset && data.startsWith('0x095ea7b3') && decodeFunctionData({ abi: erc20Abi, data }).args[1] !== 0n) throw { code: 3, message: 'execution reverted: reset required' }
+        return numberToHex(100000)
+      },
+      eth_call: ([call]) => {
+        const { to, data } = call as { to: Address; data: Hex }
+        if (to.toLowerCase() === '0x420000000000000000000000000000000000000f') {
+          sizes.push(decodeFunctionData({ abi: ORACLE, data }).args[0])
+          return pad(numberToHex(1000))
+        }
+        const decoded = decodeFunctionData({ abi: erc20Abi, data })
+        return pad(numberToHex(decoded.functionName === 'allowance' ? (reset ? 1n : 0n) : 1000000n))
+      },
+      eth_getTransactionReceipt: () => ({ transactionHash: hash, blockNumber: '0x10', blockHash: `0x${'11'.repeat(32)}`, status: '0x1', logs: [] }),
+    }), { '/orders?': [] })
+    const prep = await checkFunds(funding)
+    const signer: Signer = { address: OWNER, sendTransaction: async (_chain, tx) => { sent.push(tx); return hash }, signTypedData: async () => { throw new Error('Funding must not sign typed data') } }
+    await fund(funding, prep, signer)
+    expect(sent).toHaveLength(2)
+    for (const tx of sent) {
+      expect(estimates).toContain(tx.data!)
+      expect(tx.data!.endsWith(OPHIS_BASE_DATA_SUFFIX.slice(2))).toBe(chainId === 8453)
+    }
+    if (reset) expect(decodeFunctionData({ abi: erc20Abi, data: sent[0]!.data! }).args[1]).toBe(0n)
+    if (chainId === 8453) expect(sizes).toEqual([229n])
+  })
+
+  test('refuses a Base approval whose attributed calldata fails simulation', async () => {
+    const pay: Token = { address: X, symbol: 'TEST', decimals: 18, listed: true, native: false }
+    const estimates: Hex[] = []
+    serve(answers({
+      eth_call: ([call]) => pad(numberToHex((call as { data: Hex }).data.startsWith('0xdd62ed3e') ? 0n : 1000000n)),
+      eth_estimateGas: ([call]) => {
+        estimates.push((call as { data: Hex }).data)
+        throw { code: 3, message: 'execution reverted: calldata not supported' }
+      },
+    }), { '/orders?': [] })
+    await expect(checkFunds({ net: network('base', RPC), owner: OWNER, atoms: 100n, pay, sell: pay })).rejects.toThrow('refuses the approval')
+    expect(estimates).toHaveLength(1)
+    expect(estimates[0]!.endsWith(OPHIS_BASE_DATA_SUFFIX.slice(2))).toBe(true)
+  })
+
   test('prices one transaction like checkFunds: gas plus 20%, pinned fees, the L1 fee on OP-stack chains', async () => {
     const calls: { to?: string; data?: Hex }[] = []
-    serve(answers({ eth_call: ([call]) => (calls.push(call as never), pad(numberToHex(1000))) }))
+    const estimated: unknown[] = []
+    serve(answers({ eth_call: ([call]) => (calls.push(call as never), pad(numberToHex(1000))), eth_estimateGas: ([call]) => { estimated.push(call); return numberToHex(100000) } }))
     const priced = await priceTx(network('base', RPC), OWNER, tx)
     expect(priced.gas).toBe(120_000n)
     expect(priced.fees).toEqual({ maxFeePerGas: 2n * 10n ** 9n + 1n, maxPriorityFeePerGas: 1n }) // 2 x base fee + tip
     expect(priced.maxFee).toBe(120_000n * (2n * 10n ** 9n + 1n) + 1000n)
     expect(priced.feeText).toStartWith('about ')
     expect(getAddress(calls[0]!.to!)).toBe('0x420000000000000000000000000000000000000F')
-    expect(decodeFunctionData({ abi: ORACLE, data: calls[0]!.data! }).args[0]).toBe(4n + 100n) // the calldata, plus room for the rest
+    expect(decodeFunctionData({ abi: ORACLE, data: calls[0]!.data! }).args[0]).toBe(4n + 29n + 100n) // calldata, Base attribution and transaction envelope
+    expect(estimated).toEqual([expect.objectContaining({ data: tx.data + OPHIS_BASE_DATA_SUFFIX.slice(2) })])
+    expect(tx.data).toBe('0x12345678')
     serve(answers({ eth_chainId: chain(1) }))
     expect((await priceTx(network('ethereum', RPC), OWNER, tx)).feeText).toStartWith('at most ')
   })

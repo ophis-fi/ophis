@@ -57,6 +57,7 @@
       ]
     },
     "overrides": {
+      "@libp2p/crypto@<5.1.22": "5.2.0",
       "axios": "^1.20.0",
       "ws": "^8.21.0",
       "protobufjs": "^7.6.5",
@@ -68,10 +69,11 @@
       "minimatch@5": "^11.0.1",
       "underscore": "^1.13.8",
       "undici@7": "^7.30.1",
-      "uuid@<11.1.1": "^11.1.1",
-      "@libp2p/crypto@<5.1.22": "^5.1.22"
+      "uuid@<11.1.1": "^11.1.1"
     },
     "patchedDependencies": {
+      "picomatch@2.3.2": "../../patches/picomatch@2.3.2.patch",
+      "picomatch@4.0.7": "../../patches/picomatch@4.0.7.patch",
       "elliptic@6.6.1": "../../patches/elliptic@6.6.1.patch",
       "@graphql-tools/utils@8.13.1": "patches/@graphql-tools__utils@8.13.1.patch",
       "@graphql-tools/utils@9.2.1": "patches/@graphql-tools__utils@9.2.1.patch",

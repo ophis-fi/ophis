@@ -4,6 +4,7 @@ pub mod macros;
 pub mod arc_routes;
 pub mod arc_sushi;
 pub mod arguments;
+pub mod builder_attribution;
 pub mod current_block;
 pub mod db_order_conversions;
 pub mod event_storing_helpers;

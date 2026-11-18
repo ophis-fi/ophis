@@ -165,3 +165,4 @@ export {
   type BuildOrderParams,
   type BuiltOrder,
 } from './order-build.js';
+export { OPHIS_BASE_BUILDER_CODE, OPHIS_BASE_DATA_SUFFIX, appendOphisBaseBuilderCode } from './builder-code.js';

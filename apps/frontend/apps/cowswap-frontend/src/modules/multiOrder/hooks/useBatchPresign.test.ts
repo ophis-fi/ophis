@@ -1,3 +1,5 @@
+import { OPHIS_BASE_DATA_SUFFIX } from '@cowprotocol/wallet-provider'
+
 import { act, renderHook } from '@testing-library/react'
 import { useWalletClient } from 'wagmi'
 
@@ -44,6 +46,25 @@ function setWalletClient(walletClient: TestWalletClient | undefined): void {
 }
 
 describe('useBatchPresign', () => {
+  it('requests optional Base attribution while preserving presign calls and atomic execution', async () => {
+    const sendCalls = jest.fn().mockResolvedValue({ id: '0xabcd' })
+    setWalletClient({
+      getCapabilities: jest.fn().mockResolvedValue({ '0x2105': { atomic: { status: 'supported' } } }),
+      sendCalls,
+    })
+    const { result } = renderHook(() => useBatchPresign(8453))
+    await act(async () => {
+      await result.current.detect()
+    })
+    await result.current.presignBatch(['0x01'], SETTLEMENT)
+    const request = sendCalls.mock.calls[0]?.[0]
+    expect(request).toMatchObject({
+      forceAtomic: true,
+      version: '2.0.0',
+      capabilities: { dataSuffix: { value: OPHIS_BASE_DATA_SUFFIX, optional: true } },
+    })
+    expect(request.calls[0].data.endsWith(OPHIS_BASE_DATA_SUFFIX.slice(2))).toBe(false)
+  })
   afterEach(() => {
     jest.clearAllMocks()
   })

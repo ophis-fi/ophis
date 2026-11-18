@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { getWalletCallsId, parseWalletCallsStatus, type WalletCallsStatus } from '@cowprotocol/wallet'
+import { OPHIS_BASE_DATA_SUFFIX } from '@cowprotocol/wallet-provider'
 
 import { encodeFunctionData } from 'viem'
 import { useWalletClient } from 'wagmi'
@@ -72,6 +73,16 @@ async function detectWalletAtomicCapability(walletClient: unknown, chainId: numb
   return detectAtomicBatchCapability(capabilities, chainId)
 }
 
+const BASE_BATCH_CAPABILITIES = { dataSuffix: { value: OPHIS_BASE_DATA_SUFFIX, optional: true } }
+
+function encodeSetPreSignature(uid: string): `0x${string}` {
+  return encodeFunctionData({
+    abi: SET_PRE_SIGNATURE_ABI,
+    functionName: 'setPreSignature',
+    args: [uid as `0x${string}`, true],
+  })
+}
+
 export function useBatchPresign(chainId: number): UseBatchPresignResult {
   const { data: walletClient } = useWalletClient()
   const [capable, setCapable] = useState<boolean | undefined>(undefined)
@@ -118,13 +129,7 @@ export function useBatchPresign(chainId: number): UseBatchPresignResult {
     async (orderUids: readonly string[], settlement: string): Promise<string> => {
       if (!walletClient) throw new Error('useBatchPresign: no connected wallet client')
       if (capable !== true) throw new Error('useBatchPresign: batch capability has not been confirmed')
-      const calls = buildSetPreSignatureCalls(orderUids, settlement, (uid) =>
-        encodeFunctionData({
-          abi: SET_PRE_SIGNATURE_ABI,
-          functionName: 'setPreSignature',
-          args: [uid as `0x${string}`, true],
-        }),
-      )
+      const calls = buildSetPreSignatureCalls(orderUids, settlement, encodeSetPreSignature)
       const sendCalls = (walletClient as { sendCalls?: (args: unknown) => Promise<{ id: string } | string> }).sendCalls
       if (typeof sendCalls !== 'function') {
         setCapable(false)
@@ -134,6 +139,7 @@ export function useBatchPresign(chainId: number): UseBatchPresignResult {
         const result = await sendCalls.call(walletClient, {
           forceAtomic: true,
           version: '2.0.0',
+          capabilities: chainId === 8453 ? BASE_BATCH_CAPABILITIES : undefined,
           calls: calls.map((call) => ({
             to: call.to as `0x${string}`,
             data: call.data as `0x${string}`,
@@ -150,7 +156,7 @@ export function useBatchPresign(chainId: number): UseBatchPresignResult {
         throw error
       }
     },
-    [walletClient, capable],
+    [walletClient, capable, chainId],
   )
 
   const reconcileBatch = useCallback(

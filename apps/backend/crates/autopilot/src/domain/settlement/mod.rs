@@ -815,7 +815,7 @@ mod tests {
             &blockchain::Transaction {
                 trace_calls: blockchain::CallFrame {
                     to: Some(settlement_contract),
-                    input: calldata.into(),
+                    input: calldata.clone().into(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -826,6 +826,32 @@ mod tests {
         )
         .await
         .unwrap();
+
+        let mut tagged = calldata;
+        shared::builder_attribution::append_to_settlement(&mut tagged, 10);
+        let attributed = super::transaction::Transaction::try_new(
+            &blockchain::Transaction {
+                trace_calls: blockchain::CallFrame {
+                    to: Some(settlement_contract),
+                    input: tagged.into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            &domain_separator,
+            settlement_contract,
+            &MockAuthenticator,
+        )
+        .await
+        .unwrap();
+        assert_eq!(attributed.auction_id, transaction.auction_id);
+        assert_eq!(attributed.auction_id, 8655372);
+        assert_eq!(attributed.trades.len(), transaction.trades.len());
+        for (tagged, plain) in attributed.trades.iter().zip(&transaction.trades) {
+            assert_eq!(tagged.uid, plain.uid);
+            assert_eq!(tagged.sell, plain.sell);
+            assert_eq!(tagged.buy, plain.buy);
+        }
 
         let order_uid = transaction.trades[0].uid;
 
