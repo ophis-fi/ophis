@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
 import { afterEach, expect, it, vi } from 'vitest'
+import { FetchRequest, JsonRpcProvider } from 'ethers'
+import { BNBTraceProvider } from '../src/bnb-trace-provider'
 import { WakuRelay } from '../src/waku'
 
 // Execute the actual loop with fake I/O; importing main would start custody and SDK initialization.
@@ -18,6 +20,24 @@ const block = loops[0].parent as ts.Block
 const first = block.statements.findIndex(node => ts.isVariableStatement(node) && node.getText(source).startsWith('let lastRefresh'))
 if (first < 0 || !ts.isTryStatement(block.parent) || !block.parent.finallyBlock) throw new Error('Expected service scheduling and cleanup.')
 const compile = (text: string) => ts.transpileModule(text, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
+const run = source.statements.find((node): node is ts.FunctionDeclaration => ts.isFunctionDeclaration(node) && node.name?.text === 'run')!
+const setup = run.body!.statements
+const requestSetup = setup.findIndex(node => node.getText(source).startsWith('const request = new FetchRequest'))
+const providerSetup = setup.findIndex(node => node.getText(source).startsWith('const provider ='))
+if (requestSetup < 0 || providerSetup < requestSetup) throw new Error('Expected primary provider setup.')
+const createProvider = new Function('config', 'CHAIN_ID', 'command', 'FetchRequest', 'JsonRpcProvider', 'BNBTraceProvider',
+  compile(setup.slice(requestSetup, providerSetup + 1).map(node => node.getText(source)).join('\n')) + '\nreturn provider;')
+
+it.each([false, true])('bounds the actual primary RPC transport, trace routing=%s', (trace) => {
+  const provider: JsonRpcProvider = createProvider({ rpc: 'http://127.0.0.1:1',
+    traceRpc: trace ? 'http://127.0.0.1:2' : undefined, mode: 'fork' }, trace ? 56 : 1,
+  'run', FetchRequest, JsonRpcProvider, BNBTraceProvider)
+  try {
+    expect(provider._getConnection().timeout).toBe(20_000)
+    expect(provider._getConnection().url).toBe('http://127.0.0.1:1')
+  } finally { provider.destroy() }
+})
+
 const service = compile(block.statements.slice(first, block.statements.indexOf(loops[0]) + 1).map(node => node.getText(source)).join('\n'))
 const cleanup = compile(block.parent.finallyBlock.getText(source))
 if (health.length !== 1) throw new Error('Expected exactly one health handler.')

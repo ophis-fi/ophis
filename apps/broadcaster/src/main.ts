@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { DatabaseSync } from 'node:sqlite'
 import { setTimeout as delay } from 'node:timers/promises'
 import LevelDOWN from 'leveldown'
-import { JsonRpcProvider, Wallet } from 'ethers'
+import { FetchRequest, JsonRpcProvider, Wallet } from 'ethers'
 import { ProtectedEthereumProvider } from '../../railgun/operator/protected-provider'
 import { CHAIN, CHAIN_ID, FEE_LIFETIME_MS, NATIVE_SYMBOL, NETWORK, settings, TOPICS } from './config'
 import { assertDisk, initializeSecrets, parseMainnetSecrets, privateDirectory, privateFile, readSecrets, Store, type Secrets } from './storage'
@@ -61,8 +61,10 @@ async function run(): Promise<void> {
     console.log(JSON.stringify({ gasWalletAddress: initializeSecrets(config.secrets, config.mode), funded: false }))
     return
   }
-  const provider = config.traceRpc ? new BNBTraceProvider(config.rpc, config.traceRpc, config.mode)
-    : new JsonRpcProvider(config.rpc, CHAIN_ID, { batchMaxCount: 1, cacheTimeout: -1, staticNetwork: command === 'monitor' })
+  const request = new FetchRequest(config.rpc)
+  request.timeout = 20_000
+  const provider = config.traceRpc ? new BNBTraceProvider(request, config.traceRpc, config.mode)
+    : new JsonRpcProvider(request, CHAIN_ID, { batchMaxCount: 1, cacheTimeout: -1, staticNetwork: command === 'monitor' })
   provider.pollingInterval = 15_000
   let store: Store | undefined, sdk: RailgunSDK | undefined, sender: ProtectedEthereumProvider | undefined
   let waku: WakuRelay | undefined
