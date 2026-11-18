@@ -21,6 +21,6 @@ services:
       - --relay-peer-exchange=true
       - --max-connections=32
       - --max-msg-size=600KiB
-      - --rest-relay-cache-capacity=16
+      - --rest-relay-cache-capacity=64
       - --log-level=ERROR
       - --dns-discovery-url=enrtree://APMYHUVNQWHJNPI5L2KQ765EMCKUAMRWPUH3U2QIKPK6XEV3OW442@discovery.rootedinprivacy.com

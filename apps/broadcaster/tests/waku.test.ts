@@ -1,5 +1,6 @@
+import { readFileSync } from 'node:fs'
 import { afterEach, expect, it, vi } from 'vitest'
-import { CHAIN_ID, MAX_MESSAGE_BYTES, TOPICS } from '../src/config'
+import { CHAIN_ID, MAX_MESSAGE_BYTES, TOPICS, WAKU_CACHE_CAPACITY } from '../src/config'
 import { creditTopics, encryptedCreditTopic } from '../../railgun/credit-protocol'
 import { boundedJSON, WakuRelay } from '../src/waku'
 
@@ -27,10 +28,10 @@ it('returns all 129 small payloads from a cleared relay batch and reports satura
   expect(waku.saturated).toBe(true)
 })
 
-it('accepts a configured full batch of 16 maximum-size payloads within the 16MiB response limit', async () => {
-  const waku = relay(Array.from({ length: 16 }, () => entry(Buffer.alloc(MAX_MESSAGE_BYTES, 1))))
+it('accepts a configured full batch of 64 maximum-size payloads within the 64MiB response limit', async () => {
+  const waku = relay(Array.from({ length: WAKU_CACHE_CAPACITY }, () => entry(Buffer.alloc(MAX_MESSAGE_BYTES, 1))))
   const messages = await waku.messages()
-  expect(messages).toHaveLength(16)
+  expect(messages).toHaveLength(WAKU_CACHE_CAPACITY)
   expect(messages.every((message) => message.payload.length === MAX_MESSAGE_BYTES && message.payload[0] === 1)).toBe(true)
   expect(waku.saturated).toBe(true)
 })
@@ -38,7 +39,7 @@ it('accepts a configured full batch of 16 maximum-size payloads within the 16MiB
 it('counts full caches before filtering and clears only after sustained successful polling', async () => {
   vi.useFakeTimers()
   const fullAt = Date.now()
-  const waku = relay(Array.from({ length: 16 }, () => entry('other-chain', '/railgun/v2/other-transact/json')))
+  const waku = relay(Array.from({ length: WAKU_CACHE_CAPACITY }, () => entry('other-chain', '/railgun/v2/other-transact/json')))
   expect(await waku.messages()).toEqual([])
   vi.mocked(fetch).mockImplementation(async () => new Response('[]'))
   expect(await waku.messages()).toEqual([])
@@ -57,7 +58,7 @@ it('counts full caches before filtering and clears only after sustained successf
 
 it('restarts recovery after a failed poll or another full batch', async () => {
   vi.useFakeTimers()
-  const waku = relay(Array.from({ length: 16 }, () => entry('full')))
+  const waku = relay(Array.from({ length: WAKU_CACHE_CAPACITY }, () => entry('full')))
   await waku.messages()
   vi.mocked(fetch).mockImplementation(async () => new Response('[]'))
   for (let poll = 0; poll < 12; poll++) {
@@ -69,7 +70,7 @@ it('restarts recovery after a failed poll or another full batch', async () => {
   vi.advanceTimersByTime(5000)
   await waku.messages()
   expect(waku.saturated).toBe(true)
-  vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify(Array.from({ length: 16 }, () => entry('full again')))))
+  vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify(Array.from({ length: WAKU_CACHE_CAPACITY }, () => entry('full again')))))
   await waku.messages()
   expect(waku.fullBatches).toBe(2)
   expect(waku.lastFullBatchAt).toBe(Date.now())
@@ -77,7 +78,7 @@ it('restarts recovery after a failed poll or another full batch', async () => {
 
 it('measures recovery with elapsed time even when the wall clock jumps forward', async () => {
   vi.useFakeTimers()
-  const waku = relay(Array.from({ length: 16 }, () => entry('full')))
+  const waku = relay(Array.from({ length: WAKU_CACHE_CAPACITY }, () => entry('full')))
   await waku.messages()
   const fullAt = waku.lastFullBatchAt
   vi.mocked(fetch).mockImplementation(async () => new Response('[]'))
@@ -103,7 +104,7 @@ it.each([{}, null, 'not-an-array'])('rejects a malformed message list %s', async
 })
 
 it('rejects oversized relay responses instead of treating a lost batch as empty', async () => {
-  const waku = relay(Array.from({ length: 24 }, () => entry(Buffer.alloc(MAX_MESSAGE_BYTES))))
+  const waku = relay(Array.from({ length: 97 }, () => entry(Buffer.alloc(MAX_MESSAGE_BYTES))))
   await expect(waku.messages()).rejects.toThrow('size limit')
 })
 
@@ -171,4 +172,16 @@ it('reports an oversized reply without allowing it to block the remaining batch 
   vi.mocked(fetch).mockResolvedValueOnce(new Response('[]'))
   await waku.dispatch(handle, signal)
   expect(fetch).toHaveBeenCalledTimes(2)
+})
+
+it('keeps the relay cache configuration and alarm capacity aligned', () => {
+  const compose = readFileSync(new URL('../waku.compose.yml', import.meta.url), 'utf8')
+  const arguments_ = [...compose.matchAll(/^\s*-\s+(--rest-relay-cache-capacity=\S+)\s*$/gm)].map(match => match[1])
+  expect(arguments_).toEqual([`--rest-relay-cache-capacity=${WAKU_CACHE_CAPACITY}`])
+})
+
+it('accepts ordinary traffic above the old 16-message cache without reporting a full cache', async () => {
+  const waku = relay(Array.from({ length: 32 }, () => entry('other-chain', '/railgun/v2/other-transact/json')))
+  expect(await waku.messages()).toEqual([])
+  expect(waku.saturated).toBe(false)
 })

@@ -3,6 +3,7 @@ import ts from 'typescript'
 import { afterEach, expect, it, vi } from 'vitest'
 import { FetchRequest, JsonRpcProvider } from 'ethers'
 import { BNBTraceProvider } from '../src/bnb-trace-provider'
+import { WAKU_CACHE_CAPACITY } from '../src/config'
 import { WakuRelay } from '../src/waku'
 
 // Execute the actual loop with fake I/O; importing main would start custody and SDK initialization.
@@ -78,7 +79,7 @@ function fixture() {
     feeAdvertisement: vi.fn(async () => advertisement()),
     handle: vi.fn(async (_payload: Uint8Array) => undefined),
   }
-  const sdk = { ready: () => true, balances: vi.fn(async () => ({})), stop: vi.fn(async () => {}) }
+  const sdk = { ready: vi.fn(() => true), refreshCreditBalances: vi.fn(async () => {}), balances: vi.fn(async () => ({})), stop: vi.fn(async () => {}) }
   const provider = { destroy: vi.fn() }, store = { pending: () => [], close: vi.fn() }
   const waku = {
     publish: vi.fn(async () => {}),
@@ -125,14 +126,14 @@ it('restores normal polling after Waku recovers even if refresh still fails', as
   for (let i = 0; i < 4; i++) f.waku.dispatch.mockRejectedValueOnce(new Error('Waku unavailable'))
   f.advance.mockImplementation(async (_iteration, milliseconds) => { await vi.advanceTimersByTimeAsync(milliseconds) })
   const metrics = await runLoop(f)
-  expect(f.advance.mock.calls.map(([, milliseconds]) => milliseconds)).toEqual([2000, 4000, 8000, 16_000, 1000])
+  expect(f.advance.mock.calls.map(([, milliseconds]) => milliseconds)).toEqual([2000, 4000, 8000, 16_000, 250])
   expect(f.sdk.balances).toHaveBeenCalledTimes(2)
   expect(metrics).toMatchObject({ ready: false, errors: 6 })
 })
 
 it('clears saturation while successful fee publications take six seconds', async () => {
   const f = fixture()
-  f.stopAfter = 70
+  f.stopAfter = 280
   const polls: number[] = []
   let activePosts = 0, maximumPosts = 0
   vi.stubGlobal('fetch', vi.fn(async (_url: URL, options: RequestInit) => {
@@ -143,15 +144,15 @@ it('clears saturation while successful fee publications take six seconds', async
       return new Response('')
     }
     polls.push(performance.now())
-    return new Response(JSON.stringify(polls.length === 1 ? Array(16).fill(null) : []))
+    return new Response(JSON.stringify(polls.length === 1 ? Array(WAKU_CACHE_CAPACITY).fill(null) : []))
   }))
   const relay = new WakuRelay('http://127.0.0.1:8645')
   f.waku.publish.mockImplementation(() => relay.publish('fees', new Uint8Array()))
   f.waku.dispatch.mockImplementation(handle => relay.dispatch(handle, new AbortController().signal))
   f.advance.mockImplementation(async (_iteration, milliseconds) => { await vi.advanceTimersByTimeAsync(milliseconds) })
   await runLoop(f)
-  expect(polls).toHaveLength(70)
-  expect(polls.slice(1).every((time, i) => time - polls[i] === 1000)).toBe(true)
+  expect(polls).toHaveLength(280)
+  expect(polls.slice(1).every((time, i) => time - polls[i] === 250)).toBe(true)
   expect(f.waku.publish).toHaveBeenCalledTimes(3)
   expect(maximumPosts).toBe(1)
   expect(relay.fullBatches).toBe(1)
@@ -171,7 +172,7 @@ it('keeps refresh single-flight while a dependency remains pending', async () =>
 
 it('starts the next due refresh as soon as a slow refresh finishes', async () => {
   const f = fixture()
-  f.stopAfter = 40
+  f.stopAfter = 160
   const samples: number[] = []
   f.sdk.balances.mockImplementation(async () => { samples.push(performance.now()); return {} })
   f.broadcaster.feeAdvertisement.mockImplementationOnce(async () => {
@@ -189,7 +190,7 @@ it('starts the next due refresh as soon as a slow refresh finishes', async () =>
 
 it('keeps cached readiness during a slow routine refresh and restores it after delivery recovers', async () => {
   const f = fixture()
-  f.stopAfter = 40
+  f.stopAfter = 160
   f.waku.publish.mockImplementationOnce(async () => {})
     .mockImplementation(async () => { await new Promise(resolve => setTimeout(resolve, 6000)) })
   f.waku.dispatch.mockImplementationOnce(async () => {})
@@ -203,30 +204,30 @@ it('keeps cached readiness during a slow routine refresh and restores it after d
 
 it.each(['failed', 'unavailable'])('does not restore readiness from a %s fee refresh', async (failure) => {
   const f = fixture()
-  f.stopAfter = 36
+  f.stopAfter = 144
   f.broadcaster.feeAdvertisement.mockResolvedValueOnce(advertisement())
   if (failure === 'failed') f.broadcaster.feeAdvertisement.mockRejectedValue(new Error('Unavailable fees'))
   else f.broadcaster.feeAdvertisement.mockResolvedValue(advertisement(false))
   f.advance.mockImplementation(async (_iteration, milliseconds) => { await vi.advanceTimersByTimeAsync(milliseconds) })
   const metrics = await runLoop(f)
   expect(f.observed[2].ready).toBe(true)
-  expect(f.observed.slice(31).every(sample => !sample.ready)).toBe(true)
+  expect(f.observed.slice(124).every(sample => !sample.ready)).toBe(true)
   expect(metrics.ready).toBe(false)
 })
 
 it('expires cached readiness at the existing quote lifetime if refresh remains pending', async () => {
   const f = fixture()
-  f.stopAfter = 305
+  f.stopAfter = 1220
   let finish!: () => void
   f.sdk.balances.mockResolvedValueOnce({}).mockImplementation(() => new Promise(resolve => { finish = () => resolve({}) }))
   f.advance.mockImplementation(async (iteration, milliseconds) => {
     await vi.advanceTimersByTimeAsync(milliseconds)
-    if (iteration === 150) vi.setSystemTime(Date.now() - 60_000)
+    if (iteration === 600) vi.setSystemTime(Date.now() - 60_000)
     if (iteration === f.stopAfter) finish()
   })
   await runLoop(f)
-  expect(f.observed[299].ready).toBe(true)
-  expect(f.observed.slice(300).every(sample => !sample.ready)).toBe(true)
+  expect(f.observed[1199].ready).toBe(true)
+  expect(f.observed.slice(1200).every(sample => !sample.ready)).toBe(true)
   expect(f.sdk.balances).toHaveBeenCalledTimes(2)
 })
 
@@ -307,4 +308,28 @@ it('stops scheduling on shutdown and drains all active work before closing resou
   expect(f.provider.destroy).toHaveBeenCalledOnce()
   expect(f.store.close).toHaveBeenCalledOnce()
   expect(vi.getTimerCount()).toBe(0)
+})
+
+it.each(['failed', 'incomplete'])('retries an initially %s history scan before publishing fees', async failure => {
+  const f = fixture()
+  f.sdk.ready.mockReturnValue(false)
+  if (failure === 'failed') f.sdk.refreshCreditBalances.mockRejectedValueOnce(new Error('History dependency failed'))
+  else f.sdk.refreshCreditBalances.mockResolvedValueOnce(undefined)
+  f.sdk.refreshCreditBalances.mockImplementation(async () => { f.sdk.ready.mockReturnValue(true) })
+  const health = await runLoop(f)
+  expect(f.sdk.refreshCreditBalances).toHaveBeenCalledTimes(2)
+  expect(f.observed[0].ready).toBe(false)
+  expect(health.ready).toBe(true)
+  expect(f.waku.publish).toHaveBeenCalledTimes(2)
+  expect(f.waku.dispatch).toHaveBeenCalledTimes(3)
+})
+
+it('keeps incomplete history unavailable while retrying the scan', async () => {
+  const f = fixture()
+  f.sdk.ready.mockReturnValue(false)
+  const health = await runLoop(f)
+  expect(f.sdk.refreshCreditBalances).toHaveBeenCalledTimes(3)
+  expect(f.sdk.balances).not.toHaveBeenCalled()
+  expect(f.waku.publish).not.toHaveBeenCalled()
+  expect(health.ready).toBe(false)
 })

@@ -127,7 +127,7 @@ export class RailgunSDK {
       String(await balanceForERC20Token(VERSION, walletForID(this.walletId), NETWORK_NAME, token.address, true))])))
   }
   async sign(message: string): Promise<string> { return signWithWalletViewingKey(this.walletId, message) }
-  private async refreshCreditBalances(): Promise<void> {
+  async refreshCreditBalances(): Promise<void> {
     if (this.creditRefresh) return this.creditRefresh
     if (Date.now() - this.creditRefreshedAt < 5_000) return
     this.creditRefresh = refreshBalances(NETWORK.chain, [this.walletId]).then(() => {
