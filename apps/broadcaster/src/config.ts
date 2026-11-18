@@ -31,6 +31,7 @@ export const TOPICS = {
   response: `/railgun/v2/0-${CHAIN_ID}-transact-response/json`,
 }
 export const MAX_MESSAGE_BYTES = CREDIT_MAX_MESSAGE_BYTES
+export const WAKU_CACHE_CAPACITY = 64
 export const MAX_GAS = 8_000_000n
 export const FEE_LIFETIME_MS = 5 * 60_000
 export const TOKENS: readonly PrivateToken[] = [

@@ -1,4 +1,4 @@
-import { CHAIN_ID, MAX_MESSAGE_BYTES, PUBSUB_TOPIC, TOPICS } from './config'
+import { CHAIN_ID, MAX_MESSAGE_BYTES, PUBSUB_TOPIC, TOPICS, WAKU_CACHE_CAPACITY } from './config'
 import { creditTopics, encryptedCreditTopic } from '../../railgun/credit-protocol'
 import { object } from './wire'
 
@@ -37,7 +37,7 @@ export class WakuRelay {
       ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(8000),
     })
     if (method === 'POST' && response.ok) { await response.body?.cancel(); return }
-    return boundedJSON(response, 16 * 1024 * 1024)
+    return boundedJSON(response, WAKU_CACHE_CAPACITY * 1024 * 1024)
   }
   async subscribe(): Promise<void> { await this.request('relay/v1/subscriptions', 'POST', [this.pubsubTopic]) }
   async publish(contentTopic: string, payload: Uint8Array): Promise<void> {
@@ -52,7 +52,7 @@ export class WakuRelay {
       if (!Array.isArray(value)) throw new Error('Waku REST returned an invalid message list.')
     } catch (error) { this.recoveringSince = undefined; throw error }
     const now = performance.now()
-    if (value.length >= 16) {
+    if (value.length >= WAKU_CACHE_CAPACITY) {
       this.saturated = true
       this.fullBatches++
       this.lastFullBatchAt = Date.now()

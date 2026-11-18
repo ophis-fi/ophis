@@ -317,6 +317,7 @@ async function run(): Promise<void> {
       if (!refresh && performance.now() - lastRefresh >= 30_000) {
         lastRefresh = performance.now()
         refresh = (async () => {
+          if (!activeSDK.ready() && !stopping) await activeSDK.refreshCreditBalances()
           if (command !== 'run') metrics.ready = await broadcaster.available()
           if (activeSDK.ready()) {
             metrics.feeBalances = await activeSDK.balances(); metrics.feeBalancesAt = Date.now()
@@ -351,7 +352,7 @@ async function run(): Promise<void> {
         failures = 0
         metrics.deliveryReady = true
       } catch { metrics.errors++; metrics.deliveryReady = false; failures++ }
-      await delay(Math.min(30_000, 1000 * 2 ** Math.min(failures, 5)))
+      await delay(failures ? Math.min(30_000, 1000 * 2 ** Math.min(failures, 5)) : 250)
     }
   } finally {
     stopping = true
