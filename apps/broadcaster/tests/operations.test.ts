@@ -51,7 +51,7 @@ async function selectedMonitor(chainId: number) {
   const { FEE_TOKENS: tokens } = await import('../src/config')
   const settings = { ...config, chainId, operatorAddress, state: path }
   const health = { chainId, operatorAddress, ready: true, locked: false, synchronized: true,
-    pending: 0, feeAssurancePending: 0, errors: 0, wakuSaturated: false }
+    pending: 0, feeAssurancePending: 0, errors: 0, wakuSaturated: false, wakuFullBatches: 0, wakuLastFullBatchAt: 0, wakuPendingMessages: 0 }
   vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(health))))
   const provider = {
     getBlock: vi.fn(async (tag: string) => ({ number: tag === 'finalized' ? 90 : 100, hash: blockHash,
@@ -170,7 +170,7 @@ it('accounts only for authenticated received fees and reports historical gaps, c
 it.each(['healthy', 'low-reserve', 'pending', 'fee', 'pricing', 'stale', 'offline', 'disk', 'chain', 'rpc-down',
   'wrong-service-chain', 'wrong-service-operator', 'waku'])('reports the %s operator condition without signing or logging upstream errors', async (condition) => {
   const health = { chainId: CHAIN_ID, operatorAddress, ready: true, locked: false, synchronized: true,
-    pending: 0, feeAssurancePending: 0, errors: 0, wakuSaturated: false }
+    pending: 0, feeAssurancePending: 0, errors: 0, wakuSaturated: false, wakuFullBatches: 0, wakuLastFullBatchAt: 0, wakuPendingMessages: 0 }
   if (condition === 'pending') health.pending = 1
   if (condition === 'fee') health.feeAssurancePending = 1
   if (condition === 'wrong-service-chain') health.chainId = CHAIN_ID === 56 ? 1 : 56
@@ -211,7 +211,7 @@ it.each(['healthy', 'low-reserve', 'pending', 'fee', 'pricing', 'stale', 'offlin
 it('rejects metric-label injection and excludes private fee balances from monitor output', async () => {
   expect(() => monitorMetrics({ ok: false, alerts: ['invalid"\nmetric 1'] })).toThrow('Invalid monitor label')
   const health = { chainId: CHAIN_ID, operatorAddress, ready: true, locked: false, synchronized: true,
-    pending: 0, feeAssurancePending: 0, errors: 0, wakuSaturated: false,
+    pending: 0, feeAssurancePending: 0, errors: 0, wakuSaturated: false, wakuFullBatches: 0, wakuLastFullBatchAt: 0, wakuPendingMessages: 0,
     feeBalances: { privateFeeAmount: 'do-not-export' } }
   vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(health))))
   const provider = { getBlock: async () => ({ number: 100, hash: blockHash, timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: 1n }),
@@ -227,10 +227,23 @@ it.each([56, 137, 42161])('monitors chain %i with its own identity, settlement s
   const f = await selectedMonitor(chainId)
   const result = await f.run()
   expect(result.ok).toBe(true)
-  expect(result.health).toMatchObject({ chainId, operatorAddress, wakuSaturated: false })
+  expect(result.health).toMatchObject({ chainId, operatorAddress, wakuSaturated: false, wakuFullBatches: 0, wakuLastFullBatchAt: 0, wakuPendingMessages: 0 })
   expect(f.provider.getBlock).toHaveBeenCalledWith('finalized')
   expect(f.operations.monitorMetrics(result).trim().split('\n').every((line) => line.includes(`chain_id="${chainId}"`))).toBe(true)
   expect(f.provider.getFeeData).toHaveBeenCalledTimes(chainId === 56 || chainId === 137 ? 1 : 0)
+})
+
+it('keeps historical full batches visible after recovery without keeping the saturation alert active', async () => {
+  const f = await selectedMonitor(1)
+  f.health.wakuFullBatches = 3
+  f.health.wakuLastFullBatchAt = 1_800_000_000_000
+  const result = await f.run()
+  expect(result.ok).toBe(true)
+  expect(result.alerts).not.toContain('waku-saturated')
+  expect(result.health).toMatchObject({ wakuFullBatches: 3, wakuLastFullBatchAt: 1_800_000_000_000 })
+  const metrics = f.operations.monitorMetrics(result)
+  expect(metrics).toContain('ophis_broadcaster_waku_full_batches_total{chain_id="1"} 3')
+  expect(metrics).toContain('ophis_broadcaster_waku_last_full_batch_seconds{chain_id="1"} 1800000000')
 })
 
 it('requires WBNB pricing rather than stablecoin quotes when monitoring BNB', async () => {
@@ -318,7 +331,7 @@ it('reports a bounded node timeout even when a JSON-RPC initialization never set
   vi.useFakeTimers()
   try {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ chainId: CHAIN_ID, operatorAddress, ready: true, locked: false,
-      synchronized: true, pending: 0, feeAssurancePending: 0, errors: 0, wakuSaturated: false }))))
+      synchronized: true, pending: 0, feeAssurancePending: 0, errors: 0, wakuSaturated: false, wakuFullBatches: 0, wakuLastFullBatchAt: 0, wakuPendingMessages: 0 }))))
     const provider = { getBlock: () => new Promise(() => {}), send: async () => `0x${CHAIN_ID.toString(16)}`,
       getBalance: async () => config.reserve + config.maxTransactionCost }
     const pending = monitor({ ...config, state: path, operatorAddress }, provider as unknown as JsonRpcProvider,

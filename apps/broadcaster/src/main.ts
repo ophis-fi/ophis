@@ -203,6 +203,8 @@ async function run(): Promise<void> {
       response.end(JSON.stringify({ ...identity, mode: config.mode, admission: config.admission, enabled: config.enabled, ready: metrics.ready, locked: metrics.locked,
         synchronized: sdk?.ready() ?? false,
         wakuSaturated: waku?.saturated ?? false,
+        wakuFullBatches: waku?.fullBatches ?? 0, wakuLastFullBatchAt: waku?.lastFullBatchAt ?? 0,
+        wakuPendingMessages: waku?.pendingMessages ?? 0,
         pending: pending.filter((r) => !r.confirmed).length,
         feeAssurancePending: pending.filter((r) => r.confirmed && !r.assured).length, errors: metrics.errors,
         feeBalances: metrics.feeBalances, feeBalancesAt: metrics.feeBalancesAt }))
@@ -323,11 +325,7 @@ async function run(): Promise<void> {
           }
         }
         if (command === 'run') {
-          for (const message of await waku!.messages()) {
-            if (stopping) break
-            const reply = await broadcaster.handle(message.payload)
-            if (reply) await waku!.publish(message.responseTopic, reply)
-          }
+          await waku!.dispatch(payload => broadcaster.handle(payload), abort.signal)
         }
         failures = 0
       } catch { metrics.errors++; metrics.ready = false; failures++ }
