@@ -4144,7 +4144,6 @@ describe('y. wallets and the recovery wallet', () => {
     // Every table kept per environment has its entry, so no route of production meets a missing constant.
     for (const environment of ['local', 'production']) {
       expect(Object.keys(configFor(environment).chains), environment).toEqual(['1', '10', '8453', '42161'])
-      expect(onboarding.RESOLVERS[environment], environment).toHaveLength(2)
       expect(SUPPORT_HOSTS[environment], environment).toBe('api.typesafe.ai')
       expect(onboarding.OPERATOR[environment], environment).toMatch(/^https?:\/\/operator\./)
     }
@@ -5897,8 +5896,8 @@ describe('F. Support: attacks tried by the review of milestone 6', () => {
   })
 })
 
-// ---- milestone 5a: application, domain proof, activation, review, the operator's API. One appended section. DNS and
-// the chain are a stubbed fetch. (Import declarations are hoisted: they sit here so that the section stays in one piece.) ----
+// ---- milestone 5a: application, activation, review, the operator's API. One appended section. The chain is a
+// stubbed fetch. (Import declarations are hoisted: they sit here so that the section stays in one piece.) ----
 import onboardingSource from '../src/server/onboarding.ts?raw'
 import accessCerts from './fixtures/access-certs.json'
 import onboardingPage from '../src/app/onboarding.tsx?raw'
@@ -5928,27 +5927,15 @@ import * as onboarding from '../src/server/onboarding.ts'
 const bucket = onboarding.sealedStore(db)
 import signHtml from '../sign/index.html?raw'
 
-describe('E. onboarding: a company applies, proves its domain, is activated and reviewed', () => {
-  const [DNS1, DNS2] = onboarding.RESOLVERS.local
-  // The two resolvers. Each answers in its real form, copied from what `pnpm test:dns` printed on 2026-11-11:
-  // Cloudflare quotes the value and gives the name as asked, Google gives the bare value and the name with a dot.
-  const dns = { records: new Map<string, string[]>(), asked: [] as { url: string; init?: RequestInit }[], twist: (_which: number, answer: unknown, _init?: RequestInit): unknown => answer }
+describe('E. onboarding: a company applies, is activated and reviewed', () => {
+  // Every outside request of a test, then answered by the chain's stub.
+  const outside: string[] = []
   function fakeNet(input: RequestInfo | URL, init?: RequestInit) {
-    const url = String(input)
-    const which = url.startsWith(`${DNS1}?`) ? 0 : url.startsWith(`${DNS2}?`) ? 1 : -1
-    if (which < 0) return fakeRpc(input, init)
-    dns.asked.push({ url, init })
-    const name = new URL(url).searchParams.get('name')!
-    const Answer = (dns.records.get(name) ?? []).map((value) => ({ name: which ? `${name}.` : name, type: 16, TTL: 300, data: which ? value : `"${value}"` }))
-    const twisted = dns.twist(which, { Status: 0, TC: false, RD: true, RA: true, AD: true, CD: false, Question: [{ name: which ? `${name}.` : name, type: 16 }], Answer }, init)
-    return Promise.resolve(twisted instanceof Response || twisted instanceof Promise ? twisted : Response.json(twisted))
+    outside.push(String(input))
+    return fakeRpc(input, init)
   }
   beforeEach(async () => {
     vi.stubGlobal('fetch', fakeNet)
-    dns.records.clear()
-    dns.asked = []
-    dns.twist = (_which, answer) => answer
-    onboarding.DNS.timeoutMs = 5000
     await uncount() // the tests share one database and one clock: no test counts the checks of another
     // The operator's list holds the oldest 3 under review (the Free plan): an organisation an earlier test left there leaves it.
     await db.prepare('UPDATE organisations SET review_at = NULL WHERE review_at IS NOT NULL').run()
@@ -5971,13 +5958,12 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     const done = await call('POST', '/api/apply', { body: { ...body, seat: start.body.seat, response: await key.register(start.body.options, answer) } })
     return { ...done, key, domain, seat: start.body.seat as string, intent: done.body.intent as string }
   }
-  const publish = (record: { name: string; value: string }) => dns.records.set(record.name, [...(dns.records.get(record.name) ?? []), record.value])
-  const checkDns = (intent: string, options: Options = {}) => call('POST', '/api/apply/check', { ...options, body: { intent } })
-  // An organisation made by an application whose DNS record both resolvers hold. Its first Owner is signed in.
+  // "Create the organisation".
+  const create = (intent: string, options: Options = {}) => call('POST', '/api/apply/check', { ...options, body: { intent } })
+  // An organisation made by an application. Its first Owner is signed in.
   async function applied(domain?: string, more: Record<string, unknown> = {}) {
     const a = await applyFor(domain, more)
-    publish(a.body.record)
-    expect((await checkDns(a.intent)).body).toEqual({ state: 'unverified' })
+    expect((await create(a.intent)).body).toEqual({ state: 'unverified' })
     const session = await signIn(a.key)
     const me = await call('GET', '/api/me', { cookie: session.cookie })
     return { orgId: me.body.organisation.id as string, seatId: a.seat, key: a.key, cookie: session.cookie, domain: a.domain, intent: a.intent, name: 'Alder Custody S.A.', sessionId: me.body.session.id as string, ticket: '' }
@@ -5995,8 +5981,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
 
   it('local passkeys (owner, 2026-11-17): an applicant uses a passkey that syncs; the organisation it makes allows them for every key role and stores the first key as it is; two of them make the Owner ready; once its Owners require hardware keys, they no longer count', async () => {
     const a = await applyFor(undefined, {}, { backupEligible: true })
-    publish(a.body.record)
-    expect((await checkDns(a.intent)).body).toEqual({ state: 'unverified' })
+    expect((await create(a.intent)).body).toEqual({ state: 'unverified' })
     const org = (await row<{ id: string; synced: number }>('SELECT id, synced_keys_allowed AS synced FROM organisations WHERE email_domain = ?', a.domain))!
     expect(org.synced).toBe(1)
     expect(await row('SELECT device_bound FROM credentials WHERE org_id = ?', org.id)).toEqual({ device_bound: 0 })
@@ -6099,25 +6084,20 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
 
   // ---- A1, A2: the application ----
 
-  it('A1, A2: /apply is public, reads and writes nothing; the intent is the server\'s own text and the DNS record is bound to the domain and to this passkey', async () => {
+  it('A1, A2: /apply is public, writes nothing and asks no outside service; the intent is the server\'s own text', async () => {
     const rows = await snapshot([...TABLES, COUNTER])
+    outside.length = 0
     const a = await applyFor('alder.example')
     expect(a.status).toBe(200)
     expect(await snapshot([...TABLES, COUNTER])).toBe(rows)
-    expect(dns.asked).toHaveLength(0)
+    expect(outside).toEqual([])
     const f = fieldsOf<Record<string, unknown> & { credential: { id: string; publicKey: string; transports: string[] }; credentialHash: string; issuedAt: number; expiresAt: number }>(a.intent)
     const { invite: _code, ...asked } = form('alder.example')
     expect(f.invite).toBeUndefined() // the code itself is not carried on: its hash is
     expect(f).toMatchObject({ ...asked, phone: '+352621123456', lei: null, telegram: null, inviteHash: expect.stringMatching(/^[0-9a-f]{64}$/), seat: a.seat, site: 'localhost', credential: { id: a.key.id, transports: ['usb'] } })
     expect(f.credentialHash).toBe(`0x${Array.from(await credentialHash(f.credential.id, f.credential.publicKey), (b) => b.toString(16).padStart(2, '0')).join('')}`)
     expect([f.issuedAt, f.expiresAt, a.body.expiresAt]).toEqual([START / 1000, START / 1000 + 7 * 24 * 3600, START + 7 * DAY])
-    // The record: TXT at _ophis-verify.<domain>, "ophis-verify=" and a short code that is a MAC over domain and passkey.
-    expect(a.body.record).toEqual({ name: '_ophis-verify.alder.example', type: 'TXT', value: expect.stringMatching(/^ophis-verify=[A-Za-z0-9_-]{20}$/) })
-    expect(a.body.record.value).toBe(await onboarding.dnsValue(testEnv.CHALLENGE_KEY, 'alder.example', f.credentialHash))
-    expect(a.body.record.value).toBe(`ophis-verify=${(await seal(testEnv.CHALLENGE_KEY, 'apply-dns', { domain: 'alder.example', credentialHash: f.credentialHash })).split('.')[1].slice(0, 20)}`)
-    expect((await applyFor('alder.example')).body.record.value).not.toBe(a.body.record.value) // another passkey
-    expect(await onboarding.dnsValue(testEnv.CHALLENGE_KEY, 'birch.example', f.credentialHash)).not.toBe(a.body.record.value) // another domain
-    expect(await onboarding.dnsValue(`${testEnv.CHALLENGE_KEY}x`, 'alder.example', f.credentialHash)).not.toBe(a.body.record.value) // another key
+    expect(Object.keys(a.body).sort()).toEqual(['expiresAt', 'intent']) // owner, 2026-11-18: no DNS record
     // Any passkey with user verification (owner, 2026-11-17: a passkey on a computer or a phone too), for a challenge made
     // for this seat and this domain. The options no longer steer the browser to a security key.
     const synced = await applyFor('alder-synced.example', {}, { backupEligible: true })
@@ -6169,13 +6149,12 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect(fieldsOf(a.intent)).toMatchObject({ email: 'ops@mail.alder.example', country: 'LU', domain: 'alder.example', lei: '5493001KJTIIGC8Y1R12', address: '2 rue de la Gare, L-1611 Luxembourg', phone: '+352621123456', telegram: '@maren_ok' })
   })
 
-  // ---- A3: Check DNS ----
+  // ---- A3: Create the organisation ----
 
-  it('A3: the MAC is checked first, before any lookup, then the expiry', async () => {
+  it('A3: the MAC is checked first, then the expiry; no outside service is asked', async () => {
     const a = await applyFor()
-    publish(a.body.record)
     const rows = await snapshot()
-    const f = fieldsOf<{ domain: string }>(a.intent)
+    outside.length = 0
     const forged = [
       resealed(a.intent, { domain: 'birch.example' }), resealed(a.intent, { expiresAt: START / 1000 + 365 * 24 * 3600 }), resealed(a.intent, {}).replace(/\.(.)/, (_, c) => (c === 'A' ? '.B' : '.A')), // the first character of the MAC: the last one carries two unused bits
       await seal(testEnv.CHALLENGE_KEY, 'recover-intent', fieldsOf<object>(a.intent)), await seal(`${testEnv.CHALLENGE_KEY}x`, 'apply-intent', fieldsOf<object>(a.intent)),
@@ -6183,111 +6162,16 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     ]
     for (const intent of forged) expect((await call('POST', '/api/apply/check', { body: { intent } })).body, String(intent).slice(0, 12)).toEqual({ error: 'intent_invalid' })
     // The request checks come before it too.
-    expect((await checkDns(a.intent, { headers: { 'sec-fetch-site': 'cross-site' } })).body).toEqual({ error: 'cross_site' })
-    expect((await checkDns(a.intent, { headers: { origin: SIGN } })).body).toEqual({ error: 'bad_origin' })
-    expect((await checkDns(a.intent, { sign: true })).status).toBe(404)
+    expect((await create(a.intent, { headers: { 'sec-fetch-site': 'cross-site' } })).body).toEqual({ error: 'cross_site' })
+    expect((await create(a.intent, { headers: { origin: SIGN } })).body).toEqual({ error: 'bad_origin' })
+    expect((await create(a.intent, { sign: true })).status).toBe(404)
     now = START + 7 * DAY
-    expect((await checkDns(a.intent)).body).toEqual({ error: 'intent_expired' })
-    expect(dns.asked).toHaveLength(0)
+    expect((await create(a.intent)).body).toEqual({ error: 'intent_expired' })
     expect(await snapshot()).toBe(rows)
+    expect(outside).toEqual([]) // no refusal asks anyone
     now -= 1000
-    expect((await checkDns(a.intent)).body).toEqual({ state: 'unverified' })
-    // Two lookups, one per resolver, each for the one name, in the JSON form. Nothing about the applicant leaves.
-    expect(dns.asked.map((x) => x.url)).toEqual([`${DNS1}?name=_ophis-verify.${f.domain}&type=TXT`, `${DNS2}?name=_ophis-verify.${f.domain}&type=TXT`])
-    for (const x of dns.asked) {
-      expect(new Headers(x.init?.headers).get('accept')).toBe('application/dns-json')
-      expect(x.init?.body).toBeUndefined()
-      expect(x.init?.signal).toBeInstanceOf(AbortSignal)
-    }
-  })
-
-  it('A3: both resolvers must return the exact value of this domain and this passkey; a disagreement, an error, a timeout or an oversized answer refuses, and nothing is written before the proof', async () => {
-    const domain = `both${++domains}.example`
-    const a = await applyFor(domain)
-    const { name, value } = a.body.record as { name: string; value: string }
-    const rows = await snapshot()
-    const refused = async (why: string) => {
-      await uncount() // G6 counts the checks of a domain; that limit has its own test
-      expect((await checkDns(a.intent)).body, why).toEqual({ error: 'dns_not_proved', record: a.body.record })
-      expect(await snapshot(), why).toBe(rows)
-    }
-    await refused('no record')
-    // A record left by another application for the same domain, the value of this passkey for another domain, and near misses.
-    const other = await applyFor(domain)
-    publish(other.body.record)
-    await refused('another passkey')
-    const hash = fieldsOf<{ credentialHash: string }>(a.intent).credentialHash
-    for (const near of [await onboarding.dnsValue(testEnv.CHALLENGE_KEY, 'birch.example', hash), `${value}x`, `x${value}`, value.toUpperCase(), value.replace('ophis-verify=', ''), ` ${value}`]) {
-      dns.records.set(name, [near])
-      await refused(near)
-    }
-    dns.records.clear()
-    dns.records.set('_ophis-verify.birch.example', [value])
-    dns.records.set(domain, [value])
-    await refused('the value under another name')
-    dns.records.clear()
-    publish(a.body.record)
-    // From here both resolvers hold the record: each twist changes what one of them says.
-    type Dns = { Status: number; Answer: { name: string; type: number; data: string }[] }
-    const twists: [string, (answer: Dns, init?: RequestInit) => unknown][] = [
-      ['no answer section', ({ Answer: _, ...rest }) => rest],
-      ['an empty answer', (answer) => ({ ...answer, Answer: [] })],
-      ['another value', (answer) => ({ ...answer, Answer: answer.Answer.map((r) => ({ ...r, data: r.data.replace('ophis-verify=', 'ophis-verify=x') })) })],
-      ['a failure status with the record in it', (answer) => ({ ...answer, Status: 2 })],
-      ['no status', ({ Status: _, ...rest }) => rest],
-      ['an HTTP error with the record in its body', (answer) => Response.json(answer, { status: 500 })],
-      ['not JSON', () => new Response('<html>')],
-      // Followed (fetch's default), the redirect would bring the answer, as a second subrequest of the 50.
-      ['a redirect', (answer, init) => (init?.redirect === 'manual' ? new Response(null, { status: 302, headers: { location: 'https://dns.example/resolve' } }) : answer)],
-      ['an answer that is no object', () => Response.json(null)],
-      ['an answer section that is no list', (answer) => ({ ...answer, Answer: 'x' })],
-      ['a record of another type', (answer) => ({ ...answer, Answer: answer.Answer.map((r) => ({ ...r, type: 5 })) })],
-      ['a record of another name', (answer) => ({ ...answer, Answer: answer.Answer.map((r) => ({ ...r, name: domain })) })],
-      ['an oversized answer', (answer) => ({ ...answer, Comment: 'x'.repeat(onboarding.DNS.maxBytes) })],
-      ['a thrown error', () => Promise.reject(new Error('network'))],
-      ['a timeout', (_answer, init) => new Promise((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(new Error('aborted'))))], // no signal: it never answers, and the test fails by its own timeout
-    ]
-    onboarding.DNS.timeoutMs = 30
-    for (const which of [0, 1]) {
-      for (const [why, twist] of twists) {
-        dns.twist = (resolver, answer, init) => (resolver === which ? twist(answer as Dns, init) : answer)
-        await refused(`resolver ${which + 1}: ${why}`)
-      }
-    }
-    dns.twist = (_which, answer) => answer
-    expect((await checkDns(a.intent)).body).toEqual({ state: 'unverified' })
-    // The other application for the same domain, whose record is there too, comes second: one organisation per domain.
-    publish(other.body.record)
-    expect((await checkDns(other.intent)).body).toEqual({ error: 'domain_taken' })
-  })
-
-  it('G6, R4: at most 10 DNS checks per application code per hour, counted after the MAC and the expiry and before any lookup; one applicant uses up nobody else\'s', async () => {
-    const domain = `limit${++domains}.example`
-    const code = await newCode()
-    // One applicant, one code, two domains; another applicant, with a code of its own, for the first of those domains.
-    const [a, b, other] = [await applyFor(domain, { invite: code }), await applyFor(undefined, { invite: code }), await applyFor(domain)]
-    const key = `dns:${fieldsOf<{ inviteHash: string }>(a.intent).inviteHash}`
-    // What is not an intent of ours, or is too old, is not counted.
-    expect((await checkDns(resealed(a.intent, { domain: b.domain }))).body).toEqual({ error: 'intent_invalid' })
-    now = START + 7 * DAY
-    expect((await checkDns(a.intent)).body).toEqual({ error: 'intent_expired' })
-    now = START
-    expect(await counted(key)).toBe(0)
-    // Every application made with one code shares its 10, whatever the domain.
-    for (let i = 0; i < 10; i++) expect((await checkDns(i % 2 ? a.intent : b.intent)).body.error, `check ${i + 1}`).toBe('dns_not_proved')
-    expect([await counted(key), await counted(`dns:${domain}`)]).toEqual([10, 0])
-    publish(a.body.record) // the record is there now: the 11th check still asks nobody
-    dns.asked = []
-    const rows = await snapshot()
-    for (const intent of [a.intent, b.intent]) {
-      const over = await checkDns(intent)
-      expect([over.status, over.body]).toEqual([429, { error: 'too_many' }])
-    }
-    expect([dns.asked.length, await snapshot()]).toEqual([0, rows])
-    // R4: the company whose domain it is, with its own code, is not locked out by those checks.
-    expect((await checkDns(other.intent)).body.error).toBe('dns_not_proved')
-    now = START + HOUR // the next clock hour
-    expect((await checkDns(a.intent)).body).toEqual({ state: 'unverified' })
+    expect((await create(a.intent)).body).toEqual({ state: 'unverified' })
+    expect(outside).toEqual([]) // nothing about the applicant leaves
   })
 
   it('R3 (owner, 2026-11-17): an invitation code is 12 characters, read the way a person types it: any case, spaces and dashes, O for 0, I or L for 1; any other text is no code', async () => {
@@ -6305,73 +6189,48 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     }
     // What the organisation keeps is the hash of the 12 characters: typed another way, the code is the same, and used.
     const a = await applyFor(undefined, { invite: plain.toLowerCase() })
-    publish(a.body.record)
-    expect((await checkDns(a.intent)).body).toEqual({ state: 'unverified' })
+    expect((await create(a.intent)).body).toEqual({ state: 'unverified' })
     expect((await row('SELECT invite_hash FROM organisations WHERE email_domain = ?', a.domain))!.invite_hash).toBe(await data.sha256Hex(plain))
     expect((await call('POST', '/api/apply', { body: { ...form('birch.example'), invite: code } })).body).toEqual({ error: 'invite_used' })
     // Every sealed text has one spelling: an intent in another one is not ours either.
     const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
     const b = await applyFor()
-    expect((await checkDns(`${b.intent}=`)).body).toEqual({ error: 'intent_invalid' })
-    expect((await checkDns(b.intent.replace(/.$/, (c) => alphabet[alphabet.indexOf(c) ^ 1]))).body).toEqual({ error: 'intent_invalid' })
+    expect((await create(`${b.intent}=`)).body).toEqual({ error: 'intent_invalid' })
+    expect((await create(b.intent.replace(/.$/, (c) => alphabet[alphabet.indexOf(c) ^ 1]))).body).toEqual({ error: 'intent_invalid' })
   })
 
-  it('A3, A4: the parser reads the JSON form of both resolvers, and the resolvers are constants per environment', () => {
-    // What Cloudflare and Google answered for example.com on 2026-11-11 (pnpm test:dns), shortened.
-    const cloudflare = '{"Status":0,"TC":false,"RD":true,"RA":true,"AD":true,"CD":false,"Question":[{"name":"example.com","type":16}],"Answer":[{"name":"example.com","type":16,"TTL":300,"data":"\\"v=spf1 -all\\""},{"name":"example.com","type":16,"TTL":300,"data":"\\"_k2n1y4vw3qtb4skdx9e7dxt97qrmmq9\\""}]}'
-    const google = '{"Status":0,"TC":false,"RD":true,"RA":true,"AD":true,"CD":false,"Question":[{"name":"example.com.","type":16}],"Answer":[{"name":"example.com.","type":16,"TTL":300,"data":"_k2n1y4vw3qtb4skdx9e7dxt97qrmmq9"},{"name":"example.com.","type":16,"TTL":300,"data":"v=spf1 -all"}],"Comment":"Response from 172.64.32.162."}'
-    expect(onboarding.txtValues(cloudflare, 'example.com')).toEqual(['v=spf1 -all', '_k2n1y4vw3qtb4skdx9e7dxt97qrmmq9'])
-    expect(onboarding.txtValues(google, 'example.com')).toEqual(['_k2n1y4vw3qtb4skdx9e7dxt97qrmmq9', 'v=spf1 -all'])
-    // A value in several character strings is one value; an escaped quote is a quote.
-    expect(onboarding.txtValues('{"Status":0,"Answer":[{"name":"A.example.","type":16,"data":"\\"ab\\" \\"c\\\\\\"d\\""}]}', 'a.example')).toEqual(['abc"d'])
-    expect(onboarding.txtValues('{"Status":3}', 'a.example')).toBeNull()
-    expect(onboarding.txtValues('{"Status":0}', 'a.example')).toEqual([])
-    expect(onboarding.txtValues(null, 'a.example')).toBeNull()
-    expect(onboarding.RESOLVERS).toEqual({ local: ['http://127.0.0.1:8790/dns-query', 'http://127.0.0.1:8791/resolve'], production: onboarding.PUBLIC_RESOLVERS })
-    expect(onboarding.PUBLIC_RESOLVERS).toEqual(['https://cloudflare-dns.com/dns-query', 'https://dns.google/resolve'])
-    expect(onboarding.DNS).toEqual({ timeoutMs: 5000, maxBytes: 16 * 1024 })
-    // No stub and no switch in the Worker: the resolver is never taken from the request or from a variable of the environment.
-    expect(onboardingSource).not.toMatch(/env\.\w*(RESOLVER|DNS|STUB)|body\.resolver|searchParams/i)
-  })
-
-  it('owner, 2026-11-17: the DNS record is optional: skipDns makes the organisation now, its domain not proved, and asks no resolver; the intent, the invitation and one organisation per domain still hold', async () => {
-    const skip = (intent: string, value: unknown = true) => call('POST', '/api/apply/check', { body: { intent, skipDns: value } })
-    const code = await newCode()
-    const a = await applyFor('alder-skip.example', { invite: code })
-    // Anything but true is no request to skip: the DNS path, which finds no record.
-    for (const value of ['true', 1, 'yes']) expect((await skip(a.intent, value)).body).toMatchObject({ error: 'dns_not_proved' })
-    dns.asked = []
-    expect((await skip(a.intent)).body).toEqual({ state: 'unverified' })
-    expect(dns.asked).toHaveLength(0)
-    const org = (await row<{ id: string; state: string; domain_challenge: string | null; domain_verified_at: number | null; invite_hash: string }>('SELECT id, state, domain_challenge, domain_verified_at, invite_hash FROM organisations WHERE email_domain = ?', 'alder-skip.example'))!
-    expect(org).toMatchObject({ state: 'unverified', domain_challenge: null, domain_verified_at: null })
-    // The client's own log says so in its first row (hashed into the chain), not that DNS proved the domain.
-    expect(await row('SELECT seq, action, detail FROM audit_log WHERE org_id = ?', org.id)).toEqual({ seq: 1, action: 'organisation.apply_unproved', detail: fieldsOf<{ credentialHash: string }>(a.intent).credentialHash })
-    expect(onboarding.ONBOARDING_EVENTS['organisation.apply_unproved']).toMatch(/not proved by DNS/)
-    expect(await data.verifyAudit(db, org.id)).toMatchObject({ ok: true, rows: 1 })
-    // The Owner signs in; the page and the operator say the domain is not proved.
+  it('owner, 2026-11-18: no DNS record: the domain is stored, not proved; the field a page of 2026-11-17 sends (skipDns) changes nothing', async () => {
+    const a = await applyFor('alder-skip.example')
+    expect((await call('POST', '/api/apply/check', { body: { intent: a.intent, skipDns: true } })).body).toEqual({ state: 'unverified' })
+    expect(await row('SELECT domain_challenge, domain_verified_at FROM organisations WHERE email_domain = ?', 'alder-skip.example')).toEqual({ domain_challenge: null, domain_verified_at: null })
+    expect(onboarding.ONBOARDING_EVENTS['organisation.apply']).not.toMatch(/DNS/)
+    expect(await row('SELECT action FROM audit_log WHERE org_id = (SELECT id FROM organisations WHERE email_domain = ?) AND seq = 1', 'alder-skip.example')).toEqual({ action: 'organisation.apply' })
     const session = await signIn(a.key)
-    expect((await call('GET', '/api/onboarding', { cookie: session.cookie })).body.company).toMatchObject({ domain: 'alder-skip.example', domainVerifiedAt: null })
-    // The same intent again, the code again, the domain again: as on the DNS path.
-    expect((await skip(a.intent)).body).toEqual({ error: 'not_stored' })
-    expect((await call('POST', '/api/apply', { body: { ...form('birch-skip.example'), invite: code } })).body).toEqual({ error: 'invite_used' })
-    const b = await applyFor('alder-skip.example')
-    expect((await skip(b.intent)).body).toEqual({ error: 'domain_taken' })
-    // A changed or expired intent is refused before anything.
-    const [body, mac] = a.intent.split('.')
-    const changed = `${body}.${mac[0] === 'A' ? 'B' : 'A'}${mac.slice(1)}` // the MAC's first character: always significant bits (CodeRabbit, PR #1659)
-    expect((await skip(changed)).body).toEqual({ error: 'intent_invalid' })
-    now += 8 * DAY
-    expect((await skip(b.intent)).body).toEqual({ error: 'intent_expired' })
-    now -= 8 * DAY
+    expect((await call('GET', '/api/onboarding', { cookie: session.cookie })).body.company).toMatchObject({ domain: 'alder-skip.example' })
+    expect((await call('GET', '/api/onboarding', { cookie: session.cookie })).body.company).not.toHaveProperty('domainVerifiedAt')
+  })
+
+  it('Codex, PR #1660: an organisation made on 2026-11-17 or 18, whose first row is organisation.apply_unproved, keeps its first Owner: its Onboarding page, its submit and the operator list read it, and the row has words', async () => {
+    const a = await applicantWithTwoKeys()
+    // The first row as the server of those days wrote it. The log is append-only: its trigger is lifted for this one rewrite.
+    await db.batch([
+      db.prepare('DROP TRIGGER audit_log_no_update'),
+      db.prepare(`UPDATE audit_log SET action = 'organisation.apply_unproved' WHERE org_id = ? AND seq = 1`).bind(a.orgId),
+      db.prepare(`CREATE TRIGGER audit_log_no_update BEFORE UPDATE ON audit_log BEGIN SELECT RAISE(ABORT, 'audit_log is append-only'); END`),
+    ])
+    expect(await row('SELECT action FROM audit_log WHERE org_id = ? AND seq = 1', a.orgId)).toEqual({ action: 'organisation.apply_unproved' })
+    expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body.first).toMatchObject({ active: true, name: 'Maren Okafor' })
+    expect((await activation(a)).body).toEqual({ state: 'stored' })
+    expect((await submit(a)).body).toEqual({ state: 'under_review' })
+    expect((await op('GET', '/api/operator/organisations')).body.organisations.find((o: { id: string }) => o.id === a.orgId)).toMatchObject({ applicant: { name: 'Maren Okafor' } })
+    expect(onboarding.ONBOARDING_EVENTS['organisation.apply_unproved']).toMatch(/without a DNS proof/)
   })
 
   it('A3: one commit: the organisation, unverified, with its fields and domain, its first Owner seat, the active passkey and one audit row; the applicant then signs in', async () => {
     const a = await applyFor('alder-commit.example')
-    publish(a.body.record)
-    expect((await checkDns(a.intent)).body).toEqual({ state: 'unverified' })
+    expect((await create(a.intent)).body).toEqual({ state: 'unverified' })
     const org = (await row<Record<string, unknown>>('SELECT * FROM organisations WHERE email_domain = ?', 'alder-commit.example'))!
-    expect(org).toMatchObject({ kind: 'institution', business_type: 'fund', name: 'Alder Custody S.A.', state: 'unverified', domain_challenge: a.body.record.value, domain_verified_at: now, country: 'LU', registration_number: 'B123456', lei: null, registered_address: '2 rue de la Gare, L-1611 Luxembourg', review_at: null, created_at: now })
+    expect(org).toMatchObject({ kind: 'institution', business_type: 'fund', name: 'Alder Custody S.A.', state: 'unverified', domain_challenge: null, domain_verified_at: null, country: 'LU', registration_number: 'B123456', lei: null, registered_address: '2 rue de la Gare, L-1611 Luxembourg', review_at: null, created_at: now })
     expect(await row('SELECT id, display_name, email, role, state, position, phone, telegram FROM seats WHERE org_id = ?', org.id)).toEqual({ id: a.seat, display_name: 'Maren Okafor', email: 'ops@alder-commit.example', role: 'owner', state: 'active', position: 'Chief Operating Officer', phone: '+352621123456', telegram: null })
     expect(await row('SELECT id, seat_id, state, device_bound, label FROM credentials WHERE org_id = ?', org.id)).toEqual({ id: a.key.id, seat_id: a.seat, state: 'active', device_bound: 1, label: 'First key' })
     const hash = fieldsOf<{ credentialHash: string }>(a.intent).credentialHash
@@ -6384,34 +6243,33 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect((await call('GET', '/api/me', { cookie: session.cookie })).body).toMatchObject({ organisation: { id: org.id, name: 'Alder Custody S.A.', kind: 'institution', state: 'unverified' }, seat: { id: a.seat, role: 'owner', keys: 1 } })
     // The same intent again makes nothing, also once the first organisation is archived: its seat and passkey exist.
     const rows = await snapshot()
-    expect((await checkDns(a.intent)).body).toEqual({ error: 'not_stored' })
+    expect((await create(a.intent)).body).toEqual({ error: 'not_stored' })
     await db.prepare(`UPDATE organisations SET state = 'archived' WHERE id = ?`).bind(org.id).run()
     const archived = await snapshot()
-    expect((await checkDns(a.intent)).body).toEqual({ error: 'not_stored' })
+    expect((await create(a.intent)).body).toEqual({ error: 'not_stored' })
     expect(await snapshot()).toBe(archived)
     await db.prepare(`UPDATE organisations SET state = 'unverified' WHERE id = ?`).bind(org.id).run()
     expect(await snapshot()).toBe(rows)
   })
 
-  it('A3: one organisation per domain among those that are not archived, also for two checks at the same instant; the database says so itself', async () => {
+  it('A3: one organisation per domain among those that are not archived, also for two creations at the same instant; the database says so itself', async () => {
     const one = 'alder-one.example'
     const [a, b, c] = [await applyFor(one), await applyFor(one), await applyFor(one)]
-    for (const x of [a, b, c]) publish(x.body.record)
-    // b's check lands just before a's batch: a must make nothing.
-    expect((await checkDns(a.intent, { env: racing(() => checkDns(b.intent)) as Env })).body).toEqual({ error: 'domain_taken' })
+    // b's creation lands just before a's batch: a must make nothing.
+    expect((await create(a.intent, { env: racing(() => create(b.intent)) as Env })).body).toEqual({ error: 'domain_taken' })
     expect((await db.prepare('SELECT id FROM organisations WHERE email_domain = ?').bind(one).all()).results).toHaveLength(1)
     expect(await row('SELECT seat_id FROM credentials WHERE id = ?', a.key.id)).toBeNull()
-    expect((await checkDns(c.intent)).body).toEqual({ error: 'domain_taken' })
+    expect((await create(c.intent)).body).toEqual({ error: 'domain_taken' })
     const insert = (state: string) => db.prepare(`INSERT INTO organisations (id, kind, name, state, email_domain, created_at) VALUES (?, 'partner', 'Copy', ?, 'alder-one.example', ?)`).bind(data.randomId(), state, now).run()
     await expect(insert('unverified')).rejects.toThrow(/UNIQUE/)
     await expect(insert('active')).rejects.toThrow(/UNIQUE/)
     for (const state of ['frozen', 'active']) {
       await db.prepare('UPDATE organisations SET state = ? WHERE email_domain = ?').bind(state, one).run()
-      expect((await checkDns(c.intent)).body, state).toEqual({ error: 'domain_taken' })
+      expect((await create(c.intent)).body, state).toEqual({ error: 'domain_taken' })
     }
     // A refused application is archived (below) and frees its domain.
     await db.prepare(`UPDATE organisations SET state = 'archived' WHERE email_domain = ?`).bind(one).run()
-    expect((await checkDns(c.intent)).body).toEqual({ state: 'unverified' })
+    expect((await create(c.intent)).body).toEqual({ state: 'unverified' })
     expect((await db.prepare('SELECT state FROM organisations WHERE email_domain = ? ORDER BY state').bind(one).all()).results).toEqual([{ state: 'archived' }, { state: 'unverified' }])
     // A subdomain is another domain.
     expect((await applied(`eu.${one}`)).domain).toBe(`eu.${one}`)
@@ -6450,21 +6308,19 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect(await snapshot([...TABLES, COUNTER])).toBe(rows)
     // One organisation per code: two applications made with it, the second finds it used (the unique index), and so does a new first call.
     const [a, b] = [await applyFor(undefined, { invite: code }), await applyFor(undefined, { invite: code })]
-    publish(a.body.record)
-    publish(b.body.record)
-    expect((await checkDns(a.intent)).body).toEqual({ state: 'unverified' })
+    expect((await create(a.intent)).body).toEqual({ state: 'unverified' })
     expect((await row('SELECT invite_hash FROM organisations WHERE email_domain = ?', a.domain))!.invite_hash).toBe(hash)
     const made = await snapshot()
-    expect((await checkDns(b.intent)).body).toEqual({ error: 'invite_used' })
+    expect((await create(b.intent)).body).toEqual({ error: 'invite_used' })
     expect(await snapshot()).toBe(made)
     const used = await call('POST', '/api/apply', { body: { ...form('birch.example'), invite: code } })
     expect([used.status, used.body]).toEqual([403, { error: 'invite_used' }])
     // A refused application does not free its code.
     await db.prepare(`UPDATE organisations SET state = 'archived' WHERE email_domain = ?`).bind(a.domain).run()
     expect((await call('POST', '/api/apply', { body: { ...form('birch.example'), invite: code } })).body).toEqual({ error: 'invite_used' })
-    // No cap per day any more: 25 organisations proved today, and the next application is created.
+    // No cap per day any more: 25 organisations made today, and the next application is created.
     for (let i = 0; i < 25; i++) {
-      await db.prepare(`INSERT INTO organisations (id, kind, name, state, email_domain, domain_verified_at, created_at) VALUES (?, 'partner', 'Filler', 'unverified', ?, ?, ?)`).bind(data.randomId(), `filler${i}-${domains}.example`, now, now).run()
+      await db.prepare(`INSERT INTO organisations (id, kind, name, state, email_domain, created_at) VALUES (?, 'partner', 'Filler', 'unverified', ?, ?)`).bind(data.randomId(), `filler${i}-${domains}.example`, now).run()
     }
     await applied()
     await db.prepare(`DELETE FROM organisations WHERE name = 'Filler'`).run()
@@ -6989,7 +6845,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect((await submit(a)).body).toEqual({ state: 'under_review' })
     const view = (await call('GET', '/api/onboarding', { cookie: a.cookie })).body
     expect(await mine()).toEqual([{
-      id: a.orgId, legalName: 'Alder Custody S.A.', kind: 'institution', businessType: 'fund', country: 'LU', registration: 'B123456', lei: null, address: '2 rue de la Gare, L-1611 Luxembourg', domain: 'alder-list.example', domainVerifiedAt: expect.any(Number), submittedAt: now, submission: await submissionOf(a.orgId),
+      id: a.orgId, legalName: 'Alder Custody S.A.', kind: 'institution', businessType: 'fund', country: 'LU', registration: 'B123456', lei: null, address: '2 rue de la Gare, L-1611 Luxembourg', domain: 'alder-list.example', submittedAt: now, submission: await submissionOf(a.orgId),
       applicant: { name: 'Maren Okafor', email: 'ops@alder-list.example', position: 'Chief Operating Officer', phone: '+352621123456', telegram: null },
       credentialHash: view.first.credentialHash, people: [], missing: null, declaration: view.sealed, refused: [],
       wallet: { chainId: CHAIN, chain: 'OP Mainnet', address: accounts[4].address, kind: 'safe', label: 'Treasury', inForce: false, threshold: 2, owners: 3, colour: { level: 'green', why: null } },
@@ -7211,8 +7067,6 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
 
   it('every change of this section and its audit row succeed or fail together, and every action it writes has its words', async () => {
     const a = await applyFor()
-    publish(a.body.record)
-    const unproved = await applyFor() // owner, 2026-11-17: an application that goes on without the DNS record
     const b = await applicantWithTwoKeys()
     const asked = await nameWallet(b, accounts[0].address)
     const signature = await accounts[0].signTypedData(typedActivate(fieldsOf<ActivateFields>(asked.body.intent)))
@@ -7235,7 +7089,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     const [askedG, askedH] = [await askLink(g, g1.address), await nameWallet(h, h1.address)]
     const [proofG, proofH] = [await g1.signTypedData(typedOf(intentOf(askedG.body.intent))), await h1.signTypedData(typedActivate(fieldsOf<ActivateFields>(askedH.body.intent)))]
     const steps: [string, () => Promise<{ status: number }>][] = [
-      ['organisation.apply', () => checkDns(a.intent)], ['organisation.apply_unproved', () => call('POST', '/api/apply/check', { body: { intent: unproved.intent, skipDns: true } })], ['activation.proof', () => prove(asked.body.intent, signature)], ['review.submit', () => submit(c)], ['declaration.upload', () => upload(b, file)],
+      ['organisation.apply', () => create(a.intent)], ['activation.proof', () => prove(asked.body.intent, signature)], ['review.submit', () => submit(c)], ['declaration.upload', () => upload(b, file)],
       ['kyb.approve', () => decideOn(d.orgId)], ['kyb.more', () => decideOn(d.orgId, MORE)], ['kyb.refuse', () => decideOn(d.orgId, { ...MORE, decision: 'refuse' })],
       ['organisation.freeze', () => op('POST', `/api/operator/organisations/${e.orgId}/freeze`)],
       ['sealed.download', async () => take((await itemsOf(d.orgId))[0].id)],
@@ -7251,7 +7105,8 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect(await objects()).toEqual(kept) // milestone 5b: an upload whose row failed leaves no object behind
     await noLists()
     const written = [...new Set([...onboardingSource.matchAll(/'([a-z_]+(?:\.[a-z_]+)+)'/g)].map((match) => match[1]))]
-    expect(written.sort()).toEqual([...steps.map(([action]) => action), 'organisation.unfreeze'].sort())
+    // organisation.apply_unproved is read, never written: the first rows of 2026-11-17 and 18 (Codex, PR #1660).
+    expect(written.sort()).toEqual([...steps.map(([action]) => action), 'organisation.unfreeze', 'organisation.apply_unproved'].sort())
     for (const action of written) expect(EVENTS[action], action).toEqual(expect.any(String))
     expect(Object.keys(onboarding.ONBOARDING_EVENTS).sort()).toEqual(written)
     // Every statement of this file is prepared with bound parameters: no value of a request is written into SQL text.
@@ -7272,11 +7127,10 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect(await snapshot([...TABLES, COUNTER])).toBe(rows)
   }
   isolation['POST /api/apply/check'] = async (a, b) => {
-    // A proved application makes a new organisation, whoever is signed in: no row of A or B changes.
+    // An application makes a new organisation, whoever is signed in: no row of A or B changes.
     const mine = () => Promise.all([a, b].flatMap((m) => TABLES.filter((table) => table !== 'organisations').map((table) => count(table, m.orgId))))
     const before = await mine()
     const x = await applyFor('cedar-check.example')
-    publish(x.body.record)
     expect((await call('POST', '/api/apply/check', { body: { intent: x.intent, organisationId: b.orgId }, cookie: a.cookie })).body).toEqual({ state: 'unverified' })
     expect(await mine()).toEqual(before)
     const made = (await row<{ id: string }>('SELECT id FROM organisations WHERE email_domain = ?', 'cedar-check.example'))!.id
@@ -7292,7 +7146,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect((await post(`/api/wallets/${wallet.id}/anchor`, b)).body).toEqual({ state: 'applied' })
     for (const path of ['/api/onboarding', `/api/onboarding?organisationId=${b.orgId}`, `/api/onboarding?org=${b.orgId}`]) {
       const view = await call('GET', path, { cookie: a.cookie })
-      expect(view.body).toEqual({ company: { legalName: a.name, kind: 'partner', businessType: null, country: 'LU', registration: null, lei: null, address: null, domain: null, domainVerifiedAt: null }, first: null, people: [], seal: { key: KEY, generation: 'g1' }, sealed: null, downloads: [], wallet: null, missing: null, review: { status: 'verified', since: null, reason: null }, record: null, chains: expect.any(Array) })
+      expect(view.body).toEqual({ company: { legalName: a.name, kind: 'partner', businessType: null, country: 'LU', registration: null, lei: null, address: null, domain: null }, first: null, people: [], seal: { key: KEY, generation: 'g1' }, sealed: null, downloads: [], wallet: null, missing: null, review: { status: 'verified', since: null, reason: null }, record: null, chains: expect.any(Array) })
     }
     expect((await call('GET', '/api/onboarding', { cookie: b.cookie })).body).toMatchObject({ company: { legalName: b.name }, people: [{ name: 'Zed Birch', email: 'zed@birch.example', role: 'admin' }], record: { legalName: 'Birchfield Capital Ltd', tier: 'enhanced' }, wallet: { address: accounts[0].address } })
     expect((await call('GET', `/api/onboarding/${b.orgId}`, { cookie: a.cookie })).status).toBe(404)

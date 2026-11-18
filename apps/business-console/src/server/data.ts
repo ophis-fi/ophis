@@ -54,8 +54,8 @@ const quarantined = (actor: Actor, now: number) => (actor.quarantineUntil ?? 0) 
 const mayManage = (actor: Role, target: Role) => actor === 'owner' || (actor === 'admin' && target !== 'owner')
 
 const hex = (bytes: Uint8Array) => [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
-// A company's email domain, and a work address at it or at a subdomain of it, in lower case (null otherwise). The DNS
-// proof of the domain is what makes such an address a company address: no list of mail providers. The part before
+// A company's email domain, and a work address at it or at a subdomain of it, in lower case (null otherwise). Ophis
+// checks the domain with the company in its review: no list of mail providers. The part before
 // the @ is printable ASCII: no control character or bidi override reaches a page or the operator's terminal.
 export const DOMAIN = /^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/
 export function emailAt(value: unknown, domain: string | null) {
@@ -1586,8 +1586,8 @@ export async function seedOrganisation(db: D1Database, o: { name: string; kind: 
   const ticketId = randomId()
   await commit(db, orgId, () => [{ at: o.now, actorKind: 'system', actorId: null, sessionId: null, action: 'organisation.seed', subjectId: orgId }, [
     // The country is a constant of the seed: the KYB row of a screening copies it (kyb_records needs one).
-    db.prepare(`INSERT INTO organisations (id, kind, name, state, created_at, email_domain, domain_verified_at, country) VALUES (?, ?, ?, 'active', ?, ?, ?, 'LU')`)
-      .bind(orgId, o.kind, o.name, o.now, o.domain ?? null, o.domain ? o.now : null),
+    db.prepare(`INSERT INTO organisations (id, kind, name, state, created_at, email_domain, country) VALUES (?, ?, ?, 'active', ?, ?, 'LU')`)
+      .bind(orgId, o.kind, o.name, o.now, o.domain ?? null),
     db.prepare(`INSERT INTO seats (id, org_id, display_name, role, state, created_at) VALUES (?, ?, ?, 'owner', 'invited', ?)`).bind(seatId, orgId, o.ownerName, o.now),
     db.prepare(`INSERT INTO enrolment_tickets (id, org_id, seat_id, kind, role, token_hash, state, expires_at, created_at)
                 VALUES (?, ?, ?, 'first_owner', 'owner', ?, 'issued', ?, ?)`).bind(ticketId, orgId, seatId, o.ticketHash, o.now + 10 * 60_000, o.now),

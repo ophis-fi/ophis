@@ -143,7 +143,7 @@ The current backend source screens addresses against an OFAC SDN snapshot and ma
 
 ## Business console
 
-The [Business console](https://github.com/ophis-fi/ophis/tree/main/apps/business-console) at pro.ophis.fi is a separate permissioned service with invitations, company review, KYB records, sanctions screening and role-based approvals. Domain proof by DNS is optional; an unproved domain still requires operator review. New applications allow synced passkeys, and an organisation can require hardware keys. These onboarding rules describe the Business console, not every public retail swap.
+The [Business console](https://github.com/ophis-fi/ophis/tree/main/apps/business-console) at pro.ophis.fi is a separate permissioned service with invitations, company review, KYB records, sanctions screening and role-based approvals. Applications record the submitted company domain; operators review the company before enabling it. New applications allow synced passkeys, and an organisation can require hardware keys. These onboarding rules describe the Business console, not every public retail swap.
 
 ## Ophis source code {/* #ophis-specific-code */}
 
