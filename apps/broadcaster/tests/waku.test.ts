@@ -175,8 +175,9 @@ it('reports an oversized reply without allowing it to block the remaining batch 
 })
 
 it('keeps the relay cache configuration and alarm capacity aligned', () => {
-  expect(readFileSync(new URL('../waku.compose.yml', import.meta.url), 'utf8'))
-    .toContain(`--rest-relay-cache-capacity=${WAKU_CACHE_CAPACITY}`)
+  const compose = readFileSync(new URL('../waku.compose.yml', import.meta.url), 'utf8')
+  const arguments_ = [...compose.matchAll(/^\s*-\s+(--rest-relay-cache-capacity=\S+)\s*$/gm)].map(match => match[1])
+  expect(arguments_).toEqual([`--rest-relay-cache-capacity=${WAKU_CACHE_CAPACITY}`])
 })
 
 it('accepts ordinary traffic above the old 16-message cache without reporting a full cache', async () => {
