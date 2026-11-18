@@ -28,11 +28,12 @@ export function configureReadinessTransport(transport: FetchRequest, throttles: 
         ? Number(header) * 1000 : Math.max(0, Date.parse(header) - Date.now())
       const wait = Math.max(2000 * 2 ** attempt, Number.isNaN(retryAfter) ? 0 : retryAfter)
       const retry = attempt < 3 && wait <= 8000 && performance.now() + wait < deadline && reason !== 'shared-provider-quota'
-      throttles.push({ attempt: attempt + 1, reason, retryInMs: retry ? wait : null })
+      const sample: ThrottleSample = { attempt: attempt + 1, reason, retryInMs: retry ? wait : null }
+      throttles.push(sample)
       if (!retry) return result
       // Own backoff here: ethers 6.14 retries immediately and interprets Retry-After seconds as milliseconds.
       await new Promise(resolve => setTimeout(resolve, wait))
-      if (performance.now() >= deadline) return result
+      if (performance.now() >= deadline) { sample.retryInMs = null; return result }
     }
   }
 }

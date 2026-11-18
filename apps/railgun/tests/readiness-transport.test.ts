@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { FetchRequest } from 'ethers'
 import { configureReadinessTransport, type ThrottleSample } from './readiness-transport'
 
-afterEach(() => vi.useRealTimers())
+afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers() })
 
 function probe(statuses: number[], headers: Record<string, string> = {}, error = 'limited', latency = 0) {
   vi.useFakeTimers()
@@ -61,6 +61,22 @@ it('keeps a late 429 visible without scheduling a retry past the per-send deadli
   expect(Date.now() - start).toBe(19_000)
   expect(sent).toHaveLength(1)
   expect(throttles).toEqual([{ attempt: 1, reason: 'http-429', retryInMs: null }])
+})
+
+it('clears its own retry sample when the timer resumes after the deadline', async () => {
+  const { transport, sent, throttles } = probe([429, 200])
+  const clock = vi.spyOn(performance, 'now').mockReturnValue(0)
+  const result = transport.send()
+  await vi.advanceTimersByTimeAsync(0)
+  expect(throttles[0].retryInMs).toBe(2000)
+  const otherSample = { attempt: 1, reason: 'other-request', retryInMs: 4000 }
+  throttles.push(otherSample)
+  clock.mockReturnValue(21_000)
+  await vi.runAllTimersAsync()
+  expect((await result).statusCode).toBe(429)
+  expect(sent).toHaveLength(1)
+  expect(throttles[0].retryInMs).toBeNull()
+  expect(otherSample.retryInMs).toBe(4000)
 })
 
 it.each([
