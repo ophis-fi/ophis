@@ -62,6 +62,8 @@ export const ONBOARDING_EVENTS: Record<string, string> = {
   'organisation.apply_unproved': 'Organisation created by an application without a DNS proof of its domain, first Owner passkey active',
   'activation.proof': 'Recovery wallet signed the activation and confirmed the first Owner passkey',
   'review.submit': 'Organisation submitted for review',
+  // Written by hand by the operator, at the first Owner's request (2026-11-19: the legal details of an application were placeholders). Read, never written by code.
+  'organisation.correct': 'Ophis operator: legal name, registration number and registered address corrected, at the request of the first Owner',
   'declaration.upload': 'Signed declaration uploaded, sealed in the browser (the detail is the SHA-256 of the sealed file)',
   'kyb.approve': 'Ophis operator: verification approved, organisation active, with the people its application named',
   'kyb.refuse': 'Ophis operator: verification refused, organisation closed',

@@ -7132,7 +7132,8 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
     await noLists()
     const written = [...new Set([...onboardingSource.matchAll(/'([a-z_]+(?:\.[a-z_]+)+)'/g)].map((match) => match[1]))]
     // organisation.apply_unproved is read, never written: the first rows of 2026-11-17 and 18 (Codex, PR #1660).
-    expect(written.sort()).toEqual([...steps.map(([action]) => action), 'organisation.unfreeze', 'organisation.apply_unproved'].sort())
+    // organisation.correct is written by hand by the operator (2026-11-19), never by code: it only needs its words.
+    expect(written.sort()).toEqual([...steps.map(([action]) => action), 'organisation.unfreeze', 'organisation.apply_unproved', 'organisation.correct'].sort())
     for (const action of written) expect(EVENTS[action], action).toEqual(expect.any(String))
     expect(Object.keys(onboarding.ONBOARDING_EVENTS).sort()).toEqual(written)
     // Every statement of this file is prepared with bound parameters: no value of a request is written into SQL text.
