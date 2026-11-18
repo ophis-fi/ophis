@@ -29,7 +29,7 @@ import { DatabaseSync } from 'node:sqlite' // the sealed file, read back from th
 import { Decrypter } from 'age-encryption' // milestone 5b: opens the downloaded file with the local test identity, as the operator would offline
 import { chromium } from 'playwright-core'
 import { mnemonicToAccount } from 'viem/accounts'
-import { publish as publishTxt, start as startDnsStubs } from '../scripts/dns-stub.mjs' // milestone 5: the two local resolvers of "Check DNS"
+import { start as startDnsStubs } from '../scripts/dns-stub.mjs' // milestone 5: the two local resolvers of the server's DNS check
 import { CONTRACT, PORT as INDEXER_PORT, start as startIndexer } from '../scripts/indexer-stub.mjs' // partner figures: the local stand-in for the rebate indexer
 import { PORT as LIST_PORT, start as startLists } from '../scripts/list-stub.mjs' // M10: the local stand-in for the place where the OFAC list file lives
 import { start as startTurnstile } from '../scripts/turnstile-stub.mjs' // the local stand-in for Cloudflare Turnstile
@@ -845,24 +845,15 @@ try {
   await on.getByLabel('Phone of person 2').fill('+352 621 000 001')
   await on.getByLabel('Role of person 2').selectOption('admin')
   check('the form names a second person: a name, a position, a work email at the domain, a phone, the role Owner or Admin; it fits a phone', await both(on, '59-apply-people', 'fieldset'))
-  check('the application page carries the footer line and says nothing is stored yet', await on.locator(".foot-line", { hasText: FOOTER }).isVisible() && await on.getByText('Ophis stores nothing until you create the organisation.').isVisible())
+  check('the application page carries the footer line and says nothing is stored yet', await on.locator(".foot-line", { hasText: FOOTER }).isVisible() && await on.getByText('Nothing is stored until you create the organisation').isVisible())
   await on.getByRole('button', { name: 'Create the passkey', exact: true }).click()
   await on.getByRole('heading', { name: 'Your passkey is ready. Create the organisation.' }).waitFor()
-  // Owner, 2026-11-17: the DNS record is optional. The main action creates the organisation at once; this run takes the
-  // optional DNS path, which proves the domain (the main path is covered by the unit tests).
-  check('the page offers to create the organisation now, and the DNS record as an option', await on.getByRole('button', { name: 'Create the organisation' }).isVisible()
-    && await on.getByRole('heading', { name: 'Optional: prove the company domain by DNS' }).isVisible())
-  const [, recordName, recordValue] = await on.locator('dl.kv dd').allInnerTexts()
-  check('the record is a TXT at _ophis-verify.<domain> with a short code', recordName === `_ophis-verify.${domain}` && /^ophis-verify=[A-Za-z0-9_-]{20}$/.test(recordValue) && await both(on, '32-apply-record'))
-  check('the page offers a link to come back, with the application in the fragment', (await on.getByLabel(/Link to come back/).inputValue()).startsWith(`${ORIGIN}/apply#`))
-  await on.getByRole('button', { name: 'Check DNS' }).click()
-  await on.getByText('The record is not there yet on both resolvers').waitFor()
-  check('before the record is published the check is refused', await on.getByRole('button', { name: 'Check DNS' }).isVisible())
-  // A reload keeps the application (this browser remembers it), and shows the record again.
+  // Owner, 2026-11-18: the page asks for no DNS record (the server's DNS path keeps its unit tests).
+  check('the page offers one action, no DNS record, and fits a phone', await on.getByRole('button', { name: 'Create the organisation' }).isVisible()
+    && (await on.getByText(/DNS|_ophis-verify/).count()) === 0 && await both(on, '32-apply-create'))
+  // A reload keeps the application (this browser remembers it).
   await on.reload()
-  await on.getByText(recordValue).waitFor()
-  publishTxt(recordName, recordValue) // what the company's DNS administrator does
-  await on.getByRole('button', { name: 'Check DNS' }).click()
+  await on.getByRole('button', { name: 'Create the organisation' }).click()
   await on.getByRole('heading', { name: 'The organisation exists.' }).waitFor()
   await on.getByRole('link', { name: 'Sign in' }).last().click()
   await on.getByRole('button', { name: 'Sign in with a passkey' }).click()
@@ -917,7 +908,8 @@ try {
   const sent = []
   const around = [] // the address and the headers of that request: the name and the type of the clear file stay in the browser too
   on.on('request', (request) => request.url().includes('/api/onboarding/declaration') && (sent.push(request.postDataBuffer()), around.push(request.url() + JSON.stringify(request.headers()))))
-  check('the page names the key it seals to', await on.getByText(/Sealed to key [0-9a-f]{64}/).isVisible())
+  // The key's hash is computed in the browser after the page shows: wait for it (isVisible alone raced it on 11-18).
+  check('the page names the key it seals to', await on.getByText(/Sealed to key [0-9a-f]{64}/).waitFor().then(() => true, () => false))
   await on.getByLabel(/Signed scan/).setInputFiles({ name: 'declaration.pdf', mimeType: 'application/pdf', buffer: scan })
   await on.getByRole('button', { name: 'Seal and upload' }).click()
   await on.getByText('Uploaded on').waitFor({ timeout: 15000 }).catch(async () => check(`the sealed file was uploaded (the page says: ${(await on.locator('[role=alert]').allInnerTexts()).join(' ')})`, false))

@@ -25,11 +25,9 @@ const SAY: Record<string, string> = {
   device_bound_required: 'This organisation requires hardware security keys. A passkey that syncs to a cloud account is not accepted.',
   intent_invalid: 'This application is not one this site issued, or it was changed on the way. Start again.',
   intent_expired: 'This application is older than 7 days. Start again.',
-  dns_not_proved: 'The record is not there yet on both resolvers, or its value differs. DNS changes can take some minutes. Check the name and the value, then try again.',
   domain_taken: 'An organisation already exists for this domain. Ask its Owner to invite you, or write to Ophis.',
   invite_invalid: 'This invitation code is not one Ophis issued, or it is older than 48 hours. Check the 12 characters, or ask Ophis for a new one.',
   invite_used: 'This invitation code was already used. Ask Ophis for a new one.',
-  too_many: 'Too many DNS checks for this domain in the last hour. Try again later.',
   not_stored: 'This application was already used. Sign in with the passkey you created for it.',
   second_key: 'The first Owner needs two passkeys. Add the second under Organisation, My passkeys.',
   proof_or_owner: 'One of two things is still missing: the signature of the recovery wallet, or a second Owner with two passkeys.',
@@ -82,10 +80,9 @@ const keep = (intent: string) => {
   try {
     intent ? localStorage.setItem(KEPT, intent) : localStorage.removeItem(KEPT)
   } catch {
-    // storage is blocked: the resume link still works
+    // storage is blocked: the application lasts as long as this page
   }
 }
-interface DnsRecord { name: string; type: string; value: string }
 const FIELDS = { invite: '', legalName: '', businessType: '', country: '', registration: '', lei: '', address: '', name: '', position: '', email: '', domain: '', phone: '', telegram: '' }
 interface Person { name: string; position: string; email: string; phone: string; telegram: string; role: string }
 const NOBODY: Person = { name: '', position: '', email: '', phone: '', telegram: '', role: 'admin' }
@@ -96,11 +93,8 @@ export function Apply() {
   const [people, setPeople] = useState<Person[]>([]) // besides the applicant: 0 to 4
   const person = (i: number, change: Partial<Person>) => setPeople(people.map((p, j) => (j === i ? { ...p, ...change } : p)))
   const [intent, setIntent] = useState(() => (location.hash.length > 1 ? location.hash.slice(1) : kept()))
-  const [record, setRecord] = useState<DnsRecord>()
-  const [expiresAt, setExpiresAt] = useState<number>()
   const [done, setDone] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [copied, setCopied] = useState('')
   const [problem, setProblem] = useState(typeof PublicKeyCredential === 'undefined' ? 'This browser cannot use passkeys. Use a current version of Chrome, Edge, Firefox or Safari.' : '')
   const set = (key: keyof typeof FIELDS) => (event: { target: { value: string } }) => setForm({ ...form, [key]: event.target.value })
   // The company domain follows the work email until it is edited: most companies' domain is the part after the @.
@@ -116,26 +110,20 @@ export function Apply() {
       setBusy(false)
     }
   }
-  // skipDns: make the organisation now, without the DNS record (owner, 2026-11-17: the record is optional).
-  const check = useCallback((sealed: string, quiet = false, skipDns = false) => run(async () => {
-    const result = await api<{ state?: string; error?: string; record?: DnsRecord }>('/api/apply/check', { intent: sealed, ...(skipDns && { skipDns: true }) })
+  // Owner, 2026-11-18: the page offers no DNS record any more (skipDns): the invitation and Ophis's review stand for the domain.
+  const create = () => run(async () => {
+    const result = await api<{ state?: string; error?: string }>('/api/apply/check', { intent, skipDns: true })
     if (result.status === 200) {
       keep('')
       return setDone(true)
     }
-    if (result.data.record) setRecord(result.data.record)
-    else if (['intent_invalid', 'intent_expired', 'domain_taken', 'not_stored', 'invite_used'].includes(result.data.error ?? '')) {
+    if (['intent_invalid', 'intent_expired', 'domain_taken', 'not_stored', 'invite_used'].includes(result.data.error ?? '')) {
       // Not an application any more: changed, expired, used, or its domain taken. Any other failure keeps it.
       keep('')
       setIntent('')
     }
-    if (!(quiet && result.data.error === 'dns_not_proved')) return told(result.data)
-  }), [])
-  // A resumed application (the link, or this browser's own): one check shows the record, or finishes.
-  useEffect(() => {
-    if (intent && !record) void check(intent, true)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    return told(result.data)
+  })
 
   const start = (event: FormEvent) => {
     event.preventDefault()
@@ -143,23 +131,19 @@ export function Apply() {
       const begun = await api<{ seat: string; options: PublicKeyCredentialCreationOptionsJSON; error?: string }>('/api/apply', { ...form, people })
       if (begun.status !== 200) return told(begun.data)
       const passkey = (await navigator.credentials.create({ publicKey: PublicKeyCredential.parseCreationOptionsFromJSON(begun.data.options) })) as PublicKeyCredential
-      const made = await api<{ intent: string; record: DnsRecord; expiresAt: number; error?: string }>('/api/apply', { ...form, people, seat: begun.data.seat, response: passkey.toJSON() })
+      const made = await api<{ intent: string; error?: string }>('/api/apply', { ...form, people, seat: begun.data.seat, response: passkey.toJSON() })
       if (made.status !== 200) return told(made.data)
       keep(made.data.intent)
       setIntent(made.data.intent)
-      setRecord(made.data.record)
-      setExpiresAt(made.data.expiresAt)
     })
   }
-  const copy = (what: string, text: string) => navigator.clipboard.writeText(text).then(() => setCopied(what), () => setCopied(''))
-  const resume = `${location.origin}/apply#${intent}`
 
   return (
     <section className="recover">
       <header className="ph"><div>
         <span className="cap eyebrow">Apply</span>
-        <h1 className="h-page">Open an organisation, <em>prove your company domain</em>.</h1>
-        <p className="lede">For companies only, by invitation: Ophis gives you an invitation code. You enter the company, create a passkey (on this device, your phone or a security key), and Ophis reviews the company. Ophis stores nothing until you create the organisation.</p>
+        <h1 className="h-page">Open an organisation <em>for your company</em>.</h1>
+        <p className="lede">For companies, by invitation only. Enter your invitation code and the company's details, then create a passkey on this device, your phone or a security key. Nothing is stored until you create the organisation, and Ophis reviews the company before anything else opens.</p>
       </div></header>
       {problem && <Problem>{problem}</Problem>}
       {done ? (
@@ -171,33 +155,11 @@ export function Apply() {
       ) : intent ? (
         <div className="panel stack">
           <h2 className="h-panel">Your passkey is ready. Create the organisation.</h2>
-          <p>Ophis checks your company in its review before anything else opens. You do not need to change anything on your side.</p>
+          <p>You then sign in with this passkey. Ophis reviews the company before anything else opens.</p>
           <div className="acts">
-            <button className="btn primary md" type="button" disabled={busy} onClick={() => check(intent, false, true)}><Icon name="building-2" size={16} />Create the organisation</button>
-            <button className="btn ghost md" type="button" disabled={busy} onClick={() => { keep(''); setIntent(''); setRecord(undefined); setProblem('') }}>Start again</button>
+            <button className="btn primary md" type="button" disabled={busy} onClick={create}><Icon name="building-2" size={16} />Create the organisation</button>
+            <button className="btn ghost md" type="button" disabled={busy} onClick={() => { keep(''); setIntent(''); setProblem('') }}>Start again</button>
           </div>
-          <h3 className="h-panel sub">Optional: prove the company domain by DNS</h3>
-          <p>If your DNS administrator can publish this record, check it instead: the organisation then shows a proved domain.</p>
-          {record ? (
-            <>
-              <dl className="kv">
-                <dt>Type</dt><dd>{record.type}</dd>
-                <dt>Name</dt><dd className="mono">{record.name}</dd>
-                <dt>Value</dt><dd className="mono">{record.value}</dd>
-              </dl>
-              <div className="acts">
-                <button className="btn ghost md" type="button" onClick={() => copy('name', record.name)}><Icon name="clipboard-check" size={16} />{copied === 'name' ? 'Copied' : 'Copy the name'}</button>
-                <button className="btn ghost md" type="button" onClick={() => copy('value', record.value)}><Icon name="clipboard-check" size={16} />{copied === 'value' ? 'Copied' : 'Copy the value'}</button>
-              </div>
-              <p className="note warn" role="status"><Icon name="info" /><span className="grow">The value belongs to the passkey you just created. A record from an earlier application does not work, and this record works for no other passkey. Keep this passkey.</span></p>
-            </>
-          ) : <p className="fine" role="status">Reading the application.</p>}
-          <div><button className="btn ghost md" type="button" disabled={busy} onClick={() => check(intent)}><Icon name="shield-check" size={16} />Check DNS and create</button></div>
-          <label className="field">Link to come back to this application{expiresAt ? `, valid until ${minute(expiresAt)}` : ', valid 7 days'}
-            <input className="input mono" readOnly value={resume} onFocus={(event) => event.target.select()} />
-          </label>
-          <div><button className="btn ghost md" type="button" onClick={() => copy('link', resume)}><Icon name="clipboard-check" size={16} />{copied === 'link' ? 'Copied' : 'Copy the link'}</button></div>
-          <p className="fine"><Icon name="info" size={16} /><span>With the record, two independent DNS resolvers must both show it. Either way, the organisation is created and you sign in with your passkey. This browser remembers the application.</span></p>
         </div>
       ) : (
         <form className="panel stack" onSubmit={start}>
@@ -286,7 +248,7 @@ export function Apply() {
               {people.length < 4 && <div><button className="btn ghost md" type="button" onClick={() => setPeople([...people, { ...NOBODY }])}><Icon name="user" size={16} />Add a person</button></div>}
             </div>
           </fieldset>
-          <p>The next step creates your passkey, which makes you the first Owner: on this device, your phone or a security key. Then you create the organisation. Ophis stores nothing before that; this browser keeps your application so you can come back to it.</p>
+          <p>The next step creates your passkey, which makes you the first Owner: on this device, your phone or a security key. Then you create the organisation; until then this browser keeps your application.</p>
           <div><button className="btn primary md" type="submit" disabled={busy || typeof PublicKeyCredential === 'undefined'}><Icon name="key-round" size={16} />Create the passkey</button></div>
         </form>
       )}
@@ -455,7 +417,7 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
           <Step icon="building-2" title="Company and domain" done>
             <p>{company.legalName}{company.businessType ? `, ${BUSINESS[company.businessType] ?? company.businessType}` : company.kind ? `, ${KIND[company.kind] ?? company.kind}` : ''}{company.country ? `, incorporated in ${countryName(company.country)}` : ''}{company.registration ? `, number ${company.registration}` : ''}{company.lei ? `, LEI ${company.lei}` : ''}.</p>
             {company.address && <p>Registered address: {company.address}.</p>}
-            <p>{!company.domain ? 'Created by Ophis for this local build, without an application.' : company.domainVerifiedAt ? `Domain ${company.domain}, proved by its DNS record on ${day(company.domainVerifiedAt)}.` : `Domain ${company.domain}, not proved by DNS: Ophis checks the company in its review.`}</p>
+            <p>{!company.domain ? 'Created by Ophis for this local build, without an application.' : company.domainVerifiedAt ? `Domain ${company.domain}, proved by its DNS record on ${day(company.domainVerifiedAt)}.` : `Domain ${company.domain}.`}</p>
             {view.people.length > 0 && <p>{verified ? 'Approved by Ophis with the organisation' : 'Other people named in the application'}: {view.people.map((p) => `${who(p)} (${ROLE[p.role]}, ${p.email})`).join('; ')}. {verified
               ? 'Each has a seat under Organisation, Members and roles. An Owner or Admin gives each one a link there, then confirms the new passkey. No second person is needed.'
               : 'Ophis checks them with the company. When Ophis approves, each gets a seat. Do not invite them yourself.'}</p>}
