@@ -303,8 +303,9 @@ async function run(): Promise<void> {
     while (!stopping) {
       assertDisk(config.state)
       try {
+        // A saved reply needs no fresh RPC reads; new handlers still wait for refresh.
+        if (command === 'run') await waku!.retryReply()
         if (Date.now() - lastRefresh >= 30_000) {
-          lastRefresh = Date.now()
           metrics.ready = command === 'run' ? false : await broadcaster.available()
           if (sdk.ready()) {
             metrics.feeBalances = await sdk.balances(); metrics.feeBalancesAt = Date.now()
@@ -323,6 +324,7 @@ async function run(): Promise<void> {
             await waku!.publish(TOPICS.fees, advertisement.message)
             metrics.ready = advertisement.available
           }
+          lastRefresh = Date.now()
         }
         if (command === 'run') {
           await waku!.dispatch(payload => broadcaster.handle(payload), abort.signal)

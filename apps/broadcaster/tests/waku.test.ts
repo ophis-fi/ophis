@@ -43,11 +43,11 @@ it('counts full caches before filtering and clears only after sustained successf
   vi.mocked(fetch).mockImplementation(async () => new Response('[]'))
   expect(await waku.messages()).toEqual([])
   expect(waku.saturated).toBe(true)
-  vi.setSystemTime(fullAt + 120_000)
+  vi.advanceTimersByTime(120_000)
   await waku.messages()
   expect(waku.saturated).toBe(true)
   for (let elapsed = 5000; elapsed <= 60_000; elapsed += 5000) {
-    vi.setSystemTime(fullAt + 120_000 + elapsed)
+    vi.advanceTimersByTime(5000)
     await waku.messages()
     expect(waku.saturated).toBe(elapsed < 60_000)
   }
@@ -61,18 +61,34 @@ it('restarts recovery after a failed poll or another full batch', async () => {
   await waku.messages()
   vi.mocked(fetch).mockImplementation(async () => new Response('[]'))
   for (let poll = 0; poll < 12; poll++) {
-    vi.setSystemTime(Date.now() + 5000)
+    vi.advanceTimersByTime(5000)
     await waku.messages()
   }
   vi.mocked(fetch).mockResolvedValueOnce(new Response('{}'))
   await expect(waku.messages()).rejects.toThrow('invalid message list')
-  vi.setSystemTime(Date.now() + 5000)
+  vi.advanceTimersByTime(5000)
   await waku.messages()
   expect(waku.saturated).toBe(true)
   vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify(Array.from({ length: 16 }, () => entry('full again')))))
   await waku.messages()
   expect(waku.fullBatches).toBe(2)
   expect(waku.lastFullBatchAt).toBe(Date.now())
+})
+
+it('measures recovery with elapsed time even when the wall clock jumps forward', async () => {
+  vi.useFakeTimers()
+  const waku = relay(Array.from({ length: 16 }, () => entry('full')))
+  await waku.messages()
+  const fullAt = waku.lastFullBatchAt
+  vi.mocked(fetch).mockImplementation(async () => new Response('[]'))
+  await waku.messages()
+  vi.setSystemTime(Date.now() + 4000)
+  for (let seconds = 1; seconds <= 60; seconds++) {
+    vi.advanceTimersByTime(1000)
+    await waku.messages()
+    expect(waku.saturated).toBe(seconds < 60)
+  }
+  expect(waku.lastFullBatchAt).toBe(fullAt)
 })
 
 it('filters unrelated topics and invalid or oversized individual payloads', async () => {
@@ -120,6 +136,11 @@ it('retries a saved reply and retains the remaining batch without running its ha
   expect(waku.pendingMessages).toBe(2)
   expect(handle).toHaveBeenCalledTimes(1)
   vi.mocked(fetch).mockImplementation(async () => new Response(null, { status: 200 }))
+  // Main can retry this reply even while fee refresh prevents admission of new handlers.
+  await waku.retryReply()
+  await waku.retryReply()
+  expect(handle).toHaveBeenCalledTimes(1)
+  expect(waku.pendingMessages).toBe(1)
   await waku.dispatch(handle, signal)
   expect(waku.pendingMessages).toBe(0)
   expect(handle.mock.calls.map(([payload]) => Buffer.from(payload).toString())).toEqual(['first', 'second'])
