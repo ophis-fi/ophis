@@ -1,7 +1,7 @@
 // WalletConnect for the signing page (owner, 2026-11-18): a wallet on a phone, or any wallet that speaks WalletConnect,
 // signs a request opened on this computer. It is the same Provider as a browser wallet's, for the calls the proof route
 // makes: the account, the chain, and one EIP-712 signature. Loaded only when chosen. The page's policy names the relay
-// and the Verify service (which lets the wallet show this page's own address); telemetry is off.
+// and the Verify frame (which lets the wallet show this page's own address); telemetry is off. One client per page.
 import SignClient from '@walletconnect/sign-client'
 import QRCode from 'qrcode'
 
@@ -29,11 +29,18 @@ export function qr(uri: string): SVGSVGElement {
   return svg
 }
 
+let shared: Promise<SignClient> | undefined
+const clientOf = () => (shared ??= SignClient.init({
+  projectId: PROJECT_ID,
+  telemetryEnabled: false,
+  metadata: { name: 'Ophis Business', description: 'Wallet signature for the Ophis Business console', url: location.origin, icons: [`${location.origin}/sign/icon.svg`] },
+}))
+
 /**
  * A Provider over one WalletConnect session for `chainId`. `eth_requestAccounts` pairs: `pairing(uri)` shows the link
  * until the wallet approves. The other calls answer from the session, and the signature goes to the wallet.
  */
-export function walletConnect(chainId: number, pairing: (uri: string | null) => void) {
+export function walletConnect(chainId: number, pairing: (uri: string | null) => void, wallet?: string) {
   const chain = `eip155:${chainId}`
   let client: SignClient | undefined
   let topic = ''
@@ -41,18 +48,16 @@ export function walletConnect(chainId: number, pairing: (uri: string | null) => 
   return {
     async request({ method, params }: { method: string; params?: unknown[] }): Promise<unknown> {
       if (method === 'eth_requestAccounts') {
-        client ??= await SignClient.init({
-          projectId: PROJECT_ID,
-          telemetryEnabled: false,
-          metadata: { name: 'Ophis Business', description: 'Wallet signature for the Ophis Business console', url: location.origin, icons: [`${location.origin}/sign/icon.svg`] },
-        })
+        client = await clientOf()
         const { uri, approval } = await client.connect({ optionalNamespaces: { eip155: { chains: [chain], methods: ['eth_signTypedData_v4'], events: ['accountsChanged', 'chainChanged'] } } })
         if (uri) pairing(uri)
         try {
           const session = await approval()
           topic = session.topic
-          // "eip155:10:0xabc…": the account the wallet gave for the chain the request names, and no other.
-          account = (session.namespaces.eip155?.accounts ?? []).find((a) => a.startsWith(`${chain}:`))?.slice(chain.length + 1) ?? ''
+          // "eip155:10:0xabc…": the accounts the wallet gave for the chain the request names, and no other; the one the
+          // request names if the wallet listed several.
+          const mine = (session.namespaces.eip155?.accounts ?? []).filter((a) => a.startsWith(`${chain}:`)).map((a) => a.slice(chain.length + 1))
+          account = mine.find((a) => a.toLowerCase() === wallet?.toLowerCase()) ?? mine[0] ?? ''
         } finally {
           pairing(null)
         }
@@ -67,6 +72,11 @@ export function walletConnect(chainId: number, pairing: (uri: string | null) => 
       }
       if (method === 'eth_signTypedData_v4' && client && topic) return client.request({ topic, chainId: chain, request: { method, params: params ?? [] } })
       throw new Error(`unsupported: ${method}`)
+    },
+    /** Ends the session in the wallet and on this page, whatever happened. */
+    async close() {
+      if (client && topic) await client.disconnect({ topic, reason: { code: 6000, message: 'User disconnected.' } }).catch(() => undefined)
+      topic = ''
     },
   }
 }

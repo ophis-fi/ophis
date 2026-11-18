@@ -569,8 +569,8 @@ try {
   const opened = await signing.goto(signingLink)
   await signing.getByRole('heading', { name: 'What the wallet will sign' }).waitFor()
   const policy = opened.headers()['content-security-policy'] ?? ''
-  check('the signing page carries its own policy, names only WalletConnect\'s relay and Verify service, and may be framed by the Safe interface only',
-    policy === "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self' wss://relay.walletconnect.org https://verify.walletconnect.org https://verify.walletconnect.com; frame-src https://verify.walletconnect.org https://verify.walletconnect.com; frame-ancestors https://app.safe.global https://*.safe.global" && !opened.headers()['x-frame-options'])
+  check('the signing page carries its own policy, names only WalletConnect\'s relay and its Verify frame, and may be framed by the Safe interface only',
+    policy === "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self' wss://relay.walletconnect.org; frame-src https://verify.walletconnect.org; frame-ancestors https://app.safe.global https://*.safe.global" && !opened.headers()['x-frame-options'])
   await signing.evaluate(() => document.fonts.ready)
   check('the signing page shows the black logo of the console and the brand font, both from its own folder',
     await signing.evaluate(() => { const logo = document.querySelector('.brand img'); return logo.naturalWidth > 0 && new URL(logo.src).pathname.startsWith('/sign/assets/ophis-icon-mono-dark') })

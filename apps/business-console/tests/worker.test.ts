@@ -4127,7 +4127,7 @@ describe('y. wallets and the recovery wallet', () => {
       const page = await get(SIGN, path)
       expect([page.status, page.text], path).toEqual([200, `file ${path}`])
       expect(Object.fromEntries(page.headers), path).toEqual({
-        'content-security-policy': "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self' wss://relay.walletconnect.org https://verify.walletconnect.org https://verify.walletconnect.com; frame-src https://verify.walletconnect.org https://verify.walletconnect.com; frame-ancestors https://app.safe.global https://*.safe.global",
+        'content-security-policy': "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self' wss://relay.walletconnect.org; frame-src https://verify.walletconnect.org; frame-ancestors https://app.safe.global https://*.safe.global",
         'cache-control': 'no-cache', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer', 'strict-transport-security': 'max-age=63072000',
         'content-type': 'text/html', etag: '"1"', ...(path === '/sign/manifest.json' && { 'access-control-allow-origin': '*' }),
       })
@@ -4377,7 +4377,7 @@ describe('A. hardening after milestone 4a', () => {
     expect(html, 'build first: pnpm build').toMatch(/<img src="\/sign\/assets\/ophis-icon-mono-dark-[\w-]+\.svg"/)
     // The font files are in the page's own folder (tests/e2e.mjs sees the page load them, with no policy violation).
     for (const font of ['Inter-roman', 'Inter-italic']) expect(builtSignFiles.filter((name) => new RegExp(`/dist/sign/assets/${font}\\.var-[\\w-]+\\.woff2$`).test(name)), font).toHaveLength(1)
-    expect(routerSource).toMatch(/SIGN_HEADERS = \{\s+'content-security-policy': `[^`]*font-src 'self'/)
+    expect(routerSource).toMatch(/SIGN_HEADERS = \{\s+'content-security-policy': "[^"]*font-src 'self'/)
   })
   it('H2: "custodian" is shown as a declaration, in the wallet list and on both approval cards (they share one sentence)', () => {
     const bundle = Object.values(builtConsole).join('\n')

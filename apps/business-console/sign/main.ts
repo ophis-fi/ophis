@@ -138,19 +138,24 @@ async function byWallet(ethereum = (window as { ethereum?: Provider }).ethereum,
 // QR code shows until the wallet approves the connection; the wallet then shows the same fields and signs.
 let pairingLink = ''
 async function byWalletConnect() {
+  const button = $('by-wc') as HTMLButtonElement
+  button.disabled = true // one flow at a time: a second one's expiry would hide the first one's code
   say('Preparing WalletConnect.')
-  const { walletConnect, qr } = await import('./walletconnect.ts')
+  const { walletConnect, qr } = await import('./walletconnect.ts').catch((error: unknown) => { button.disabled = false; throw error })
   const provider = walletConnect(request.chainId, (uri) => {
     pairingLink = uri ?? ''
     $('wc').hidden = !uri
     $('wc-qr').replaceChildren(...(uri ? [qr(uri)] : []))
     if (uri) say('Scan the code with your wallet.')
-  })
+  }, request.wallet)
   try {
     await byWallet(provider, 'The wallet that connected')
   } catch (error) {
     if (error instanceof Error && error.message === 'chain') return say(`The wallet did not connect on ${CHAIN_NAME[request.chainId] ?? `chain ${request.chainId}`}. Choose that network in the wallet and try again.`, 'bad')
     throw error
+  } finally {
+    button.disabled = false
+    void provider.close()
   }
 }
 
