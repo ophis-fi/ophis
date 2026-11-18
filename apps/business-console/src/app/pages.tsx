@@ -1241,7 +1241,7 @@ const OVERALL: Record<string, [badge: string, sentence: string]> = {
   not_recoverable: ['Not recoverable', 'One Owner and no recovery wallet: if that Owner is locked out, nobody can restore access.'],
 }
 const STEP: Record<string, string> = {
-  hardware_key: 'Next step: every Owner adds a hardware key, under Organisation, My passkeys.',
+  owner_key: 'Next step: every Owner needs a usable passkey: a hardware key where this organisation requires one, under My passkeys, or a re-enrolment for an Owner who lost all of theirs.',
   second_owner: 'Next step: invite a second Owner.',
   recovery_wallet: 'Next step: link a wallet and set it as the recovery wallet, under Organisation, Wallets. A Safe with a threshold of 2 or more and no module is best.',
 }
@@ -1282,7 +1282,7 @@ function Readiness({ after }: { after: unknown }) {
       <header><Tile name="life-buoy" /><div><h2 className="h-panel" id="rd-h">Recovery readiness</h2><p><Status>{badge}</Status></p><p>{sentence} {ready.step && STEP[ready.step]}</p></div></header>
       <div>
         <div className="srow"><Icon name="users" size={20} /><b>Owners</b><Status>{LEVEL[owners.level]}</Status>
-          <p>{owners.level === 'green' ? `${owners.count} Owners.` : owners.level === 'amber' ? 'One Owner. If that person is locked out, only the recovery wallet restores access.' : 'An Owner holds no hardware key, which this organisation requires.'}</p></div>
+          <p>{owners.level === 'green' ? `${owners.count} Owners.` : owners.level === 'amber' ? 'One Owner. If that person is locked out, only the recovery wallet restores access.' : 'An Owner has no usable passkey.'}</p></div>
         <div className="srow"><Icon name="key-round" size={20} /><b>Last-Owner recovery</b><Status>{ready.sheet.wallet ? 'In place today' : 'None'}</Status>
           <p>{ready.sheet.wallet ? `If no Owner can sign in, the signers of ${wallet.label} can replace all Owner passkeys: 72 hours of wait, which an Owner or the wallet can cancel, then 7 days in which a replaced Owner passkey can stop it. Print the recovery sheet below and keep it where the signers find it.` : 'Not possible yet: no recovery wallet is in force. If every Owner is locked out, nobody can restore access.'}</p></div>
         <div className="srow"><Icon name="wallet" size={20} /><b>Recovery wallet</b><Status>{LEVEL[wallet.level]}</Status>

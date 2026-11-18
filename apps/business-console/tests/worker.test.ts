@@ -4111,7 +4111,7 @@ describe('y. wallets and the recovery wallet', () => {
     expect(await ready()).toMatchObject({ owners: { level: 'green', count: 2 }, overall: 'ready', step: null })
     // Where hardware keys are required a synced passkey does not count for an Owner: one with none is red. A frozen Owner is not counted.
     await db.prepare(`UPDATE credentials SET device_bound = 0 WHERE id = ?`).bind(o2.key.id).run()
-    expect(await ready()).toMatchObject({ owners: { level: 'red', count: 2 }, overall: 'at_risk', step: 'hardware_key' })
+    expect(await ready()).toMatchObject({ owners: { level: 'red', count: 2 }, overall: 'at_risk', step: 'owner_key' })
     await db.prepare(`UPDATE seats SET state = 'frozen' WHERE id = ?`).bind(o2.seatId).run()
     expect((await ready()).owners).toEqual({ level: 'amber', count: 1 })
   })
@@ -4275,7 +4275,7 @@ describe('z. attacks tried by the review of milestone 4a', () => {
     const lone = await member()
     expect(await ready(lone)).toMatchObject({ overall: 'not_recoverable', step: 'recovery_wallet' })
     await db.prepare('UPDATE credentials SET device_bound = 0 WHERE id = ?').bind(lone.key.id).run() // its organisation requires hardware keys
-    expect(await ready(lone)).toMatchObject({ overall: 'not_recoverable', step: 'hardware_key', owners: { level: 'red', count: 1 } })
+    expect(await ready(lone)).toMatchObject({ overall: 'not_recoverable', step: 'owner_key', owners: { level: 'red', count: 1 } })
     // Two Owners with one key each, and no recovery wallet: ready (one passkey is enough, owner 2026-11-18).
     const o = await owner()
     const seat = await invite(o.orgId, o.seatId, 'owner')
@@ -5992,7 +5992,7 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
     const me = await call('GET', '/api/me', { cookie: session.cookie })
     return { orgId: me.body.organisation.id as string, seatId: a.seat, key: a.key, cookie: session.cookie, domain: a.domain, intent: a.intent, name: 'Alder Custody S.A.', sessionId: me.body.session.id as string, ticket: '' }
   }
-  // The same with two passkeys on the Owner seat: what every further step needs. Milestone 5b: and with the signed
+  // The same with a second passkey on the Owner seat (one is enough since 2026-11-18). Milestone 5b: and with the signed
   // declaration, sealed and uploaded, which "Submit for review" needs; `declare: false` leaves that step open.
   async function applicantWithTwoKeys(domain?: string, declare = true, more: Record<string, unknown> = {}) {
     const a = await applied(domain, more)
@@ -6013,8 +6013,8 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
     const keysOf = async () => (await call('GET', '/api/me', { cookie: m.cookie })).body.seat.keys as number
     expect(await keysOf()).toBe(1)
     expect((await addKey(m, { backupEligible: true })).status).toBe(200)
-    expect(await keysOf()).toBe(2) // two passkeys that sync: what every further step of an Owner needs
-    expect((await upload(m, await sealedFile())).status).toBe(200) // a route that needs two keys
+    expect(await keysOf()).toBe(2) // two passkeys that sync: both count
+    expect((await upload(m, await sealedFile())).status).toBe(200) // a route that needs a strong key
     // Its Owners require hardware keys: the two no longer count, and a third that syncs is refused.
     await db.prepare('UPDATE organisations SET synced_keys_allowed = 0 WHERE id = ?').bind(org.id).run()
     expect(await keysOf()).toBe(0)
