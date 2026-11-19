@@ -257,10 +257,7 @@ impl SolvableOrdersCache {
             .collect();
 
         let (balances, orders, cow_amms, in_flight) = {
-            let queries = orders
-                .iter()
-                .map(|o| Query::from_order(o))
-                .collect::<Vec<_>>();
+            let queries = balance_queries(&orders);
             tokio::join!(
                 self.fetch_balances(queries),
                 self.filter_invalid_orders(orders, &mut invalid_order_uids),
@@ -650,6 +647,21 @@ async fn get_native_prices(
             let price = to_normalized_price(price)?;
             Some((token, price))
         })
+        .collect()
+}
+
+/// The balance reads of an update: one per order, except an unsigned presign order.
+/// `filter_invalid_orders` drops those anyway (InvalidSignature), and anyone can post
+/// one for any owner at no cost: reading their balances every block let a few dozen
+/// of them exhaust the OP RPC budget and fail quotes and auctions (Ophis, 2026-11-19).
+fn balance_queries(orders: &[&Order]) -> Vec<Query> {
+    let pending: HashSet<OrderUid> = find_presignature_pending_orders(orders)
+        .into_iter()
+        .collect();
+    orders
+        .iter()
+        .filter(|order| !pending.contains(&order.metadata.uid))
+        .map(|order| Query::from_order(order))
         .collect()
 }
 
@@ -1227,6 +1239,31 @@ mod tests {
         let orders_ref = orders.iter().map(|o| o.as_ref()).collect::<Vec<_>>();
         let pending_orders = find_presignature_pending_orders(&orders_ref);
         assert_eq!(pending_orders, vec![presign_uid]);
+    }
+
+    #[test]
+    fn balance_queries_skip_presignature_pending_orders() {
+        let order = |byte: u8, status| Order {
+            metadata: OrderMetadata {
+                uid: OrderUid::from_parts(B256::repeat_byte(byte), Address::repeat_byte(byte), 1),
+                owner: Address::repeat_byte(byte),
+                status,
+                ..Default::default()
+            },
+            data: OrderData {
+                sell_token: Address::with_last_byte(byte),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let pending = order(1, model::order::OrderStatus::PresignaturePending);
+        let open = order(2, model::order::OrderStatus::Open);
+        // An unsigned presign order costs no balance read; every other order keeps its own.
+        assert_eq!(
+            balance_queries(&[&pending, &open]),
+            vec![Query::from_order(&open)]
+        );
+        assert_eq!(balance_queries(&[&pending]), Vec::<Query>::new());
     }
 
     #[test]
