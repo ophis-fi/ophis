@@ -943,7 +943,7 @@ export async function orders(db: D1Database, actor: Actor, now: number) {
 
 /**
  * The filled orders of an organisation sent since `since`, for the monthly statement: the chain and the asset sold of
- * their terms, what was sold, the fee. ponytail: every row of the 12 months, read whole; a month table when that grows.
+ * their terms, what was sold, the fee. ponytail: every row of the 13 months (this one and the 12 before), read whole; a month table when that grows.
  */
 export async function filledOrders(db: D1Database, orgId: string, since: number) {
   const { results } = await db.prepare(`SELECT json_extract(json_extract(a.payload, '$.value'), '$.chainId') AS chainId, json_extract(json_extract(a.payload, '$.value'), '$.sell.symbol') AS symbol,

@@ -18,6 +18,7 @@ import * as orders from '../src/server/orders.ts'
 import realBook from './fixtures/orderbook.json'
 import golden from './fixtures/appdata-golden.json'
 import deskPage from '../src/app/desk.tsx?raw'
+import { money } from '../src/app/money.ts'
 import ordersSource from '../src/server/orders.ts?raw'
 import signScript from '../sign/main.ts?raw'
 import signPage from '../sign/index.html?raw'
@@ -9306,9 +9307,12 @@ describe('H. the institution: overview from its wallets and orders, the desk and
     // The sixth order sold an asset this server no longer lists (as after a delisting): it is no line of the statement.
     const delisted = (await orderOf(ids[5])).terms
     await db.prepare('UPDATE approvals SET payload = ? WHERE id = ?').bind(JSON.stringify({ value: JSON.stringify({ ...delisted, sell: { ...delisted.sell, symbol: 'XYZ' } }) }), ids[5]).run()
-    // Sent in October, and 13 months ago: the second is no line of the statement.
+    // Sent in October, and at the first instant of the month 12 months back: both are lines of the statement, which holds
+    // this month and the 12 whole months before it (CodeRabbit, PR #1672). A millisecond earlier, the second is none.
     await db.prepare('UPDATE orders SET sent_at = ? WHERE id = ?').bind(Date.UTC(2026, 9, 15), ids[2]).run()
-    await db.prepare('UPDATE orders SET sent_at = ? WHERE id = ?').bind(now - 366 * DAY, ids[3]).run()
+    await db.prepare('UPDATE orders SET sent_at = ? WHERE id = ?').bind(Date.UTC(2025, 10, 1), ids[3]).run()
+    expect(((await get('/api/overview', team.o)).body.months as { month: string }[]).map((m) => m.month)).toEqual(['2026-11', '2026-10', '2025-11'])
+    await db.prepare('UPDATE orders SET sent_at = ? WHERE id = ?').bind(Date.UTC(2025, 10, 1) - 1, ids[3]).run()
     const view = (await get('/api/overview', team.o)).body
     expect(view.months).toEqual([
       { month: '2026-11', asset: 'USDC', orders: 2, volume: '250100.5', fee: units(realFee(250_000_000_000n), 6), unreported: 1 },
@@ -9483,6 +9487,11 @@ describe('H. the institution: overview from its wallets and orders, the desk and
     const asked = indexer()
     expect((await overviewOf(o)).body.figures.wallets).toEqual([{ ...shownPartner, label: 'Demo wallet' }])
     expect(asked.map((x) => x.wallets)).toEqual([[P.wallet]])
+  })
+
+  it('D3: an amount above zero never reads as zero: below the decimals shown, its digits run to the first that is not 0 (CodeRabbit, PR #1672)', () => {
+    expect([money('0.00009', 4), money('0.0000', 4), money('0', 2), money('0.001', 2), money('1234567.891', 2), money('12.00003', 4), money('5500000', 0)])
+      .toEqual(['0.00009', '0.0000', '0.00', '0.001', '1,234,567.89', '12.0000', '5,500,000'])
   })
 
   it('D3: the words of the desk and the overview: no claim about a licence, no payout terms and no promise about fees; the sentences the pages must say', () => {

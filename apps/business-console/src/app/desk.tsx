@@ -6,6 +6,7 @@
 // no price and builds no order.
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { api, CANCELLED, capital, Icon, ROLE, save, say, sensitive, Section, stamp, SignNow, Status, Tile, Ways } from './ui.tsx'
+import { money } from './money.ts'
 
 // What an approval binds (the server's terms; amounts in atoms) and the same in words, made by the server.
 interface Terms { type: 'market' | 'limit'; chainId: number; walletId: string; wallet: string; label: string; scheme: 'eip712' | 'presign'; sell: { symbol: string; amount: string }; buy: { symbol: string; minimum: string }; quoted: string; slippageBips: number | null; limitPrice: string | null; validFor: number }
@@ -21,7 +22,7 @@ interface Institution {
   kind: 'institution'; waiting: number; asOf: string; open: number
   // The linked wallets on the desk chains (the 10 linked first), in the assets of each chain. balance null: not read.
   balances: { readAt: string; leftOut: number; wallets: { wallet: string; address: string; chain: string; read: boolean; rows: { asset: string; token: string; balance: string | null }[] }[] }
-  // The filled orders of 12 months, by the month they were sent (UTC) and the asset sold; amounts in units of that asset.
+  // The filled orders of this month and the 12 whole months before it, by the month they were sent (UTC) and the asset sold; amounts in units of that asset.
   months: { month: string; asset: string; orders: number; volume: string; fee: string; unreported: number }[]
   orders: Order[]
 }
@@ -56,11 +57,6 @@ interface DeskView {
   wallets: { id: string; label: string; address: string; chainId: number; chain: string; scheme: string }[]; mayPrepare: boolean; maySign: boolean; orders: Order[]
 }
 
-/** A decimal string of the server with thousands separators and `dp` decimals (cut). Text only: no number is made of it. */
-export function money(text: string, dp = 2) {
-  const [whole, part = ''] = text.split('.')
-  return `${whole.replace(/\B(?=(\d{3})+$)/g, ',')}${dp ? `.${part.padEnd(dp, '0').slice(0, dp)}` : ''}`
-}
 const places = (asset: string) => (asset === 'WETH' ? 4 : 2)
 const count = (n: number) => money(String(n), 0)
 const short = (address: string) => (address.length > 13 ? `${address.slice(0, 6)}...${address.slice(-4)}` : address)
@@ -298,7 +294,7 @@ function PartnerWalletFigures({ w, asOf }: { w: PartnerWallet; asOf: string }) {
 /** The monthly statement of the desk's filled orders: an institution's, and a partner's since it trades too (owner, 2026-11-19). */
 function Statement({ months }: { months: Institution['months'] }) {
   return (
-    <Section icon="receipt" title="Monthly statement" hint="Your filled orders of the last 12 months, by the month they were sent (UTC) and the asset sold. Amounts in units of the asset sold." action={<Export table="statement" />}>
+    <Section icon="receipt" title="Monthly statement" hint="Your filled orders of this month and the 12 months before it, by the month they were sent (UTC) and the asset sold. Amounts in units of the asset sold." action={<Export table="statement" />}>
       {months.length ? <Table head={['Month', 'Orders', 'Volume', 'Fees']} rows={months.map((m) => [
         <>{m.month}<small>{m.asset} sold</small></>, m.orders, money(m.volume, places(m.asset)),
         <>{money(m.fee, places(m.asset))}{m.unreported > 0 && <small>{m.unreported} {m.unreported === 1 ? 'order' : 'orders'} with no fee reported</small>}</>,

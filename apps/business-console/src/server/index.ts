@@ -907,7 +907,7 @@ async function overview(c: Context) {
   const kind = c.session.org_kind
   // A partner: its real figures (partner.ts), or the plain state that says why there are none. Never an example.
   // And, since it trades on the desk too (owner, 2026-11-19), the statement of its filled orders, read while the indexer answers.
-  // ponytail: the statement reads every filled order of 12 months; with the lists a partner page nears its 5,000-row share
+  // ponytail: the statement reads every filled order of 13 months; with the lists a partner page nears its 5,000-row share
   // at about 1,000 filled orders a year. An index on orders (org_id, status, sent_at) if a partner ever trades that much.
   if (kind === 'partner') {
     const [figures, months] = await Promise.all([partner.figures(c.env, c.actor.orgId, c.now), statement(c)])
@@ -954,10 +954,12 @@ async function readBalances(c: Context, wallets: Awaited<ReturnType<typeof data.
     }),
   }
 }
-/** The monthly statement: the filled orders of the last 12 months, by the month they were sent (UTC) and the asset sold. */
+/** The monthly statement: the filled orders of this month and the 12 whole months before it (UTC), by the month they were
+ *  sent and the asset sold. Whole months: 365 days cut the oldest one (CodeRabbit, PR #1672). */
 async function statement(c: Context) {
   const months = new Map<string, { month: string; asset: string; orders: number; volume: bigint; fee: bigint; unreported: number; decimals: number }>()
-  for (const o of await data.filledOrders(c.env.DB, c.actor.orgId, c.now - 365 * 86_400_000)) {
+  const at = new Date(c.now)
+  for (const o of await data.filledOrders(c.env.DB, c.actor.orgId, Date.UTC(at.getUTCFullYear(), at.getUTCMonth() - 12, 1))) {
     const decimals = orders.ASSETS[o.chainId]?.[o.symbol as orders.Symbol]?.decimals
     if (decimals === undefined) continue // no asset this server lists: never an amount in units it cannot name
     const key = `${new Date(o.sentAt).toISOString().slice(0, 7)} ${o.symbol}`
