@@ -83,7 +83,8 @@ const buildEthFlowMap = (): Record<number, `0x${string}`> => {
 /**
  * Frozen, immutable, null-prototype per-chain eth-flow address map. Typed
  * `Partial` because most numeric chainIds are absent: a chain absent here does
- * NOT support native-ETH via Ophis (wrap to WETH and use `buildOphisOrderCreation`).
+ * NOT support native-ETH via Ophis. On supported orderbook chains only, wrap to
+ * WETH and use `buildOphisOrderCreation`.
  * The key set is a subset of `OPHIS_ORDERBOOK_URLS`, so native-ETH support always
  * implies a live orderbook to upload the appData to.
  */
@@ -97,7 +98,7 @@ export const isOphisEthFlowChain = (chainId: number): boolean => {
 
 /**
  * The eth-flow contract address for a chain, or `undefined` if native ETH is
- * not supported there (wrap to WETH instead). Throws on an invalid chainId.
+ * not supported there (wrap to WETH only on supported orderbook chains). Throws on an invalid chainId.
  * Uses an own-property check so a polluted prototype cannot make this return a
  * forged address for an unsupported chain (fail-closed).
  */
@@ -284,6 +285,9 @@ export const ethFlowOrderToTuple = (o: EthFlowOrderData): EthFlowOrderTuple =>
 export function buildOphisEthFlowOrder(params: OphisEthFlowParams): OphisEthFlowOrder {
   const { chainId, buyToken, owner, sellAmount, buyAmount, fullAppData, appDataHash, validTo, quoteId, hashAppData } = params;
 
+  if (chainId === 130) {
+    throw new Error('Ophis: Unichain (130) is retired and no longer supported. Choose a supported network.');
+  }
   const ethFlowContract = getOphisEthFlowAddress(chainId);
   if (ethFlowContract === undefined) {
     throw new Error(

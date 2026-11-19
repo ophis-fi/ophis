@@ -12,7 +12,7 @@ All facts below are from `@ophis/sdk` (`packages/sdk/src/{orderbook,domain,partn
 | Order status | `GET {orderbook}/api/v1/orders/{uid}` |
 | Enroll wallet | `GET https://rebates.ophis.fi/tier/{wallet}` (idempotent; call once before the first order) |
 
-`{orderbook}` is `https://api.cow.fi/<slug>` for CoW-hosted chains, but **`https://optimism-mainnet.ophis.fi` (chain 10)** and **`https://unichain-mainnet.ophis.fi` (chain 130)** for the Ophis-sovereign chains. Hitting `api.cow.fi` on OP silently bypasses the Ophis solver **and the fee**.
+`{orderbook}` is `https://api.cow.fi/<slug>` for CoW-hosted chains, but **`https://optimism-mainnet.ophis.fi` (chain 10)** for Optimism. Hitting `api.cow.fi` on OP silently bypasses the Ophis solver **and the fee**.
 
 ## The presign authorization flow (why this skill works from a Bankr wallet)
 
@@ -48,7 +48,7 @@ Returns `{success, transactionHash, ...}`. Wallet address via `GET /wallet/me`.
 
 ## Native-token (ETH) sells — eth-flow (not implemented in this scaffold)
 
-Native sells do NOT use the order path; they call `CoWSwapEthFlow.createOrder(...)` payable (`msg.value == sellAmount`), with the partner fee in appData and on-chain `feeAmount = 0`. eth-flow contracts: OP `0x764fE4aa1FF493cf39931c7923C8ff5837596504` `0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7`, CoW-hosted chains `0xba3cb449bd2b4adddbc894d8697f5170800eadec`. The full appData must be `PUT` to the orderbook before/with the tx. To *receive* native ETH, buy WETH and unwrap. (This scaffold sells ERC-20 → ERC-20; extend `ophis-swap.py` for eth-flow if needed.)
+Native sells do NOT use the order path; they call `CoWSwapEthFlow.createOrder(...)` payable (`msg.value == sellAmount`), with the partner fee in appData and on-chain `feeAmount = 0`. eth-flow contracts: OP `0x764fE4aa1FF493cf39931c7923C8ff5837596504`, CoW-hosted chains `0xba3cb449bd2b4adddbc894d8697f5170800eadec`. The full appData must be `PUT` to the orderbook before/with the tx. To *receive* native ETH, buy WETH and unwrap. (This scaffold sells ERC-20 → ERC-20; extend `ophis-swap.py` for eth-flow if needed.)
 
 ## Gotchas (will bite an executable integration)
 

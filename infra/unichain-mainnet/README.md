@@ -10,8 +10,12 @@ and sweep scripts are historical records. They are retained to reconcile old
 trades, refunds and treasury balances. They do not describe a supported trading
 deployment. Do not delete databases, wallet records or keys as part of retirement.
 
-During deployment of this removal, stop and disable any installed Unichain
-boot, tunnel and health-check services; remove the retired public orderbook route.
+During deployment of this removal, use the last deployed checkout and its Compose
+configuration to identify the Unichain containers (`docker compose ps -aq`). Set
+those containers to `docker update --restart=no <container-id>` so Docker cannot
+restore them after a reboot, then run `docker compose stop`. Preserve the containers
+and volumes for reconciliation. Stop and disable any installed Unichain boot,
+tunnel and health-check services, and remove the retired public orderbook route.
 Check for outstanding native-order refunds, bridge claims and fee payouts before
 removing any persistent infrastructure. The accounting chain IDs and historical
 reward eligibility remain intact; the settlement-buffer monitor remains available

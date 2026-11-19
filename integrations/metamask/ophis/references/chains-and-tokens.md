@@ -21,7 +21,7 @@ Ophis is **same-chain best execution** (MEV-protected CoW batch settlement). For
 | Sepolia (testnet) | 11155111 | `https://api.cow.fi/sepolia` | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` | CoW-hosted | ✅ (EIP-155) |
 
 - **Ophis-operated** (Optimism, Robinhood Chain): Ophis runs its own solver stack and applies the published capped improvement-capture policy; contracts are non-canonical (use the addresses above, not CoW's canonical ones).
-- **mm-supported** = the MetaMask `mm` CLI accepts the chain for sign/tx. `mm` takes any EIP-155 chain id for `sign-typed-data` / `send-transaction`, so every Ophis chain is reachable — but confirm the current CLI build with `mm chains list` (bridge/swap routing coverage is narrower than raw sign/tx). Best targets: **Base + Unichain** (Ophis-sovereign / live).
+- **mm-supported** = the MetaMask `mm` CLI accepts the chain for sign/tx. `mm` takes any EIP-155 chain id for `sign-typed-data` / `send-transaction`, so every Ophis chain is reachable — but confirm the current CLI build with `mm chains list` (bridge/swap routing coverage is narrower than raw sign/tx). Supported examples: **Base and Optimism**.
 
 ## Common token addresses
 

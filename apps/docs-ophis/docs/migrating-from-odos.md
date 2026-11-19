@@ -191,7 +191,7 @@ Use the returned status and settlement amounts to update your app after executio
 
 | v3 request field | Ophis behavior |
 | --- | --- |
-| `chainId` | 10, 130, or 4663 |
+| `chainId` | 10 or 4663 |
 | `inputTokens` | One sell token and exact-in amount; extra entries return `MULTI_TOKEN_UNSUPPORTED` |
 | `outputTokens` | One output with `proportion` 1; extra outputs return `MULTI_TOKEN_UNSUPPORTED` |
 | `userAddr` | Include the order owner for a signed `pathId`, order draft, and signing envelope; omit for quote-only use |

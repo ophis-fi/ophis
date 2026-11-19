@@ -84,7 +84,7 @@ See [Networks & assets](/networks-assets#externally-funded-swaps-through-near-in
 
 | Network group | Coverage |
 | --- | --- |
-| App and CLI total | 13 EVM networks, including the Sepolia testnet |
+| App and CLI total | 14 EVM networks, including the Sepolia testnet |
 | EVM mainnets (13) | Ethereum, Arbitrum One, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, and Arc |
 | Testnet | Sepolia |
 | NEAR Intents sources and destinations | Solana, Bitcoin, Monad, Hyperliquid (Hypercore), X Layer, Sui, Tron, Starknet, Zcash |

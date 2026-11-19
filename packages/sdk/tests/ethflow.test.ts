@@ -209,5 +209,7 @@ describe('buildOphisEthFlowOrder - fund-safety guards', () => {
 
 it('refuses to build new native orders on retired Unichain', () => {
   expect(isOphisEthFlowChain(130)).toBe(false);
-  expect(() => buildOphisEthFlowOrder(baseParams({ chainId: 130 }))).toThrow();
+  expect(() => buildOphisEthFlowOrder(baseParams({ chainId: 130 }))).toThrow(
+    'Ophis: Unichain (130) is retired and no longer supported. Choose a supported network.',
+  );
 });

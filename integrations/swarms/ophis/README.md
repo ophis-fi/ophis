@@ -52,7 +52,7 @@ result = ophis_swap(
 
 ## Supported chains
 
-All 13 Ophis EVM chains: Ethereum (1), Optimism (10), BNB (56), Gnosis (100),
+The integration supports 12 EVM mainnets: Ethereum (1), Optimism (10), BNB (56), Gnosis (100),
 Polygon (137), Robinhood Chain (4663), Base (8453), Plasma
 (9745), Arbitrum (42161), Avalanche (43114), Ink (57073), and Linea (59144).
 Optimism, and Robinhood Chain use Ophis-operated orderbooks and

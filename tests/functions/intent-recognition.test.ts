@@ -16,6 +16,25 @@ import assert from 'node:assert/strict'
 
 import * as intent from '../../functions/api/intent.ts'
 
+test('retired Unichain requests fail before a cached or model-produced chain-less swap can be served', async (t) => {
+  const fetch = t.mock.method(globalThis, 'fetch', async () => { throw new Error('must not call model') })
+  const cache = { get: t.mock.fn(async () => JSON.stringify({ ok: true, data: { intent: 'swap', entities: [] } })) }
+  for (const chain of ['Unichain', 'UNICHAIN', 'chain 130', 'chain ID: 130']) {
+    const request = new Request('https://swap.ophis.fi/api/intent', {
+      method: 'POST', body: JSON.stringify({ text: `swap 1 ETH for USDC on ${chain}` }),
+    })
+    const response = await intent.onRequestPost({
+      request, env: { LIBERTAI_API_KEY: 'test-only', OPHIS_RATELIMIT: cache },
+    } as Parameters<typeof intent.onRequestPost>[0])
+    assert.equal(response.status, 400)
+    assert.deepEqual(await response.json(), {
+      ok: false, error: { code: 'BAD_INPUT', message: 'Unichain (130) is retired. Choose a supported network.' },
+    })
+  }
+  assert.equal(fetch.mock.callCount(), 0)
+  assert.equal(cache.get.mock.callCount(), 0)
+})
+
 test('intent timeout covers a stalled response body after successful headers', async (t) => {
   const deadline = new AbortController()
   t.mock.method(AbortSignal, 'timeout', (milliseconds: number) => {

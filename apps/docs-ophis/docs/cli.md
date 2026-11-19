@@ -122,7 +122,7 @@ For an Arbitrum order, use `ophis status <order id> on arbitrum`.
 | --- | --- |
 | Mainnets | Arbitrum One, Arc, Avalanche, Base, BNB Chain, Ethereum, Gnosis, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain |
 | Testnet | Sepolia |
-| Total | 15 |
+| Total | 14 |
 
 Run `ophis chains` to see the names to type.
 

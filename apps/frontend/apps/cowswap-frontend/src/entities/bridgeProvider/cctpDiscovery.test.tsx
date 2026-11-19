@@ -3,6 +3,7 @@ import { ARC_CHAIN_ID } from '@cowprotocol/common-const'
 import { renderHook } from '@testing-library/react'
 import { cctpToken, useIsCctpEnabled } from 'entities/cctp'
 
+import { useBridgeSupportedNetwork, useBridgeSupportedNetworks } from './useBridgeSupportedNetworks'
 import { useBridgeSupportedTokens } from './useBridgeSupportedTokens'
 
 jest.mock('entities/cctp/useIsCctpEnabled', () => ({ useIsCctpEnabled: jest.fn(() => true) }))
@@ -63,4 +64,19 @@ it('does not advertise CCTP-only tokens on surfaces that cannot execute them', (
   jest.mocked(useIsCctpEnabled).mockReturnValue(false)
   const { result } = renderHook(() => useBridgeSupportedTokens({ sellChainId: 1, buyChainId: ARC_CHAIN_ID }))
   expect(result.current.data).toBeUndefined()
+})
+
+it('keeps retired Unichain receipt metadata without advertising new routes', () => {
+  jest.mocked(useIsCctpEnabled).mockReturnValue(true)
+  const { result } = renderHook(() => ({
+    receipt: useBridgeSupportedNetwork(130),
+    networks: useBridgeSupportedNetworks().data,
+  }))
+  expect(result.current.receipt).toMatchObject({
+    id: 130,
+    label: 'Unichain',
+    isDeprecated: true,
+    blockExplorer: { url: 'https://uniscan.xyz' },
+  })
+  expect(result.current.networks?.some(({ id }) => id === 130)).toBe(false)
 })

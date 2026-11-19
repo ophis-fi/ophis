@@ -11,13 +11,15 @@ Use the swap app's token pickers to choose a network, asset and route.
 
 > **Unichain retired (19 November 2026).** Chain 130 is no longer supported for new swaps, bridge routes or agent orders. Older clients may still list it; do not submit new trades there. Historical trades, fee accounting and recovery records are retained. A replacement network will be considered after the Ophis security, code and development cleanup.
 
+Published packages from before retirement can still map chain 130. Reject it explicitly regardless of SDK version; source coverage below does not imply those older releases removed it.
+
 ## Network coverage {/* #app-parser-and-sdk-coverage */}
 
 | Surface | Coverage |
 | --- | --- |
-| Swap app and CLI | 13 EVM networks, including the Sepolia testnet; see [the network list](/getting-started#supported-networks) |
-| SDK v0.4.6 and hosted MCP | 13 EVM mainnets, including Arc (5042), with chain-specific orderbook and signing-domain helpers |
-| Vault-order builder | `@ophis/safe-swap` v0.1.8 uses SDK v0.4.6 for ERC-20 presigned orders on 13 EVM mainnets, including Arc |
+| Swap app and CLI | 14 EVM networks, including the Sepolia testnet; see [the network list](/getting-started#supported-networks) |
+| SDK source and hosted MCP | 13 EVM mainnets, including Arc (5042), with chain-specific orderbook and signing-domain helpers |
+| Vault-order builder | Current `@ophis/safe-swap` source uses the SDK for ERC-20 presigned orders on 13 EVM mainnets, including Arc |
 | Intent parser | 13 chain slugs, including `arc` |
 | Standalone app through NEAR Intents | Bitcoin, Solana, Monad, Hyperliquid (Hypercore), X Layer, Sui, Tron, Starknet, Zcash |
 

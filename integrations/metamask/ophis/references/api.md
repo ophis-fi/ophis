@@ -12,7 +12,7 @@ Endpoints/addresses from `@ophis/sdk`; `mm` command surface from `@metamask/agen
 | Order status | `GET {orderbook}/api/v1/orders/{uid}` |
 | Enroll wallet | `GET https://rebates.ophis.fi/tier/{wallet}` (idempotent; once before the first order) |
 
-`{orderbook}` = `https://api.cow.fi/<slug>` for CoW-hosted chains, `https://optimism-mainnet.ophis.fi` (10) and `https://unichain-mainnet.ophis.fi` (130) for the Ophis-sovereign chains. Hitting api.cow.fi on OP bypasses the Ophis solver + fee.
+`{orderbook}` = `https://api.cow.fi/<slug>` for CoW-hosted chains, `https://optimism-mainnet.ophis.fi` (10) for Optimism. Hitting api.cow.fi on OP bypasses the Ophis solver + fee.
 
 ## The EIP-712 flow (why MetaMask is a clean fit)
 
@@ -37,7 +37,7 @@ mm wallet sign-typed-data --chain-id <CHAIN> \
 - Wallet address: `mm wallet address --chain-namespace evm`. Readiness: `mm doctor` (`authenticated` + `initialized`).
 - **`--wait` is REQUIRED** on result-returning commands — without it you get a `pollingId`, not the signature/hash (then `mm wallet requests watch --polling-id <id>`).
 - **`value` in a tx payload must be 0x-hex** (`"0x0"`), not a decimal.
-- **`--chain-id` accepts any EIP-155 id** for sign/tx; confirm the chain with `mm chains list`. OP(10) explicit; Unichain(130)/Gnosis(100)/Ink(57073) rely on arbitrary-EIP-155 support — probe at runtime.
+- **`--chain-id` accepts any EIP-155 id** for sign/tx; confirm the chain with `mm chains list`. OP(10) explicit; Gnosis(100)/Ink(57073) rely on arbitrary-EIP-155 support — probe at runtime.
 
 ## appData (routes the fee to Ophis)
 

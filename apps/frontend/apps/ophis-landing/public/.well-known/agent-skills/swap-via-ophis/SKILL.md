@@ -7,8 +7,9 @@ license: MIT
 # Swap via Ophis
 
 Ophis is an intent-based DEX aggregator built on CoW Protocol. The swap app
-supports 13 EVM chains including Arc; `@ophis/sdk` v0.4.3 or later and the MCP
-server cover the same 13 mainnets, plus Sepolia for testing. Supported NEAR routes add Solana, Bitcoin, Monad, Hyperliquid,
+supports 13 EVM mainnets including Arc; the current SDK source and MCP
+server cover the same mainnets, plus Sepolia for testing. Reject Unichain (130)
+regardless of SDK version: published versions from before retirement still map it. Supported NEAR routes add Solana, Bitcoin, Monad, Hyperliquid,
 X Layer, Sui, Tron, Starknet and Zcash sources and destinations, subject to route availability. This MCP workflow describes same-chain
 signed ERC-20 orders, not every bridge flow. Batch auctions mitigate common MEV;
 they do not eliminate every execution risk. Signing happens in the user's wallet.
@@ -78,8 +79,7 @@ The `@ophis/sdk` npm package exposes
 - Non-custodial: confirm the order's `receiver` equals the user's address before
   signing; `build_order` pins it by default.
 - The settlement contract on Optimism is Ophis's own GPv2Settlement at
-  `0x310784c7FCE12d578dA6f53460777bAc9718B859`, and on Optimism it is
-  `0x108A678716e5E1776036eF044CAB7064226F714E` (NOT CoW's canonical address).
+  `0x310784c7FCE12d578dA6f53460777bAc9718B859` (NOT CoW's canonical address).
   Robinhood Chain and Arc also use non-canonical settlement contracts.
   Always resolve the per-chain settlement domain via `list_chains` or the SDK.
   Arc has no supported EthFlow deployment; use ERC-20 token addresses.

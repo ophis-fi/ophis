@@ -195,7 +195,7 @@ test('/earnings/:appCode returns keyless per-appCode JSON, scoped + disclaimed, 
   expect(body.appCode).toBe('acme-dapp');
   expect(typeof body.disclaimer).toBe('string');
   expect(body.disclaimer).toContain('paid out by CoW under CoW terms; not guaranteed by Ophis');
-  expect(body.sovereignChains).toEqual([10, 130, 4663, 5042]);
+  expect(body.sovereignChains).toEqual([10, 4663, 5042]);
   expect(body.routedVolumeUsd).toMatchObject({ total: 0, sovereign: 0, hosted: 0 });
   expect(body.ownFeeAccruedUsd).toMatchObject({ sovereignGuaranteed: 0, hostedAccrued: 0 });
   expect(body.referral.registered).toBe(false);

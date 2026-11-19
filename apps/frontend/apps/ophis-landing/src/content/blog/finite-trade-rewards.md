@@ -59,7 +59,7 @@ A qualifying Ophis swap can be made on any of these supported networks:
 - Optimism
 - Base
 - Robinhood Chain
-- Unichain (retired; historical campaign trades remain eligible)
+- Unichain (retired; qualifying campaign trades indexed before retirement remain eligible)
 - Plasma
 - Ink
 - Gnosis Chain

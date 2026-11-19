@@ -114,14 +114,15 @@ assert.deepEqual(feeChainIds.sort((a, b) => a - b), expectedSdkIds, 'SDK/MCP mai
 const orderbookIds = [...sdkOrderbook.matchAll(/^  (\d+): 'https:\/\//gm)].map((match) => Number(match[1]));
 assert.deepEqual(orderbookIds.sort((a, b) => a - b), expectedSdkIds, 'SDK orderbook coverage drift');
 
-const sdkCoverage = /SDK v(\S+)[^\d.;\n]*\b13 EVM mainnets\b[^.;\n]*including Arc/;
+// Source coverage must not be attributed to older published packages that still map chain 130.
+const sdkCoverage = /SDK source[^\d.;\n]*\b13 EVM mainnets\b[^.;\n]*including Arc/;
 assert.doesNotMatch(
-  `SDK v${sdkPackage.version}: 13 EVM mainnets, excluding Arc\nVault builder: 13 EVM mainnets, including Arc`,
+  'SDK source: 13 EVM mainnets, excluding Arc\nVault builder: 13 EVM mainnets, including Arc',
   sdkCoverage,
   'SDK coverage guard must not borrow coverage from another table row',
 );
 assert.doesNotMatch(
-  `SDK v${sdkPackage.version}: 13 EVM mainnets; Vault builder: 13 EVM mainnets, including Arc`,
+  'SDK source: 13 EVM mainnets; Vault builder: 13 EVM mainnets, including Arc',
   sdkCoverage,
   'SDK coverage guard must not borrow coverage from a later statement',
 );
@@ -133,10 +134,10 @@ for (const path of [
   'apps/docs-ophis/static/llms.txt',
 ]) {
   const doc = read(path);
-  assert.equal(
-    doc.match(sdkCoverage)?.[1],
-    sdkPackage.version,
-    `${path}: SDK/MCP coverage must use the current SDK version and include Arc`,
+  assert.match(
+    doc,
+    sdkCoverage,
+    `${path}: current SDK source/MCP coverage must include Arc`,
   );
   assert.doesNotMatch(doc, /(?:exclude|excluding) Arc[.;|\n]/, `${path}: stale SDK/MCP Arc exclusion`);
 }
@@ -334,9 +335,13 @@ assert.ok(
 );
 
 for (const path of ['packages/sdk/src/orderbook.ts', 'apps/frontend/libs/common-utils/src/cowProtocolContracts.ts',
-  'apps/frontend/libs/wallet/src/wagmi/config.ts', 'functions/api/intent.ts',
+  'apps/frontend/libs/wallet/src/wagmi/config.ts',
+  'apps/frontend/apps/cowswap-frontend/public/business/index.html',
   'apps/frontend/apps/ophis-landing/src/data/chains.ts']) {
   assert.doesNotMatch(read(path), /unichain/i, `${path}: retired Unichain was reintroduced`);
 }
+const intentChains = read('functions/api/intent.ts').match(/const CHAIN_VALUES = new Set\(\[([\s\S]*?)\]\)/);
+assert.ok(intentChains, 'Intent API chain allowlist must remain explicit');
+assert.doesNotMatch(intentChains[1], /unichain/i, 'Intent API must not advertise retired Unichain');
 
 console.log(`Network/docs invariants are in sync (${chains.length} app and SDK/MCP mainnet chains; Sepolia is separate).`);

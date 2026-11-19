@@ -333,7 +333,8 @@ v0.1.2 for runtimes with a shell, `curl`, `jq` and Foundry's `cast`.
 | [Skill index](https://ophis.fi/.well-known/agent-skills/index.json) | Download files and verify their sha256 digests. |
 | [Umbrella skill](https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md) | Read contract addresses, signing domains, orderbook hosts and slippage limits. |
 | Sub-skills | `ophis-quote`, `ophis-swap`, `ophis-order-status`, `ophis-cancel`, `ophis-surplus-report` |
-| Skill chains | Optimism and Robinhood Chain |
+| Active skill chains | Optimism and Robinhood Chain |
+| Legacy v0.1.2 package | Also lists Unichain (130), now retired; reject chain 130 regardless of package version. |
 
 Use MCP `list_chains` for supported networks beyond the shell skills.
 

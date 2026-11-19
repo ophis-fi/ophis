@@ -6,7 +6,7 @@
       "type": "skill-md",
       "description": "Swap or bridge tokens through Ophis, a non-custodial intent-based DEX aggregator: parse a natural-language request, get a best-execution quote, build an EIP-712 order, sign it in the user's own wallet, and submit it. Covers the public Intent API and the hosted MCP server.",
       "url": "https://ophis.fi/.well-known/agent-skills/swap-via-ophis/SKILL.md",
-      "digest": "sha256:3f2b727a48a086106fc07a9869bbccb70cd5665088189a0232e9bd92efdff106"
+      "digest": "sha256:0ae1a0edd8b2f40e191141ff92f03ceea8f9b0b82916d930c162bf5afb5a18f5"
     },
     {
       "name": "ophis",

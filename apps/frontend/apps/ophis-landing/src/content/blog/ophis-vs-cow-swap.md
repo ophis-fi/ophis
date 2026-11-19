@@ -28,7 +28,7 @@ If you have used CoW Swap, all three behave exactly the way you expect. It is th
 
 ## Where orders settle
 
-The Ophis app supports fourteen chains: Ethereum, Optimism, BNB, Gnosis, Robinhood Chain, Polygon, Base, Plasma, Arbitrum, Avalanche, Ink, Linea, and Arc. They split into two groups:
+The Ophis app supports thirteen chains: Ethereum, Optimism, BNB, Gnosis, Robinhood Chain, Polygon, Base, Plasma, Arbitrum, Avalanche, Ink, Linea, and Arc. They split into two groups:
 
 | Chains | Orderbook | Settlement |
 | --- | --- | --- |
@@ -55,7 +55,7 @@ A comparison written by the fork owes you the cases where the original wins:
 
 - **You want canonical contracts only.** CoW Swap uses CoW Protocol's canonical audited contracts; Ophis matches that only on its ten hosted chains.
 - **You want the longer track record.** CoW Protocol built and has operated this settlement design in production; a fork is younger by definition.
-- **You want the smallest trust surface.** Ophis adds a frontend, an agent stack, and, on four chains, an operator role. The added code is open source, but it is added surface. If minimizing surface is the priority, use the original.
+- **You want the smallest trust surface.** Ophis adds a frontend, an agent stack, and, on three chains, an operator role. The added code is open source, but it is added surface. If minimizing surface is the priority, use the original.
 
 For CoW Swap's current fee model, check [docs.cow.fi](https://docs.cow.fi); this page makes no claims about it.
 
@@ -67,7 +67,7 @@ Upstream CoW audits cover relevant shared code, not every Ophis modification or 
 
 ### Can I keep my CoW workflow on Ophis?
 
-Mostly, yes. You still build and sign a CoW Protocol order: same order struct, same EIP-712 signing flow. On the ten hosted chains your existing tooling already targets the right orderbook, because it is CoW's. On Optimism, Robinhood Chain and Arc you must use the Ophis orderbook and non-canonical settlement domain. SDK v0.4.3 and the hosted MCP server resolve all four.
+Mostly, yes. You still build and sign a CoW Protocol order: same order struct, same EIP-712 signing flow. On the ten hosted chains your existing tooling already targets the right orderbook, because it is CoW's. On Optimism, Robinhood Chain and Arc you must use the Ophis orderbook and non-canonical settlement domain. SDK v0.4.3 and the hosted MCP server resolve all three.
 
 ### Why fork CoW Protocol at all?
 

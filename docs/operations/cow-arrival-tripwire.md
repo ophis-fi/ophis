@@ -3,7 +3,13 @@
 Weekly watcher for signals that CoW Protocol is about to launch (or has
 launched) hosted support on Optimism (10). Unichain monitoring was removed
 on 19 November 2026 when Ophis retired the chain. Existing saved SDK state is
-normalized to avoid a false alert during the update.
+normalized to avoid a false alert during the update. Before the next scheduled run,
+update the installed launchd copy from the repository root:
+
+```bash
+cp scripts/ops/cow-arrival-tripwire.sh ~/bin/cow-arrival-tripwire.sh
+chmod +x ~/bin/cow-arrival-tripwire.sh
+```
 
 Script: `scripts/ops/cow-arrival-tripwire.sh`. Pure read-only probes; no keys
 except the Telegram bot token (read from the macOS keychain at send time,

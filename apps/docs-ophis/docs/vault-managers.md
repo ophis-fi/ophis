@@ -57,7 +57,7 @@ An unlisted token is rejected as `TokenNotAllowed`. Your vault can still hold as
 
 ## Operational chains
 
-The `@ophis/safe-swap` v0.1.7 builder uses SDK v0.4.4 and supports these 13 chains.
+The current `@ophis/safe-swap` source supports these 13 chains. Published versions from before retirement can still accept Unichain (130); reject it explicitly until you have verified a release that removes it.
 
 | Orderbook | Chains |
 | --- | --- |
