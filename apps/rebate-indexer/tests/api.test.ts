@@ -98,14 +98,13 @@ test('/stats returns public cumulative JSON for an API client', async () => {
     solverCompetition: {
       sovereignChains: [
         { chainId: 10, solvers: 11 },
-        { chainId: 130, solvers: 7 },
         { chainId: 4663, solvers: 6 },
         { chainId: 5042, solvers: 5 },
       ],
       hostedChains: 'CoW Protocol solver network',
     },
     improvementSplit: {
-      sovereign: 'On in-market orders on Optimism, Unichain, Robinhood Chain and Arc, Ophis retains 80% of volatile improvement (99 bps cap) or 50% of stable improvement (20 bps cap). Arc uses the same capped backend improvement policy for in-market orders.',
+      sovereign: 'On in-market orders on Optimism, Robinhood Chain and Arc, Ophis retains 80% of volatile improvement (99 bps cap) or 50% of stable improvement (20 bps cap). Arc uses the same capped backend improvement policy for in-market orders.',
       hosted: 'The same Ophis capped capture applies, plus CoW Protocol quote-improvement fees upstream',
     },
   });
@@ -122,7 +121,7 @@ test('/stats serves a styled HTML page to a browser (Accept: text/html)', async 
   expect(res.statusCode).toBe(200);
   expect(res.headers['content-type']).toContain('text/html');
   expect(res.body).toContain('How trades settle. What we have indexed.');
-  expect(res.body).toContain('14 EVM networks, including Arc');
+  expect(res.body).toContain('14 EVM networks, including retired Unichain');
   expect(res.headers['content-security-policy']).toContain("form-action 'self'");
   expect(res.headers['content-security-policy']).toContain("img-src 'self'");
   expect(res.body).toContain('<option value="1" selected>');

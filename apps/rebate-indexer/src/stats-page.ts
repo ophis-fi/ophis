@@ -165,7 +165,7 @@ export function renderStatsPage(s: PublicStats, query = new URLSearchParams()): 
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="index, follow">
 <title>Ophis: execution model and indexed volume</title>
-<meta name="description" content="How Ophis batch-auction swaps work, their execution limits, and cumulative indexed volume across ${PRODUCTION_CHAIN_IDS.length} EVM networks, including Arc.">
+<meta name="description" content="How Ophis batch-auction swaps work, their execution limits, and historical indexed volume across ${PRODUCTION_CHAIN_IDS.length} EVM networks, including retired Unichain.">
 <meta name="theme-color" content="#ffffff">
 <style>
 :root{color-scheme:light}
