@@ -62,7 +62,7 @@ const SAY: Record<string, string> = {
   type_invalid: 'Choose market or limit.',
   asset_not_permitted: 'Choose two of the assets permitted on this chain.',
   same_asset: 'Choose two different assets.',
-  chain_not_allowed: 'Choose Ethereum, OP Mainnet, Base or Arbitrum One.',
+  chain_not_allowed: 'Choose Ethereum, OP Mainnet, Base, Arbitrum One, Robinhood Chain or Arc.',
   wallet_not_linked: 'That wallet is not linked to this organisation any more. Choose a linked wallet.',
   amount_invalid: 'Enter the amount as a plain number above zero, like 250000 or 1250.50, with no more decimals than the asset has.',
   limit_price_invalid: 'Enter the limit price as a plain number above zero: the amount of the asset bought for one unit of the asset sold.',

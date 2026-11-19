@@ -67,7 +67,7 @@ export const ANSWERS: readonly Answer[] = [
     text: 'On the Desk a Trader, Owner or Admin reviews an order on a live quote. A second key-role member approves it with a passkey, within 1 hour. Then a one-time link lets your wallet sign it, within 1 hour (market) or 24 hours (limit). A Safe signs in the Safe interface. Until then a Trader or key-role member can withdraw it. Statuses: Pending approval, Approved: waiting for signature, Sent: waiting for the Safe transaction, Open, Filled, Expired, Cancelled, Withdrawn, Refused.' },
   { id: 'KB-20', title: 'Supported chains', link: ORG,
     about: 'Which blockchains or networks a linked wallet can be on.',
-    text: 'A wallet can be linked on four chains today: Ethereum, OP Mainnet, Base and Arbitrum One. You choose the chain when you link the wallet, under Organisation, Wallets, Link a wallet. A wallet on another chain cannot be linked yet.' },
+    text: 'A wallet can be linked on six chains today: Ethereum, OP Mainnet, Base, Arbitrum One, Robinhood Chain and Arc. You choose the chain when you link the wallet, under Organisation, Wallets, Link a wallet; the Desk trades on the chains where a wallet is linked. A wallet on another chain cannot be linked yet.' },
   { id: 'KB-21', title: 'What Ophis is and is not', link: SUPPORT,
     about: 'The legal and regulatory status of Ophis, licences, custody, who holds funds and keys.',
     text: 'Ophis is a software provider. It is not a crypto-asset service provider. Ophis is non-custodial: it never holds your funds or your keys. Wallets stay with you or your custodian, and every trade is signed by a wallet, never by the console. Ophis gives no legal advice: for a legal question about your own situation, ask your own adviser.' },

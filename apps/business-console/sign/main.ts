@@ -12,7 +12,7 @@ import '../src/app/kit.css'
 import '../src/app/app.css'
 import './sign.css'
 import { onPhone } from '../src/app/phone.ts'
-import { CHAIN_NAME, PROOF_ACTION, typedLink, typedProof, type ProofKind, type Typed } from '../src/server/typed.ts'
+import { CHAIN_NAME, PROOF_ACTION, switchTo, typedLink, typedProof, type ProofKind, type Typed } from '../src/server/typed.ts'
 
 interface Request { org: string; chainId: number; wallet: string; nonce: string; issuedAt: number; expiresAt: number; site: string; kind?: ProofKind; credentialHash?: string }
 interface Provider { request(call: { method: string; params?: unknown[] }): Promise<unknown> }
@@ -129,7 +129,7 @@ async function byWallet(ethereum = (window as { ethereum?: Provider }).ethereum,
   if (!named()) show({ wallet: account, chainId: Number(await ethereum.request({ method: 'eth_chainId' })) })
   else {
     if (!same(account, request.wallet)) return say(`${which} is ${account}. The request is for ${request.wallet}. Switch the account and try again.`, 'bad')
-    await ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: `0x${request.chainId.toString(16)}` }] })
+    await switchTo(ethereum, request.chainId)
   }
   await post((await ethereum.request({ method: 'eth_signTypedData_v4', params: [account, JSON.stringify(typed)] })) as string)
 }
@@ -280,7 +280,7 @@ async function orderByWallet() {
   if (!ethereum) return say('No wallet was found in this browser. Open this page in the browser that holds the wallet.', 'warn')
   const [account] = (await ethereum.request({ method: 'eth_requestAccounts' })) as string[]
   if (!same(account, order.wallet)) return say(`The wallet in this browser is ${account}. The order is for ${order.wallet}. Switch the account and try again.`, 'bad')
-  await ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: `0x${order.chainId.toString(16)}` }] })
+  await switchTo(ethereum, order.chainId)
   if (order.purpose === 'sign' && !(await reread())) return
   if (order.purpose === 'sign') step('approve', 'now')
   if (order.purpose === 'sign' && short(await ethereum.request({ method: 'eth_call', params: [{ to: order.sellToken, data: allowance() }, 'latest'] }))) {

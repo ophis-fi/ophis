@@ -1229,11 +1229,19 @@ try {
   const desk = (who) => open(who, 'desk', 'Order blotter')
   await desk(tess)
   const ticket = tess.page.locator('form.ticket')
-  const assetRows = (await tess.page.locator('section', { has: tess.page.getByRole('heading', { name: 'Permitted assets' }) }).locator('tbody tr').allTextContents())
-  check('the desk shows the ticket with the chain and its linked wallets, the permitted assets by chain, the three steps, and no example',
+  const tokens = tess.page.locator('section', { has: tess.page.getByRole('heading', { name: 'Tokens you can trade' }) })
+  const assetRows = await tokens.locator('tbody tr').allTextContents()
+  // Every chain of the desk is listed (owner, 2026-11-19); one with no linked wallet cannot be picked. Each logo loads under the page's policy.
+  check('the desk shows the ticket with every chain, its linked wallets, the tokens by chain with their logos, the three steps, and no example',
     await ticket.getByLabel('Settle from').locator('option', { hasText: 'Demo wallet' }).count() === 1 && await ticket.getByLabel('Settle from').locator('option', { hasText: 'Demo Safe' }).count() === 1
-    && (await ticket.getByLabel('Chain').locator('option').allTextContents()).join() === 'OP Mainnet' && !(await tess.page.getByText(BANNER).count())
-    && await tess.page.getByText('Each is listed on a chain where two independent sources agree on its address.').isVisible() && assetRows.length === 13 && assetRows.filter((r) => r.includes('OP Mainnet')).length === 2
+    && (await ticket.getByLabel('Chain').locator('option:not([disabled])').allTextContents()).join() === 'OP Mainnet'
+    && (await ticket.getByLabel('Chain').locator('option').allTextContents()).join() === 'Ethereum (no wallet linked),OP Mainnet,Robinhood Chain (no wallet linked),Arc (no wallet linked),Base (no wallet linked),Arbitrum One (no wallet linked)'
+    && !(await tess.page.getByText(BANNER).count()) && await ticket.getByRole('link', { name: 'link a wallet there' }).isVisible()
+    && await tess.page.getByText('An order sells one of these for another on the same chain. Most per order: the largest amount one order can sell.').isVisible() && assetRows.length === 18 && assetRows.filter((r) => r.includes('OP Mainnet')).length === 2
+    && assetRows.some((r) => r.includes('WETH (wrapped ETH)') && r.includes('Robinhood Chain')) && assetRows.some((r) => r.includes('EURC') && r.includes('Arc'))
+    // 18 chain logos and 17 token logos (EURCV has none: its first letter), each loaded once its load or error has fired.
+    && await tokens.locator('img.logo').evaluateAll((images) => Promise.all(images.map((image) => image.complete || new Promise((done) => { image.onload = image.onerror = done })))
+      .then(() => images.length === 35 && images.every((image) => image.naturalWidth > 0)))
     && await tess.page.getByText('The Safe owners or your custodian sign on the signing page. Ophis cannot.').isVisible() && await ticket.getByText('Nothing is signed at this step.').isVisible())
   check('at phone width the ticket gives way to "Use a larger screen", the blotter stays, and nothing scrolls sideways', await both(tess.page, '47-desk-ticket')
     && await (async () => {
@@ -1810,7 +1818,7 @@ try {
   await pat.page.getByRole('link', { name: 'Desk' }).first().click()
   await pat.page.getByRole('heading', { name: 'Order ticket' }).waitFor()
   check('a partner gets the desk too (owner, 2026-11-19): the ticket and the permitted assets, and the server answers the desk',
-    !(await pat.page.getByText('The desk is for institutions.').count()) && await pat.page.getByText('Permitted assets').isVisible() && (await status('/api/desk', pat.page)) === 200 && await both(pat.page, '51-desk-partner'))
+    !(await pat.page.getByText('The desk is for institutions.').count()) && await pat.page.getByText('Tokens you can trade').isVisible() && (await status('/api/desk', pat.page)) === 200 && await both(pat.page, '51-desk-partner'))
 
   // A partner with no linked wallet (the plain seed).
   const nell = await firstOwner(seeded().match(/http\S+\/#\/enrol\/\S+/)[0])

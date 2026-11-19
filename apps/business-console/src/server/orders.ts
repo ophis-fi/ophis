@@ -8,14 +8,16 @@ import { fixed } from './demo.ts'
 import { CHAIN_NAME } from './typed.ts'
 
 // The orderbook, settlement and vault relayer of each wallet chain, exactly as @ophis/sdk has them (orderbook.ts,
-// domain.ts; tests/fixtures/appdata-golden.json is made by the SDK and the unit suite compares). OP Mainnet is the Ophis
-// orderbook with its own settlement; the others are CoW's.
+// domain.ts; tests/fixtures/appdata-golden.json is made by the SDK and the unit suite compares). OP Mainnet, Robinhood Chain
+// and Arc (owner, 2026-11-19) are Ophis orderbooks with their own settlement; the others are CoW's.
 const COW = { settlement: '0x9008D19f58AAbD9eD0D60971565AA8510560ab41', relayer: '0xC92E8bdf79f0507f65a392b0ab4667716BFE0110' } as const
 export const CHAINS: Record<number, { orderbook: string; settlement: Hex; relayer: Hex }> = {
   1: { orderbook: 'https://api.cow.fi/mainnet', ...COW },
   10: { orderbook: 'https://optimism-mainnet.ophis.fi', settlement: '0x310784c7FCE12d578dA6f53460777bAc9718B859', relayer: '0x83847EaB41ad9ea43809ce71569eB2e9daF51830' },
   8453: { orderbook: 'https://api.cow.fi/base', ...COW },
   42161: { orderbook: 'https://api.cow.fi/arbitrum_one', ...COW },
+  4663: { orderbook: 'https://robinhood-mainnet.ophis.fi', settlement: '0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD', relayer: '0xB52C38097c19cd38238c62DD36027a7918eFa890' },
+  5042: { orderbook: 'https://arc-mainnet.ophis.fi', settlement: '0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A', relayer: '0x895505F1FE6D762296685fF4a8201782FFdCB8E9' },
 }
 
 // The assets, ERC-20 only (WETH, not native ETH: selling native ETH needs another contract flow). An asset is listed on a
@@ -24,7 +26,7 @@ export const CHAINS: Record<number, { orderbook: string; settlement: Hex; relaye
 // (stablecoins.ts), which decides the price-improvement share of a hosted chain. cap: the most one order sells, in units of
 // the asset: about 5,000,000 EUR at the price of a real quote on api.cow.fi/mainnet on 2026-11-14 (1 WETH = 1,750.93 EURC,
 // 1 USDC = 0.9076 EURC; the three euro tokens at 1 EUR). No price feed.
-const CAP = { WETH: 2_850, USDC: 5_500_000, EURC: 5_000_000, EURe: 5_000_000, EURCV: 5_000_000 }
+const CAP = { WETH: 2_850, USDC: 5_500_000, USDG: 5_500_000, EURC: 5_000_000, EURe: 5_000_000, EURCV: 5_000_000 }
 export type Symbol = keyof typeof CAP
 export interface Asset { token: Hex; decimals: number; stable: boolean }
 const at = (token: Hex, decimals: number, stable = false): Asset => ({ token, decimals, stable })
@@ -36,6 +38,11 @@ export const ASSETS: Record<number, Partial<Record<Symbol, Asset>>> = {
   10: { WETH: at('0x4200000000000000000000000000000000000006', 18), USDC: at('0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', 6, true) },
   8453: { WETH: at('0x4200000000000000000000000000000000000006', 18), USDC: at('0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', 6, true), EURC: at('0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42', 6, true) },
   42161: { WETH: at('0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', 18), USDC: at('0xaf88d065e77c8cC2239327C5EDb3A432268e5831', 6, true), EURe: at('0x0c06cCF38114ddfc35e07427B9424adcca9F44F8', 18, true) },
+  // 2026-11-19: Robinhood Chain has WETH (bridged from Ethereum) and USDG, its one stablecoin (Robinhood's contract docs and
+  // DefiLlama; USDG is also in the SDK's stable list); Arc has Circle's USDC and EURC (Circle's address pages and Arc's
+  // docs) and a bridged WETH (Arc's docs and DefiLlama). symbol() and decimals() matched on both endpoints of each chain.
+  4663: { WETH: at('0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73', 18), USDG: at('0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168', 6, true) },
+  5042: { WETH: at('0x128cC466B61f542da60c70e3aA11c10e19B84EDB', 18), USDC: at('0x3600000000000000000000000000000000000000', 6, true), EURC: at('0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1', 6, true) },
 }
 const assetOf = (chainId: number, symbol: unknown) => (typeof symbol === 'string' && Object.hasOwn(ASSETS[chainId] ?? {}, symbol) ? ASSETS[chainId][symbol as Symbol]! : null)
 export const capOf = (symbol: Symbol, decimals: number) => BigInt(CAP[symbol]) * 10n ** BigInt(decimals)
@@ -58,11 +65,13 @@ export const SIGNERS = ['owner', 'admin', 'trader', 'approver', 'compliance'] as
 // ---- appData and the Ophis fee: exactly what @ophis/sdk buildOphisFullAppData(chainId, slippageBips, undefined,
 // 'business', undefined, isStablePair) makes, but for a limit order, whose orderClass is 'limit' (the SDK has market only) ----
 const FEE_RECIPIENT = '0x858f0F5eE954846D47155F5203c04aF1819eCeF8'
+const OPHIS_CHAINS = new Set([10, 4663, 5042])
 /** The CIP-75 partner fee: 1 bp of the volume. On a hosted chain also a share of a price better than the quote, capped. */
 export const fee = (chainId: number, stable: boolean) => {
   const base = { volumeBps: 1, recipient: FEE_RECIPIENT }
-  // OP Mainnet: the Ophis backend applies the price-improvement share itself, so appData carries the base only.
-  return chainId === 10 ? base : [base, { priceImprovementBps: stable ? 5000 : 8000, maxVolumeBps: stable ? 20 : 99, recipient: FEE_RECIPIENT }]
+  // The Ophis chains (OP Mainnet, Robinhood Chain, Arc): the Ophis backend applies the price-improvement share itself, so
+  // appData carries the base only, as the SDK's SOVEREIGN_CHAIN_IDS.
+  return OPHIS_CHAINS.has(chainId) ? base : [base, { priceImprovementBps: stable ? 5000 : 8000, maxVolumeBps: stable ? 20 : 99, recipient: FEE_RECIPIENT }]
 }
 const sorted = (v: unknown): unknown =>
   Array.isArray(v) ? v.map(sorted) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sorted((v as Record<string, unknown>)[k])])) : v

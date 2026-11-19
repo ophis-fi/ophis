@@ -6,6 +6,7 @@
 // no price and builds no order.
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { api, CANCELLED, capital, Icon, ROLE, save, say, sensitive, Section, stamp, SignNow, Status, Tile, Ways } from './ui.tsx'
+import { ASSET_LOGO, CHAIN_LOGO } from './logos.ts'
 import { money } from './money.ts'
 
 // What an approval binds (the server's terms; amounts in atoms) and the same in words, made by the server.
@@ -58,6 +59,11 @@ interface DeskView {
 }
 
 const places = (asset: string) => (asset === 'WETH' ? 4 : 2)
+// An order signs over tokens, so ETH is sold and bought as WETH, ETH as a token (owner asked, 2026-11-19).
+const ASSET_NAME: Record<string, string> = { WETH: 'WETH (wrapped ETH)' }
+/** A chain's or an asset's logo beside its name (decorative: the name is the text); its first letter where there is none. */
+const Logo = ({ src, name }: { src?: string; name: string }) => (src ? <img className="logo" src={src} alt="" width={20} height={20} /> : <span className="logo glyph" aria-hidden="true">{name.slice(0, 1)}</span>)
+const named = (src: string | undefined, name: string, text: ReactNode = name) => <span className="with-logo"><Logo src={src} name={name} /><span>{text}</span></span>
 const count = (n: number) => money(String(n), 0)
 const short = (address: string) => (address.length > 13 ? `${address.slice(0, 6)}...${address.slice(-4)}` : address)
 /** An order in words, as the Approvals list and the record say it. Every amount whole, as the server wrote it. */
@@ -359,8 +365,8 @@ function TicketForm({ v, onSent }: { v: DeskView; onSent: () => Promise<void> })
   const [problem, setProblem] = useState('')
   const [busy, setBusy] = useState(false)
   const set = (change: Partial<typeof t>) => setT({ ...t, ...change })
-  // The chains with a linked wallet; on the chain picked, its wallets.
-  const chains = v.chains.filter((c) => v.wallets.some((w) => w.chainId === c.id))
+  // Every chain of the desk; one with no linked wallet is shown and cannot be picked (owner, 2026-11-19). On the chain picked, its wallets.
+  const linked = (id: number) => v.wallets.some((w) => w.chainId === id)
   const onChain = v.wallets.filter((w) => w.chainId === t.chainId)
   const wallet = onChain.find((w) => w.id === t.walletId) ?? onChain[0]
   const here = v.assets.filter((a) => a.chainId === wallet?.chainId)
@@ -410,12 +416,16 @@ function TicketForm({ v, onSent }: { v: DeskView; onSent: () => Promise<void> })
     ))}</div></fieldset>
   )
   const assets = (label: string, field: 'sell' | 'buy', value?: string) => (
-    <label className="field">{label}<select className="input" value={value} onChange={(event) => set({ [field]: event.target.value })}>{here.map((a) => <option key={a.symbol}>{a.symbol}</option>)}</select></label>
+    <label className="field">{label}<span className="pick">{value && <Logo src={ASSET_LOGO[value]} name={value} />}
+      <select className="input" value={value} onChange={(event) => set({ [field]: event.target.value })}>{here.map((a) => <option key={a.symbol} value={a.symbol}>{a.symbol}</option>)}</select></span>
+      {value === 'WETH' && <small className="muted">{field === 'sell' ? 'Wrapped ETH. An order sells tokens: wrap ETH in the wallet first.' : 'Wrapped ETH. Unwrap it in the wallet to hold ETH.'}</small>}</label>
   )
   return (
     <form className="ticket" data-step="ticket" onSubmit={(event) => ask(false, event)}>
       <div className="row">
-        <label className="field">Chain<select className="input" value={wallet.chainId} onChange={(event) => set({ chainId: Number(event.target.value), walletId: '', sell: '', buy: '' })}>{chains.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+        <label className="field">Chain<span className="pick"><Logo src={CHAIN_LOGO[wallet.chainId]} name={String(wallet.chainId)} />
+          <select className="input" value={wallet.chainId} onChange={(event) => set({ chainId: Number(event.target.value), walletId: '', sell: '', buy: '' })}>{v.chains.map((c) => <option key={c.id} value={c.id} disabled={!linked(c.id)}>{linked(c.id) ? c.name : `${c.name} (no wallet linked)`}</option>)}</select></span>
+          {v.chains.some((c) => !linked(c.id)) && <small className="muted">To trade on another chain, <a className="link" href="/#/organisation">link a wallet there</a>.</small>}</label>
         <label className="field">Settle from<select className="input" value={wallet.id} onChange={(event) => set({ walletId: event.target.value })}>{onChain.map((w) => <option key={w.id} value={w.id}>{w.label} ({short(w.address)}, {w.scheme === 'presign' ? 'Safe' : 'key or custodian'})</option>)}</select></label>
       </div>
       {pills('type', 'Order type', [['market', 'Market'], ['limit', 'Limit']], t.type, (type) => set({ type }))}
@@ -523,8 +533,9 @@ function Ticket({ onSignedOut }: { onSignedOut: () => void }) {
       <div className="desk dk-b">
         <section className="panel"><h2 className="cap">Order ticket</h2><TicketForm v={v} onSent={load} /></section>
         <div className="stack">
-          <Section icon="list-checks" title="Permitted assets" hint="Each is listed on a chain where two independent sources agree on its address." action={<Export table="assets" />}>
-            <Table head={['Asset', 'Chain', 'Most per order']} rows={v.assets.map((a) => [<><b>{a.symbol}</b><small className="mono">{short(a.token)}</small></>, a.chain, money(a.cap, 0)])} />
+          <Section icon="list-checks" title="Tokens you can trade" hint="An order sells one of these for another on the same chain. Most per order: the largest amount one order can sell." action={<Export table="assets" />}>
+            <Table head={['Token', 'Chain', 'Most per order']} rows={v.assets.map((a) => [named(ASSET_LOGO[a.symbol], a.symbol, <><b>{ASSET_NAME[a.symbol] ?? a.symbol}</b><small className="mono">{short(a.token)}</small></>),
+              named(CHAIN_LOGO[a.chainId], a.chain), money(a.cap, 0)])} />
           </Section>
           <ol className="stats flow">
             <li className="c"><Tile name="pencil" /><div><span className="cap">Step 1</span><b>Prepare</b><p>A Trader fills the ticket and reviews the live quote.</p></div></li>
@@ -537,7 +548,8 @@ function Ticket({ onSignedOut }: { onSignedOut: () => void }) {
         action={<div className="acts"><button className="btn ghost sm" type="button" disabled={busy} onClick={async () => (setBusy(true), await load(), setBusy(false))}><Icon name="history" size={16} />Refresh</button><Export table="orders" /></div>}>
         {failed && <p className="note bad" role="alert"><Icon name="triangle-alert" /><span className="grow">{failed}</span></p>}
         {v.orders.length ? <Table head={['Order', 'Type', 'Sell', 'Buy', 'Chain', 'Status', 'Actions']} rows={v.orders.map((o) => [
-          orderCell(o, (x) => setPicked(x.id)), o.terms.type === 'limit' ? 'Limit' : 'Market', o.words.sell, o.words.buy, o.words.chain, <Status>{o.state}</Status>,
+          orderCell(o, (x) => setPicked(x.id)), o.terms.type === 'limit' ? 'Limit' : 'Market', named(ASSET_LOGO[o.terms.sell.symbol], o.terms.sell.symbol, o.words.sell),
+          named(ASSET_LOGO[o.terms.buy.symbol], o.terms.buy.symbol, o.words.buy), named(CHAIN_LOGO[o.terms.chainId], o.words.chain), <Status>{o.state}</Status>,
           <>
             <button className="ib" type="button" aria-label={`Open the record of ${o.ref}`} title="Record" onClick={() => setPicked(o.id)}><Icon name="file-text" /></button>
             {o.mine && o.open && <button className="ib" type="button" aria-label={`Cancel ${o.ref}`} title="Cancel order" onClick={() => cancel(o)}><Icon name="ban" /></button>}
