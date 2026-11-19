@@ -1,12 +1,14 @@
 # @ophis/plugin-elizaos
 
-MEV-protected **same-chain** token swaps for [elizaOS](https://elizaos.ai) agents, routed through **Ophis** (a [CoW Protocol](https://cow.fi) intent-settlement layer).
+Intent-based **same-chain** token swaps for [elizaOS](https://elizaos.ai) agents, routed through **Ophis**.
 
-Instead of an AMM swap that can be sandwiched, the agent's order settles in a
-**batch auction** with **gasless** settlement (solvers pay the gas). Ophis charges
+The agent signs a limit order for **batch-auction** settlement. Solvers pay
+settlement gas; the wallet pays for approvals and other onchain transactions.
+This reduces exposure to public-mempool sandwiching but does not guarantee
+protection from every form of MEV. Ophis charges
 a 1 bp base plus 80% of reference-quote improvement capped at 99 bps on volatile
 pairs, or 50% capped at 20 bps on stable pairs; the trader keeps the remainder
-and all improvement above the cap. The agent signs the CoW order with its **own
+and all improvement above the cap. The agent signs the order with its **own
 EVM key** (EIP-712)—no managed-wallet dependency. Hosted orders carry the Ophis
 policy in `appData`; set a referral code for attribution.
 
@@ -25,7 +27,7 @@ Add it to your character:
   "plugins": ["@ophis/plugin-elizaos"],
   "settings": {
     "EVM_PRIVATE_KEY": "0x...",           // the agent's EOA key (funds the swap + one-time approval)
-    "OPHIS_REFERRAL_CODE": "yourcode",    // optional — earns the rebate (mint at swap.ophis.fi/#/rewards)
+    "OPHIS_REFERRAL_CODE": "yourcode",    // optional — referral attribution (register at swap.ophis.fi/#/affiliate)
     "OPHIS_FEE_CHAIN": "base"             // optional default chain
     // optional RPC overrides: "ETHEREUM_PROVIDER_BASE": "https://...", etc.
   }
@@ -37,11 +39,11 @@ Add it to your character:
 > "Swap 100 USDC for WETH on Base via Ophis"
 > "Sell 0.5 WETH for USDC on Unichain"
 
-The `OPHIS_SWAP` action extracts the intent, resolves the chain + token addresses, and executes the swap through the audited `@ophis/agent-swap` core (quote → Ophis fee `appData` → approve the CoW VaultRelayer → EIP-712-sign the order → submit). It returns the order UID and an `explorer.ophis.fi` tracking link.
+The `OPHIS_SWAP` action extracts the intent, resolves the chain + token addresses, and executes the swap through the shared `@ophis/agent-swap` core (quote → Ophis fee `appData` → approve the vault relayer → EIP-712-sign the order → submit). It returns the order UID and an `explorer.ophis.fi` tracking link.
 
 ## Supported chains
 
-Ethereum, Optimism, BNB, Gnosis, **Unichain**, Polygon, Base, Ink, Arbitrum, Avalanche, Linea. Optimism and Unichain are Ophis-operated and use the published capped improvement-capture policy. Same-chain only. Version 0.3.7 uses SDK 0.4.5; this does not expand the plugin's chain resolver to Arc, Robinhood Chain or Plasma. Its configured referral default applies if an Arc wallet is supplied through a custom resolver.
+Ethereum, Optimism, BNB, Gnosis, **Unichain**, Polygon, Base, Ink, Arbitrum, Avalanche, Linea. Optimism and Unichain are Ophis-operated and use the published capped improvement-capture policy. Same-chain only. Version 0.3.8 uses SDK 0.4.6; this does not expand the plugin's chain resolver to Arc, Robinhood Chain or Plasma. Its configured referral default applies if an Arc wallet is supplied through a custom resolver.
 
 ## Tokens
 
@@ -58,4 +60,6 @@ Common tokens (USDC, WETH, …) resolve by symbol on the major chains; for anyth
 
 - The agent's key needs the sell token plus a little native gas for the one-time ERC-20 approval; the swap settlement itself is gasless.
 - Slippage defaults to 0.5% (capped at 50% by the SDK).
-- Built on `@ophis/agent-swap` — the same audited path used by the Ophis Coinbase-AgentKit and GOAT integrations.
+- Built on `@ophis/agent-swap` — the same shared path used by the Ophis Coinbase-AgentKit and GOAT integrations.
+
+For shielded balances and private swaps, use the separate [privacy pools flow](https://docs.ophis.fi/privacy-pools); these adapters submit public orderbook orders.

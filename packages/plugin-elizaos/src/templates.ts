@@ -2,7 +2,7 @@
 // parseKeyValueXml). Ophis does SAME-CHAIN swaps only; the model must not invent a
 // token address — it returns the 0x address if it knows it, else the symbol, and the
 // handler resolves/validates it.
-export const swapTemplate = `Extract the token swap the user is requesting RIGHT NOW via Ophis (a CoW Protocol MEV-protected, same-chain swap).
+export const swapTemplate = `Extract the token swap the user is requesting RIGHT NOW via Ophis (a same-chain batch-auction swap).
 
 The user's CURRENT request (the authoritative source of truth — extract from THIS):
 {{currentRequest}}

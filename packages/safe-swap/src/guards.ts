@@ -61,7 +61,7 @@ export function applySlippage(amount: bigint, bps: number): bigint {
 }
 
 /**
- * Invariant 1: the signed order's feeAmount must be exactly "0". Ophis/CoW
+ * Invariant 1: the signed order's feeAmount must be exactly "0". Ophis
  * orders take the fee from surplus + the appData partner fee, never a signed
  * feeAmount (a non-zero one is unslipped extra spend and the orderbook rejects
  * it). NEVER sign the quote's feeAmount.
@@ -77,7 +77,7 @@ export function assertSignedFeeZero(feeAmount: string): void {
  * trusted for pricing, but the fields the Safe presigns must not drift from what
  * the caller asked for: a compromised quote must not substitute tokens or change
  * the amount pulled. Tokens must match exactly, and the gross (quote sellAmount +
- * feeAmount) must EQUAL the requested amount (an honest CoW sell quote splits
+ * feeAmount) must EQUAL the requested amount (an honest orderbook sell quote splits
  * sellAmountBeforeFee exactly, so any drift up = over-pull, down = under-sell).
  */
 export function assertRequestBound(args: {

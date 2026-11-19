@@ -12,7 +12,7 @@ describe('getOphisOrderbookUrl', () => {
     expect(getOphisOrderbookUrl(5042)).toBe('https://arc-mainnet.ophis.fi');
   });
 
-  it('returns api.cow.fi hosts for CoW-hosted chains (Gnosis slug is "xdai")', () => {
+  it('returns api.cow.fi hosts for externally hosted chains (Gnosis slug is "xdai")', () => {
     expect(getOphisOrderbookUrl(1)).toBe('https://api.cow.fi/mainnet');
     expect(getOphisOrderbookUrl(100)).toBe('https://api.cow.fi/xdai');
     expect(getOphisOrderbookUrl(8453)).toBe('https://api.cow.fi/base');

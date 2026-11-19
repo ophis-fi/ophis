@@ -1,5 +1,5 @@
-// Bridging between chains through Across, the way swap.ophis.fi does it: a CoW order on the source chain sells
-// into the user's own CoW Shed (a personal proxy), and a post-hook signed by the user deposits into Across for
+// Bridging between chains through Across, the way swap.ophis.fi does it: an order on the source chain sells
+// into the user's own bridge account (a personal proxy), and a post-hook signed by the user deposits into Across for
 // the user on the destination chain. The CLI never holds a key: the user's wallet signs both, and nothing
 // reaches the wallet unless it passes the checks in bridgeAccount below.
 import { OrderBookApi, setGlobalAdapter, TradingSdk } from '@cowprotocol/cow-sdk'
@@ -71,7 +71,7 @@ const GUARD_SLACK_BPS = 20n
 const GUARD_GAS = 50_000n
 const HOOK_GAS = 240_000n + GUARD_GAS
 const SHED_CREATION_GAS = 360_000n
-// The CoW Shed's EIP-712 signing domain and types, as the deployed shed (factory below) verifies them; read from
+// The bridge account's EIP-712 signing domain and types, as the deployed shed (factory below) verifies them; read from
 // sdk-cow-shed 0.3.8 and proven by executing a signed hook on a Base fork. Anything else would not verify on-chain.
 export const SHED_VERSION = '1.0.1'
 export const SHED_FACTORY_ADDRESS = COW_SHED_FACTORY[SHED_VERSION]
@@ -96,7 +96,7 @@ const PLACEHOLDER_SIGNATURE: Hex = `0x${'11'.repeat(32)}${'22'.repeat(32)}1b`
 
 export const same = (a: unknown, b: unknown) => typeof a === 'string' && typeof b === 'string' && a.toLowerCase() === b.toLowerCase()
 
-/** The owner's own CoW Shed: where the factory deploys it (CREATE2), computed without the SDK's global adapter. */
+/** The owner's own bridge account: where the factory deploys it (CREATE2), computed without the SDK's global adapter. */
 export const shedOf = (owner: Address): Address =>
   getContractAddress({
     opcode: 'CREATE2',
@@ -190,7 +190,7 @@ function acrossHook(callData: Hex, srcChainId: number, want: BridgeWant, now: bi
 /** What the user confirmed: the only things bridgeAccount lets the wallet sign. */
 interface BridgeWant {
   owner: Address
-  shed: Address // the user's own CoW Shed, recomputed here, never read from the data being signed
+  shed: Address // the user's own bridge account, recomputed here, never read from the data being signed
   sellToken: Address
   via: Address // the token the order buys and Across carries, checked at quote time (bridgeVia)
   viaMin: bigint // the swap's confirmed minimum of `via`: what the bridge fee is checked on before the hook is signed
@@ -200,7 +200,7 @@ interface BridgeWant {
   minOut: bigint
 }
 
-// The four fields CoW Shed and GPv2 sign over: any other (a salt) changes the digest, so the contract would reject
+// The four fields bridge account and GPv2 sign over: any other (a salt) changes the digest, so the contract would reject
 // the signature (a hook that then fails leaves the order's output in the shed).
 const PLAIN_DOMAIN = 'chainId,name,verifyingContract,version'
 const plainDomain = (d: Record<string, unknown>) => Object.keys(d).filter((k) => d[k] !== undefined).sort().join() === PLAIN_DOMAIN
@@ -233,7 +233,7 @@ export async function signedBy(wallet: Signer, chainId: number, td: Parameters<t
 
 /**
  * The account the bridging SDK signs with. It forwards to the user's wallet exactly two things, once, in order:
- *  1. the hook for the user's own CoW Shed: a guard call that only succeeds once the shed holds the order's output,
+ *  1. the hook for the user's own bridge account: a guard call that only succeeds once the shed holds the order's output,
  *     then one weiroll program that only makes the Across deposit above;
  *  2. then an Order that sells at most the confirmed amount into that shed, for the hook's token, filled whole,
  *     with no fee field and before the deposit deadline, whose bridge output at the hook's fee still meets the
@@ -584,9 +584,9 @@ export async function checkLeftover(src: Network, owner: Address, via: Token, gu
   const held = await reader(src)
     .readContract({ address: via.address, abi: erc20Abi, functionName: 'balanceOf', args: [shedOf(owner)] })
     .catch(() => {
-      throw new UserError('Could not read your CoW Shed balance. Try again in a moment, or use --rpc with another RPC.')
+      throw new UserError('Could not read your bridge account balance. Try again in a moment, or use --rpc with another RPC.')
     })
-  if (held * LEFTOVER_SHARE >= guard) throw new UserError(`Your CoW Shed, the small account bridges pay into, still holds ${amount(held, via.decimals)} ${via.symbol} from an earlier transfer. Return it to your wallet first: ophis recover ${via.address} on ${src.alias}`)
+  if (held * LEFTOVER_SHARE >= guard) throw new UserError(`Your bridge account, the small account bridges pay into, still holds ${amount(held, via.decimals)} ${via.symbol} from an earlier transfer. Return it to your wallet first: ophis recover ${via.address} on ${src.alias}`)
 }
 
 export const SHED_NONCES = parseAbi(['function nonces(bytes32 nonce) view returns (bool)'])
@@ -734,7 +734,7 @@ export function lockBridges(): () => void {
 type ListedOrder = { uid?: string; status?: string; receiver?: string | null; signingScheme?: string; fullAppData?: string | null }
 
 /**
- * An open bridge order from this wallet: two at once would share its CoW Shed, and the first would carry both. Also
+ * An open bridge order from this wallet: two at once would share its bridge account, and the first would carry both. Also
  * the shed hooks of its earlier bridge orders, wherever they were placed (here, the website, another machine): a hook
  * stays valid until its own deadline even once its order is cancelled or filled (checkEarlierHooks reads their
  * nonces). Only orders the owner signed count: anyone can list a pre-sign order "from" a wallet and let it expire.
@@ -951,11 +951,11 @@ export async function bridgeStatus(src: Network, uid: string): Promise<{ status:
 }
 
 /**
- * A bridge status in plain words. Across returns an unfilled deposit to its depositor: the owner's own CoW Shed. The
+ * A bridge status in plain words. Across returns an unfilled deposit to its depositor: the owner's own bridge account. The
  * hint names the token the bridge carried, so recovering it never depends on finding the order again.
  */
 export function saidStatus(status: string, src: Network, shed: Address, token: Address, yours = true): string {
-  const whose = yours ? 'your CoW Shed' : "the owner's CoW Shed"
+  const whose = yours ? 'your bridge account' : "the owner's bridge account"
   const hint = (how: string) => (yours ? `. ${how} with: ophis recover ${token} on ${src.alias}` : '')
   const said: Record<string, string> = {
     executed: 'Bridged: Across reports it arrived on the destination chain',

@@ -1,7 +1,7 @@
 {
   "name": "@ophis/sdk",
-  "version": "0.4.5",
-  "description": "Integration helpers for Ophis (a CoW Protocol fork): correct orderbook hosts, the CIP-75 partner-fee appData fragment, the per-chain EIP-712 signing domain, and order receiver-safety guards.",
+  "version": "0.4.6",
+  "description": "Integration helpers for Ophis: chain-specific orderbooks, signing domains, fees, receiver guards, and Base builder attribution.",
   "license": "GPL-3.0-or-later",
   "type": "module",
   "main": "./dist/index.js",
@@ -27,8 +27,6 @@
   "bugs": "https://github.com/ophis-fi/ophis/issues",
   "keywords": [
     "ophis",
-    "cow-protocol",
-    "cowswap",
     "dex",
     "dex-aggregator",
     "defi",

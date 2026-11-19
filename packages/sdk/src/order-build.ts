@@ -25,7 +25,7 @@ import {
 import { buildOphisReferrerMetadata } from './referral.js';
 import { assertOphisOrderTokens } from './guards.js';
 
-/** CoW appData schema version the live Ophis frontend emits (cow-sdk LATEST_APP_DATA_VERSION). */
+/** appData schema version the live Ophis frontend emits (cow-sdk LATEST_APP_DATA_VERSION). */
 export const APP_DATA_VERSION = '1.14.0';
 
 /**
@@ -40,7 +40,7 @@ export const MAX_PARTNER_FEE_ENTRIES = 3;
 /** The address that receives bought tokens is part of the signed payload (drain vector). */
 export type Address = `0x${string}`;
 
-/** EIP-712 struct for a CoW GPv2 order. Mirrors @cowprotocol/contracts ORDER_TYPE_FIELDS. */
+/** EIP-712 struct for a GPv2 order. Mirrors @cowprotocol/contracts ORDER_TYPE_FIELDS. */
 export const ORDER_TYPED_DATA_TYPES = {
   Order: [
     { name: 'sellToken', type: 'address' },
@@ -201,7 +201,7 @@ export interface BuildOrderParams {
   kind: 'sell' | 'buy';
   /** Order lifetime in seconds from now (default 1200 = 20 min). */
   validForSeconds?: number;
-  /** feeAmount in the signed order. CoW market orders sign 0 (fee is in surplus). */
+  /** feeAmount in the signed order. batch-auction market orders sign 0 (fee is in surplus). */
   feeAmount?: string;
   partiallyFillable?: boolean;
   /** Max accepted slippage in bips, capped at 5000 (50%); recorded in appData.
@@ -239,7 +239,7 @@ export interface BuiltOrder {
   chainId: number;
   owner: Address;
   orderbookUrl: string;
-  /** The CoW order to sign (EIP-712 message). `appData` is the keccak256 hash. */
+  /** The order to sign (EIP-712 message). `appData` is the keccak256 hash. */
   order: {
     sellToken: Address;
     buyToken: Address;
@@ -265,7 +265,7 @@ export interface BuiltOrder {
 }
 
 /**
- * Builds a bounded, ready-to-sign CoW order on Ophis. Pins the receiver to the
+ * Builds a bounded, ready-to-sign order on Ophis. Pins the receiver to the
  * owner (unless unsafeCustomReceiver is set), uses the correct per-chain
  * settlement contract (Optimism, Unichain, and Robinhood Chain are NON-canonical) and
  * orderbook host, and embeds the CIP-75 partner fee in appData. Pure — no
@@ -380,7 +380,7 @@ export function assertAtoms(amount: string, label: string): void {
     throw new Error(`${label}: exceeds uint256 max, got "${amount}"`);
 }
 
-/** Like assertAtoms but allows "0" (feeAmount is 0 for modern CoW market orders). */
+/** Like assertAtoms but allows "0" (feeAmount is 0 for modern batch-auction market orders). */
 export function assertFeeAtoms(amount: string, label: string): void {
   if (typeof amount !== 'string' || !/^[0-9]+$/.test(amount)) {
     throw new Error(`${label}: must be a non-negative integer string of atoms, got "${amount}"`);
@@ -407,7 +407,7 @@ function assertSlippageCap(p: BuildOrderParams): void {
 }
 
 /**
- * Extract the fair sell/buy atoms from a getQuote() response. CoW `/api/v1/quote`
+ * Extract the fair sell/buy atoms from a getQuote() response. The upstream protocol `/api/v1/quote`
  * returns `{ quote: { sellAmount, buyAmount, feeAmount, ... }, ... }`. Returns null
  * if the shape is unexpected (caller then treats slippage as unverified).
  */

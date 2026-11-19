@@ -1,7 +1,7 @@
 /**
- * Referral-code attribution via order appData.
+ * Referral-code attribution vian order appData.
  *
- * An Ophis referral code embedded in a CoW order's appData (under
+ * An Ophis referral code embedded in an order's appData (under
  * `metadata.ophisReferrer.code`) credits that code's owner for the trade's
  * volume in the affiliate program WITHOUT the end user signing a separate
  * `?ref` bind. This is how an agent builder makes every order their agent

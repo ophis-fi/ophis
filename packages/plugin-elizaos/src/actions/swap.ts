@@ -19,7 +19,7 @@ import { swapTemplate } from '../templates.js';
 export const ophisSwapAction: Action = {
   name: 'OPHIS_SWAP',
   description:
-    'Swap one ERC-20 for another on the SAME chain via Ophis (CoW Protocol): MEV-protected and gasless (solvers pay gas). Ophis charges a 1 bp base plus capped improvement capture; the trader keeps the remainder and all improvement above the cap. Native ETH is not supported — use WETH. Not for cross-chain bridging.',
+    'Swap one ERC-20 for another on the SAME chain via Ophis: batch settlement (solvers pay settlement gas; the wallet pays approval gas). Ophis charges a 1 bp base plus capped improvement capture; the trader keeps the remainder and all improvement above the cap. Native ETH is not supported — use WETH. Not for cross-chain bridging.',
   similes: ['SWAP_TOKENS', 'TOKEN_SWAP', 'EXCHANGE_TOKENS', 'TRADE_TOKENS', 'MEV_PROTECTED_SWAP'],
   // `template` is an allowed extra field on Action ([key: string]: unknown).
   template: swapTemplate,
@@ -129,7 +129,7 @@ export const ophisSwapAction: Action = {
         { ...(referralCode ? { referralCode } : {}), isStablePair },
       );
 
-      const text = `Submitted an MEV-protected swap on ${chainName} via Ophis. Order ${result.orderUid} — track it at ${result.explorerUrl}`;
+      const text = `Submitted a swap order on ${chainName} via Ophis. Order ${result.orderUid} — track it at ${result.explorerUrl}`;
       // The order is already submitted: a callback DELIVERY failure must NOT be reported
       // as a swap failure (that could prompt a duplicate swap), so guard it separately.
       try {
@@ -155,7 +155,7 @@ export const ophisSwapAction: Action = {
       {
         name: '{{agent}}',
         content: {
-          text: 'Submitting an MEV-protected swap of 100 USDC → WETH on Base through Ophis…',
+          text: 'Submitting a swap order of 100 USDC → WETH on Base through Ophis…',
           actions: ['OPHIS_SWAP'],
         },
       },
@@ -164,7 +164,7 @@ export const ophisSwapAction: Action = {
       { name: '{{user}}', content: { text: 'Sell 0.5 WETH for USDC on Unichain' } },
       {
         name: '{{agent}}',
-        content: { text: 'Routing 0.5 WETH → USDC on Unichain via Ophis (MEV-protected)…', actions: ['OPHIS_SWAP'] },
+        content: { text: 'Routing 0.5 WETH → USDC on Unichain via Ophis for batch settlement…', actions: ['OPHIS_SWAP'] },
       },
     ],
   ],

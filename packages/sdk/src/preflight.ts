@@ -123,7 +123,7 @@ export interface OphisPreflightRequest {
   owner: Address;
   /** Amount that must be held AND approved: sellAmount + feeAmount, in atoms. Must be a positive bigint. */
   required: bigint;
-  /** The approve spender. Defaults to the chain's GPv2VaultRelayer via getOphisVaultRelayer, which is the correct spender for a CoW order (approving the settlement instead is the classic unfillable-order mistake). */
+  /** The approve spender. Defaults to the chain's GPv2VaultRelayer via getOphisVaultRelayer, which is the correct spender for an order (approving the settlement instead is the classic unfillable-order mistake). */
   spender?: Address;
 }
 

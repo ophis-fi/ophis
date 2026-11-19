@@ -1,9 +1,9 @@
 import { addressesEqual, assertAddressLike, isZeroAddress } from './guards.js';
 
 /**
- * CoW order safety helpers for autonomous signers.
+ * order safety helpers for autonomous signers.
  *
- * Context: a CoW order carries a `receiver` field — the address that gets the
+ * Context: an order carries a `receiver` field — the address that gets the
  * bought tokens on settlement. It is part of the EIP-712-signed payload and is
  * fully caller-controlled; the backend only defaults it to the owner when it is
  * absent/zero. For an autonomous agent (no human reading the wallet prompt) an
@@ -28,7 +28,7 @@ export interface ReceiverOptions {
 }
 
 /**
- * Resolves the `receiver` for a CoW order, pinned to `owner` unless an explicit
+ * Resolves the `receiver` for an order, pinned to `owner` unless an explicit
  * non-owner `unsafeCustomReceiver` is supplied. Throws on a malformed address.
  */
 export const ophisOrderReceiver = (owner: `0x${string}`, opts: ReceiverOptions = {}): `0x${string}` => {
@@ -46,7 +46,7 @@ export interface AssertReceiverOptions {
 
 /**
  * Pre-sign guard: throws unless `receiver` resolves to the owner. A zero or
- * `undefined` receiver is safe (CoW sends proceeds to the owner). Call this
+ * `undefined` receiver is safe (the upstream protocol sends proceeds to the owner). Call this
  * immediately before signing/submitting an autonomous order.
  */
 export const assertReceiverIsOwner = (
@@ -55,9 +55,9 @@ export const assertReceiverIsOwner = (
   opts: AssertReceiverOptions = {},
 ): void => {
   assertAddressLike(owner, 'owner');
-  if (receiver === undefined) return; // CoW treats an absent receiver as the owner
+  if (receiver === undefined) return; // the upstream protocol treats an absent receiver as the owner
   assertAddressLike(receiver, 'receiver'); // validate format before any early-return
-  if (isZeroAddress(receiver)) return; // CoW treats the zero receiver as the owner
+  if (isZeroAddress(receiver)) return; // the upstream protocol treats the zero receiver as the owner
   if (addressesEqual(receiver, owner)) return;
   if (opts.allowCustomReceiver) return;
   throw new Error(

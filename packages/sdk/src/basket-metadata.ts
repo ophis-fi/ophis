@@ -1,10 +1,10 @@
 /**
- * Basket (multi-order) attribution via order appData.
+ * Basket (multi-order) attribution vian order appData.
  *
  * Phase A of Ophis basket-intents ("ophis-multi-order") is a CLEAN-ROOM,
  * NO-CONTRACTS flow: a user composes N sell tokens x M buy tokens on one review
  * screen, and the frontend DECOMPOSES that into up to 6 single-pair GPv2 legs
- * that share one `validTo` and one basket `id`. Each leg is an ordinary CoW
+ * that share one `validTo` and one basket `id`. Each leg is an ordinary
  * order; the only thing binding them together is a marker embedded in each
  * leg's appData under `metadata.ophisBasket`:
  *

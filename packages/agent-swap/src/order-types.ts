@@ -1,5 +1,5 @@
-// The canonical GPv2 (CoW Protocol) Order EIP-712 type set. These field names, types, and ORDER
-// are fixed by the GPv2Settlement contract on every CoW/Ophis chain — they are protocol constants,
+// The canonical GPv2 Order EIP-712 type set. These field names, types, and ORDER
+// are fixed by the GPv2Settlement contract on every supported chain — they are protocol constants,
 // not configuration, so they are inlined here (the @ophis/sdk is deliberately dependency-free and
 // does not export them, and pulling them from @cowprotocol/contracts drags in an ethers-v5 runtime
 // shim). The struct that is signed must match this exactly or the settlement contract rejects the

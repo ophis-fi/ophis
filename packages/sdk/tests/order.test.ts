@@ -28,7 +28,7 @@ describe('assertReceiverIsOwner', () => {
     expect(() => assertReceiverIsOwner(OWNER, OWNER_LOWER)).not.toThrow();
   });
 
-  it('treats undefined / zero receiver as owner (CoW default) and passes', () => {
+  it('treats undefined / zero receiver as owner (the upstream protocol default) and passes', () => {
     expect(() => assertReceiverIsOwner(OWNER, undefined)).not.toThrow();
     expect(() => assertReceiverIsOwner(OWNER, ZERO)).not.toThrow();
   });

@@ -5,10 +5,10 @@
  *   parse_intent     — natural language -> structured swap intent (LibertAI Qwen)
  *   resolve_token    — trusted token symbol -> canonical address (anti-spoof)
  *   get_quote        — best-execution quote from the chain's Ophis orderbook
- *   build_order      — a bounded, ready-to-sign EIP-712 CoW order (receiver pinned)
+ *   build_order      — a bounded, ready-to-sign EIP-712 order (receiver pinned)
  *   validate_order   — offline preflight for externally-built orders
  *   submit_order     — relay a PRE-SIGNED order to the orderbook (no keys held here)
- *   get_integrator_earnings: routed volume, Ophis base fee, and integrator own fee on CoW-hosted chains
+ *   get_integrator_earnings: routed volume, Ophis base fee, and integrator own fee on externally hosted chains
  *   list_chains      — supported chains + orderbook host + settlement contract
  *   get_balances     — native + ERC-20 balances on one chain (public RPC multicall)
  *   get_portfolio    — native + ERC-20 balances across many chains
@@ -18,7 +18,8 @@
  *
  * The server holds NO private keys and never signs. build_order returns a
  * payload the calling agent signs with its own key. Public + unauthenticated:
- * every backing endpoint is already public, and the tools are read/build-only.
+ * every backing endpoint is already public. submit_order relays caller-signed
+ * orders and registers their owners for indexing; the other tools read or build.
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { createMcpHandler } from 'agents/mcp'
@@ -99,7 +100,7 @@ function serveMcp(request: Request, env: Env, ctx: ExecutionContext): Promise<Re
 const INFO = {
   name: 'Ophis MCP',
   version: SERVER_INFO.version,
-  description: 'Agent-facing tools for the Ophis DEX: parse swap intents, resolve token symbols to canonical addresses (anti-spoof), fetch quotes, build bounded signable CoW orders, submit signed orders, look up routed volume, the Ophis base fee, and integrator own fees on CoW-hosted chains, read balances and portfolios, gas, token OHLCV charts, and beat-the-market surplus.',
+  description: 'Agent-facing tools for the Ophis DEX: parse swap intents, resolve token symbols to canonical addresses (anti-spoof), fetch quotes, build bounded signable orders, submit signed orders, look up routed volume, the Ophis base fee, and integrator own fees on externally hosted chains, read balances and portfolios, gas, token OHLCV charts, and beat-the-market surplus.',
   transport: { type: 'streamable-http', endpoint: '/mcp' },
   tools: OPHIS_TOOL_NAMES,
   docs: 'https://docs.ophis.fi/',

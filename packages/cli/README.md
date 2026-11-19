@@ -47,7 +47,7 @@ ophis chains                                 # every chain, and the name to type
 | `ophis swap <amount> <token> <token>` | Swap: say yes in the terminal, then approve in your wallet. |
 | `ophis bridge <amount> <token> to <chain>` | Move a token to another chain (through Across). |
 | `ophis status <order id>` | See where an order is, and a bridge's progress. |
-| `ophis recover [token]` | Get back tokens a bridge left behind in your CoW Shed. |
+| `ophis recover [token]` | Get back tokens a bridge left behind in your bridge account. |
 | `ophis wallet` / `ophis disconnect` | Show or unlink your wallet. |
 | `ophis chains` | Every chain you can trade on. |
 
@@ -69,7 +69,7 @@ builder code `bc_8j4gt5x6` using
 estimation and submission use the same calldata, with the suffix included in
 Base L1 data-fee sizing. Signed orders and inner recovery calls stay unchanged;
 solver-submitted settlements are outside this integration. Other chains are
-unaffected. This behavior ships with the next CLI release.
+unaffected. This behavior ships with CLI 0.1.8.
 
 ## How it keeps you safe
 

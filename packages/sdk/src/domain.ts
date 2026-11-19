@@ -1,12 +1,12 @@
 import { assertValidChainId } from './guards.js';
 
 /**
- * EIP-712 verifying contract (GPv2Settlement) per chain, for building the CoW
+ * EIP-712 verifying contract (GPv2Settlement) per chain, for building the
  * order signing domain. Mirrors the authoritative frontend map
  * `COW_PROTOCOL_SETTLEMENT_CONTRACT_ADDRESS` in
  * apps/frontend/libs/common-utils/src/cowProtocolContracts.ts — keep in sync.
  *
- * CRITICAL: the Ophis-operated chains do NOT use CoW's canonical settlement.
+ * CRITICAL: the Ophis-operated chains do NOT use the upstream protocol's canonical settlement.
  * Ophis self-deployed its own GPv2Settlement on those chains, so signing with
  * the canonical `0x9008…ab41` yields a domain separator the deployed contract
  * rejects — every order fails signature validation. cow-sdk only knows the
@@ -17,7 +17,7 @@ import { assertValidChainId } from './guards.js';
  * on migrated networks (out of scope).
  */
 
-/** CoW Protocol's canonical GPv2Settlement (CREATE2-deterministic across official CoW chains). */
+/** The upstream protocol's canonical GPv2Settlement (CREATE2-deterministic across supported external chains). */
 const CANONICAL_COW_SETTLEMENT = '0x9008D19f58AAbD9eD0D60971565AA8510560ab41' as const;
 
 /** Ophis-deployed GPv2Settlement on Optimism (10). */
@@ -65,7 +65,7 @@ export const getOphisSettlementAddress = (chainId: number): `0x${string}` => {
   return address;
 };
 
-/** The EIP-712 domain for signing a CoW order (cow-sdk `GPv2Order` typed data). */
+/** The EIP-712 domain for signing an order (cow-sdk `GPv2Order` typed data). */
 export interface OphisOrderDomain {
   readonly name: 'Gnosis Protocol';
   readonly version: 'v2';
@@ -74,7 +74,7 @@ export interface OphisOrderDomain {
 }
 
 /**
- * Builds the EIP-712 domain for signing a CoW order on a given chain, with the
+ * Builds the EIP-712 domain for signing an order on a given chain, with the
  * correct per-chain verifying contract. Use this instead of hardcoding a
  * settlement address: hardcoding the canonical `0x9008…ab41` is wrong on the
  * Ophis-operated chains and produces signatures the deployed settlement rejects.
@@ -96,7 +96,7 @@ export const getOphisOrderDomain = (chainId: number): OphisOrderDomain => ({
  * map `COW_PROTOCOL_VAULT_RELAYER_ADDRESS` in
  * apps/frontend/libs/common-utils/src/cowProtocolContracts.ts — keep in sync.
  *
- * CRITICAL: the Ophis-operated chains do NOT use CoW's canonical relayer. They run
+ * CRITICAL: the Ophis-operated chains do NOT use the upstream protocol's canonical relayer. They run
  * their own settlement + relayer, so on those chains approving the canonical
  * `0xC92E8bdf…` relayer leaves the order unfillable (the deployed Ophis settlement
  * pulls from the Ophis relayer, which never received the approval). cow-sdk only
@@ -104,7 +104,7 @@ export const getOphisOrderDomain = (chainId: number): OphisOrderDomain => ({
  * never the cow-sdk default.
  */
 
-/** CoW Protocol's canonical GPv2VaultRelayer (CREATE2-deterministic across official CoW chains). */
+/** The upstream protocol's canonical GPv2VaultRelayer (CREATE2-deterministic across supported external chains). */
 const CANONICAL_COW_VAULT_RELAYER = '0xC92E8bdf79f0507f65a392b0ab4667716BFE0110' as const;
 
 /** Ophis-deployed GPv2VaultRelayer on Optimism (10). */

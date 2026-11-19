@@ -1,7 +1,7 @@
 /**
  * MIRROR of apps/rebate-indexer/src/tiers.ts.
  *
- * The cowswap fork lives in its own pnpm workspace and cannot import from
+ * The frontend lives in its own pnpm workspace and cannot import from
  * apps/rebate-indexer, so we duplicate the constants here. A CI check in
  * tests/tiers.test.ts asserts the two stay in sync by importing both modules
  * and comparing their exports.

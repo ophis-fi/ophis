@@ -23,7 +23,7 @@ describe('getOphisSettlementAddress', () => {
     expect(getOphisSettlementAddress(5042)).toBe('0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A');
   });
 
-  it('returns the canonical CoW settlement for CoW-aligned chains', () => {
+  it('returns the external canonical settlement for externally hosted chains', () => {
     expect(getOphisSettlementAddress(1)).toBe(CANONICAL);
     expect(getOphisSettlementAddress(8453)).toBe(CANONICAL);
     expect(getOphisSettlementAddress(100)).toBe(CANONICAL);
@@ -69,7 +69,7 @@ describe('getOphisVaultRelayer', () => {
     expect(getOphisVaultRelayer(5042)).toBe('0x895505F1FE6D762296685fF4a8201782FFdCB8E9');
   });
 
-  it('returns the canonical CoW relayer for CoW-hosted chains', () => {
+  it('returns the external canonical relayer for externally hosted chains', () => {
     expect(getOphisVaultRelayer(1)).toBe(CANONICAL_RELAYER);
     expect(getOphisVaultRelayer(8453)).toBe(CANONICAL_RELAYER);
     expect(getOphisVaultRelayer(42161)).toBe(CANONICAL_RELAYER);

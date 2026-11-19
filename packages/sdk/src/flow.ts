@@ -46,10 +46,10 @@ export const isOphisFeeChain = (chainId: number): boolean => {
 export interface OphisOrderMetadataOptions {
   /** Chain the order settles on. Must be an Ophis-served chain. */
   readonly chainId: number;
-  /** Your Ophis referral code. OPTIONAL: when set it earns the rebate and is
+  /** Your Ophis referral code. OPTIONAL: when set it enables attribution and is
    *  embedded in metadata.ophisReferrer.code; when omitted the order still
-   *  carries the Ophis partner fee and settles normally, you just forgo the
-   *  referral rebate. Mint one at https://swap.ophis.fi/#/rewards. */
+   *  carries the Ophis partner fee and settles normally. Rewards depend on the
+   *  active campaign. Register at https://swap.ophis.fi/#/affiliate. */
   readonly referralCode?: string;
   /**
    * True ONLY for a same-chain stablecoin pair. It selects the 50% improvement
@@ -83,7 +83,7 @@ export interface OphisAppDataInput {
  * silent-failure details right: appCode is 'ophis' (NOT your app name; a custom
  * appCode makes the rebate indexer drop the order), the chain-aware CIP-75 Ophis
  * fee policy goes to the Ophis recipient, and your referral code is
- * tagged so the rebate accrues.
+ * tagged for attribution under the active campaign.
  *
  * Throws on a chain Ophis does not serve (so you never route an order that pays
  * no Ophis fee, and thus earns no rebate, by mistake).
@@ -96,7 +96,7 @@ export interface OphisAppDataInput {
  * Hash the result with `generateAppDataDoc` + `stringifyDeterministic` +
  * `keccak256` (the non-validating path the orderbook and indexer use). Do NOT run
  * `validateAppDataDoc` / `getAppDataInfo` on the doc: `ophisReferrer` is an Ophis
- * extension key, and CoW's strict app-data schema (additionalProperties: false)
+ * extension key, and the upstream protocol's strict app-data schema (additionalProperties: false)
  * rejects it. The orderbook itself accepts it; only that local validator does not.
  *
  * @example
@@ -176,7 +176,7 @@ export interface EnrollOphisTraderResult {
 
 /**
  * Registers a trading wallet with the Ophis rebate indexer so its Ophis trades
- * are indexed and the referral rebate accrues. The indexer is owner-scoped (it
+ * are indexed for attribution under the active campaign. The indexer is owner-scoped (it
  * fetches trades for wallets it knows); supplemental discovery is not guaranteed
  * on every chain and must not replace explicit enrollment. Call this per trader
  * wallet immediately before each submission; success renews enrollment. Do not
@@ -272,7 +272,7 @@ export interface OphisOrderCreationOptions {
    */
   readonly chainId?: number;
   /**
-   * The signed CoW order object. Its `appData` field must be the bytes32 HASH
+   * The signed order object. Its `appData` field must be the bytes32 HASH
    * (the value that was signed). `receiver` must already be set on it.
    */
   readonly order: Record<string, unknown>;
@@ -304,7 +304,7 @@ export interface OphisOrderCreationOptions {
  *    uses a deprecated form the orderbook is phasing out.
  *  - the RECEIVER: asserted to be the owner (a drain guard) and PRESERVED exactly
  *    as signed. It is part of the signed order, so it is never rewritten; an
- *    absent/zero receiver (which CoW resolves to the owner) is left as is. A
+ *    absent/zero receiver (which the upstream protocol resolves to the owner) is left as is. A
  *    non-owner receiver throws unless allowReceiver names that exact destination.
  *
  * NOTE: for the rebate to accrue, `owner` must already have been registered via
@@ -350,7 +350,7 @@ export function buildOphisOrderCreation(opts: OphisOrderCreationOptions): Record
       );
     }
   } else {
-    // Default drain guard: a foreign receiver throws; absent/zero (CoW resolves it
+    // Default drain guard: a foreign receiver throws; absent/zero (the upstream protocol resolves it
     // to the owner at settlement) is fine and is left exactly as signed.
     assertReceiverIsOwner(owner, rawReceiver);
   }

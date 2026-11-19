@@ -106,7 +106,7 @@ describe('validateOrder (offline preflight)', () => {
     expect(r.expected.appCode).toBe('ophis')
   })
 
-  it('rejects signing against CoW canonical settlement on an Ophis-operated chain', () => {
+  it('rejects signing against external canonical settlement on an Ophis-operated chain', () => {
     const r = validateOrder(
       {
         chainId: 10,
@@ -183,7 +183,7 @@ describe('validateOrder (offline preflight)', () => {
   })
 
   it('rejects api.cow.fi/mainnet on Gnosis (100): host matches but the path is the wrong chain', () => {
-    // Gnosis is CoW-hosted at api.cow.fi/xdai. A host-only check would accept the
+    // Gnosis is externally hosted at api.cow.fi/xdai. A host-only check would accept the
     // mainnet path because both share the api.cow.fi host; the full-base compare
     // catches the wrong-chain path.
     const r = validateOrder({ chainId: 100, orderbookUrl: 'https://api.cow.fi/mainnet' }, NOW)
@@ -535,7 +535,7 @@ describe('listChains', () => {
 })
 
 describe('extractQuoteAmounts', () => {
-  it('extracts sell/buy atoms from a CoW quote response', () => {
+  it('extracts sell/buy atoms from an orderbook quote response', () => {
     expect(extractQuoteAmounts({ quote: { sellAmount: '1000000', buyAmount: '250000000000000' } })).toEqual({
       sellAmount: '1000000',
       buyAmount: '250000000000000',

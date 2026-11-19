@@ -33,7 +33,7 @@ export interface TxCall {
   data: Hex;
 }
 
-/** The hardened order the Safe presigns (kind is the CoW 'sell' literal). */
+/** The hardened order the Safe presigns (kind is the upstream 'sell' literal). */
 export interface VaultOrder {
   sellToken: Address;
   buyToken: Address;
@@ -61,7 +61,7 @@ const encodeApprove = (spender: Address, amount: bigint): Hex =>
 const encodeSetPreSignature = (orderUid: string): Hex =>
   encodeFunctionData({ abi: SET_PRESIGNATURE_ABI, functionName: 'setPreSignature', args: [orderUid as Hex, true] });
 
-// The canonical GPv2 (CoW) Order EIP-712 type set (protocol constant, fixed by
+// The canonical GPv2 Order EIP-712 type set (protocol constant, fixed by
 // the settlement contract on every chain). Mirrors packages/agent-swap/src/order-types.ts
 // (the constant used for real EOA signing), so the digest below matches what the
 // orderbook computes. It must match exactly or the uid never matches.
@@ -83,7 +83,7 @@ const GPV2_ORDER_EIP712_TYPES = {
 } as const;
 
 /**
- * Compute the CoW orderUid locally from the assembled order:
+ * Compute the orderUid locally from the assembled order:
  *   uid = orderDigest(32) ++ owner(20) ++ validTo(4, uint32 big-endian)  [56 bytes]
  * where orderDigest is the EIP-712 hash over getOphisOrderDomain(chainId). This
  * is deterministic from the (guarded) order, so it does NOT trust the orderbook.
@@ -169,7 +169,7 @@ export function assembleVaultOrder(a: {
   const receiver = ophisOrderReceiver(a.safe) as Address;
   assertReceiverIsOwner(a.safe, receiver); // drain guard: receiver must be the Safe
 
-  // CoW sell quotes split sellAmountBeforeFee into (net sellAmount, feeAmount);
+  // orderbook sell quotes split sellAmountBeforeFee into (net sellAmount, feeAmount);
   // their sum is the gross the caller asked for. We sign the gross, feeAmount 0.
   const grossSell = BigInt(a.quoteSellAmount) + BigInt(a.quoteFeeAmount);
   const minBuyAmount = applySlippage(BigInt(a.quoteBuyAmount), a.slippageBps);

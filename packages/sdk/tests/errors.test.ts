@@ -111,7 +111,7 @@ describe('parseOphisApiError', () => {
     expect(err).toBeInstanceOf(OphisUnroutableError);
   });
 
-  it('falls back to errorType strings on codeless CoW-hosted chains', () => {
+  it('falls back to errorType strings on codeless externally hosted chains', () => {
     const noLiquidity = parseOphisApiError({
       status: 404,
       body: { errorType: 'NoLiquidity', description: 'no route was found' },

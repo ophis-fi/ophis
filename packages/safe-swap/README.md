@@ -1,9 +1,9 @@
 # @ophis/safe-swap
 
-Headless [Ophis](https://ophis.fi) (CoW Protocol) swap builder for a **vault Safe**: a
+Headless [Ophis](https://ophis.fi) swap builder for a **vault Safe**: a
 vault curator / manager (a Safe driven by a Zodiac Roles Modifier, an MPC signer, or a
 multisig) rebalances the vault's underlying assets through Ophis as one atomic,
-MEV-protected CoW order. The vault Safe is BOTH `order.from` and `order.receiver`, so
+batch-auction order. The vault Safe is BOTH `order.from` and `order.receiver`, so
 funds never leave its control, and the order carries the Ophis partner fee.
 
 This package builds the order + the on-chain tx batch. It never holds keys and (for the
@@ -52,16 +52,16 @@ returns the raw tx batch. **Execution is up to you** — pick a curator model be
 
 ## Chains
 
-Works on every chain with a **live Ophis / CoW orderbook** — `@ophis/sdk` looks up settlement /
+Works on every chain with a **live Ophis orderbook** — `@ophis/sdk` looks up settlement /
 relayer / orderbook / signing domain by `chainId`, with no per-chain code. (A few chain IDs
 resolve a settlement but have no live orderbook, e.g. paused chains like 4326 / 999; those
 throw at the quote step and are not tradeable.)
 
 - **Ophis-operated** (non-canonical settlement): Optimism, Unichain, Robinhood Chain, Arc.
-- **CoW-hosted** (canonical settlement, fee via appData): Ethereum, Base, Arbitrum, Polygon,
+- **externally hosted** (canonical settlement, fee via appData): Ethereum, Base, Arbitrum, Polygon,
   Gnosis, BNB, Avalanche, Linea, Ink, Plasma.
 
-Version 0.1.7 uses SDK 0.4.4 and supports Arc (5042) ERC-20 presigned orders,
+Version 0.1.8 uses SDK 0.4.6 and supports Arc (5042) ERC-20 presigned orders,
 including referral attribution and trader enrollment. Arc charges a 1 bp base,
 with no backend improvement capture. Native USDC sentinels are rejected; use its six-decimal
 ERC-20 interface. This adds no Arc policy-module deployment or fork-test claim.
@@ -132,7 +132,7 @@ The Roles Modifier is default-DENY. The preset grants only:
 
 - `approve(spender, amount)` on each underlying, with `spender` **pinned to the Ophis
   relayer** (amount unconstrained — it varies per rebalance; the builder sets it exact).
-- `setPreSignature(orderUid, signed)` on the **Ophis** settlement (the canonical CoW
+- `setPreSignature(orderUid, signed)` on the **Ophis** settlement (the external canonical
   settlement is a different address and is denied).
 
 Everything else — `transfer` / `transferFrom`, approving a foreign spender, presigning on
@@ -180,7 +180,7 @@ pnpm --filter @ophis/safe-swap test        # unit tests (guards, order/uid, exec
 
 # Fork integration tests (env-gated, need anvil + a fork RPC). They deploy a real Safe,
 # fund it, execute the batch against the REAL deployed OP / Unichain contracts, and assert
-# exact allowance + presignature-in-real-settlement + exact-pull. A local fork has no CoW
+# exact allowance + presignature-in-real-settlement + exact-pull. A local fork has no upstream
 # solver network, so end-to-end settlement + the partner-fee transfer is validated by M4's
 # monitored real-chain rollout, not here.
 OPHIS_FORK_RPC=https://mainnet.optimism.io \

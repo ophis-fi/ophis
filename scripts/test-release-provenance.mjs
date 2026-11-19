@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const workflows = ['agent-plugins', 'safe-swap', 'sdk', 'widget', 'skills'];
+const workflows = ['agent-plugins', 'safe-swap', 'sdk', 'widget', 'skills', 'cli'];
 let publishSteps = 0;
 for (const workflow of workflows) {
   const source = readFileSync(
@@ -18,7 +18,7 @@ for (const workflow of workflows) {
     publishSteps++;
   }
 }
-assert.equal(publishSteps, 8);
+assert.equal(publishSteps, 9);
 
 const directory = mkdtempSync(join(tmpdir(), 'ophis-provenance-'));
 try {
@@ -73,4 +73,4 @@ require('node:fs').writeFileSync(require('node:path').join(__dirname, 'npm-call.
 } finally {
   rmSync(directory, { recursive: true, force: true });
 }
-console.log('OK: all eight release steps enable provenance; filtered pnpm publish preserves it.');
+console.log('OK: all nine release steps enable provenance; filtered pnpm publish preserves it.');

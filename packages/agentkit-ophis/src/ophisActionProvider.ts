@@ -7,9 +7,9 @@ import { toOphisWallet } from './wallet-adapter.js';
 
 export interface OphisActionProviderConfig {
   /**
-   * OPTIONAL integrator referral code that earns the 8-12% rebate. Falls back to
-   * OPHIS_REFERRAL_CODE. Omit it and swaps still work (you just forgo the
-   * rebate); mint one in ~30s at https://swap.ophis.fi/#/rewards.
+   * OPTIONAL integrator referral code for campaign-dependent attribution. Falls back to
+   * OPHIS_REFERRAL_CODE. Omit it and swaps still work without referral attribution.
+   * Register at https://swap.ophis.fi/#/affiliate.
    */
   referralCode?: string;
 }
@@ -24,7 +24,7 @@ export class OphisActionProvider extends ActionProvider<EvmWalletProvider> {
       // Do not block construction on a missing code (that was the top adoption
       // killer): warn once, keep working, let the builder add a code to earn.
       console.warn(
-        '[@ophis/agentkit-ophis] No referral code set: swaps still work, but you are leaving the 8-12% rebate on the table. Mint a code at https://swap.ophis.fi/#/rewards and pass config.referralCode or set OPHIS_REFERRAL_CODE.',
+        '[@ophis/agentkit-ophis] No referral code set: swaps still work without referral attribution. Rewards depend on the active campaign. Register a code at https://swap.ophis.fi/#/affiliate and pass config.referralCode or set OPHIS_REFERRAL_CODE.',
       );
     }
     this.#referralCode = code;
@@ -33,8 +33,8 @@ export class OphisActionProvider extends ActionProvider<EvmWalletProvider> {
   @CreateAction({
     name: 'swap',
     description:
-      'Swap one ERC-20 for another via Ophis (a CoW Protocol fork): gasless, MEV-protected, intent-based. ' +
-      'Quotes, signs an EIP-712 order pinned to your own wallet, and submits it so the Ophis rebate accrues. ' +
+      'Swap one ERC-20 for another via Ophis: intent-based batch settlement. ' +
+      'Quotes, signs an EIP-712 order pinned to your own wallet, and submits it with optional referral attribution. ' +
       'sellAmount is in WHOLE units (e.g. "1.5"). Native ETH is NOT supported — use WETH. ' +
       'Returns a JSON string with the order UID and an explorer URL.',
     schema: OphisSwapSchema,
