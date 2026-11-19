@@ -831,7 +831,7 @@ try {
   check('"What each role can do" is not on the Organisation page; on Support it is a closed FAQ item that opens to the server\'s table, which scrolls inside its own box on a phone',
     rolesOnOrganisation === 0 && closedAtFirst && await page.getByRole('cell', { name: 'Export the audit log' }).isVisible() && scrollsInItsBox && await both(page, '37-support-roles', '.support > .sec'))
   // "Which tokens can I trade": the desk's tokens, moved here from the desk (owner, 2026-11-19). ETH is ETH itself, with no
-  // token contract; 23 rows, each with its chain's logo and its token's (EURCV has none: its first letter), all loaded.
+  // token contract; 23 rows, each with its chain's logo and its token's, all loaded.
   const tokens = page.locator('details', { hasText: 'Which tokens can I trade, and how much per order?' })
   await tokens.locator('summary').click()
   const tokenRows = await tokens.locator('tbody tr').allInnerTexts()
@@ -840,7 +840,7 @@ try {
     && tokenRows.some((r) => r.includes('WETH') && r.includes('Arc')) && !tokenRows.some((r) => r.startsWith('ETH') && r.includes('Arc'))
     && await tokens.getByText('ETH is ETH itself: bought, it is paid into the wallet; sold, the wallet sends it in one transaction.').isVisible()
     && await tokens.locator('img.logo').evaluateAll((images) => Promise.all(images.map((image) => image.complete || new Promise((done) => { image.onload = image.onerror = done })))
-      .then(() => images.length === 45 && images.every((image) => image.naturalWidth > 0)))
+      .then(() => images.length === 46 && images.every((image) => image.naturalWidth > 0)))
     && await tokens.getByRole('button', { name: 'Export CSV' }).isVisible() && await both(page, '38-support-tokens', '.support > .sec'))
   await arrive(owner, false)
 
@@ -1245,8 +1245,8 @@ try {
   // The routes of the asset the ticket sells, on its chain, beside the ticket (owner, 2026-11-19). The stand-in's price is
   // the same at every size: one route, Deep.
   const routes = tess.page.locator('section', { has: tess.page.getByRole('heading', { name: 'Routes and liquidity' }) })
-  await routes.locator('tbody tr').first().waitFor()
-  const routeRows = await routes.locator('tbody tr').allInnerTexts()
+  await routes.locator('li.route').first().waitFor()
+  const routeRows = await routes.locator('li.route').allInnerTexts()
   const loaded = (where) => where.locator('img.logo').evaluateAll((images) => Promise.all(images.map((image) => image.complete || new Promise((done) => { image.onload = image.onerror = done })))
     .then(() => images.length > 0 && images.every((image) => image.naturalWidth > 0)))
   // Every chain of the desk is listed (owner, 2026-11-19); one with no linked wallet cannot be picked. Each logo loads under the page's policy.
@@ -1259,10 +1259,10 @@ try {
   check('the ticket opens on ETH, says what selling it means, and lists ETH, USDC and WETH on OP Mainnet',
     (await ticket.getByLabel('Sell asset').inputValue()) === 'ETH' && (await ticket.getByLabel('Sell asset').locator('option').allTextContents()).join() === 'ETH,USDC,WETH'
     && await ticket.getByText('The wallet sends the ETH in one transaction, which places the order. Keep a little ETH for its network fee.').isVisible())
-  const routeHead = await routes.locator('thead th').allTextContents()
-  check(`beside the ticket, the routes of ETH on OP Mainnet: USDC, Deep, the price moves at three sizes, with logos; the tokens table is gone (${JSON.stringify([routeRows, routeHead])})`,
-    !(await tess.page.getByText('Tokens you can trade').count()) && routeRows.length === 1 && /^USDC\s+Deep\s+0\.0\d%\s+0\.0\d%\s+0\.0\d%$/.test(routeRows[0].trim())
-    && routeHead.join() === 'Buy,Liquidity,28.5 ETH,285 ETH,2,850 ETH' && await routes.getByText(/^Each size: how much worse the price is than for about 5,000 EUR\./).isVisible()
+  check(`beside the ticket, the routes of ETH on OP Mainnet: USDC, Deep, the price impact at about 50k, 500k and 5M EUR, live, with logos; the tokens table is gone (${JSON.stringify(routeRows)})`,
+    !(await tess.page.getByText('Tokens you can trade').count()) && routeRows.length === 1
+    && /^USDC\s+Deep\s+About €50k\s+0\.0\d% impact\s+About €500k\s+0\.0\d% impact\s+About €5M\s+0\.0\d% impact$/.test(routeRows[0].trim())
+    && await routes.getByText(/^Price impact: how much less an order gets, per unit, than an order of about €1,000\./).isVisible() && await routes.getByText(/^Live quotes, \d\d:\d\d$/).isVisible()
     && await loaded(routes) && await both(tess.page, '46-desk-routes'))
   check('the three steps and the review note', await tess.page.getByText('The Safe owners or your custodian sign on the signing page. Ophis cannot.').isVisible() && await ticket.getByText('Nothing is signed at this step.').isVisible())
   check('at phone width the ticket gives way to "Use a larger screen", the blotter stays, and nothing scrolls sideways', await both(tess.page, '47-desk-ticket')
@@ -1274,9 +1274,9 @@ try {
     })())
   // The flows below sell WETH: the routes follow the asset sold.
   await ticket.getByLabel('Sell asset').selectOption('WETH')
-  await routes.getByText('What WETH can be sold for on OP Mainnet').waitFor()
-  await routes.locator('tbody tr').first().waitFor() // its quotes are read after the panel shows
-  check('the routes follow the ticket: WETH sells for USDC on OP Mainnet (ETH is the same asset)', (await routes.locator('tbody tr').allInnerTexts()).map((r) => r.trim().split(/\s+/)[0]).join() === 'USDC')
+  await routes.getByText('Where WETH can go on OP Mainnet, and how well each route holds a large order.').waitFor()
+  await routes.locator('li.route').first().waitFor() // its quotes are read after the panel shows
+  check('the routes follow the ticket: WETH sells for USDC on OP Mainnet (ETH is the same asset)', (await routes.locator('li.route').allInnerTexts()).map((r) => r.trim().split(/\s+/)[0]).join() === 'USDC')
   // A limit order: its price is units of the asset bought per unit sold, within 20% of the live quote.
   await ticket.getByLabel('Amount to sell').fill('1')
   await ticket.getByLabel('Limit', { exact: true }).check()

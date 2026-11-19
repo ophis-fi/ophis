@@ -240,7 +240,7 @@ async function readOrder(code: string) {
   // Text, never markup: every field is set as text.
   $('title').replaceChildren(order.purpose === 'sign' ? 'Sign ' : 'Cancel ', Object.assign(document.createElement('em'), { textContent: 'an approved order' }), '.')
   $('lede').textContent = order.purpose === 'sign'
-    ? 'Two people in the organisation approved this order. If you sign, it goes to the public orderbook and can fill until it expires. What is bought goes to the wallet itself. Ophis never holds the funds.'
+    ? 'A member of the organisation prepared this order and a teammate approved it. If you sign, it goes to the public orderbook and can fill until it expires. What is bought goes to the wallet itself. Ophis never holds the funds.'
     : 'This cancels the open order below. Nothing else changes.'
   for (const [id, text] of [['o-binding', w.binding], ['o-sell', w.sell], ['o-buy', w.buy], ['o-type', w.type], ['o-chain', w.chain], ['o-wallet', w.wallet], ['o-valid', w.valid], ['o-fee', w.fee], ['o-uid', order.uid]]) $(id).textContent = text
   $('o-binding').hidden = order.purpose !== 'sign'
@@ -271,7 +271,7 @@ function buttons(presign: boolean) {
 function ethSteps(presign: boolean) {
   const flow = `the EthFlow contract of the chain (${order.ethflow})`
   $('lede').textContent = order.purpose === 'sign'
-    ? `Two people in the organisation approved this order. If you send it, ${order.words.sell} goes from the wallet to ${flow}, which places the order on the public orderbook until it fills or expires. What is bought goes to the wallet itself. If it does not fill, a cancel link from the desk takes the ETH back. Ophis never holds the funds.`
+    ? `A member of the organisation prepared this order and a teammate approved it. If you send it, ${order.words.sell} goes from the wallet to ${flow}, which places the order on the public orderbook until it fills or expires. What is bought goes to the wallet itself. If it does not fill, a cancel link from the desk takes the ETH back. Ophis never holds the funds.`
     : `This cancels the order below and sends its ETH back to the wallet, from ${flow}. It works before and after the expiry.`
   const by = presign ? 'The Safe transaction' : 'The transaction in the wallet'
   steps(order.purpose === 'sign'

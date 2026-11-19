@@ -1,5 +1,5 @@
 // Overview and Desk. Every organisation, an institution or a partner (owner, 2026-11-19): its desk is real
-// (src/server/orders.ts): an order is prepared on a live quote, approved by a second person, then signed by the
+// (src/server/orders.ts): an order is prepared on a live quote, approved by a teammate in a key role, then signed by the
 // organisation's own wallet on the signing page. An institution's overview: the
 // balances of its linked wallets read on the chain, its orders and its monthly statement from the filled ones. A partner:
 // live figures from the Ophis rebate service, checked and rebuilt by the server (src/server/partner.ts). This file holds
@@ -392,7 +392,7 @@ function TicketForm({ v, onSent, onPick }: { v: DeskView; onSent: () => Promise<
   if (sent && review) {
     return (
       <div className="ticket" data-step="sent">
-        <p className="note ok" role="status"><Icon name="circle-check" /><span className="grow"><b>Sent for approval.</b> {orderWords(review)}. A different member with a key role approves or refuses it under Approvals. Then the wallet signs it.</span></p>
+        <p className="note ok" role="status"><Icon name="circle-check" /><span className="grow"><b>Sent for approval.</b> {orderWords(review)}. A teammate in a key role (Owner, Admin, Approver or Compliance officer) approves or refuses it under Approvals. Then the wallet signs it.</span></p>
         <div className="acts"><a className="btn ghost md" href="/#/organisation"><Icon name="users" size={16} />Open approvals</a><button className="btn primary md" type="button" onClick={() => (setSent(false), setReview(undefined))}><Icon name="pencil" size={16} />New order</button></div>
       </div>
     )
@@ -406,7 +406,7 @@ function TicketForm({ v, onSent, onPick }: { v: DeskView; onSent: () => Promise<
         <p className="fine"><Icon name="info" size={16} />The least amount bought comes from a live quote of the orderbook. It is binding once approved. Send it for approval within 5 minutes, or review it again.</p>
         {failed}
         <div className="acts"><button className="btn ghost md" type="button" onClick={() => setReview(undefined)}>Back to the ticket</button><button className="btn primary md" type="button" disabled={busy} onClick={() => ask(true)}><Icon name="users" size={16} />Send for approval</button></div>
-        <p className="fine"><Icon name="info" size={16} />Nothing is signed at this step. Sending asks for your passkey. A second person then approves it, with a passkey.</p>
+        <p className="fine"><Icon name="info" size={16} />Nothing is signed at this step. Sending asks for your passkey. Then a teammate approves it, with a passkey.</p>
       </div>
     )
   }
@@ -509,27 +509,45 @@ function OrderRecord({ o, v, onClose, onChanged, onSignedOut }: { o: Order; v: D
 }
 
 // The routes of the asset the ticket sells, on its chain, and how deep each is (owner, 2026-11-19): the server reads
-// live quotes at three sizes and says how far the price moves from that of a small order (src/server/orders.ts routes).
+// live quotes at three sizes and says how far the price moves from that of an order of about 1,000 EUR (orders.ts routes).
+// Each route is a row: the asset bought, its score, and the three sizes, each a bar in the tone of its price impact.
 interface RouteView { sizes: string[]; routes: { buy: string[]; score: 'deep' | 'medium' | 'thin' | 'none' | 'unavailable'; moves: (number | null)[] }[] }
 const SCORE = { deep: 'Deep', medium: 'Medium', thin: 'Thin', none: 'No route', unavailable: 'Not available now' }
+// The sizes the server reads: a hundredth, a tenth and all of the most one order sells, about 5,000,000 EUR for every asset.
+const SIZES = ['About €50k', 'About €500k', 'About €5M']
+const impact = (m: number | null) => (m === null ? 'none' : m <= 50 ? 'ok' : m <= 200 ? 'warn' : 'bad') // 0.5%, 2%
 const size = (amount: string) => Number(amount).toLocaleString('en-US', { maximumFractionDigits: 2 }) // a size, shown: never an amount signed
 function Routes({ chainId, sell, chain }: { chainId: number; sell: string; chain: string }) {
   const [view, setView] = useState<RouteView | null>()
+  const [at, setAt] = useState(0)
   // Read again every 5 minutes while it shows: it says its quotes are at most 5 minutes old (CodeRabbit, PR #1677).
   useEffect(() => {
-    const read = () => void api<RouteView>(`/api/desk/routes/${chainId}.${sell}`).then((out) => setView(out.status === 200 ? out.data : null))
+    const read = () => void api<RouteView>(`/api/desk/routes/${chainId}.${sell}`).then((out) => (setView(out.status === 200 ? out.data : null), setAt(Date.now())))
     read()
     const timer = setInterval(read, 5 * 60_000)
     return () => clearInterval(timer)
   }, [chainId, sell])
+  const live = view && <span className="live"><span className="dot" aria-hidden="true" />Live quotes, {new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
   return (
-    <Section icon="arrow-left-right" title="Routes and liquidity" hint={`What ${sell} can be sold for on ${chain}, and how far the price moves with the size of the order. From live quotes, at most 5 minutes old.`}>
+    <Section icon="arrow-left-right" title="Routes and liquidity" hint={`Where ${sell} can go on ${chain}, and how well each route holds a large order.`} action={live}>
       {view === undefined ? <p className="muted" role="status">Reading live quotes.</p> : view === null ? <p className="muted" role="status">The routes could not be read just now. Reload in a minute.</p> : (
-        <Table head={['Buy', 'Liquidity', ...view.sizes.map((s) => `${size(s)} ${sell}`)]} rows={view.routes.map((r) => [
-          named(ASSET_LOGO[r.buy[0]], r.buy[0], r.buy.join(' or ')), <Status>{SCORE[r.score]}</Status>, ...r.moves.map((m) => (m === null ? 'No quote' : `${(m / 100).toFixed(2)}%`)),
-        ])} />
+        <ul className="routes" aria-label={`Routes for ${sell} on ${chain}`}>
+          {view.routes.map((r) => (
+            <li className="route" key={r.buy.join()} data-score={r.score}>
+              <div className="route-head">{named(ASSET_LOGO[r.buy[0]], r.buy[0], <b>{r.buy.join(' or ')}</b>)}<Status>{SCORE[r.score]}</Status></div>
+              <dl className="depth">
+                {r.moves.map((m, i) => (
+                  <div className={`size ${impact(m)}`} key={SIZES[i]} title={`${size(view.sizes[i])} ${sell}`}>
+                    <dt>{SIZES[i]}</dt>
+                    <dd><span className="bar" aria-hidden="true" />{m === null ? 'No quote' : `${(m / 100).toFixed(2)}% impact`}</dd>
+                  </div>
+                ))}
+              </dl>
+            </li>
+          ))}
+        </ul>
       )}
-      <p className="fine"><Icon name="info" size={16} />Each size: how much worse the price is than for about 5,000 EUR. Deep: at most 0.5% at the largest size, the most one order sells. Medium: at most 0.5% at a tenth of it. Thin: more.</p>
+      <p className="fine"><Icon name="info" size={16} /><span>Price impact: how much less an order gets, per unit, than an order of about €1,000. <b>Deep</b> stays under 0.5% up to €5M, the largest order. <b>Medium</b> stays under 0.5% up to €500k. <b>Thin</b> moves more. Refreshed every 5 minutes.</span></p>
     </Section>
   )
 }
@@ -538,7 +556,7 @@ function Routes({ chainId, sell, chain }: { chainId: number; sell: string; chain
 export function Desk({ onSignedOut }: { onSignedOut: () => void }) {
   return (
     <>
-      <header className="ph"><div><span className="cap eyebrow">Desk</span><h1 className="h-page">Prepare, approve, <em>then sign</em>.</h1><p className="lede">Prepare an order on a live quote, then a second person approves, then your wallet signs.</p></div></header>
+      <header className="ph"><div><span className="cap eyebrow">Desk</span><h1 className="h-page">Prepare, approve, <em>then sign</em>.</h1><p className="lede">Prepare an order on a live quote, have a teammate approve it, then sign it with your wallet.</p></div></header>
       <Ticket onSignedOut={onSignedOut} />
     </>
   )
@@ -567,7 +585,7 @@ function Ticket({ onSignedOut }: { onSignedOut: () => void }) {
           {pick && <Routes key={`${pick.chainId} ${pick.sell}`} chainId={pick.chainId} sell={pick.sell} chain={v.chains.find((c) => c.id === pick.chainId)?.name ?? ''} />}
           <ol className="stats flow">
             <li className="c"><Tile name="pencil" /><div><span className="cap">Step 1</span><b>Prepare</b><p>A Trader fills the ticket and reviews the live quote.</p></div></li>
-            <li className="c"><Tile name="users" /><div><span className="cap">Step 2</span><b>Approve</b><p>A second person approves under Approvals, with a passkey.</p></div></li>
+            <li className="c"><Tile name="users" /><div><span className="cap">Step 2</span><b>Approve</b><p>A teammate approves it under Approvals, with a passkey: an Owner, Admin, Approver or Compliance officer, not the one who prepared it.</p></div></li>
             <li className="c"><Tile name="key-round" /><div><span className="cap">Step 3</span><b>Sign in wallet</b><p>The Safe owners or your custodian sign on the signing page. Ophis cannot.</p></div></li>
           </ol>
         </div>
