@@ -193,3 +193,19 @@ button.link { border: 0; padding: 0; background: none; color: var(--ink); cursor
 .with-logo { display: inline-flex; align-items: center; gap: 8px; }
 .pick { position: relative; display: block; } .pick > .logo { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; }
 .pick > select.input { width: 100%; padding-left: 42px; }
+/* Routes and liquidity (desk): one card per route, its score, and three sizes, each a bar in the tone of its price impact. */
+.routes { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.route { display: grid; gap: 14px; padding: 16px 18px; border: 1px solid var(--hair); border-radius: var(--r-card); background: var(--paper); }
+.route-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; } .route-head b { font-weight: 600; }
+.depth { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0; }
+.depth .size { display: grid; gap: 6px; min-width: 0; }
+.depth dt { font-size: 12px; color: var(--muted); letter-spacing: .01em; }
+.depth dd { margin: 0; display: grid; gap: 6px; font-size: 13.5px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.depth .bar { display: block; height: 6px; border-radius: var(--r-pill); background: var(--mist); }
+.depth .ok dd { color: var(--ok); } .depth .ok .bar { background: var(--ok); }
+.depth .warn dd { color: var(--warn); } .depth .warn .bar { background: var(--warn); }
+.depth .bad dd { color: var(--bad); } .depth .bad .bar { background: var(--bad); }
+.depth .none dd { color: var(--faded); font-weight: 400; } .depth .none .bar { background: repeating-linear-gradient(90deg, var(--hair) 0 6px, transparent 6px 10px); }
+.live { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.live .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px var(--ok-bg); }
+@media (max-width: 560px) { .depth { grid-template-columns: 1fr; } }
