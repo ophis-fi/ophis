@@ -21,7 +21,7 @@ interface Order extends OrderBody {
 }
 interface Institution {
   kind: 'institution'; waiting: number; asOf: string; open: number
-  // The linked wallets on the desk chains (the 10 linked first), in the assets of each chain. balance null: not read.
+  // The linked wallets on the desk chains (the 8 linked first), in the assets of each chain. balance null: not read.
   balances: { readAt: string; leftOut: number; wallets: { wallet: string; address: string; chain: string; read: boolean; rows: { asset: string; token: string; balance: string | null }[] }[] }
   // The filled orders of this month and the 12 whole months before it, by the month they were sent (UTC) and the asset sold; amounts in units of that asset.
   months: { month: string; asset: string; orders: number; volume: string; fee: string; unreported: number }[]
@@ -58,17 +58,17 @@ interface DeskView {
   wallets: { id: string; label: string; address: string; chainId: number; chain: string; scheme: string }[]; mayPrepare: boolean; maySign: boolean; orders: Order[]
 }
 
-const places = (asset: string) => (asset === 'WETH' ? 4 : 2)
+const places = (asset: string) => (asset === 'WETH' || asset === 'ETH' ? 4 : 2)
 /** A chain's or an asset's logo beside its name (decorative: the name is the text); its first letter where there is none. */
 const Logo = ({ src, name }: { src?: string; name: string }) => (src ? <img className="logo" src={src} alt="" width={20} height={20} /> : <span className="logo glyph" aria-hidden="true">{name.slice(0, 1)}</span>)
-const named = (src: string | undefined, name: string, text: ReactNode = name) => <span className="with-logo"><Logo src={src} name={name} /><span>{text}</span></span>
+export const named = (src: string | undefined, name: string, text: ReactNode = name) => <span className="with-logo"><Logo src={src} name={name} /><span>{text}</span></span>
 const count = (n: number) => money(String(n), 0)
 const short = (address: string) => (address.length > 13 ? `${address.slice(0, 6)}...${address.slice(-4)}` : address)
 /** An order in words, as the Approvals list and the record say it. Every amount whole, as the server wrote it. */
 export const orderWords = ({ terms, words }: OrderBody) => `Sell ${words.sell} for ${words.buy}, ${terms.type}, ${words.chain}, from ${terms.label} (${short(terms.wallet)})`
 
 /** "Export CSV": the server builds the file, the browser saves it. */
-function Export({ table, size = 'sm', label = 'Export CSV' }: { table: string; size?: 'sm' | 'md'; label?: string }) {
+export function Export({ table, size = 'sm', label = 'Export CSV' }: { table: string; size?: 'sm' | 'md'; label?: string }) {
   const [failed, setFailed] = useState(false)
   async function run() {
     const out = await api<{ name: string; csv: string }>(`/api/export/${table}`)
@@ -142,7 +142,7 @@ function InstitutionOverview({ v }: { v: Institution }) {
               </table>
             </div>
           ) : <p className="muted">No wallet is linked on a chain of the desk. <a className="link" href="/#/organisation">Link one under Organisation</a>.</p>}
-          {b.leftOut > 0 && <p className="fine"><Icon name="info" size={16} />Balances are read for the 10 wallets linked first. {b.leftOut} more linked {b.leftOut === 1 ? 'wallet is' : 'wallets are'} not shown.</p>}
+          {b.leftOut > 0 && <p className="fine"><Icon name="info" size={16} />Balances are read for the 8 wallets linked first. {b.leftOut} more linked {b.leftOut === 1 ? 'wallet is' : 'wallets are'} not shown.</p>}
         </Section>
         <Section icon="history" title="Recent orders" hint="Your own orders, newest first, with their real state." action={<div className="acts"><Export table="orders" /><a className="btn ghost sm" href="/#/desk">All orders</a></div>}>
           {v.orders.length ? <Table head={['Order', 'Sell, buy', 'Status']} rows={v.orders.map((o) => [orderCell(o), <>{o.words.sell}<small>for {o.words.buy}</small></>, <Status>{o.state}</Status>])} /> : <p className="muted">No order yet. Orders are prepared on the desk.</p>}
@@ -356,7 +356,7 @@ const TermsFacts = ({ o }: { o: OrderBody }) => (
   </>
 )
 
-function TicketForm({ v, onSent }: { v: DeskView; onSent: () => Promise<void> }) {
+function TicketForm({ v, onSent, onPick }: { v: DeskView; onSent: () => Promise<void>; onPick: (pick: { chainId: number; sell: string }) => void }) {
   const [t, setT] = useState({ type: 'market', chainId: v.wallets[0]?.chainId ?? 0, walletId: v.wallets[0]?.id ?? '', sell: '', buy: '', amount: '', limitPrice: '', slippage: String(v.slippage.default / 100), validFor: v.validity[0] })
   const [review, setReview] = useState<OrderBody & { review: string }>()
   const [sent, setSent] = useState(false)
@@ -369,6 +369,8 @@ function TicketForm({ v, onSent }: { v: DeskView; onSent: () => Promise<void> })
   const wallet = onChain.find((w) => w.id === t.walletId) ?? onChain[0]
   const here = v.assets.filter((a) => a.chainId === wallet?.chainId)
   const [sell, buy] = [here.find((a) => a.symbol === t.sell) ?? here[0], here.find((a) => a.symbol === t.buy) ?? here[1]]
+  // The routes beside the ticket follow its chain and the asset it sells.
+  useEffect(() => { if (wallet && sell) onPick({ chainId: wallet.chainId, sell: sell.symbol }) }, [wallet?.chainId, sell?.symbol, onPick])
   async function ask(send: boolean, event?: FormEvent) {
     event?.preventDefault()
     setBusy(true)
@@ -416,7 +418,8 @@ function TicketForm({ v, onSent }: { v: DeskView; onSent: () => Promise<void> })
   const assets = (label: string, field: 'sell' | 'buy', value?: string) => (
     <label className="field">{label}<span className="pick">{value && <Logo src={ASSET_LOGO[value]} name={value} />}
       <select className="input" value={value} onChange={(event) => set({ [field]: event.target.value })}>{here.map((a) => <option key={a.symbol} value={a.symbol}>{a.symbol}</option>)}</select></span>
-      {value === 'WETH' && <small className="muted">{field === 'sell' ? 'Wrapped ETH. An order signs over tokens, not ETH: wrap ETH in the wallet first.' : 'Wrapped ETH. Unwrap it in the wallet to hold ETH.'}</small>}
+      {field === 'sell' && value === 'ETH' && <small className="muted">The wallet sends the ETH in one transaction, which places the order. Keep a little ETH for its network fee.</small>}
+      {value === 'WETH' && wallet.chainId === 5042 && <small className="muted">Arc has no ETH of its own: this is ETH bridged to Arc, as a token.</small>}
       {field === 'sell' && value === 'USDC' && wallet.chainId === 5042 && <small className="muted">On Arc the network fee is paid in USDC: keep a little for the approval.</small>}</label>
   )
   return (
@@ -449,7 +452,9 @@ function OrderRecord({ o, v, onClose, onChanged, onSignedOut }: { o: Order; v: D
   const [copied, setCopied] = useState(false)
   const [problem, setProblem] = useState('')
   const decided = o.state === 'Cancelled' && !o.decidedBy ? `Cancelled by its preparer${o.decidedAt ? ` on ${stamp(o.decidedAt)}` : ''}` : o.decidedBy && o.decidedAt ? `${o.state === 'Refused' && !o.uid ? 'Refused' : 'Approved'} by ${o.decidedBy} on ${stamp(o.decidedAt)}` : o.state === 'Expired' ? 'Nobody decided it within 1 hour' : 'Not decided yet'
-  const purpose = o.state === 'Approved: waiting for signature' && !o.uid ? 'sign' : o.state === 'Open' || o.state === 'Sent: waiting for the Safe transaction' ? 'cancel' : null
+  // An ETH sale's cancel takes its ETH back, also after its expiry (the refunders return only orders far below their quote).
+  const eth = o.terms.sell.symbol === 'ETH'
+  const purpose = o.state === 'Approved: waiting for signature' && !o.uid ? 'sign' : o.state === 'Open' || o.state.startsWith('Sent: waiting for the') || (eth && o.uid && o.state === 'Expired') ? 'cancel' : null
   async function give() {
     const out = await sensitive<{ link: string; error?: string }>(`/api/desk/orders/${o.id}/link`, { purpose }).catch(() => null)
     if (out?.status === 401) return onSignedOut()
@@ -486,7 +491,7 @@ function OrderRecord({ o, v, onClose, onChanged, onSignedOut }: { o: Order; v: D
       {purpose && v.maySign && (
         <div className="stack" data-step="link">
           <h3 className="h-card">{purpose === 'sign' ? 'Hand over the signing link' : 'Hand over the cancel link'}</h3>
-          <p className="note"><Icon name="info" /><span className="grow">{purpose === 'sign' ? 'The wallet signs this order on the signing page. Give the link to the people who hold the wallet, by a channel you trust. It works once. Until the wallet signs, you can withdraw the order: its link then stops working.' : 'The wallet cancels this order on the signing page. The link works once.'}</span></p>
+          <p className="note"><Icon name="info" /><span className="grow">{purpose === 'sign' ? 'The wallet signs this order on the signing page. Give the link to the people who hold the wallet, by a channel you trust. It works once. Until the wallet signs, you can withdraw the order: its link then stops working.' : eth ? 'The wallet cancels this order on the signing page and gets its ETH back, before or after its expiry. The link works once.' : 'The wallet cancels this order on the signing page. The link works once.'}</span></p>
           <div className="acts"><button className="btn primary md" type="button" onClick={give}><Icon name="key-round" size={16} />{purpose === 'sign' ? 'Signing link' : 'Cancel link'}</button>
             {purpose === 'sign' && <button className="btn ghost md" type="button" onClick={withdraw}><Icon name="ban" size={16} />Withdraw the order</button>}</div>
           {link && (
@@ -500,6 +505,26 @@ function OrderRecord({ o, v, onClose, onChanged, onSignedOut }: { o: Order; v: D
       )}
       {problem && <p className="note bad" role="alert"><Icon name="triangle-alert" /><span className="grow">{problem}</span></p>}
     </section>
+  )
+}
+
+// The routes of the asset the ticket sells, on its chain, and how deep each is (owner, 2026-11-19): the server reads
+// live quotes at three sizes and says how far the price moves from that of a small order (src/server/orders.ts routes).
+interface RouteView { sizes: string[]; routes: { buy: string[]; score: 'deep' | 'medium' | 'thin' | 'none' | 'unavailable'; moves: (number | null)[] }[] }
+const SCORE = { deep: 'Deep', medium: 'Medium', thin: 'Thin', none: 'No route', unavailable: 'Not available now' }
+const size = (amount: string) => Number(amount).toLocaleString('en-US', { maximumFractionDigits: 2 }) // a size, shown: never an amount signed
+function Routes({ chainId, sell, chain }: { chainId: number; sell: string; chain: string }) {
+  const [view, setView] = useState<RouteView | null>()
+  useEffect(() => void api<RouteView>(`/api/desk/routes/${chainId}.${sell}`).then((out) => setView(out.status === 200 ? out.data : null)), [chainId, sell])
+  return (
+    <Section icon="arrow-left-right" title="Routes and liquidity" hint={`What ${sell} can be sold for on ${chain}, and how far the price moves with the size of the order. From live quotes, at most 5 minutes old.`}>
+      {view === undefined ? <p className="muted" role="status">Reading live quotes.</p> : view === null ? <p className="muted" role="status">The routes could not be read just now. Reload in a minute.</p> : (
+        <Table head={['Buy', 'Liquidity', ...view.sizes.map((s) => `${size(s)} ${sell}`)]} rows={view.routes.map((r) => [
+          named(ASSET_LOGO[r.buy[0]], r.buy[0], r.buy.join(' or ')), <Status>{SCORE[r.score]}</Status>, ...r.moves.map((m) => (m === null ? 'No quote' : `${(m / 100).toFixed(2)}%`)),
+        ])} />
+      )}
+      <p className="fine"><Icon name="info" size={16} />Each size: how much worse the price is than for about 5,000 EUR. Deep: at most 0.5% at the largest size, the most one order sells. Medium: at most 0.5% at a tenth of it. Thin: more.</p>
+    </Section>
   )
 }
 
@@ -517,6 +542,7 @@ function Ticket({ onSignedOut }: { onSignedOut: () => void }) {
   const { view: v, problem, load } = useView<DeskView>('/api/desk', onSignedOut)
   const [picked, setPicked] = useState('')
   const [failed, setFailed] = useState('')
+  const [pick, setPick] = useState<{ chainId: number; sell: string }>()
   const [busy, setBusy] = useState(false)
   if (!v) return problem ? <p className="note bad" role="alert"><Icon name="triangle-alert" /><span className="grow">{problem}</span></p> : null
   const record = v.orders.find((o) => o.id === picked)
@@ -530,12 +556,9 @@ function Ticket({ onSignedOut }: { onSignedOut: () => void }) {
     <>
       <p className="note dk-s"><Icon name="info" /><span className="grow"><b>Use a larger screen.</b> The desk needs room for the ticket. The blotter, the records and approvals work at this size.</span></p>
       <div className="desk dk-b">
-        <section className="panel"><h2 className="cap">Order ticket</h2><TicketForm v={v} onSent={load} /></section>
+        <section className="panel"><h2 className="cap">Order ticket</h2><TicketForm v={v} onSent={load} onPick={setPick} /></section>
         <div className="stack">
-          <Section icon="list-checks" title="Tokens you can trade" hint="An order sells one of these for another on the same chain. Most per order: the largest amount one order can sell." action={<Export table="assets" />}>
-            <Table head={['Token', 'Chain', 'Most per order']} rows={v.assets.map((a) => [named(ASSET_LOGO[a.symbol], a.symbol, <><b>{a.symbol === 'WETH' ? 'WETH (wrapped ETH)' : a.symbol}</b><small className="mono">{short(a.token)}</small></>),
-              named(CHAIN_LOGO[a.chainId], a.chain), money(a.cap, 0)])} />
-          </Section>
+          {pick && <Routes key={`${pick.chainId} ${pick.sell}`} chainId={pick.chainId} sell={pick.sell} chain={v.chains.find((c) => c.id === pick.chainId)?.name ?? ''} />}
           <ol className="stats flow">
             <li className="c"><Tile name="pencil" /><div><span className="cap">Step 1</span><b>Prepare</b><p>A Trader fills the ticket and reviews the live quote.</p></div></li>
             <li className="c"><Tile name="users" /><div><span className="cap">Step 2</span><b>Approve</b><p>A second person approves under Approvals, with a passkey.</p></div></li>

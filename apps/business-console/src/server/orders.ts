@@ -2,8 +2,8 @@
 // linked wallet signs, the order goes to the public Ophis orderbook of its chain, and the receiver is always that wallet.
 // This module holds the constants (chains, assets, caps), the appData, the terms an approval binds, the GPv2 order built
 // from them, and the calls to the orderbook. It reads no row.
-import { concat, getAddress, hashTypedData, keccak256, numberToHex, recoverTypedDataAddress, toBytes, type Hex } from 'viem'
-import { readCapped } from './chain.ts'
+import { concat, encodeFunctionData, getAddress, hashTypedData, keccak256, numberToHex, parseAbi, recoverTypedDataAddress, toBytes, type Hex } from 'viem'
+import { NATIVE, readCapped } from './chain.ts'
 import { fixed } from './demo.ts'
 import { CHAIN_NAME } from './typed.ts'
 
@@ -20,32 +20,50 @@ export const CHAINS: Record<number, { orderbook: string; settlement: Hex; relaye
   5042: { orderbook: 'https://arc-mainnet.ophis.fi', settlement: '0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A', relayer: '0x895505F1FE6D762296685fF4a8201782FFdCB8E9' },
 }
 
-// The assets, ERC-20 only (WETH, not native ETH: selling native ETH needs another contract flow). An asset is listed on a
+// ETH itself (owner, 2026-11-19: people trade ETH, not WETH). Bought: the settlement pays it out of WETH, to the marker
+// address NATIVE. Sold: the wallet sends it to the chain's EthFlow contract in one transaction, which places a GPv2 order
+// selling WETH, owned by that contract (EIP-1271), with the expiry of the order in its own data and the largest uint32 in
+// the order. Each contract below is @ophis/sdk's (CoW's on the hosted chains), and its cowSwapSettlement() and
+// wrappedNativeToken() are the settlement above and the WETH below (eth_call, 2026-11-19). Arc has no ETH of its own: its
+// gas is USDC, and its WETH is bridged.
+export const ETHFLOW: Record<number, Hex> = {
+  1: '0xbA3cB449bD2B4ADddBc894D8697F5170800EAdeC', 8453: '0xbA3cB449bD2B4ADddBc894D8697F5170800EAdeC', 42161: '0xbA3cB449bD2B4ADddBc894D8697F5170800EAdeC',
+  10: '0x764fE4aa1FF493cf39931c7923C8ff5837596504', 4663: '0xC1Ee77e8a1B85D5EED702a9bB435f434408A4d29',
+}
+const MAX_VALID_TO = 0xffff_ffff
+
+// The assets. An asset is listed on a
 // chain only where two independent sources agree on its address and eth_call symbol() and decimals() on a public RPC
 // matched (2026-11-14; ARCHITECTURE.md "The real desk" names each source). stable: in the stable list of @ophis/sdk
 // (stablecoins.ts), which decides the price-improvement share of a hosted chain. cap: the most one order sells, in units of
 // the asset: about 5,000,000 EUR at the price of a real quote on api.cow.fi/mainnet on 2026-11-14 (1 WETH = 1,750.93 EURC,
-// 1 USDC = 0.9076 EURC; the three euro tokens at 1 EUR). No price feed.
-const CAP = { WETH: 2_850, USDC: 5_500_000, USDG: 5_500_000, EURC: 5_000_000, EURe: 5_000_000, EURCV: 5_000_000 }
+// 1 USDC = 0.9076 EURC; the three euro tokens at 1 EUR). No price feed. ETH first: the ticket opens on it.
+const CAP = { ETH: 2_850, WETH: 2_850, USDC: 5_500_000, USDG: 5_500_000, EURC: 5_000_000, EURe: 5_000_000, EURCV: 5_000_000 }
 export type Symbol = keyof typeof CAP
 export interface Asset { token: Hex; decimals: number; stable: boolean }
 const at = (token: Hex, decimals: number, stable = false): Asset => ({ token, decimals, stable })
+const ETH = at(NATIVE, 18)
 export const ASSETS: Record<number, Partial<Record<Symbol, Asset>>> = {
   1: {
-    WETH: at('0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', 18), USDC: at('0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', 6, true),
-    EURC: at('0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c', 6), EURe: at('0x39b8B6385416f4cA36a20319F70D28621895279D', 18, true), EURCV: at('0x5F7827FDeb7c20b443265Fc2F40845B715385Ff2', 18),
+    ETH, USDC: at('0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', 6, true), EURC: at('0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c', 6),
+    EURe: at('0x39b8B6385416f4cA36a20319F70D28621895279D', 18, true), EURCV: at('0x5F7827FDeb7c20b443265Fc2F40845B715385Ff2', 18), WETH: at('0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', 18),
   },
-  10: { WETH: at('0x4200000000000000000000000000000000000006', 18), USDC: at('0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', 6, true) },
-  8453: { WETH: at('0x4200000000000000000000000000000000000006', 18), USDC: at('0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', 6, true), EURC: at('0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42', 6, true) },
-  42161: { WETH: at('0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', 18), USDC: at('0xaf88d065e77c8cC2239327C5EDb3A432268e5831', 6, true), EURe: at('0x0c06cCF38114ddfc35e07427B9424adcca9F44F8', 18, true) },
-  // 2026-11-19: Robinhood Chain has WETH (bridged from Ethereum) and USDG, its one stablecoin (Robinhood's contract docs and
-  // DefiLlama; USDG is also in the SDK's stable list); Arc has Circle's USDC and EURC (Circle's address pages and Arc's
-  // docs) and a bridged WETH (Arc's docs and DefiLlama). symbol() and decimals() matched on both endpoints of each chain.
-  4663: { WETH: at('0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73', 18), USDG: at('0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168', 6, true) },
+  10: { ETH, USDC: at('0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', 6, true), WETH: at('0x4200000000000000000000000000000000000006', 18) },
+  8453: { ETH, USDC: at('0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', 6, true), EURC: at('0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42', 6, true), WETH: at('0x4200000000000000000000000000000000000006', 18) },
+  42161: { ETH, USDC: at('0xaf88d065e77c8cC2239327C5EDb3A432268e5831', 6, true), EURe: at('0x0c06cCF38114ddfc35e07427B9424adcca9F44F8', 18, true), WETH: at('0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', 18) },
+  // 2026-11-19: Robinhood Chain has WETH (bridged from Ethereum, and the WETH its EthFlow wraps into) and USDG, its one
+  // stablecoin (Robinhood's contract docs and DefiLlama; USDG is also in the SDK's stable list); Arc has Circle's USDC and
+  // EURC (Circle's address pages and Arc's docs) and a bridged WETH (Arc's docs and DefiLlama). symbol() and decimals()
+  // matched on both endpoints of each chain.
+  4663: { ETH, USDG: at('0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168', 6, true), WETH: at('0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73', 18) },
   5042: { WETH: at('0x128cC466B61f542da60c70e3aA11c10e19B84EDB', 18), USDC: at('0x3600000000000000000000000000000000000000', 6, true), EURC: at('0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1', 6, true) },
 }
 const assetOf = (chainId: number, symbol: unknown) => (typeof symbol === 'string' && Object.hasOwn(ASSETS[chainId] ?? {}, symbol) ? ASSETS[chainId][symbol as Symbol]! : null)
 export const capOf = (symbol: Symbol, decimals: number) => BigInt(CAP[symbol]) * 10n ** BigInt(decimals)
+/** The token an order really moves: WETH for ETH, which the settlement wraps (a sale) or unwraps (a purchase). */
+export const wrapped = (chainId: number, token: string) => (token === NATIVE ? ASSETS[chainId].WETH!.token : (token as Hex))
+/** Does this order sell ETH itself, through the chain's EthFlow contract? */
+export const sellsEth = (t: { sell: { token: string } }) => t.sell.token === NATIVE
 
 export const VALIDITY = [1800, 14_400, 86_400] // seconds after signing: 30 minutes, 4 hours, 24 hours
 export const SLIPPAGE = { default: 50, max: 300 } // bps
@@ -102,7 +120,7 @@ export function ticket(body: Record<string, unknown>): string | Ticket {
   if (typeof chainId !== 'number' || !Object.hasOwn(CHAINS, chainId)) return 'chain_not_allowed'
   const [s, b] = [assetOf(chainId, sell), assetOf(chainId, buy)]
   if (!s || !b) return 'asset_not_permitted'
-  if (sell === buy) return 'same_asset'
+  if (wrapped(chainId, s.token) === wrapped(chainId, b.token)) return 'same_asset' // ETH for WETH is a wrap, which the orderbook refuses
   if (typeof walletId !== 'string') return 'wallet_not_linked' // whether it is a linked wallet of the organisation is read from the rows
   const atoms = atomsOf(amount, s.decimals)
   if (atoms === null || atoms <= 0n) return 'amount_invalid'
@@ -156,10 +174,15 @@ export function again(value: string | null): string | Terms {
     return 'invalid'
   }
   if (!t || typeof t !== 'object' || !t.sell || !t.buy || typeof t.quoted !== 'string' || !/^[1-9]\d{0,77}$/.test(t.quoted)) return 'invalid'
-  const s = assetOf(t.chainId, t.sell.symbol)
-  const asked = ticket({ type: t.type, chainId: t.chainId, walletId: t.walletId, sell: t.sell.symbol, buy: t.buy.symbol, amount: s && /^\d{1,78}$/.test(t.sell.amount) ? decimal(t.sell.amount, s.decimals) : null, slippageBips: t.slippageBips, limitPrice: t.limitPrice, validFor: t.validFor })
-  return typeof asked === 'string' ? asked : terms(asked, { id: t.walletId, label: t.label, address: t.wallet, kind: t.scheme === 'presign' ? 'safe' : 'key' }, BigInt(t.quoted))
+  const asked = askedOf(t)
+  return typeof asked === 'string' ? asked : terms(asked, walletOf(t), BigInt(t.quoted))
 }
+/** The ticket that stored terms answer, checked again: the refusal, or the ticket. */
+export function askedOf(t: Terms) {
+  const s = assetOf(t.chainId, t.sell.symbol)
+  return ticket({ type: t.type, chainId: t.chainId, walletId: t.walletId, sell: t.sell.symbol, buy: t.buy.symbol, amount: s && /^\d{1,78}$/.test(t.sell.amount) ? decimal(t.sell.amount, s.decimals) : null, slippageBips: t.slippageBips, limitPrice: t.limitPrice, validFor: t.validFor })
+}
+export const walletOf = (t: Terms): Wallet => ({ id: t.walletId, label: t.label, address: t.wallet, kind: t.scheme === 'presign' ? 'safe' : 'key' })
 
 // ---- the GPv2 order and its cancellation, as the settlement contract hashes them ----
 const DOMAIN_FIELDS = [{ name: 'name', type: 'string' }, { name: 'version', type: 'string' }, { name: 'chainId', type: 'uint256' }, { name: 'verifyingContract', type: 'address' }]
@@ -172,17 +195,34 @@ export const ORDER_TYPES = {
 } as const
 const CANCEL_TYPES = { OrderCancellations: [{ name: 'orderUids', type: 'bytes[]' }] } as const
 export const domainOf = (chainId: number) => ({ name: 'Gnosis Protocol', version: 'v2', chainId, verifyingContract: CHAINS[chainId].settlement })
-/** The order of approved terms, with the expiry fixed when the signing page read it. typed: as a wallet signs it (eth_signTypedData_v4). */
+/**
+ * The order of approved terms, with the expiry fixed when the signing page read it. typed: as a wallet signs it
+ * (eth_signTypedData_v4). An ETH sale is the order its EthFlow contract places and owns: WETH sold, the largest expiry.
+ */
 export function gpv2(t: Terms, validTo: number) {
   const domain = domainOf(t.chainId)
+  const eth = sellsEth(t)
   const message = {
-    sellToken: t.sell.token, buyToken: t.buy.token, receiver: t.wallet as Hex, sellAmount: t.sell.amount, buyAmount: t.buy.minimum, validTo,
+    sellToken: wrapped(t.chainId, t.sell.token), buyToken: t.buy.token, receiver: t.wallet as Hex, sellAmount: t.sell.amount, buyAmount: t.buy.minimum, validTo: eth ? MAX_VALID_TO : validTo,
     appData: t.appDataHash, feeAmount: '0', kind: 'sell', partiallyFillable: false, sellTokenBalance: 'erc20', buyTokenBalance: 'erc20',
   }
   const hashed = { domain, types: ORDER_TYPES, primaryType: 'Order' as const, message: { ...message, sellAmount: BigInt(message.sellAmount), buyAmount: BigInt(message.buyAmount), feeAmount: 0n } }
   // The order id: the EIP-712 digest, the owner, the expiry.
-  const uid = concat([hashTypedData(hashed), t.wallet as Hex, numberToHex(validTo, { size: 4 })]).toLowerCase()
+  const uid = concat([hashTypedData(hashed), eth ? ETHFLOW[t.chainId] : (t.wallet as Hex), numberToHex(message.validTo, { size: 4 })]).toLowerCase()
   return { message, uid, hashed, typed: { domain, types: { EIP712Domain: DOMAIN_FIELDS, ...ORDER_TYPES }, primaryType: 'Order', message } }
+}
+const ETHFLOW_ABI = parseAbi([
+  'struct Data { address buyToken; address receiver; uint256 sellAmount; uint256 buyAmount; bytes32 appData; uint256 feeAmount; uint32 validTo; bool partiallyFillable; int64 quoteId; }',
+  'function createOrder(Data order) payable returns (bytes32)', 'function invalidateOrder(Data order)',
+])
+/**
+ * The one transaction of an ETH sale, as @ophis/sdk's getEthFlowTransaction builds it: the wallet sends the amount sold to
+ * the EthFlow contract, which places the order (createOrder), or takes it back with the ETH (invalidateOrder, any time;
+ * after the expiry the refunder does it). quoteId: a fresh quote's, which spares the orderbook a quote of its own.
+ */
+export function ethflowCall(t: Terms, validTo: number, call: 'createOrder' | 'invalidateOrder', quoteId = 0) {
+  const data = { buyToken: t.buy.token, receiver: t.wallet as Hex, sellAmount: BigInt(t.sell.amount), buyAmount: BigInt(t.buy.minimum), appData: t.appDataHash, feeAmount: 0n, validTo, partiallyFillable: false, quoteId: BigInt(quoteId) }
+  return { to: ETHFLOW[t.chainId], value: call === 'createOrder' ? t.sell.amount : '0', data: encodeFunctionData({ abi: ETHFLOW_ABI, functionName: call, args: [data] }) }
 }
 /** The off-chain cancellation of one order (the orderbook's DELETE /api/v1/orders), as the wallet signs it. */
 export const cancellation = (chainId: number, uid: string) => {
@@ -232,17 +272,23 @@ const errorType = (body: unknown) => {
 }
 const digits = (v: unknown) => typeof v === 'string' && /^\d{1,78}$/.test(v)
 
-/** A live quote for a ticket, from the wallet, with the exact appData the order will sign. The buy amount, or the refusal. */
+/**
+ * A live quote for a ticket, from the wallet, with the exact appData the order will sign. The buy amount and the quote's
+ * id, or the refusal. An ETH sale is quoted as @ophis/sdk quotes it: WETH sold, an onchain EIP-1271 order whose
+ * verification the orderbook does not charge.
+ */
 export async function quote(env: Settings, t: Ticket, wallet: Wallet) {
   const [s, b] = [ASSETS[t.chainId][t.sell]!, ASSETS[t.chainId][t.buy]!]
   const atoms = atomsOf(t.amount, s.decimals)!
   const data = appData(t.chainId, t.type, t.slippageBips, s.stable && b.stable)
   const from = getAddress(wallet.address)
+  const sold = wrapped(t.chainId, s.token)
+  const scheme = s.token === NATIVE ? { signingScheme: 'eip1271', onchainOrder: true, verificationGasLimit: 0 } : { signingScheme: wallet.kind === 'safe' ? 'presign' : 'eip712', onchainOrder: false }
   const answer = await ask(env, t.chainId, '/api/v1/quote', {
     method: 'POST',
     body: JSON.stringify({
-      sellToken: s.token, buyToken: b.token, from, receiver: from, kind: 'sell', sellAmountBeforeFee: atoms.toString(), partiallyFillable: false,
-      sellTokenBalance: 'erc20', buyTokenBalance: 'erc20', priceQuality: 'optimal', signingScheme: wallet.kind === 'safe' ? 'presign' : 'eip712', onchainOrder: false,
+      sellToken: sold, buyToken: b.token, from, receiver: from, kind: 'sell', sellAmountBeforeFee: atoms.toString(), partiallyFillable: false,
+      sellTokenBalance: 'erc20', buyTokenBalance: 'erc20', priceQuality: 'optimal', ...scheme,
       // The Ophis orderbook of OP Mainnet refuses a key wallet's quote valid more than 3 hours (ExcessiveValidTo, read-only
       // quotes of 2026-11-14). A quote's validity changes neither its price nor its appData, and the order's own expiry is
       // fixed when the signing page first opens: so the quote asks for 3 hours at most, and the terms keep the validity picked.
@@ -250,13 +296,16 @@ export async function quote(env: Settings, t: Ticket, wallet: Wallet) {
     }),
   })
   if (answer.status === 0 || answer.status === 429 || answer.status >= 500) return { error: 'quote_unavailable' }
-  const q = (answer.body as { quote?: Record<string, unknown> } | null)?.quote
+  const body = answer.body as { quote?: Record<string, unknown>; id?: unknown } | null
+  const q = body?.quote
   if (answer.status !== 200 || !q) return { error: 'quote_refused', reason: errorType(answer.body) }
   // The quote must be for exactly what was asked: the two tokens, and the whole amount (what it sells plus its fee).
   const same = (a: unknown, token: string) => typeof a === 'string' && a.toLowerCase() === token.toLowerCase()
-  if (!same(q.sellToken, s.token) || !same(q.buyToken, b.token) || !digits(q.sellAmount) || !digits(q.feeAmount) || !digits(q.buyAmount)) return { error: 'quote_unavailable' }
+  if (!same(q.sellToken, sold) || !same(q.buyToken, b.token) || !digits(q.sellAmount) || !digits(q.feeAmount) || !digits(q.buyAmount)) return { error: 'quote_unavailable' }
   if (BigInt(q.sellAmount as string) + BigInt(q.feeAmount as string) !== atoms) return { error: 'quote_unavailable' }
-  return { quoted: BigInt(q.buyAmount as string) }
+  // The id, an int64 of the orderbook: 0 (none) if it is not one, so that the orderbook quotes the order itself.
+  const id = Number.isSafeInteger(body!.id) && (body!.id as number) > 0 ? (body!.id as number) : 0
+  return { quoted: BigInt(q.buyAmount as string), id }
 }
 /** POST /api/v1/orders with the order the server built, as @ophis/cli sends it. DuplicatedOrder: that very order is there already. */
 export async function post(env: Settings, t: Terms, built: ReturnType<typeof gpv2>, signature: string) {
@@ -272,6 +321,14 @@ export async function post(env: Settings, t: Terms, built: ReturnType<typeof gpv
   if (answer.status === 201 || answer.status === 200) return answer.body === built.uid ? 'ok' : 'orderbook_unavailable'
   if (errorType(answer.body) === 'DuplicatedOrder') return 'ok'
   return answer.status === 0 || answer.status === 429 || answer.status >= 500 ? 'orderbook_unavailable' : 'order_refused'
+}
+/**
+ * PUT /api/v1/app_data/{hash}: the full appData of an ETH sale, whose transaction commits only its hash. Without it the
+ * orderbook applies no partner fee (the Ophis fee is lost): @ophis/sdk ethflow.ts uploads it first too. 201 new, 200 there.
+ */
+export async function appDataUp(env: Settings, t: Terms) {
+  const answer = await ask(env, t.chainId, `/api/v1/app_data/${t.appDataHash}`, { method: 'PUT', body: JSON.stringify({ fullAppData: t.appData }) })
+  return answer.status === 200 || answer.status === 201
 }
 /** DELETE /api/v1/orders: the off-chain cancellation a key wallet signed. */
 export async function cancel(env: Settings, chainId: number, uid: string, signature: string) {
@@ -294,18 +351,76 @@ export async function status(env: Settings, chainId: number, uid: string, sellTo
     const hash = Array.isArray(trades.body) ? (trades.body[0] as { txHash?: unknown } | undefined)?.txHash : null
     tx = typeof hash === 'string' && /^0x[0-9a-f]{64}$/.test(hash) ? hash : null
   }
-  const fee = digits(o.executedFee) && typeof o.executedFeeToken === 'string' && o.executedFeeToken.toLowerCase() === sellToken.toLowerCase() ? (o.executedFee as string) : null
+  const fee = digits(o.executedFee) && typeof o.executedFeeToken === 'string' && o.executedFeeToken.toLowerCase() === wrapped(chainId, sellToken).toLowerCase() ? (o.executedFee as string) : null
   return { status: o.status as string, sold: o.executedSellAmount as string, bought: o.executedBuyAmount as string, tx, fee }
+}
+
+// ---- routes: what an asset sells for on its chain, and how far the price moves with the size ----
+/** The sizes read, as parts of the most one order sells: a thousandth (the reference, about 5,000 EUR), then a hundredth, a tenth and all of it. */
+const DEPTH = [1000n, 100n, 10n, 1n]
+const DEEP_BPS = 50 // the price moves at most 0.5%
+const NOBODY = '0x000000000000000000000000000000000000dEaD' // a route names no wallet: the quote is from no one's
+const ROUTES_MS = 5 * 60_000
+// ponytail: a cache of this isolate, 5 minutes, shared by every organisation (the answer names no wallet), at most one
+// entry per chain and asset (about 20). A miss costs at most 16 quotes (4 routes of 4 sizes), under the 50 calls a free
+// Worker may make. An answer with a route the orderbook did not answer for is not kept. The Cache API if isolates multiply.
+export const ROUTES = new Map<string, { at: number; value: Awaited<ReturnType<typeof readRoutes>> }>()
+/**
+ * Each asset the ticket's asset sells for on its chain, with how far the price moves at each size from the reference
+ * (bps; null: no quote at that size), and a score: deep (at most 0.5% at the most per order), medium (at a tenth of it),
+ * thin (more), none (the orderbook has no route), unavailable (it did not answer at some size). ETH and WETH are one route,
+ * read as WETH. One route at a time, its 4 quotes at once: a Worker waits on 6 connections at most, and each quote's 5
+ * seconds start at its fetch.
+ */
+export async function routes(env: Settings, chainId: number, sell: Symbol, now: number) {
+  const key = `${chainId} ${sell}`
+  const seen = ROUTES.get(key)
+  if (seen && now - seen.at < ROUTES_MS) return seen.value
+  const value = await readRoutes(env, chainId, sell)
+  if (!value.routes.some((r) => r.score === 'unavailable')) ROUTES.set(key, { at: now, value })
+  return value
+}
+async function readRoutes(env: Settings, chainId: number, sell: Symbol) {
+  const s = ASSETS[chainId][sell]!
+  const sold = wrapped(chainId, s.token)
+  const cap = capOf(sell, s.decimals)
+  const sizes = DEPTH.map((part) => cap / part)
+  const buys = new Map<string, { symbols: Symbol[]; asset: Asset }>()
+  for (const [symbol, b] of Object.entries(ASSETS[chainId]) as [Symbol, Asset][]) {
+    const token = wrapped(chainId, b.token)
+    if (token !== sold) buys.set(token, { symbols: [...(buys.get(token)?.symbols ?? []), symbol], asset: b })
+  }
+  const read = []
+  for (const [token, { symbols, asset }] of buys) read.push(await (async () => {
+    const data = appData(chainId, 'market', SLIPPAGE.default, s.stable && asset.stable)
+    const quotes = await Promise.all(sizes.map(async (size) => {
+      const answer = await ask(env, chainId, '/api/v1/quote', {
+        method: 'POST',
+        body: JSON.stringify({ sellToken: sold, buyToken: token, from: NOBODY, kind: 'sell', sellAmountBeforeFee: size.toString(), priceQuality: 'optimal', signingScheme: 'eip712', appData: data.full, appDataHash: data.hash }),
+      })
+      const q = (answer.body as { quote?: Record<string, unknown> } | null)?.quote
+      if (answer.status === 200 && q && digits(q.sellAmount) && digits(q.buyAmount) && BigInt(q.sellAmount as string) > 0n) return { sold: BigInt(q.sellAmount as string), bought: BigInt(q.buyAmount as string) }
+      return answer.status === 0 || answer.status === 429 || answer.status >= 500 ? 'unavailable' : 'none'
+    }))
+    const [first, ...rest] = quotes
+    if (typeof first === 'string') return { buy: symbols, score: first, moves: rest.map(() => null) }
+    // How far the price at each size is from the reference, in bps, never below 0 (the fee weighs more on a small order).
+    const moves = rest.map((q) => (typeof q === 'string' ? null : Number(10_000n - (q.bought * first.sold * 10_000n) / (q.sold * first.bought)))).map((m) => (m === null ? null : Math.max(m, 0)))
+    const within = (m: number | null) => m !== null && m <= DEEP_BPS
+    return { buy: symbols, score: rest.includes('unavailable') ? 'unavailable' : within(moves[2]) ? 'deep' : within(moves[1]) ? 'medium' : 'thin', moves }
+  })())
+  return { chainId, sell, sizes: sizes.slice(1).map((size) => decimal(size, s.decimals)), routes: read }
 }
 
 // ---- words ----
 /** What the blotter says of an order: its approval row and its order row. */
-export function stateOf(o: { state: string; open: boolean; type: Ticket['type']; approvedAt: number | null; uid: string | null; status: string | null; validTo: number | null }, now: number) {
+// An ETH sale waits in the same state as a Safe's order: checked, its link live, until its transaction lands (eth).
+export function stateOf(o: { state: string; open: boolean; type: Ticket['type']; approvedAt: number | null; uid: string | null; status: string | null; validTo: number | null; eth: boolean }, now: number) {
   if (o.state === 'pending') return o.open ? 'Pending approval' : 'Expired'
   if (o.state === 'rejected' || o.status === 'refused') return 'Refused'
   if (o.state !== 'applied') return 'Cancelled'
   if (!o.uid) return o.status === 'cancelled' ? 'Withdrawn' : signBy(o) > now ? 'Approved: waiting for signature' : 'Expired'
-  if (o.status === 'presignaturePending') return 'Sent: waiting for the Safe transaction'
+  if (o.status === 'presignaturePending' && (o.validTo ?? 0) * 1000 > now) return o.eth ? 'Sent: waiting for the ETH transaction' : 'Sent: waiting for the Safe transaction'
   if (o.status === 'fulfilled') return 'Filled'
   if (o.status === 'cancelled') return 'Cancelled'
   return o.status === 'expired' || (o.validTo ?? 0) * 1000 <= now ? 'Expired' : 'Open'

@@ -226,7 +226,8 @@ async function organisation(c: Context) {
     frozen: await data.frozenSeats(c.env.DB, c.actor.orgId),
     wallets: (await data.wallets(c.env.DB, c.actor.orgId, c.now)).map(walletView),
     chains: Object.keys(c.config.chains).map((id) => ({ id: Number(id), name: CHAIN_NAME[Number(id)] ?? `Chain ${id}` })),
-    syncedKeysAllowed: c.session.synced_keys_allowed === 1, rights,
+    // The FAQ of Support lists the tokens of the desk (owner, 2026-11-19): moved there from the desk.
+    syncedKeysAllowed: c.session.synced_keys_allowed === 1, rights, assets: assetRows(),
   })
 }
 async function revoke(c: Context) {
@@ -738,7 +739,7 @@ const csvFile = (c: Context, name: string, lines: unknown[][], more: object = {}
 const ordersOf = async (c: Context) => (await data.orders(c.env.DB, c.actor, c.now)).map(({ terms, approvedAt, status, ...o }) => {
   const units = (atoms: string | null, symbol: string) => (atoms === null ? null : `${orders.decimal(atoms, orders.ASSETS[terms.chainId]?.[symbol as orders.Symbol]?.decimals ?? 18)} ${symbol}`)
   return {
-    ...o, terms, words: orders.words(terms, o.validTo), ref: `ORD-${o.id.slice(0, 8)}`, state: orders.stateOf({ ...o, type: terms.type, approvedAt, status }, c.now),
+    ...o, terms, words: orders.words(terms, o.validTo), ref: `ORD-${o.id.slice(0, 8)}`, state: orders.stateOf({ ...o, type: terms.type, approvedAt, status, eth: orders.sellsEth(terms) }, c.now),
     signUntil: o.state === 'applied' && !o.uid && !status ? orders.signBy({ type: terms.type, approvedAt, validTo: o.validTo }) : null,
     executed: o.sold && status === 'fulfilled' ? { sold: units(o.sold, terms.sell.symbol), bought: units(o.bought, terms.buy.symbol), fee: units(o.fee, terms.sell.symbol) } : null,
   }
@@ -833,13 +834,17 @@ async function orderPage(c: Context) {
   }
   const built = orders.gpv2(t, validTo!)
   const chain = orders.CHAINS[t.chainId]
+  const eth = orders.sellsEth(t) // ETH is sent along with its transaction: no approval, no signature
   // The allowance the vault relayer needs: this order, and what the wallet's other open orders of the asset still need.
-  const allowance = r.purpose === 'sign' ? (await data.reserved(c.env.DB, r, c.now)) + BigInt(t.sell.amount) : null
+  const allowance = r.purpose === 'sign' && !eth ? (await data.reserved(c.env.DB, r, c.now)) + BigInt(t.sell.amount) : null
   return json(200, {
-    purpose: r.purpose, scheme: t.scheme, chainId: t.chainId, wallet: t.wallet, words: orders.words(t, validTo), uid: built.uid, validTo,
+    purpose: r.purpose, scheme: t.scheme, eth, chainId: t.chainId, wallet: t.wallet, words: orders.words(t, validTo), uid: built.uid, validTo,
     settlement: chain.settlement, relayer: chain.relayer, sellToken: t.sell.token, sellAmount: t.sell.amount,
     allowance: allowance?.toString() ?? null, allowanceWords: allowance === null ? null : `${orders.decimal(allowance, orders.ASSETS[t.chainId][t.sell.symbol]!.decimals)} ${t.sell.symbol}`,
-    typed: t.scheme === 'presign' ? null : r.purpose === 'sign' ? built.typed : orders.cancellation(t.chainId, built.uid).typed,
+    typed: eth || t.scheme === 'presign' ? null : r.purpose === 'sign' ? built.typed : orders.cancellation(t.chainId, built.uid).typed,
+    // An ETH sale: its EthFlow contract, and for a cancel the transaction that takes the order back with its ETH. The
+    // transaction that places it comes from the send, once the order is checked.
+    ethflow: eth ? orders.ETHFLOW[t.chainId] : null, cancelTx: eth && r.purpose === 'cancel' ? orders.ethflowCall(t, validTo!, 'invalidateOrder') : null,
   })
 }
 /**
@@ -855,23 +860,50 @@ async function orderSend(c: Context) {
   const t = r.terms
   if (r.validTo === null) return fail(409, 'not_opened')
   const built = orders.gpv2(t, r.validTo)
+  const eth = orders.sellsEth(t)
   if (r.purpose === 'cancel') {
-    if (t.scheme === 'presign') return (await data.orderCancelled(c.env.DB, r, r.hash, 'safe', c.now)) ? json(200, { state: 'asked' }) : fail(409, 'try_again')
+    // A Safe's revocation and an ETH sale's take-back are the wallet's own transactions: recorded as asked, and the
+    // refresh reads the cancel from the orderbook.
+    // A key wallet's take-back is mined when the page sends this (taken_back); a Safe's waits for its owners (asked).
+    if (t.scheme === 'presign' || eth) return (await data.orderCancelled(c.env.DB, r, r.hash, eth ? 'eth' : 'safe', c.now)) ? json(200, { state: t.scheme === 'presign' ? 'asked' : 'taken_back' }) : fail(409, 'try_again')
     if (!(await orders.signedBy(orders.cancellation(t.chainId, built.uid).hashed, c.body.signature, t.wallet))) return fail(403, 'signature_rejected')
     const done = await orders.cancel(c.env, t.chainId, built.uid, c.body.signature as string)
     if (done !== 'ok') return refuse(done)
     return (await data.orderCancelled(c.env.DB, r, r.hash, 'key', c.now)) ? json(200, { state: 'cancelled' }) : fail(409, 'try_again')
   }
   if (r.walletChain !== t.chainId || r.walletAddress !== t.wallet.toLowerCase()) return refuse('wallet_not_linked') // no linked wallet: both are null
-  if (t.scheme === 'eip712' && !(await orders.signedBy(built.hashed, c.body.signature, t.wallet))) return fail(403, 'signature_rejected')
-  // A presign order's signature is its owner (the Safe), as the orderbook takes it.
-  const signature = t.scheme === 'presign' ? t.wallet.toLowerCase() : (c.body.signature as string)
+  if (t.scheme === 'eip712' && !eth && !(await orders.signedBy(built.hashed, c.body.signature, t.wallet))) return fail(403, 'signature_rejected')
+  // A presign order's signature is its owner (the Safe), as the orderbook takes it; an ETH sale's, its EthFlow contract.
+  const signature = eth ? orders.ETHFLOW[t.chainId].toLowerCase() : t.scheme === 'presign' ? t.wallet.toLowerCase() : (c.body.signature as string)
   const stop = await screened(c, r, true) // a key wallet's signature was verified above
   if (stop) return stop
   if (!permitted(r)) return refuse('asset_not_permitted') // a deploy between the page and the send
+  if (r.status === 'presignaturePending' && r.uid !== built.uid) return refuse('already_sent')
+  if (eth) {
+    // An ETH sale: checked as any order, then the page gets the one transaction that places it, with a fresh quote's id
+    // (the orderbook takes that quote for the order). The order then waits for that transaction as a Safe's waits for its
+    // presignature, its link live; asked again, the same order and a fresh id. No quote: nothing is held or handed.
+    const fresh = await orders.quote(c.env, orders.askedOf(t) as orders.Ticket, orders.walletOf(t))
+    if ('error' in fresh) return refuse(fresh.error === 'quote_unavailable' ? 'orderbook_unavailable' : 'order_refused')
+    // Its full appData, every time the transaction is handed: the transaction commits only the hash, and without the
+    // document the orderbook applies no partner fee (the Ophis fee). Not stored: nothing is held or handed.
+    if (!(await orders.appDataUp(c.env, t))) return refuse('orderbook_unavailable')
+    if (r.status !== 'presignaturePending') {
+      // Its order id names no expiry, and the EthFlow contract takes each order once, ever (filled or refunded, it stays
+      // taken): an identical sale of this wallet, sent by the desk or placed elsewhere, is refused here, not by a failed
+      // transaction. @ophis/sdk lowers the amount bought by 1 instead; approved terms are not changed here.
+      const seen = await orders.status(c.env, t.chainId, built.uid, t.sell.token)
+      if (seen === null) return refuse('orderbook_unavailable')
+      if (seen !== 'missing') return refuse('eth_order_exists') // another order of the desk holding it: orderSending says so
+      const held = await data.orderSending(c.env.DB, r, r.hash, built.uid, signature, c.now)
+      if (held !== 'ok') return refuse(held)
+      await data.orderSent(c.env.DB, r, built.uid, 'presignaturePending')
+    }
+    return json(200, { state: 'transaction', uid: built.uid, tx: orders.ethflowCall(t, r.validTo, 'createOrder', fresh.id) })
+  }
   // Asked again for a Safe's order the orderbook already took (a lost answer, a reloaded page): its uid, so that the page
   // proposes the Safe transaction. Nothing is posted or written (Codex, PR #1646).
-  if (r.status === 'presignaturePending') return r.uid === built.uid ? json(200, { state: 'presignaturePending', uid: built.uid }) : refuse('already_sent')
+  if (r.status === 'presignaturePending') return json(200, { state: 'presignaturePending', uid: built.uid })
   const held = await data.orderSending(c.env.DB, r, r.hash, built.uid, signature, c.now)
   if (held !== 'ok') return refuse(held)
   const status = t.scheme === 'presign' ? 'presignaturePending' : 'open'
@@ -919,7 +951,7 @@ async function overview(c: Context) {
 // ponytail: a cache of this isolate, 60 seconds, keyed by the organisation and its wallets. A D1 row would hold across isolates.
 const BALANCE_CACHE = new Map<string, { at: number; value: Awaited<ReturnType<typeof readBalances>> }>()
 const BALANCE_MS = 60_000
-const BALANCE_WALLETS = 10 // the wallets linked first: 10 of 5 assets is 50 calls, whose answer fits the 16 KB of an RPC answer
+const BALANCE_WALLETS = 8 // the wallets linked first: 8 of 6 assets (Ethereum's, ETH among them) is 48 calls, whose answer fits the 16 KB of an RPC answer
 /** The balances of the organisation's linked wallets on the desk chains, in the assets of each chain: read briefly cached. */
 async function balances(c: Context) {
   const wallets = (await data.wallets(c.env.DB, c.actor.orgId, c.now)).filter((w) => w.state === 'linked' && Object.hasOwn(orders.CHAINS, w.chainId))
@@ -979,6 +1011,13 @@ async function desk(c: Context) {
     wallets: wallets.map((w) => ({ id: w.id, label: w.label, address: checksum(w.address), chainId: w.chainId, chain: CHAIN_NAME[w.chainId], scheme: w.kind === 'safe' ? 'presign' : 'eip712' })),
   })
 }
+/** The routes of an asset on a chain of the desk, and how deep each is (orders.routes): GET /api/desk/routes/<chain id>.<asset>. */
+async function deskRoutes(c: Context) {
+  const [chain, symbol] = (c.params.id ?? '').split('.')
+  const chainId = Number(chain)
+  if (!/^\d{1,6}$/.test(chain) || !Object.hasOwn(orders.ASSETS, chainId) || !Object.hasOwn(orders.ASSETS[chainId], symbol ?? '')) return fail(404, 'not_found')
+  return json(200, await orders.routes(c.env, chainId, symbol as orders.Symbol, c.now))
+}
 /** The permitted assets: one row per asset and chain, with its token and the most one order sells. */
 const assetRows = () => Object.entries(orders.ASSETS).flatMap(([id, assets]) => Object.entries(assets).map(([symbol, a]) => ({
   chainId: Number(id), chain: CHAIN_NAME[Number(id)], symbol, token: a!.token, decimals: a!.decimals, cap: orders.decimal(orders.capOf(symbol as orders.Symbol, a!.decimals), a!.decimals),
@@ -995,7 +1034,7 @@ const INSTITUTION: Record<string, [head: string[], rows: (c: Context) => Promise
   async (c) => (await ordersOf(c)).map((o) => {
     // An asset delisted since: 18 decimals, as its words say.
     const [s, b] = [o.terms.sell, o.terms.buy].map((x) => orders.ASSETS[o.terms.chainId]?.[x.symbol]?.decimals ?? 18)
-    return [o.ref, utc(o.at), o.preparer, o.terms.type, CHAIN_NAME[o.terms.chainId], o.terms.label, o.terms.wallet, o.terms.scheme, o.terms.sell.symbol, o.terms.sell.token, orders.decimal(o.terms.sell.amount, s),
+    return [o.ref, utc(o.at), o.preparer, o.terms.type, CHAIN_NAME[o.terms.chainId], o.terms.label, o.terms.wallet, orders.sellsEth(o.terms) ? 'ethflow' : o.terms.scheme, o.terms.sell.symbol, o.terms.sell.token, orders.decimal(o.terms.sell.amount, s),
       o.terms.buy.symbol, o.terms.buy.token, orders.decimal(o.terms.buy.minimum, b), orders.decimal(o.terms.quoted, b), o.terms.slippageBips ?? '', o.terms.limitPrice ?? '', o.terms.validFor,
       o.validTo === null ? '' : utc(o.validTo * 1000), o.terms.appDataHash, o.state, o.decidedBy ?? '', utc(o.decidedAt), o.linkBy ?? '', utc(o.linkAt), o.uid ?? '', utc(o.sentAt),
       o.executed?.sold ?? '', o.executed?.bought ?? '', o.executed?.fee ?? '', o.tx ?? '']
@@ -1073,6 +1112,7 @@ export const routes: Route[] = [
   { method: 'GET', path: '/api/screening', roles: READERS, can: 'See the sanctions screening Ophis recorded for the organisation, and the address lists its linked wallets are compared with', handler: screening },
   { method: 'GET', path: '/api/overview', roles: ANY, can: 'See the overview of the organisation (an institution: the balances of its linked wallets, its orders and its statement; a partner: its figures from the Ophis rebate service)', handler: overview },
   { method: 'GET', path: '/api/desk', roles: ANY, can: 'See the desk: permitted assets, orders and their records', handler: desk },
+  { method: 'GET', path: '/api/desk/routes/:id', roles: ANY, can: 'See the routes of the desk and how deep each is, from live quotes', handler: deskRoutes },
   { method: 'GET', path: '/api/export/:id', roles: ANY, can: 'Export a table of the overview or the desk as CSV', handler: tableExport },
   { method: 'POST', path: '/api/desk/orders', roles: orders.PREPARERS, settled: true, can: 'Prepare an order on the desk, which a second person approves before the wallet signs it', handler: order },
   { method: 'POST', path: '/api/desk/orders/:id/link', roles: orders.SIGNERS, fresh: true, settled: true, can: 'Give the wallet the link to sign an approved order, or to cancel an open one', handler: orderLink },

@@ -34,6 +34,7 @@ import { PORT as LIST_PORT, start as startLists } from '../scripts/list-stub.mjs
 import { start as startTurnstile } from '../scripts/turnstile-stub.mjs' // the local stand-in for Cloudflare Turnstile
 import { hear, verdict } from './operator-live.mjs' // the operator's command with --production, heard locally
 import { PORT as ORDERBOOK_PORT, start as startOrderbook, TEST_BALANCES } from '../scripts/orderbook-stub.mjs' // the real desk: the local stand-in for the public orderbooks and the chains' endpoints
+const ETHFLOW_OP = '0x764fE4aa1FF493cf39931c7923C8ff5837596504' // the EthFlow contract of OP Mainnet: an ETH sale's one transaction goes to it
 
 process.chdir(fileURLToPath(new URL('..', import.meta.url))) // a path, not a URL: a space or a Windows drive survives (CodeRabbit, PR #1646)
 const ORIGIN = 'http://localhost:8787'
@@ -829,6 +830,18 @@ try {
   await page.setViewportSize({ width: 1440, height: 900 })
   check('"What each role can do" is not on the Organisation page; on Support it is a closed FAQ item that opens to the server\'s table, which scrolls inside its own box on a phone',
     rolesOnOrganisation === 0 && closedAtFirst && await page.getByRole('cell', { name: 'Export the audit log' }).isVisible() && scrollsInItsBox && await both(page, '37-support-roles', '.support > .sec'))
+  // "Which tokens can I trade": the desk's tokens, moved here from the desk (owner, 2026-11-19). ETH is ETH itself, with no
+  // token contract; 23 rows, each with its chain's logo and its token's (EURCV has none: its first letter), all loaded.
+  const tokens = page.locator('details', { hasText: 'Which tokens can I trade, and how much per order?' })
+  await tokens.locator('summary').click()
+  const tokenRows = await tokens.locator('tbody tr').allInnerTexts()
+  check('Support: "Which tokens can I trade" opens to every token of the desk by chain, ETH first on each chain that has it, with the most per order and their logos',
+    tokenRows.length === 23 && tokenRows.filter((r) => r.startsWith('ETH')).length === 5 && tokenRows.filter((r) => r.startsWith('ETH')).every((r) => r.includes('No token contract') && r.includes('2,850'))
+    && tokenRows.some((r) => r.includes('WETH') && r.includes('Arc')) && !tokenRows.some((r) => r.startsWith('ETH') && r.includes('Arc'))
+    && await tokens.getByText('ETH is ETH itself: bought, it is paid into the wallet; sold, the wallet sends it in one transaction.').isVisible()
+    && await tokens.locator('img.logo').evaluateAll((images) => Promise.all(images.map((image) => image.complete || new Promise((done) => { image.onload = image.onerror = done })))
+      .then(() => images.length === 45 && images.every((image) => image.naturalWidth > 0)))
+    && await tokens.getByRole('button', { name: 'Export CSV' }).isVisible() && await both(page, '38-support-tokens', '.support > .sec'))
   await arrive(owner, false)
 
   // The server cannot end the session: the app must not pretend that it did.
@@ -1174,8 +1187,8 @@ try {
   const balanceRows = dana.page.locator('section', { has: dana.page.getByRole('heading', { name: 'Balances by wallet' }) }).locator('tbody tr')
   const testWeth = (Number(TEST_BALANCES.weth / 10n ** 14n) / 10_000).toFixed(4) // the stand-in's test balance, as the page shows it (4 decimals)
   check('an institution lands on its overview: no example figure, the footer, the balances of its two linked wallets read on the stand-in endpoints, no approval and no order yet',
-    !(await dana.page.getByText(BANNER).count()) && await dana.page.locator(".foot-line", { hasText: FOOTER }).isVisible() && (await balanceRows.count()) === 6
-    && JSON.stringify(await balanceRows.allInnerTexts()).includes(`WETH\\t${testWeth}`) && (await balanceRows.nth(3).innerText()).includes('Demo Safe')
+    !(await dana.page.getByText(BANNER).count()) && await dana.page.locator(".foot-line", { hasText: FOOTER }).isVisible() && (await balanceRows.count()) === 8
+    && JSON.stringify(await balanceRows.allInnerTexts()).includes(`WETH\\t${testWeth}`) && JSON.stringify(await balanceRows.allInnerTexts()).includes('"ETH\\t3.2500"') && (await balanceRows.nth(4).innerText()).includes('Demo Safe')
     && (await dana.page.locator('[data-waiting]').textContent()) === '0' && await dana.page.getByText('No order yet. Orders are prepared on the desk.').isVisible() && await dana.page.getByText('No filled order yet.').isVisible())
   await toOrganisation(dana.page)
   await secondKey(dana)
@@ -1229,20 +1242,29 @@ try {
   const desk = (who) => open(who, 'desk', 'Order blotter')
   await desk(tess)
   const ticket = tess.page.locator('form.ticket')
-  const tokens = tess.page.locator('section', { has: tess.page.getByRole('heading', { name: 'Tokens you can trade' }) })
-  const assetRows = await tokens.locator('tbody tr').allTextContents()
+  // The routes of the asset the ticket sells, on its chain, beside the ticket (owner, 2026-11-19). The stand-in's price is
+  // the same at every size: one route, Deep.
+  const routes = tess.page.locator('section', { has: tess.page.getByRole('heading', { name: 'Routes and liquidity' }) })
+  await routes.locator('tbody tr').first().waitFor()
+  const routeRows = await routes.locator('tbody tr').allInnerTexts()
+  const loaded = (where) => where.locator('img.logo').evaluateAll((images) => Promise.all(images.map((image) => image.complete || new Promise((done) => { image.onload = image.onerror = done })))
+    .then(() => images.length > 0 && images.every((image) => image.naturalWidth > 0)))
   // Every chain of the desk is listed (owner, 2026-11-19); one with no linked wallet cannot be picked. Each logo loads under the page's policy.
-  check('the desk shows the ticket with every chain, its linked wallets, the tokens by chain with their logos, the three steps, and no example',
+  check('the desk shows the ticket with every chain, its linked wallets, ETH first and what selling it means, the routes of ETH beside it with their liquidity, the three steps, and no example',
     await ticket.getByLabel('Settle from').locator('option', { hasText: 'Demo wallet' }).count() === 1 && await ticket.getByLabel('Settle from').locator('option', { hasText: 'Demo Safe' }).count() === 1
     && (await ticket.getByLabel('Chain').locator('option:not([disabled])').allTextContents()).join() === 'OP Mainnet'
     && (await ticket.getByLabel('Chain').locator('option').allTextContents()).join() === 'Ethereum (no wallet linked),OP Mainnet,Robinhood Chain (no wallet linked),Arc (no wallet linked),Base (no wallet linked),Arbitrum One (no wallet linked)'
     && !(await tess.page.getByText(BANNER).count()) && await ticket.getByRole('link', { name: 'link a wallet there' }).isVisible()
-    && await tess.page.getByText('An order sells one of these for another on the same chain. Most per order: the largest amount one order can sell.').isVisible() && assetRows.length === 18 && assetRows.filter((r) => r.includes('OP Mainnet')).length === 2
-    && assetRows.some((r) => r.includes('WETH (wrapped ETH)') && r.includes('Robinhood Chain')) && assetRows.some((r) => r.includes('EURC') && r.includes('Arc'))
-    // 18 chain logos and 17 token logos (EURCV has none: its first letter), each loaded once its load or error has fired.
-    && await tokens.locator('img.logo').evaluateAll((images) => Promise.all(images.map((image) => image.complete || new Promise((done) => { image.onload = image.onerror = done })))
-      .then(() => images.length === 35 && images.every((image) => image.naturalWidth > 0)))
-    && await tess.page.getByText('The Safe owners or your custodian sign on the signing page. Ophis cannot.').isVisible() && await ticket.getByText('Nothing is signed at this step.').isVisible())
+    && await loaded(ticket))
+  check('the ticket opens on ETH, says what selling it means, and lists ETH, USDC and WETH on OP Mainnet',
+    (await ticket.getByLabel('Sell asset').inputValue()) === 'ETH' && (await ticket.getByLabel('Sell asset').locator('option').allTextContents()).join() === 'ETH,USDC,WETH'
+    && await ticket.getByText('The wallet sends the ETH in one transaction, which places the order. Keep a little ETH for its network fee.').isVisible())
+  const routeHead = await routes.locator('thead th').allTextContents()
+  check(`beside the ticket, the routes of ETH on OP Mainnet: USDC, Deep, the price moves at three sizes, with logos; the tokens table is gone (${JSON.stringify([routeRows, routeHead])})`,
+    !(await tess.page.getByText('Tokens you can trade').count()) && routeRows.length === 1 && /^USDC\s+Deep\s+0\.0\d%\s+0\.0\d%\s+0\.0\d%$/.test(routeRows[0].trim())
+    && routeHead.join() === 'Buy,Liquidity,28.5 ETH,285 ETH,2,850 ETH' && await routes.getByText(/^Each size: how much worse the price is than for about 5,000 EUR\./).isVisible()
+    && await loaded(routes) && await both(tess.page, '46-desk-routes'))
+  check('the three steps and the review note', await tess.page.getByText('The Safe owners or your custodian sign on the signing page. Ophis cannot.').isVisible() && await ticket.getByText('Nothing is signed at this step.').isVisible())
   check('at phone width the ticket gives way to "Use a larger screen", the blotter stays, and nothing scrolls sideways', await both(tess.page, '47-desk-ticket')
     && await (async () => {
       await tess.page.setViewportSize({ width: 390, height: 844 })
@@ -1250,6 +1272,11 @@ try {
       await tess.page.setViewportSize({ width: 1440, height: 900 })
       return ok && await ticket.isVisible() && !(await tess.page.getByText('Use a larger screen.').isVisible())
     })())
+  // The flows below sell WETH: the routes follow the asset sold.
+  await ticket.getByLabel('Sell asset').selectOption('WETH')
+  await routes.getByText('What WETH can be sold for on OP Mainnet').waitFor()
+  await routes.locator('tbody tr').first().waitFor() // its quotes are read after the panel shows
+  check('the routes follow the ticket: WETH sells for USDC on OP Mainnet (ETH is the same asset)', (await routes.locator('tbody tr').allInnerTexts()).map((r) => r.trim().split(/\s+/)[0]).join() === 'USDC')
   // A limit order: its price is units of the asset bought per unit sold, within 20% of the live quote.
   await ticket.getByLabel('Amount to sell').fill('1')
   await ticket.getByLabel('Limit', { exact: true }).check()
@@ -1325,7 +1352,9 @@ try {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' })
     await context.exposeFunction('walletCall', async (method, params) => {
       calls.push([method, params])
-      return method === 'eth_requestAccounts' ? [signer.address] : method === 'eth_call' ? `0x${allowance.toString(16).padStart(64, '0')}` : method === 'eth_sendTransaction' ? `0x${'ab'.repeat(32)}`
+      // The EthFlow contract's orders(): no owner, no expiry (never placed). Any other read: the token's allowance.
+      const read = method === 'eth_call' && params[0].to.toLowerCase() === ETHFLOW_OP.toLowerCase() ? `0x${'0'.repeat(128)}` : `0x${allowance.toString(16).padStart(64, '0')}`
+      return method === 'eth_requestAccounts' ? [signer.address] : method === 'eth_call' ? read : method === 'eth_sendTransaction' ? `0x${'ab'.repeat(32)}`
         : method === 'eth_getTransactionReceipt' ? { status: '0x1' } : method === 'eth_signTypedData_v4' ? signer.signTypedData(JSON.parse(params[1])) : null
     })
     await context.addInitScript(() => { window.ethereum = { request: ({ method, params }) => window.walletCall(method, params) } })
@@ -1371,6 +1400,7 @@ try {
     && (await record.getByRole('link', { name: /^0x[0-9a-f]{64}$/ }).getAttribute('href')).startsWith('https://optimistic.etherscan.io/tx/0x') && await both(tess.page, '68-desk-filled', '#record'))
 
   // The same for an order the Approver refuses.
+  await ticket.getByLabel('Sell asset').selectOption('WETH')
   await ticket.getByLabel('Amount to sell').fill('0.123456789012345678') // every decimal a member typed is kept
   await ticket.getByRole('button', { name: 'Review order' }).click()
   await review.getByRole('button', { name: 'Send for approval' }).click()
@@ -1407,12 +1437,13 @@ try {
   const balanceLines = readFileSync(await balanceFile.path(), 'utf8').split('\r\n').filter(Boolean)
   check('the statement and the balances download as ophis- files: one line per month and asset, one per wallet and asset',
     /^ophis-statement-\d{4}-\d\d-\d\d\.csv$/.test(statementFile.suggestedFilename()) && /^ophis-balances-\d{4}-\d\d-\d\d\.csv$/.test(balanceFile.suggestedFilename())
-    && statementLines.length === 2 && statementLines[1].startsWith(`"${month}","WETH","1","1",`) && balanceLines.length === 5 && balanceLines[1].startsWith(`"Demo wallet","${signer.address}","OP Mainnet","WETH",`))
+    && statementLines.length === 2 && statementLines[1].startsWith(`"${month}","WETH","1","1",`) && balanceLines.length === 7 && balanceLines[1].startsWith(`"Demo wallet","${signer.address}","OP Mainnet","ETH","0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE","3.25",`))
 
   // The Trader prepares an order, the Approver approves it; then the record of the newest order gives its link.
   async function approved(amount, wallet = 'Demo wallet') {
     await desk(tess)
     await ticket.getByLabel('Settle from').selectOption(await ticket.getByLabel('Settle from').locator('option', { hasText: wallet }).getAttribute('value'))
+    await ticket.getByLabel('Sell asset').selectOption('WETH')
     await ticket.getByLabel('Amount to sell').fill(amount)
     await ticket.getByRole('button', { name: 'Review order' }).click()
     await review.getByRole('button', { name: 'Send for approval' }).click()
@@ -1547,6 +1578,33 @@ try {
     (await blotter(tess).first().textContent()).includes('Withdrawn') && !(await record.getByRole('button', { name: /Signing link|Withdraw the order/ }).count())
     && late.calls.length === 0 && await both(tess.page, '72-desk-withdrawn', '#record'))
   await late.context.close()
+
+  // An ETH sale (owner, 2026-11-19): no approval and no signature. The page has the server check the order, reads the
+  // EthFlow contract (never placed), then the wallet sends the one transaction that places the order with its ETH.
+  await desk(tess)
+  await ticket.getByLabel('Amount to sell').fill('0.5')
+  await ticket.getByRole('button', { name: 'Review order' }).click()
+  await review.getByRole('button', { name: 'Send for approval' }).click()
+  await tess.page.getByText('Sent for approval.').waitFor()
+  await arrive(abe, false)
+  const ethCard = abe.page.locator('article.appr', { hasText: 'Sell 0.5 ETH for at least' })
+  await ethCard.getByRole('button', { name: 'Approve' }).click()
+  await ethCard.waitFor({ state: 'detached' })
+  const ethSale = await keyWallet()
+  await ethSale.page.goto(await linkOf('Signing link'))
+  await ethSale.page.getByRole('heading', { name: 'The order the wallet will sign' }).waitFor()
+  const ethTodo = await stepsOf(ethSale.page)
+  const ethAdvice = await ethSale.page.locator('#o-advice').innerText()
+  await ethSale.page.getByRole('button', { name: 'Send with the wallet in this browser' }).click()
+  await ethSale.page.getByText('Sent. The transaction placed the order and sent its ETH.').waitFor()
+  const placedTx = ethSale.calls.find(([method]) => method === 'eth_sendTransaction')?.[1][0]
+  check('an ETH sale: the server checks it, the page reads the EthFlow contract, and the wallet sends one transaction of 0.5 ETH to the EthFlow contract of OP Mainnet, which places the order; no approval, no signature',
+    ethTodo === 'checked todo,send todo' && await stepsOf(ethSale.page) === 'checked done,send done' && ethAdvice.includes(`0.5 ETH to ${ETHFLOW_OP}`)
+    && ethSale.calls.map(([method]) => method).join() === 'eth_requestAccounts,wallet_switchEthereumChain,eth_call,eth_sendTransaction,eth_getTransactionReceipt'
+    && placedTx.to === ETHFLOW_OP && placedTx.value === `0x${(5n * 10n ** 17n).toString(16)}` && placedTx.data.startsWith('0x322bba21') && await both(ethSale.page, '68-eth-sale-sent'))
+  await ethSale.context.close()
+  await desk(tess)
+  check('the blotter says the ETH sale waits for its transaction', (await blotter(tess).first().textContent()).includes('Sent: waiting for the ETH transaction'))
   for (const who of [dana, tess, abe]) await who.context.close()
 
   // ---- partner figures: live ----
@@ -1817,8 +1875,8 @@ try {
   check('the loaded file again: nothing changes, and nothing is held any more', (await operatorSync()).includes('The list file is the one already loaded.') && !operator('list').includes('WARNING'))
   await pat.page.getByRole('link', { name: 'Desk' }).first().click()
   await pat.page.getByRole('heading', { name: 'Order ticket' }).waitFor()
-  check('a partner gets the desk too (owner, 2026-11-19): the ticket and the permitted assets, and the server answers the desk',
-    !(await pat.page.getByText('The desk is for institutions.').count()) && await pat.page.getByText('Tokens you can trade').isVisible() && (await status('/api/desk', pat.page)) === 200 && await both(pat.page, '51-desk-partner'))
+  check('a partner gets the desk too (owner, 2026-11-19): the ticket and the routes beside it, and the server answers the desk',
+    !(await pat.page.getByText('The desk is for institutions.').count()) && await pat.page.getByRole('heading', { name: 'Routes and liquidity' }).isVisible() && (await status('/api/desk', pat.page)) === 200 && await both(pat.page, '51-desk-partner'))
 
   // A partner with no linked wallet (the plain seed).
   const nell = await firstOwner(seeded().match(/http\S+\/#\/enrol\/\S+/)[0])
