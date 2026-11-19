@@ -511,7 +511,7 @@ function OrderRecord({ o, v, onClose, onChanged, onSignedOut }: { o: Order; v: D
 // The routes of the asset the ticket sells, on its chain, and how deep each is (owner, 2026-11-19): the server reads
 // live quotes at three sizes and says how far the price moves from that of an order of about 1,000 EUR (orders.ts routes).
 // Each route is a row: the asset bought, its score, and the three sizes, each a bar in the tone of its price impact.
-interface RouteView { sizes: string[]; routes: { buy: string[]; score: 'deep' | 'medium' | 'thin' | 'none' | 'unavailable'; moves: (number | null)[] }[] }
+interface RouteView { at: number; sizes: string[]; routes: { buy: string[]; score: 'deep' | 'medium' | 'thin' | 'none' | 'unavailable'; moves: (number | null)[] }[] }
 const SCORE = { deep: 'Deep', medium: 'Medium', thin: 'Thin', none: 'No route', unavailable: 'Not available now' }
 // The sizes the server reads: a hundredth, a tenth and all of the most one order sells, about 5,000,000 EUR for every asset.
 const SIZES = ['About €50k', 'About €500k', 'About €5M']
@@ -519,15 +519,15 @@ const impact = (m: number | null) => (m === null ? 'none' : m <= 50 ? 'ok' : m <
 const size = (amount: string) => Number(amount).toLocaleString('en-US', { maximumFractionDigits: 2 }) // a size, shown: never an amount signed
 function Routes({ chainId, sell, chain }: { chainId: number; sell: string; chain: string }) {
   const [view, setView] = useState<RouteView | null>()
-  const [at, setAt] = useState(0)
   // Read again every 5 minutes while it shows: it says its quotes are at most 5 minutes old (CodeRabbit, PR #1677).
   useEffect(() => {
-    const read = () => void api<RouteView>(`/api/desk/routes/${chainId}.${sell}`).then((out) => (setView(out.status === 200 ? out.data : null), setAt(Date.now())))
+    const read = () => void api<RouteView>(`/api/desk/routes/${chainId}.${sell}`).then((out) => setView(out.status === 200 ? out.data : null))
     read()
     const timer = setInterval(read, 5 * 60_000)
     return () => clearInterval(timer)
   }, [chainId, sell])
-  const live = view && <span className="live"><span className="dot" aria-hidden="true" />Live quotes, {new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
+  // The time the server read the quotes, which its 5-minute cache keeps: never the time of this page's request.
+  const live = view && <span className="live"><span className="dot" aria-hidden="true" />Live quotes, {new Date(view.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
   return (
     <Section icon="arrow-left-right" title="Routes and liquidity" hint={`Where ${sell} can go on ${chain}, and how well each route holds a large order.`} action={live}>
       {view === undefined ? <p className="muted" role="status">Reading live quotes.</p> : view === null ? <p className="muted" role="status">The routes could not be read just now. Reload in a minute.</p> : (

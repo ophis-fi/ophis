@@ -11508,11 +11508,12 @@ describe('J2. ETH itself, and the routes beside the ticket', () => {
     // Four quotes of the one route: the reference (a five-thousandth of the most per order) and the three sizes, from no wallet.
     expect(quotesOf(asked).map((x) => [x.body!.sellToken, x.body!.buyToken, x.body!.sellAmountBeforeFee, x.body!.from])).toEqual(
       [1_100n, 55_000n, 550_000n, 5_500_000n].map((n) => [USDC_OP, WETH_OP, String(n * 10n ** 6n), '0x000000000000000000000000000000000000dEaD'])) // the reference: about 1,000 EUR
+    expect(view.body.at).toBe(now) // when its quotes were read
     now += 5 * MIN - 1
-    expect((await get('/api/desk/routes/10.USDC', m)).body).toEqual(view.body)
+    expect((await get('/api/desk/routes/10.USDC', m)).body).toEqual(view.body) // the cached answer keeps its time
     expect(quotesOf(asked)).toHaveLength(4)
     now += 1
-    await get('/api/desk/routes/10.USDC', m)
+    expect((await get('/api/desk/routes/10.USDC', m)).body.at).toBe(now)
     expect(quotesOf(asked)).toHaveLength(8)
     // ETH sells as WETH: its one route is USDC. On Ethereum, USDC has four routes: 16 quotes, under the 50 calls of a Free Worker.
     expect((await get('/api/desk/routes/10.ETH', m)).body.routes.map((x: { buy: string[] }) => x.buy)).toEqual([['USDC']])

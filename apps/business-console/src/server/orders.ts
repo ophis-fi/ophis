@@ -376,10 +376,11 @@ export const ROUTES = new Map<string, { at: number; value: Awaited<ReturnType<ty
 export async function routes(env: Settings, chainId: number, sell: Symbol, now: number) {
   const key = `${chainId} ${sell}`
   const seen = ROUTES.get(key)
-  if (seen && now - seen.at < ROUTES_MS) return seen.value
+  // at: when its quotes were read, which a cached answer keeps (CodeRabbit, PR #1679): the page says how old they are.
+  if (seen && now - seen.at < ROUTES_MS) return { ...seen.value, at: seen.at }
   const value = await readRoutes(env, chainId, sell)
   if (!value.routes.some((r) => r.score === 'unavailable')) ROUTES.set(key, { at: now, value })
-  return value
+  return { ...value, at: now }
 }
 async function readRoutes(env: Settings, chainId: number, sell: Symbol) {
   const s = ASSETS[chainId][sell]!
