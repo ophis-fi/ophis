@@ -47,6 +47,7 @@ async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown): Pr
   return { ok: response.ok, data: await response.json().catch(() => ({})) }
 }
 const failed = (error?: string) => WORDS[error ?? ''] ?? `Refused (${error ?? 'no answer'}). Nothing was changed.`
+const NETWORK = 'The network failed, or the Cloudflare sign-in has expired. Reload the page.'
 
 async function hashOf(file: File) {
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', await file.arrayBuffer()))
@@ -131,12 +132,13 @@ async function settle(done: { ok: boolean; data: { error?: string } }, success: 
   say([done.ok ? success : failed(done.data.error), problem].filter(Boolean).join(' '), done.ok && !problem ? 'ok' : 'bad')
 }
 
-/** Reads the list and shows it; answers what went wrong, or ''. A failed read takes the cards away: none is decided on stale data. */
+/** Reads the list and shows it; answers what went wrong, or ''. A failed read, refused or never answered, takes the cards
+ *  away: none is decided on stale data (CodeRabbit, PR #1670: a refresh that threw left the old cards live). */
 async function load(): Promise<string> {
-  const read = await call<{ organisations: Application[]; more: number; reviews: Review[]; lists: List[] }>('GET', '/api/operator/organisations')
-  if (!read.ok) {
+  const read = await call<{ organisations: Application[]; more: number; reviews: Review[]; lists: List[] }>('GET', '/api/operator/organisations').catch(() => null)
+  if (!read?.ok) {
     $('apps').replaceChildren(line('The list could not be read: reload the page.', 'warn'))
-    return failed(read.data.error)
+    return read ? failed(read.data.error) : NETWORK
   }
   const { organisations, more, reviews, lists } = read.data
   const apps = $('apps')
@@ -155,7 +157,7 @@ async function act(run: () => Promise<unknown>) {
   try {
     await run()
   } catch {
-    say('The network failed, or the Cloudflare sign-in has expired. Reload the page.', 'bad')
+    say(NETWORK, 'bad')
   } finally {
     for (const button of buttons) button.disabled = false
   }

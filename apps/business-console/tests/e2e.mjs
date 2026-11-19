@@ -1034,6 +1034,11 @@ try {
   await opPage.getByRole('button', { name: 'New invitation code' }).click()
   await opPage.locator('#code').waitFor()
   check('the page makes an invitation code', /^[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}, valid until /.test(await opPage.locator('#code').innerText()))
+  // A list read that never answers (network down, or an expired sign-in redirected to Access) shows no card to decide on.
+  await opPage.route('**/api/operator/organisations', (route) => route.abort())
+  await opPage.reload()
+  await opPage.locator('#status', { hasText: 'The network failed' }).waitFor()
+  check('a list read that never answers says so and shows no card', /could not be read/.test(await opPage.locator('#apps').innerText()))
   await opDesk.close()
   const afterApproval = operator('list')
   check('nothing is left under review, and the list names the reviews that are due: the seeded organisation, never screened; not the one just approved',
