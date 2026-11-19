@@ -19,7 +19,7 @@ import * as intent from '../../functions/api/intent.ts'
 test('retired Unichain requests fail before a cached or model-produced chain-less swap can be served', async (t) => {
   const fetch = t.mock.method(globalThis, 'fetch', async () => { throw new Error('must not call model') })
   const cache = { get: t.mock.fn(async () => JSON.stringify({ ok: true, data: { intent: 'swap', entities: [] } })) }
-  for (const destination of ['on Unichain', 'on UNICHAIN', 'on chain 130', 'on chain ID: 130', 'on 130', 'via 130', 'using 130', 'on chain ID 0x82', 'on chain 0X82', 'on 0x0082', 'via 0x82']) {
+  for (const destination of ['on Unichain', 'on UNICHAIN', 'on chain 130', 'on chain ID: 130', 'on 130', 'via 130', 'using 130', 'on chain ID 0x82', 'on chain 0X82', 'on 0x0082', 'via 0x82', 'on (130)', 'on (0x82)', 'on [130]', 'via "0x82"', "using '130'", 'on chain (130)', 'on the 130']) {
     const request = new Request('https://swap.ophis.fi/api/intent', {
       method: 'POST', body: JSON.stringify({ text: `swap 1 ETH for USDC ${destination}` }),
     })

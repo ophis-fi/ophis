@@ -714,8 +714,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   }
 
   // Reject before cache/model lookup so retirement cannot silently change the requested chain. Its id in decimal or hex
-  // (0x82), in a chain position only: an address that starts with 0x82 is no chain (CodeRabbit, PR #1680).
-  if (/\bunichain\b|\b(?:chain(?:\s+id)?\s*[:=#]?|(?:on|via|using)\s+)\s*(?:130|0x0*82)\b/i.test(text)) {
+  // (0x82), in a chain position only: an address that starts with 0x82 is no chain (CodeRabbit, PR #1680). The same
+  // opening punctuation and article as inChainContext: "on (130)" names the chain as much as "on 130".
+  if (/\bunichain\b|\b(?:chain(?:\s+id)?\s*[:=#]?|(?:on|via|using)\s+)\s*[("'[]?\s*(?:the\s+|an?\s+)?(?:130|0x0*82)\b/i.test(text)) {
     return json({ ok: false, error: { code: 'BAD_INPUT', message: 'Unichain (130) is retired. Choose a supported network.' } }, 400)
   }
 
