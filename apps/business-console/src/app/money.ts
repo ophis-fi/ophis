@@ -3,6 +3,6 @@
  *  0.0000; CodeRabbit, PR #1672). A module of its own, with no DOM, so that tests/worker.test.ts runs it. */
 export function money(text: string, dp = 2) {
   const [whole, part = ''] = text.split('.')
-  const shown = /^0*$/.test(whole) && /^0*$/.test(part.slice(0, dp)) && /[1-9]/.test(part) ? part.search(/[1-9]/) + 1 : dp
+  const shown = Math.max(dp, /^0*$/.test(whole) ? part.search(/[1-9]/) + 1 : 0)
   return `${whole.replace(/\B(?=(\d{3})+$)/g, ',')}${shown ? `.${part.padEnd(shown, '0').slice(0, shown)}` : ''}`
 }

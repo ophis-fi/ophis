@@ -22,7 +22,7 @@ interface Institution {
   kind: 'institution'; waiting: number; asOf: string; open: number
   // The linked wallets on the desk chains (the 10 linked first), in the assets of each chain. balance null: not read.
   balances: { readAt: string; leftOut: number; wallets: { wallet: string; address: string; chain: string; read: boolean; rows: { asset: string; token: string; balance: string | null }[] }[] }
-  // The filled orders of 12 months, by the month they were sent (UTC) and the asset sold; amounts in units of that asset.
+  // The filled orders of this month and the 12 whole months before it, by the month they were sent (UTC) and the asset sold; amounts in units of that asset.
   months: { month: string; asset: string; orders: number; volume: string; fee: string; unreported: number }[]
   orders: Order[]
 }
