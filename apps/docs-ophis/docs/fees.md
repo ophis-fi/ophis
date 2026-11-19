@@ -67,6 +67,8 @@ For a direct wallet route, review the selected quote, displayed Ophis fee and ne
 
 Private mode charges **0.1% (10 bps) of swap output** to Ophis, plus pool fees, broadcaster fees and applicable shielding or withdrawal costs. This is separate from the public batch-auction schedule. The broadcaster fee depends on the network, transaction and payment mode; review the current quote before authorizing.
 
+Production private swaps use public native-currency gas credit held by the broadcaster, separate from shielded assets. Top-ups require public-wallet gas and chain finality. Successful and reverted attempts charge actual gas plus the reviewed margin; unused reservation returns to credit. Refunds require the operator's enabled signing service and have a processing allowance that can leave a small remainder. See [funding transaction fees](/privacy-pools#fund-transaction-fees) and [refunding unused credit](/privacy-pools#refund-unused-fee-credit).
+
 ## Fee collection {/* #how-its-collected */}
 
 The app and SDK record the base fee and applicable improvement policy in `appData`.

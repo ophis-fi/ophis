@@ -35,7 +35,7 @@ sign orders.
 - **Cross-chain trading:** quotes and funding flows across supported bridge
   providers, including Relay. Availability depends on the asset and route.
 - **Private swaps:** a separate RAILGUN flow with its own network coverage and
-  funding requirements. See the [private-swap documentation](apps/railgun/README.md).
+  funding requirements. See the [Privacy pools and private swaps guide](https://docs.ophis.fi/privacy-pools).
 
 Standard ERC-20 orders retain funds in the wallet until settlement. Approvals,
 native-token trades, bridges and private swaps can require onchain transactions
