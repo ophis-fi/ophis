@@ -829,7 +829,7 @@ async function tellOperator(env: Ctx['env'], orgId: string) {
     const o = await env.DB.prepare('SELECT name, business_type AS type, kind, country, email_domain AS domain FROM organisations WHERE id = ?').bind(orgId)
       .first<{ name: string; type: string | null; kind: string; country: string | null; domain: string | null }>()
     if (!o) return
-    const text = `New application to review on pro.ophis.fi: ${o.name} (${o.type ?? o.kind}${o.country ? `, ${o.country}` : ''}), ${o.domain ?? 'no domain'}.\nOrganisation ${orgId}.\nRun: operator list --production`
+    const text = `New application to review on pro.ophis.fi: ${o.name} (${o.type ?? o.kind}${o.country ? `, ${o.country}` : ''}), ${o.domain ?? 'no domain'}.\nOrganisation ${orgId}.\nReview it: ${OPERATOR[env.ENVIRONMENT] ?? OPERATOR.production}/`
     await fetch(`${standIn(env, env.TELEGRAM_URL) ?? 'https://api.telegram.org'}/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text, disable_web_page_preview: true }), signal: AbortSignal.timeout(5000),
     })
@@ -840,13 +840,14 @@ async function tellOperator(env: Ctx['env'], orgId: string) {
 
 // ---- the operator's API (its own hostname) ----
 // These routes answer on the hostnames of OPERATOR only: locally with the token alone, in production behind Cloudflare
-// Access too (accessOk), and 404 in any other environment. The caller holds OPERATOR_TOKEN (locally in .dev.vars, made by
+// Access too (accessEmail), and 404 in any other environment. The review page (2026-11-19) holds no token: Access's email
+// must be OPERATOR_EMAIL (operate). The command holds OPERATOR_TOKEN (locally in .dev.vars, made by
 // the seed script; in production a Worker secret, and on the operator's Mac a Keychain item). The operator can: list what is under
 // review, record a KYB decision, freeze and unfreeze, make an application code, and (milestone 5b) list the sealed items
 // of an organisation and take one, still sealed, for a stated reason, and (sanctions screening) record a screening and
 // load the addresses of a public list. Nothing else: no route here takes a passkey, a member or a client's wallet address.
 
-interface OperatorEnv { DB: D1Database; ENVIRONMENT: string; CHALLENGE_KEY: string; OPERATOR_TOKEN?: string; SANCTIONS_URL?: string; ACCESS_TEAM?: string; ACCESS_AUD?: string }
+interface OperatorEnv { DB: D1Database; ENVIRONMENT: string; CHALLENGE_KEY: string; OPERATOR_TOKEN?: string; OPERATOR_EMAIL?: string; SANCTIONS_URL?: string; ACCESS_TEAM?: string; ACCESS_AUD?: string }
 
 // What the operator compares before a decision: the domain, the first Owner's passkey hash, the people the application
 // named besides the first Owner (an approval approves them too), the recovery wallet with its kind and its colour (read
@@ -978,7 +979,7 @@ async function download(c: Ctx) {
   return new Response(object, { headers: { 'content-type': 'application/octet-stream', 'x-sha256': item.sha256, 'x-seal-key': item.key } })
 }
 // G1: a new invitation code: 12 random characters of CROCKFORD (each a byte's low 5 bits: 256 is a multiple of 32, so no
-// bias), its hash and expiry written. ponytail: issued codes are not listed anywhere; whoever holds the operator's token makes them.
+// bias), its hash and expiry written. ponytail: issued codes are not listed anywhere; the operator makes them (the command, or the review page).
 async function invite(c: Ctx) {
   const code = Array.from(crypto.getRandomValues(new Uint8Array(12)), (byte) => CROCKFORD[byte & 31]).join('')
   const expiresAt = c.now + INVITE_MS
@@ -990,12 +991,14 @@ const freeze = (frozen: boolean) => async (c: Ctx) => {
   return outcome === 'ok' ? json(200, { state: frozen ? 'frozen' : 'active' }) : refuse(outcome)
 }
 
-export const operatorRoutes: { method: 'GET' | 'POST'; path: string; handler: (c: Ctx) => Promise<Response> }[] = [
-  { method: 'GET', path: '/api/operator/organisations', handler: list },
-  { method: 'POST', path: '/api/operator/organisations/:id/decision', handler: decide },
+// page: the routes the review page calls, the only ones a request with no token reaches (Trail of Bits, PR #1670: the
+// sign-in cloudflared keeps in a file must not stand in for the Keychain's token on the other routes).
+export const operatorRoutes: { method: 'GET' | 'POST'; path: string; handler: (c: Ctx) => Promise<Response>; page?: true }[] = [
+  { method: 'GET', path: '/api/operator/organisations', handler: list, page: true },
+  { method: 'POST', path: '/api/operator/organisations/:id/decision', handler: decide, page: true },
   { method: 'POST', path: '/api/operator/organisations/:id/freeze', handler: freeze(true) },
   { method: 'POST', path: '/api/operator/organisations/:id/unfreeze', handler: freeze(false) },
-  { method: 'POST', path: '/api/operator/invites', handler: invite },
+  { method: 'POST', path: '/api/operator/invites', handler: invite, page: true },
   { method: 'GET', path: '/api/operator/organisations/:id/items', handler: items },
   { method: 'POST', path: '/api/operator/items/:id/download', handler: download },
   { method: 'POST', path: '/api/operator/organisations/:id/screening', handler: screen },
@@ -1009,43 +1012,51 @@ export const operatorRoutes: { method: 'GET' | 'POST'; path: string; handler: (c
 // So a request that did not pass the Access policy (the application deleted, a header made up) gets 403, even with the
 // token. ACCESS_TEAM: the team's domain, <team>.cloudflareaccess.com; ACCESS_AUD: the application's AUD tag (wrangler.jsonc).
 // Either missing: every request is refused. The keys are read at each request: 5 s, 64 KB, no redirect followed, one
-// subrequest. ponytail: the email in the proof is not compared, the Access policy decides who; if that ever needs a
-// second lock, compare it with a list of emails kept as a secret.
-export async function accessOk(request: Request, env: { ACCESS_TEAM?: string; ACCESS_AUD?: string }, now: number) {
+// subrequest. It answers the email the proof names (empty if it names none), or null: refused. The token's callers (the
+// command) go on whoever Access let in; the review page, which holds no token, must be the operator's email (operate).
+export async function accessEmail(request: Request, env: { ACCESS_TEAM?: string; ACCESS_AUD?: string }, now: number): Promise<string | null> {
   const team = env.ACCESS_TEAM ?? '', jwt = request.headers.get('cf-access-jwt-assertion') ?? ''
-  if (!/^[a-z0-9-]+\.cloudflareaccess\.com$/.test(team) || !env.ACCESS_AUD || !jwt) return false
+  if (!/^[a-z0-9-]+\.cloudflareaccess\.com$/.test(team) || !env.ACCESS_AUD || !jwt) return null
   try {
     const parts = jwt.split('.')
-    if (parts.length !== 3) return false
+    if (parts.length !== 3) return null
     const [header, claims] = parts.slice(0, 2).map((part) => JSON.parse(new TextDecoder().decode(fromBase64Url(part))))
-    if (header?.alg !== 'RS256' || typeof header.kid !== 'string') return false
+    if (header?.alg !== 'RS256' || typeof header.kid !== 'string') return null
     const response = await fetch(`https://${team}/cdn-cgi/access/certs`, { redirect: 'manual', signal: AbortSignal.timeout(5000) })
     const text = response.ok ? await readCapped(response.body, 64 * 1024) : null
     const key = text === null ? undefined : (JSON.parse(text).keys as (JsonWebKey & { kid?: unknown })[]).find((k) => k.kid === header.kid)
-    if (!key) return false
+    if (!key) return null
     const rsa = { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }
     const signed = await crypto.subtle.verify(rsa, await crypto.subtle.importKey('jwk', key, rsa, false, ['verify']), fromBase64Url(parts[2]), new TextEncoder().encode(`${parts[0]}.${parts[1]}`))
     const audiences = Array.isArray(claims.aud) ? claims.aud : [claims.aud]
-    return signed && claims.iss === `https://${team}` && audiences.includes(env.ACCESS_AUD) && typeof claims.exp === 'number' && claims.exp * 1000 > now && !(typeof claims.nbf === 'number' && claims.nbf * 1000 > now)
+    const valid = signed && claims.iss === `https://${team}` && audiences.includes(env.ACCESS_AUD) && typeof claims.exp === 'number' && claims.exp * 1000 > now && !(typeof claims.nbf === 'number' && claims.nbf * 1000 > now)
+    return valid ? (typeof claims.email === 'string' ? claims.email : '') : null
   } catch {
-    return false // malformed, a key that does not import, the keys unreadable: refused
+    return null // malformed, a key that does not import, the keys unreadable: refused
   }
 }
 
-// Access first outside local; then the same request checks as on the other two hosts, then the token. Digests are
-// compared, so the time it takes says nothing about the token.
+// Access first outside local; then the same request checks as on the other two hosts, then who: the token (the command),
+// or, for a request with none (the review page, owner 2026-11-19), the email Access signed must be OPERATOR_EMAIL, a
+// secret (no address in this public code). Locally no Access stands in front: OPERATOR_EMAIL stands for the person.
+// Digests are compared, so the time it takes says nothing about the token.
 async function operate(request: Request, env: OperatorEnv, clock: () => number, config: Config): Promise<Response> {
   if (!Object.hasOwn(OPERATOR, env.ENVIRONMENT)) return fail(404, 'not_found')
-  if (env.ENVIRONMENT !== 'local' && !(await accessOk(request, env, clock()))) return fail(403, 'access_required')
+  const email = env.ENVIRONMENT === 'local' ? env.OPERATOR_EMAIL ?? '' : await accessEmail(request, env, clock())
+  if (email === null) return fail(403, 'access_required')
   if (request.headers.get('sec-fetch-site') !== 'same-origin') return fail(403, 'cross_site')
   const { pathname } = new URL(request.url)
   const patterns = operatorRoutes.map((route) => new URLPattern({ pathname: route.path })) // made here, not at load: the scripts import this file on Node 22, which has no URLPattern
   const index = operatorRoutes.findIndex((route, i) => route.method === request.method && patterns[i].test({ pathname }))
   if (index < 0) return fail(404, 'not_found')
   if (request.method === 'POST' && request.headers.get('origin') !== OPERATOR[env.ENVIRONMENT]) return fail(403, 'bad_origin')
-  const sent = request.headers.get('authorization') ?? ''
-  const token = env.OPERATOR_TOKEN
-  if (typeof token !== 'string' || token.length < 32 || !sent.startsWith('Bearer ') || (await sha256Hex(sent.slice(7))) !== (await sha256Hex(token))) return fail(401, 'operator_token')
+  const sent = request.headers.get('authorization')
+  // ASCII letters only are folded (Trail of Bits, PR #1670: toLowerCase turns the Kelvin sign into k).
+  const fold = (text: string) => text.trim().replace(/[A-Z]/g, (letter) => letter.toLowerCase())
+  const token = env.OPERATOR_TOKEN, operator = fold(env.OPERATOR_EMAIL ?? '')
+  if (sent === null) {
+    if (!operatorRoutes[index].page || !operator.includes('@') || fold(email) !== operator) return fail(401, 'operator_identity')
+  } else if (typeof token !== 'string' || token.length < 32 || !sent.startsWith('Bearer ') || (await sha256Hex(sent.slice(7))) !== (await sha256Hex(token))) return fail(401, 'operator_token')
   let body: Record<string, unknown> = {}
   if (request.method === 'POST') {
     if (!/^application\/json\s*(;|$)/i.test(request.headers.get('content-type') ?? '')) return fail(415, 'json_only')

@@ -3633,6 +3633,12 @@ const WEEK = 7 * DAY
 const WAIT = 72 * HOUR
 const magic = encodeFunctionResult({ abi: SAFE_ABI, functionName: 'isValidSignature', result: '0x1626ba7e' })
 const builtConsole = import.meta.glob('../dist/assets/*.js', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+// The operator's review page (2026-11-19): its built script and page, and its source.
+const builtOperator = {
+  ...import.meta.glob('../dist/operator/assets/*.js', { query: '?raw', import: 'default', eager: true }),
+  ...import.meta.glob('../dist/operator/index.html', { query: '?raw', import: 'default', eager: true }),
+  ...import.meta.glob('../operator/main.ts', { query: '?raw', import: 'default', eager: true }),
+} as Record<string, string>
 const signSource = import.meta.glob('../sign/*.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 
 describe('y. wallets and the recovery wallet', () => {
@@ -4164,7 +4170,7 @@ describe('y. wallets and the recovery wallet', () => {
     const env = { ...testEnv, ENVIRONMENT: 'production' }
     const get = async (url: string) => (await handle(new Request(url, { headers: { 'sec-fetch-site': 'same-origin' } }), env, () => now)).status
     expect(configFor('production')).toMatchObject({ rpId: 'pro.ophis.fi', origin: 'https://pro.ophis.fi', signOrigin: 'https://sign.ophis.fi' })
-    expect([await get('https://pro.ophis.fi/'), await get('https://sign.ophis.fi/sign/'), await get('https://sign.ophis.fi/'), await get('https://operator.ophis.fi/')]).toEqual([200, 200, 302, 403])
+    expect([await get('https://pro.ophis.fi/'), await get('https://sign.ophis.fi/sign/'), await get('https://sign.ophis.fi/'), await get('https://operator.ophis.fi/')]).toEqual([200, 200, 302, 200]) // the operator's review page: Access guards it at the edge, its API checks each call
     for (const url of ['https://sign.ophis.fi/index.html', 'https://pro.ophis.fi/sign/', 'http://pro.ophis.fi/', 'https://ophis.fi/', `${SITE.origin}/`, `${SIGN}/sign/`]) expect(await get(url), url).toBe(404)
     // Every table kept per environment has its entry, so no route of production meets a missing constant.
     for (const environment of ['local', 'production']) {
@@ -6031,7 +6037,7 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
     const [sent] = telegramSent
     expect(sent.url).toBe('http://127.0.0.1:8798/bottest-telegram-token/sendMessage')
     expect(sent.body).toMatchObject({ chat_id: '42', disable_web_page_preview: true })
-    expect(sent.body.text).toBe(`New application to review on pro.ophis.fi: Alder Custody S.A. (fund, LU), ${u.domain}.\nOrganisation ${u.orgId}.\nRun: operator list --production`)
+    expect(sent.body.text).toBe(`New application to review on pro.ophis.fi: Alder Custody S.A. (fund, LU), ${u.domain}.\nOrganisation ${u.orgId}.\nReview it: ${onboarding.OPERATOR.local}/`) // in production https://operator.ophis.fi/
     // Telegram down: the application stands, under review.
     telegramTwist = () => { throw new TypeError('network') }
     try {
@@ -6748,8 +6754,10 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
       for (const ENVIRONMENT of ['staging', '', 'constructor']) expect((await onboarding.operator(request(), { ...opEnv, ENVIRONMENT }, () => now, configFor('local'), {})).status, ENVIRONMENT).toBe(404)
       const unproved = await onboarding.operator(request(), { ...opEnv, ENVIRONMENT: 'production' }, () => now, configFor('local'), {})
       expect([unproved.status, await unproved.json()]).toEqual([403, { error: 'access_required' }])
-      // The token: missing, wrong, another scheme, a prefix, none configured, a short one configured.
-      for (const authorization of [null, 'Bearer wrong', `Basic ${TOKEN}`, TOKEN, `Bearer ${TOKEN.slice(0, -1)}`, `Bearer ${TOKEN}x`, 'Bearer ', `bearer ${TOKEN}`]) {
+      // The token: wrong, another scheme, a prefix, none configured, a short one configured. None at all is the review page's
+      // way: then the operator's email decides, and none is set here (the review page's test).
+      expect((await op(method, path, { body, headers: { authorization: null } })).body, `no token ${path}`).toEqual({ error: 'operator_identity' })
+      for (const authorization of ['Bearer wrong', `Basic ${TOKEN}`, TOKEN, `Bearer ${TOKEN.slice(0, -1)}`, `Bearer ${TOKEN}x`, 'Bearer ', `bearer ${TOKEN}`]) {
         expect((await op(method, path, { body, headers: { authorization } })).body, `${authorization} ${path}`).toEqual({ error: 'operator_token' })
       }
       expect((await op(method, path, { body, env: testEnv })).body).toEqual({ error: 'operator_token' })
@@ -6764,8 +6772,8 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
       expect((await op(method === 'GET' ? 'POST' : 'GET', path, { body })).status).toBe(404)
     }
     expect(await snapshot()).toBe(rows)
-    // The hostname serves nothing else: no page, no route of the console or of the signing page, no session.
-    for (const [method, path] of [['GET', '/'], ['GET', '/apply'], ['GET', '/sign/'], ['GET', '/api/me'], ['POST', '/api/signin/start'], ['POST', '/api/proof'], ['GET', '/api/operator'], ['GET', '/api/onboarding']]) {
+    // The hostname serves nothing else: no page but its review page (its own test), no route of the console or of the signing page, no session.
+    for (const [method, path] of [['GET', '/index.html'], ['GET', '/recover'], ['GET', '/apply'], ['GET', '/sign/'], ['GET', '/api/me'], ['POST', '/api/signin/start'], ['POST', '/api/proof'], ['GET', '/api/operator'], ['GET', '/api/onboarding']]) {
       expect((await op(method, path, { cookie: a.cookie })).status, path).toBe(404)
     }
     const listed = await op('GET', '/api/operator/organisations')
@@ -6774,7 +6782,7 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
     expect(listed.headers.get('content-security-policy')).toContain("default-src 'none'")
     expect([...listed.headers.keys()].filter((name) => name.startsWith('access-control-'))).toEqual([])
     expect(onboardingSource).toContain(`if (!Object.hasOwn(OPERATOR, env.ENVIRONMENT)) return fail(404, 'not_found')`)
-    expect(onboardingSource).toContain(`if (env.ENVIRONMENT !== 'local' && !(await accessOk(request, env, clock()))) return fail(403, 'access_required')`)
+    expect(onboardingSource).toContain(`const email = env.ENVIRONMENT === 'local' ? env.OPERATOR_EMAIL ?? '' : await accessEmail(request, env, clock())\n  if (email === null) return fail(403, 'access_required')`)
   })
 
   it('A8: in production the operator\'s hostname answers only with the signed proof of Cloudflare Access, then the checks and the token as locally', async () => {
@@ -6846,7 +6854,34 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
     // An audience given as one text, as RFC 7519 allows, is taken too.
     expect((await ask(await proof({ ...CLAIMS, aud: AUD }))).status).toBe(200)
     // Access does not replace anything: with a good proof, the request checks and the token as locally.
-    for (const authorization of [null, 'Bearer wrong', `Bearer ${TOKEN}x`]) expect((await ask(good, { headers: { authorization } })).body, String(authorization)).toEqual({ error: 'operator_token' })
+    for (const authorization of ['Bearer wrong', `Bearer ${TOKEN}x`]) expect((await ask(good, { headers: { authorization } })).body, String(authorization)).toEqual({ error: 'operator_token' })
+    // The review page (owner, 2026-11-19) sends no token: the email Access signed must be OPERATOR_EMAIL, in any case.
+    const page = { ...prod, OPERATOR_EMAIL: 'Operator@Example.com' } as unknown as Env
+    const listedByPage = await ask(good, { env: page, headers: { authorization: null } })
+    expect([listedByPage.status, listedByPage.body.organisations]).toEqual([200, []])
+    expect((await ask(good, { env: page, headers: { authorization: null } }, 'POST', '/api/operator/organisations/' + '0'.repeat(32) + '/decision')).body).toEqual({ error: 'invalid' }) // a POST of the page reaches its handler too
+    // Refused: another person Access let in, a proof that names no email, no email set (or not one), and a token that is
+    // wrong even when the email is the operator's (a token never falls back to the email).
+    for (const jwt of [await proof({ ...CLAIMS, email: 'someone@example.com' }), await proof({ ...CLAIMS, email: undefined }), await proof({ ...CLAIMS, email: 'operator@example.com.evil' })]) {
+      expect((await ask(jwt, { env: page, headers: { authorization: null } })).body).toEqual({ error: 'operator_identity' })
+    }
+    for (const OPERATOR_EMAIL of [undefined, '', 'operator']) expect((await ask(good, { env: { ...prod, OPERATOR_EMAIL } as unknown as Env, headers: { authorization: null } })).body, String(OPERATOR_EMAIL)).toEqual({ error: 'operator_identity' })
+    expect((await ask(good, { env: page, headers: { authorization: 'Bearer wrong' } })).body).toEqual({ error: 'operator_token' })
+    expect((await ask(good, { env: page, headers: { authorization: '' } })).body).toEqual({ error: 'operator_token' }) // an empty header is a token, a wrong one
+    // Only the page's three routes take no token (Trail of Bits, PR #1670): every other one still needs it, right email or not.
+    expect(onboarding.operatorRoutes.filter((route) => route.page).map((route) => `${route.method} ${route.path}`)).toEqual(['GET /api/operator/organisations', 'POST /api/operator/organisations/:id/decision', 'POST /api/operator/invites'])
+    const id = '0'.repeat(32)
+    for (const [method, path] of [['POST', `/api/operator/organisations/${id}/freeze`], ['POST', `/api/operator/organisations/${id}/unfreeze`], ['GET', `/api/operator/organisations/${id}/items`], ['POST', `/api/operator/items/${id}/download`], ['POST', `/api/operator/organisations/${id}/screening`], ['POST', '/api/operator/sanctions'], ['POST', '/api/operator/sanctions/sync']]) {
+      expect((await ask(good, { env: page, body: {}, headers: { authorization: null } }, method, path)).body, path).toEqual({ error: 'operator_identity' })
+    }
+    // ASCII letters only are folded: the Kelvin sign is not k (Trail of Bits, PR #1670).
+    const kelvin = { ...prod, OPERATOR_EMAIL: 'k@example.com' } as unknown as Env
+    expect((await ask(await proof({ ...CLAIMS, email: 'K@example.com' }), { env: kelvin, headers: { authorization: null } })).body).toEqual({ error: 'operator_identity' })
+    expect((await ask(await proof({ ...CLAIMS, email: 'K@example.com' }), { env: kelvin, headers: { authorization: null } })).status).toBe(200)
+    // Without the proof, the email decides nothing: 403 first. Cross-site and foreign origins stay refused.
+    expect((await ask(null, { env: page, headers: { authorization: null } })).body).toEqual({ error: 'access_required' })
+    expect((await ask(good, { env: page, headers: { authorization: null, 'sec-fetch-site': 'cross-site' } })).body).toEqual({ error: 'cross_site' })
+    expect((await ask(good, { env: page, body: {}, headers: { authorization: null, origin: 'https://evil.example' } }, 'POST', '/api/operator/invites')).body).toEqual({ error: 'bad_origin' })
     expect((await ask(good, { env: { ...prod, OPERATOR_TOKEN: undefined } as unknown as Env })).body).toEqual({ error: 'operator_token' })
     expect((await ask(good, { headers: { 'sec-fetch-site': 'cross-site' } })).body).toEqual({ error: 'cross_site' })
     for (const origin of [OP, 'https://pro.ophis.fi', 'https://operator.ophis.fi.evil.example', null]) expect((await ask(good, { body: {}, headers: { origin } }, 'POST', '/api/operator/invites')).body, String(origin)).toEqual({ error: 'bad_origin' })
@@ -6859,6 +6894,28 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
     // Each hostname in its own environment only: production's on the local server, the local one in production.
     expect((await op('GET', '/api/operator/organisations', { host: PROD, headers: { 'cf-access-jwt-assertion': good } })).status).toBe(404)
     expect((await op('GET', '/api/operator/organisations', { env: prod, headers: { 'cf-access-jwt-assertion': good } })).status).toBe(404)
+  })
+
+  it('the review page (owner, 2026-11-19): on the operator\'s host only, "/" opens it, its files under /operator/; locally OPERATOR_EMAIL stands for the person Access signs in', async () => {
+    const page = async (origin: string, path: string, env = opEnv) => {
+      const response = await handle(new Request(origin + path, { headers: { 'sec-fetch-site': 'same-origin' } }), env, () => now)
+      return [response.status, await response.text()]
+    }
+    expect(await page(OP, '/')).toEqual([200, 'file /operator/'])
+    for (const path of ['/operator/', '/operator/assets/index-abc.js', '/operator/assets/index-abc.css']) expect(await page(OP, path), path).toEqual([200, `file ${path}`])
+    // Nothing else of the files on that host, and the page on no other host.
+    for (const path of ['/index.html', '/apply', '/recover', '/sign/', '/assets/index-abc.js', '/operators', '/operator.html']) expect((await page(OP, path))[0], path).toBe(404)
+    for (const origin of [SITE.origin, SIGN]) for (const path of ['/operator', '/operator/', '/operator/assets/index-abc.js']) expect((await page(origin, path))[0], `${origin}${path}`).toBe(404)
+    // The API with no token: locally, the email set stands for the person (no Access here); none set, or not an email: refused.
+    const local = { ...opEnv, OPERATOR_EMAIL: 'operator@localhost' } as unknown as Env
+    const listed = await op('GET', '/api/operator/organisations', { env: local, headers: { authorization: null } })
+    expect([listed.status, Array.isArray(listed.body.organisations)]).toEqual([200, true])
+    for (const OPERATOR_EMAIL of [undefined, '', 'operator']) expect((await op('GET', '/api/operator/organisations', { env: { ...opEnv, OPERATOR_EMAIL } as unknown as Env, headers: { authorization: null } })).body, String(OPERATOR_EMAIL)).toEqual({ error: 'operator_identity' })
+    // The built page: no token, no inline script, every value set as text (no markup sink).
+    const scripts = Object.entries(builtOperator).filter(([path]) => /\.(js|ts)$/.test(path)).map(([, text]) => text)
+    expect(scripts.length, 'build the page first: pnpm build').toBeGreaterThan(1)
+    for (const mark of ['innerHTML', 'outerHTML', 'insertAdjacentHTML', 'document.write', 'authorization', 'Bearer', 'localStorage']) expect(scripts.join('\n'), mark).not.toContain(mark)
+    expect(builtOperator['../dist/operator/index.html']).not.toMatch(/<script(?![^>]*\bsrc=)/)
   })
 
   it('A8: the list holds what is under review, with what the operator compares: the domain, the first Owner\'s passkey hash, the recovery wallet, its kind and colour', async () => {

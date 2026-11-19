@@ -23,6 +23,7 @@ Everything needed to run and update pro.ophis.fi. Live since 2026-11-17. Command
 | `CHALLENGE_KEY` | Keychain `ophis-console-challenge-key` | Random 32 bytes. Rotating ends pending invitations, sign-ins and applications in progress |
 | `INDEXER_TOKEN` | Keychain `business-api-token` | The same value as `BUSINESS_API_TOKEN` in Cadia `/srv/ophis/apps/rebate-indexer/.env`. Change both together |
 | `OPERATOR_TOKEN` | Keychain `ophis-operator-token` | `operator token --production` (new token, Keychain and Worker at once) |
+| `OPERATOR_EMAIL` | the operator's Cloudflare login email | The review page (2026-11-19): the email Access signs in must be this one. Set with `npx wrangler secret put OPERATOR_EMAIL --env production` (hidden prompt). Not set: the page is refused, the command still works |
 | `TURNSTILE_SECRET` | Cloudflare (Turnstile, widget of pro.ophis.fi) | Rotate there, then `npx wrangler secret put TURNSTILE_SECRET --env production` (hidden prompt) |
 | `TYPESAFE_API_KEY` | not set | Without it Support answers every question with the hand-over card |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Keychain `ophis-telegram-bot`; the chat is the owner's | One message to the owner each time an application is submitted for review (2026-11-17). Without them nothing is sent |
@@ -46,6 +47,8 @@ Everything needed to run and update pro.ophis.fi. Live since 2026-11-17. Command
 Since 2026-11-17 an organisation made by an application allows passkeys that sync (a computer, a phone) for every key role, Owners included; an Owner can require hardware security keys under Organisation, "Passkey rule for key roles" (a two-person change). Organisations made before keep hardware keys only.
 
 ## The operator's commands
+
+The review page (2026-11-19): https://operator.ophis.fi/ , behind the same Cloudflare sign-in. It lists what is under review with what to compare, reviews due, frozen organisations and the loaded lists, and records Approve (with the list files of the screening, hashed in the browser: only their SHA-256 is sent), Ask for more and Refuse, and makes invitation codes. It holds no token: the Worker takes the email Access signed, which must be `OPERATOR_EMAIL`. The Telegram message of each application links to it. The rest (freeze, unfreeze, screen, addresses, items, get) is the command's. On the Mac, `operator` alone lists (`~/.local/bin/operator`).
 
 The first command of a day opens a Cloudflare Access sign-in (cloudflared, valid 24 hours). The link also works from a phone; it waits about 6 minutes. On success cloudflared prints the token: never paste that output anywhere.
 

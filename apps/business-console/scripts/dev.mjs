@@ -36,6 +36,9 @@ if (!existsSync('.dev.vars')) writeFileSync('.dev.vars', `CHALLENGE_KEY=${random
 // printed. A file from before this milestone gets the line added.
 const vars = readFileSync('.dev.vars', 'utf8')
 if (!/^OPERATOR_TOKEN=/m.test(vars)) appendFileSync('.dev.vars', `${vars.endsWith('\n') ? '' : '\n'}OPERATOR_TOKEN=${randomBytes(32).toString('base64url')}\n`)
+// The review page (2026-11-19): locally no Access stands in front, and this address stands for the operator (onboarding.ts, operate).
+// From the one read above (CodeQL, PR #1670: no second read between check and write); a blank line before it is harmless.
+if (!/^OPERATOR_EMAIL=/m.test(vars)) appendFileSync('.dev.vars', '\nOPERATOR_EMAIL=operator@localhost\n')
 // Partner figures: the local stand-in for the rebate indexer (scripts/indexer-stub.mjs) and the token it asks for,
 // made here and never printed. A real environment sets INDEXER_URL as a variable and INDEXER_TOKEN as a secret.
 if (!/^INDEXER_URL=/m.test(readFileSync('.dev.vars', 'utf8'))) appendFileSync('.dev.vars', `INDEXER_URL=http://127.0.0.1:${INDEXER_PORT}\n`)

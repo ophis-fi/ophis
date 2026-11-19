@@ -15,5 +15,5 @@
     "noUnusedParameters": true,
     "types": ["vite/client"]
   },
-  "include": ["src/app", "sign", "vite.config.ts", "vitest.config.ts"]
+  "include": ["src/app", "sign", "operator", "vite.config.ts", "vitest.config.ts"]
 }

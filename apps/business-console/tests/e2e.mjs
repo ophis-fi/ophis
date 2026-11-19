@@ -38,6 +38,7 @@ import { PORT as ORDERBOOK_PORT, start as startOrderbook, TEST_BALANCES } from '
 process.chdir(fileURLToPath(new URL('..', import.meta.url))) // a path, not a URL: a space or a Windows drive survives (CodeRabbit, PR #1646)
 const ORIGIN = 'http://localhost:8787'
 const SIGN = 'http://127.0.0.1:8787' // the signing page's own hostname
+const OPERATOR_SITE = 'http://operator.localhost:8787' // the operator's review page and API (2026-11-19)
 const STATE = '.wrangler/e2e'
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 // E2E_PORT: where this run's server listens when 8787 is taken (a developer's own "pnpm dev"). The addresses stay the
@@ -148,7 +149,7 @@ try {
     && refusals.every(([, said, written]) => said.startsWith('refused Refused: ') && said.includes('Nothing was written.') && !written)
     && ['no <sdnList', 'does not end with </sdnList>', 'no publish date', 'Record_Count says 4', 'no address', 'more than one publish date'].every((why, i) => refusals[i][1].includes(why)))
 
-  browser = await chromium.launch({ executablePath: CHROME, headless: true, args: PORT === '8787' ? [] : [`--host-resolver-rules=MAP localhost:8787 127.0.0.1:${PORT}, MAP 127.0.0.1:8787 127.0.0.1:${PORT}`] })
+  browser = await chromium.launch({ executablePath: CHROME, headless: true, args: PORT === '8787' ? [] : [`--host-resolver-rules=MAP localhost:8787 127.0.0.1:${PORT}, MAP 127.0.0.1:8787 127.0.0.1:${PORT}, MAP operator.localhost:8787 127.0.0.1:${PORT}`] })
   const violations = []
   const foreign = []
   // A security key: USB, resident keys, user verification, not backup eligible (device-bound).
@@ -1002,7 +1003,43 @@ try {
   check('an approval that names no submission, or another one, is refused', refusedBy(() => operator(...approve('--submission', '0'.repeat(16), ...screened))).includes('submitted again since that list'))
   check('an approval with no screening, or with one that does not say "clear", is refused', refusedBy(() => operator(...approve('--submission', submission))).includes('Refused (400): screening_required')
     && refusedBy(() => operator(...approve('--submission', submission, '--screening', 'hit', '--list', `eu=${LIST.eu}`))).includes('Refused (409): screening_not_clear'))
-  check('the operator approves, with a clear screening', operator(...approve('--submission', submission, ...screened)).includes(`${newOrg.id} is now active`))
+  // The operator's review page (owner, 2026-11-19): the same list in a browser, and the approval, with no token. Locally
+  // OPERATOR_EMAIL (dev.mjs) stands for the person Cloudflare Access signs in.
+  const opDesk = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' })
+  const opPage = await opDesk.newPage()
+  opPage.on('console', (message) => /content security policy|trusted ?type/i.test(message.text()) && violations.push(message.text()))
+  const opOffSite = [], opTokens = []
+  opPage.on('request', (request) => {
+    if (!request.url().startsWith(`${OPERATOR_SITE}/`)) opOffSite.push(request.url())
+    if (request.headers().authorization) opTokens.push(request.url())
+  })
+  const opAnswer = await opPage.goto(`${OPERATOR_SITE}/`)
+  const opCard = opPage.locator('article', { hasText: newOrg.id })
+  await opCard.waitFor()
+  const opShown = await opCard.innerText()
+  check('the review page lists the application with what to compare, under the strict policy, and fits a phone',
+    opAnswer.status() === 200 && /require-trusted-types-for 'script'/.test(opAnswer.headers()['content-security-policy'] ?? '') && opAnswer.headers()['x-frame-options'] === 'DENY'
+      && ['Alder Custody S.A.', domain, 'Ada Applicant', 'Ben Okoro, Head of Treasury', key.address, '2 rue de la Gare, L-1611 Luxembourg', 'Yes'].every((text) => opShown.includes(text))
+      && await opCard.getByLabel(/^SHA-256 of the evidence/).inputValue() === /declaration .* sha256 ([0-9a-f]{64})/.exec(listed)?.[1] && await both(opPage, '73-operator-review'))
+  await opCard.getByLabel(/^Next review/).fill('2030-01-01')
+  await opCard.getByLabel(/^SHA-256 of the evidence/).fill('ab'.repeat(32)) // the field takes another document's hash, as the command's --sha256
+  await opCard.getByLabel(/^Evidence reference/).fill('e2e register extract')
+  await opCard.getByLabel(/I searched these files/).check()
+  await opCard.getByLabel(/^EU consolidated list/).setInputFiles(LIST.eu)
+  opPage.once('dialog', (dialog) => dialog.accept())
+  await opCard.getByRole('button', { name: 'Approve', exact: true }).click()
+  await opPage.getByText('Approved: Alder Custody S.A. is now active.').waitFor()
+  check('the operator approves on the page, with a clear screening; the page sent no token and asked nothing of another site',
+    await opPage.getByText('Nothing is under review.').isVisible() && opTokens.length === 0 && opOffSite.length === 0)
+  await opPage.getByRole('button', { name: 'New invitation code' }).click()
+  await opPage.locator('#code').waitFor()
+  check('the page makes an invitation code', /^[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}, valid until /.test(await opPage.locator('#code').innerText()))
+  // A list read that never answers (network down, or an expired sign-in redirected to Access) shows no card to decide on.
+  await opPage.route('**/api/operator/organisations', (route) => route.abort())
+  await opPage.reload()
+  await opPage.locator('#status', { hasText: 'The network failed' }).waitFor()
+  check('a list read that never answers says so and shows no card', /could not be read/.test(await opPage.locator('#apps').innerText()))
+  await opDesk.close()
   const afterApproval = operator('list')
   check('nothing is left under review, and the list names the reviews that are due: the seeded organisation, never screened; not the one just approved',
     afterApproval.includes('Nothing is under review.') && /Reviews due[^\n]*\n[0-9a-f]{32} {2}Northwind Vaults {2}active {2}last screening none {2}next review none/.test(afterApproval) && !afterApproval.includes(newOrg.id))

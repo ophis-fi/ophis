@@ -43,7 +43,7 @@
       // Created 2026-11-17 with --jurisdiction=eu (wrangler d1 list: "jurisdiction": "eu").
       "d1_databases": [{ "binding": "DB", "database_name": "ophis-business", "database_id": "c5d7d56e-ddd5-4788-8008-7089aa7f2a0b", "migrations_dir": "migrations" }],
       // SANCTIONS_URL stays unset: the OFAC list is loaded by hand once a month (README, "The OFAC list file").
-      // Secrets: CHALLENGE_KEY, INDEXER_TOKEN, TYPESAFE_API_KEY, TURNSTILE_SECRET, OPERATOR_TOKEN (wrangler secret put --env production).
+      // Secrets: CHALLENGE_KEY, INDEXER_TOKEN, TYPESAFE_API_KEY, TURNSTILE_SECRET, OPERATOR_TOKEN, OPERATOR_EMAIL (wrangler secret put --env production).
       // SEAL_RECIPIENT: the public recipient of the key ceremony (scripts/seal-ceremony.sh), generation g1, made on
       // 2026-11-16, fingerprint 9d1f8c22a7c3b24f89a3b191733196d2c2509ddec5357c83bbcbaa0ce3e15b8f; the same string as PRODUCTION in src/app/onboarding.tsx.
       // TURNSTILE (src/server/index.ts) gets the widget's public site key.

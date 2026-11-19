@@ -1167,13 +1167,23 @@ async function api(request: Request, env: Env, clock: () => number, config: Conf
   return route.second ? change(context, route.second) : route.handler!(context)
 }
 
+// The operator's review page (owner, 2026-11-19): its files are under /operator/ (vite --mode operator), served on the
+// operator's host only, where "/" opens it. Access guards that host at Cloudflare's edge; the page holds no data, and each
+// call of its API is checked (onboarding.ts, operate). The page takes public/_headers, the console's strict policy.
+const operatorPath = (pathname: string) => pathname === '/operator' || pathname.startsWith('/operator/')
+async function operatorPage(request: Request, env: Env) {
+  const { pathname } = new URL(request.url)
+  if (pathname === '/') return env.ASSETS.fetch(new Request(new URL('/operator/', request.url)))
+  return operatorPath(pathname) ? env.ASSETS.fetch(request) : new Response('Not found', { status: 404, headers: HEADERS })
+}
+
 // The pages. Each host serves its own and nothing of the other's: the signing host the signing page under /sign/
-// (with its script, style, icon and manifest.json), the console host everything else.
+// (with its script, style, icon and manifest.json), the console host everything else but the operator's page.
 async function pages(request: Request, env: Env, signing: boolean) {
   const { pathname } = new URL(request.url)
   // The signing host's own name opens the signing page (owner, 2026-11-18: a bare "Not found" there read as broken).
   if (signing && pathname === '/') return new Response(null, { status: 302, headers: { ...HEADERS, location: '/sign/' } })
-  if (signing !== (pathname === '/sign' || pathname.startsWith('/sign/'))) return new Response('Not found', { status: 404, headers: HEADERS })
+  if (signing !== (pathname === '/sign' || pathname.startsWith('/sign/')) || operatorPath(pathname)) return new Response('Not found', { status: 404, headers: HEADERS })
   // /recover is a page of the console's one shell (the app reads the path): public, and it needs no session.
   // /recover is rewritten here, so its shell is fetched whole (no conditional header): a page cached before the site
   // key was set must not come back as 304 without the check.
@@ -1207,8 +1217,8 @@ export async function handle(request: Request, env: Env, now: () => number = Dat
     const config = configFor(env.ENVIRONMENT)
     // The host decides, from the environment's constants: the signing page's own hostname, or the console.
     const signing = origin === config.signOrigin
-    // Milestone 5: the operator's API, on a third hostname (onboarding.ts). It serves no page.
-    if (origin === OPERATOR[env.ENVIRONMENT]) return await operator(request, env, now, config, HEADERS)
+    // Milestone 5: the operator's API, on a third hostname (onboarding.ts), and its review page (owner, 2026-11-19).
+    if (origin === OPERATOR[env.ENVIRONMENT]) return pathname.startsWith('/api/') ? await operator(request, env, now, config, HEADERS) : await operatorPage(request, env)
     // Any other host is not ours: a request that arrives under another name gets nothing, not even a refusal with a reason.
     if (!signing && origin !== config.origin) return new Response('Not found', { status: 404, headers: HEADERS })
     if (!pathname.startsWith('/api/')) return await pages(request, env, signing)
