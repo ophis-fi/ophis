@@ -24,7 +24,7 @@ pnpm serve          # serve the production build locally
 ```
 
 A broken internal link or anchor **fails the build** (`onBrokenLinks:
-'throw'`). Treat a green `pnpm build` as the content test suite.
+'throw'`). A green build checks rendered links and compilation; verify factual claims against current source and deployment evidence separately.
 
 ## Content
 
@@ -35,6 +35,8 @@ the canonical app assets:
 - `apps/frontend/apps/cowswap-frontend/public/openapi.yaml`. Intent API spec
 - `apps/frontend/apps/cowswap-frontend/public/llms.txt`, agent-facing summary
 - `functions/api/intent.ts`, the live parser behaviour (model, limits)
+- `apps/railgun/`, private-wallet UI, network configuration, PPOI policy and recovery
+- `apps/broadcaster/PREPAID-REFUNDS.md`, operator-held fee credit and refund limits
 
 When those change, update the corresponding page here.
 

@@ -1,11 +1,14 @@
 # Prepaid payments and refunds
+
+For customer steps, see [fee credit and refunds](https://docs.ophis.fi/privacy-pools#refund-unused-fee-credit). This document describes operator accounting, recovery and deployment requirements.
+
 ## Public native prepayment
 
-The current candidate uses `OPHIS_BROADCASTER_CREDIT_PAYMENT_MODE=public-native` on Ethereum, BNB or Arbitrum; Base is restricted to its unqualified pilot. It receives native ETH/BNB directly at the configured gas operator. No ANON private transfer, unwrap, owner collection or external POI is required for this payment. The existing viewing identity still authenticates encrypted requests; it is not the native recipient.
+The production deployment uses `OPHIS_BROADCASTER_CREDIT_PAYMENT_MODE=public-native` on Ethereum, BNB and Arbitrum; Base is restricted to its unqualified pilot. It receives native ETH/BNB directly at the configured gas operator. No ANON private transfer, unwrap, owner collection or external POI is required for this payment. The existing viewing identity still authenticates encrypted requests; it is not the native recipient.
 
 1. The client obtains the pinned operator and native ledger identity. It records an exact amount, public sender, nonce and opaque one-time payment commitment **before** requesting a wallet transaction. The connected ordinary public account pays this initial transaction's gas. Delegated/smart accounts and operator self-funding are rejected before the prompt.
 2. After successful canonical finality, the broadcaster verifies the exact native payment and the authenticated claimant's secret payment reference. It credits the transaction once. A second mined payment with the same reference is quarantined as a liability, never revenue or a second spendable credit.
-3. Before any operation signature, the ledger reserves the customer's signed maximum and proves the operator's current native balance covers **all customer liabilities plus the configured reserve**. Deposits and settlements retain canonical block anchors. A pending operator attempt blocks the next signature until final settlement.
+3. Before any operation signature, the ledger reserves the customer's signed maximum and proves the operator's current native balance covers **all customer liabilities plus the configured reserve**. Deposits and settlements retain canonical block anchors. Pending operator attempts remain subject to the chain's inclusion/finality limits; held credit is not released until final settlement.
 4. Successful and reverted operations charge their actual receipt gas plus the agreed margin. Cancellation uses the same reservation and nonce; its cost is bounded before signing. No automatic public submission fallback exists.
 
 The top-up publicly reveals its sender, operator and amount. Its opaque reference does not reveal the derived private account, but Ophis can link requests using the same credit account. This is custodial fee credit held by the online operator; reserve checks do not remove operator/key compromise or trusted-RPC risk. Never treat unexplained wallet surplus or quarantined payments as earnings.
@@ -28,7 +31,7 @@ The gas operator must never sign out-of-band transfers, earnings sweeps, wallet 
 
 Keep historical private ledgers, owner-intent records and protected/request journals intact. A native ledger is a distinct scope; changing the mode against an existing private ledger fails closed. Before preparing a fresh native ledger on the same gas operator, stop the old signer and account for every retained signed operation or cancellation at or above the current operator nonce. A new starting nonce alone is not proof that old signatures cannot compete. Carry no customer balance across scopes implicitly.
 
-Deploy the reviewed artifact and configuration with broadcasting disabled first. Preserve existing custody pins, unlock rules, spending budgets and BNB pilot restrictions. Verify exact artifact/configuration, current operator code/nonce/balance, old pending signatures and native ledger scope before owner unlock and bounded live acceptance. New frontend approvals remain expired until qualification. The local native fork tests demonstrate changed accounting with disposable keys; they do not establish mainnet protected delivery or real user swap/withdrawal acceptance.
+For a new deployment or migration, deploy the reviewed artifact and configuration with broadcasting disabled first. Preserve existing custody pins, unlock rules, spending budgets and BNB pilot restrictions. Verify exact artifact/configuration, current operator code/nonce/balance, old pending signatures and native ledger scope before owner unlock and bounded live acceptance. New chain or operator approvals remain disabled until qualification; this does not revoke the existing production approvals on Ethereum, BNB and Arbitrum. The local native fork tests demonstrate changed accounting with disposable keys; they do not establish mainnet protected delivery or real user swap/withdrawal acceptance.
 
 ## Historical private-credit recovery only
 
