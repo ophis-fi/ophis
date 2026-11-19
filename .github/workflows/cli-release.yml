@@ -60,7 +60,8 @@ jobs:
           node packages/cli/dist/npm/ophis.js --help
 
       - name: publish prebuilt package
-        run: pnpm --dir packages/cli/dist/npm publish --no-git-checks --access public --provenance --ignore-scripts
+        working-directory: packages/cli/dist/npm
+        run: pnpm publish --no-git-checks --access public --provenance --ignore-scripts
         env:
           NPM_CONFIG_PROVENANCE: 'true'
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -1,6 +1,6 @@
 {
   "name": "@ophis/mcp-server",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "type": "module",
   "description": "Ophis MCP server: 13 agent-facing tools to parse intents, resolve tokens, quote, validate, build, and relay signed orders. Holds no keys and never signs.",

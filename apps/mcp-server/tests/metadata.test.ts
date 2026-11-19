@@ -9,6 +9,7 @@ interface PackageMetadata {
 }
 
 interface RegistryMetadata {
+  description: string
   version: string
   _meta: {
     'io.modelcontextprotocol.registry/publisher-provided': {
@@ -24,6 +25,11 @@ const registryMetadata = JSON.parse(
 ) as RegistryMetadata
 
 describe('MCP release metadata', () => {
+  it('keeps the registry description within the public schema limits', () => {
+    expect(registryMetadata.description.length).toBeGreaterThan(0)
+    expect(registryMetadata.description.length).toBeLessThanOrEqual(100)
+  })
+
   it('keeps the runtime, package, and registry versions identical', () => {
     expect(SERVER_INFO.version).toBe(MCP_SERVER_VERSION)
     expect(packageMetadata.version).toBe(MCP_SERVER_VERSION)
