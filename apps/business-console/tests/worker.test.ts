@@ -5570,11 +5570,11 @@ describe('D. Support: the model selects, the server decides', () => {
     // speaks of a referral share, referred wallets, codes or earnings: the console's partners get none (2026-11-13).
     const text = (id: string) => ANSWERS.find((a) => a.id === id)!.text
     expect(text('KB-13')).toMatch(/Overview shows a partner organisation its fee owed this cycle \(an estimate\), its payouts, the daily volume, the split by chain and fee token, and wallets whose orders carried its fee, flagging those on a sanctions list\. Figures are read for the fee recipient address you link\./)
-    expect(text('KB-16')).toMatch(/Overview of a partner: the partner-fee months, payouts, daily volume, the split by chain and by fee token, the wallets that traded, and those on a sanctions list\./)
+    expect(text('KB-16')).toMatch(/A partner also: the partner-fee months, payouts, daily volume, the split by chain and by fee token, the wallets that traded, and those on a sanctions list\./)
     // Every organisation trades on the desk (owner, 2026-11-19): its two tables are every organisation's.
     expect(text('KB-16')).toMatch(/Desk \(every organisation\): the orders with every term and what was executed, and the permitted assets\./)
     // The institution's exports are real since 2026-11-14: balances read on the chain, its orders, the statement of its filled orders.
-    expect(text('KB-16')).toMatch(/Overview of an institution: the balances of its linked wallets, its orders, and the monthly statement of its filled orders/)
+    expect(text('KB-16')).toMatch(/Overview \(every organisation\): the monthly statement of its filled orders, volume and fees in the asset sold\. An institution also: the balances of its linked wallets and its orders\./)
     expect(text('KB-16')).not.toMatch(/Not available|example/i)
     expect(text('KB-13') + text('KB-16')).not.toMatch(/no fees view|does not show|one export that exists/)
     for (const a of ANSWERS) expect(a.title + a.about + a.text, a.id).not.toMatch(/referr|affiliate|partner code|earning/i)
@@ -5754,11 +5754,15 @@ describe('E. account recovery: a stop undoes all of it, the organisation is read
     const n = await completed(asked)
     const active = async () => ((await call('GET', '/api/org', { cookie: n.cookie })).body.members as { id: string; state: string }[]).filter((m) => m.state === 'active').map((m) => m.id)
     const owners = async () => (await call('GET', '/api/readiness', { cookie: n.cookie })).body.owners.count
+    // The operator page's member count reads the same rule (CodeRabbit, PR #1672).
+    const opToken = `operator-${crypto.randomUUID()}${crypto.randomUUID()}`
+    const listedMembers = async () => ((await (await handle(new Request(`${onboarding.OPERATOR.local}/api/operator/organisations`, { headers: { 'sec-fetch-site': 'same-origin', authorization: `Bearer ${opToken}` } }),
+      { ...testEnv, OPERATOR_TOKEN: opToken } as unknown as Env, () => now)).json()) as { all: { id: string; members: number }[] }).all.find((x) => x.id === o.orgId)?.members
     now += WEEK - MIN
     await again(n)
-    expect([await active(), await owners()]).toEqual([[o.seatId, asked.seat], 2])
+    expect([await active(), await owners(), await listedMembers()]).toEqual([[o.seatId, asked.seat], 2, 2])
     now += MIN
-    expect([await active(), await owners(), (await seatOf(o.seatId))?.state]).toEqual([[asked.seat], 1, 'active'])
+    expect([await active(), await owners(), (await seatOf(o.seatId))?.state, await listedMembers()]).toEqual([[asked.seat], 1, 'active', 1])
     // The new Owner is the last Owner: the seat that is gone does not stand in for one.
     expect((await act(n, asked.seat, 'freeze')).body).toEqual({ error: 'last_owner' })
     // The seat that is gone is nobody's to freeze: it would come back as a frozen Owner seat.
@@ -8809,6 +8813,14 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
         { id: cold.orgId, name: 'Af Cold', state: 'frozen', outcome: null, screenedAt: null, nextReview: null, lastAction: 'organisation.freeze', lastDetail: null, lastAt: now },
         { id: coldFar.orgId, name: 'Ag Cold far', state: 'frozen', outcome: 'clear', screenedAt: now, nextReview: Date.UTC(2027, 10, 11), lastAction: 'organisation.freeze', lastDetail: null, lastAt: now },
       ])
+      // The page's "All organisations" (owner, 2026-11-19): every organisation, the approved ones no review lists too ('Ac Far'),
+      // with its state in words: an application not submitted yet is "applying", a submitted one "under review".
+      const applying = await applicantWithTwoKeys()
+      await put(`UPDATE seats SET state = 'removed' WHERE org_id = ?`, edge.orgId) // a removed seat is no member
+      const listed = new Map(((await op('GET', '/api/operator/organisations')).body.all as { id: string; state: string; members: number }[]).map((o) => [o.id, o]))
+      expect(listed.get(far.orgId)).toEqual({ id: far.orgId, name: 'Ac Far', kind: 'partner', country: 'LU', state: 'active', members: 1, nextReview: Date.UTC(2027, 10, 11) })
+      expect([cold, early, gone, applying].map((m) => listed.get(m.orgId)?.state)).toEqual(['frozen', 'under review', 'archived', 'applying'])
+      expect(listed.get(edge.orgId)?.members).toBe(0)
       // A day later the next one is within 14 days; a year later every date is passed. The newest record decides: a new screening takes an active organisation out.
       now += DAY
       expect((await due(...all)).map((r) => r.id)).toEqual([none, old, edge, after, cold, coldFar].map((m) => m.orgId))
@@ -9328,7 +9340,7 @@ describe('H. the institution: overview from its wallets and orders, the desk and
     const { o, a, v } = await trio()
     const t = await colleague(o, 'trader')
     // A partner gets no example and no word "demo": its figures are live (section I), here not connected.
-    for (const m of [o, a, v, t]) expect((await get('/api/overview', m)).body).toEqual({ kind: 'partner', waiting: 0, figures: { state: 'not_connected' } })
+    for (const m of [o, a, v, t]) expect((await get('/api/overview', m)).body).toEqual({ kind: 'partner', waiting: 0, months: [], figures: { state: 'not_connected' } })
     await setOrg(o.orgId, `kind = 'institution'`)
     for (const m of [o, a, v, t]) expect((await get('/api/overview', m)).body).toEqual({ kind: 'institution', waiting: 0, asOf: new Date(now).toISOString(), balances: { readAt: new Date(now).toISOString(), leftOut: 0, wallets: [] }, months: [], orders: [], open: 0 })
     // One request waits: its requester cannot decide it, the Approver can, a Viewer and a Trader decide nothing.
@@ -9379,7 +9391,7 @@ describe('H. the institution: overview from its wallets and orders, the desk and
     expect((await get('/api/desk', o)).status).toBe(200)
   })
 
-  it('D3: the exports of an institution: its orders, the balances of its wallets, its statement and the permitted assets, named ophis-, every row source = live; a partner gets the two of its Desk (owner, 2026-11-19), none of the others', async () => {
+  it('D3: the exports of an institution: its orders, the balances of its wallets, its statement and the permitted assets, named ophis-, every row source = live; a partner gets the two of its Desk and the statement (owner, 2026-11-19), none of the others', async () => {
     book()
     const { o, a, t, walletId } = await deskTeam()
     const id = await approvedOrder({ o, a, t, walletId })
@@ -9399,9 +9411,13 @@ describe('H. the institution: overview from its wallets and orders, the desk and
     }
     expect((await exported(o, 'assets')).rows.slice(1).map((r) => r.slice(0, 3).join(' '))).toContain(`OP Mainnet USDC ${USDC_OP}`)
     for (const table of ['referred', 'months', 'traders', 'codes', 'daily', 'audit', 'constructor', '__proto__', 'toString']) expect((await exported(o, table)).status, table).toBe(404)
+    const [statementRows, months] = [(await exported(o, 'statement')).rows, (await get('/api/overview', o)).body.months]
+    expect(months.length).toBeGreaterThan(0)
     await setOrg(o.orgId, `kind = 'partner'`)
     for (const table of ['orders', 'assets']) expect((await exported(o, table)).status, table).toBe(200)
-    for (const table of ['balances', 'statement', 'codes', 'wallets', 'constructor', '__proto__']) expect((await exported(o, table)).status, table).toBe(404)
+    // Its statement too, the same rows, in the CSV and in its Overview (owner, 2026-11-19).
+    expect([(await exported(o, 'statement')).rows, (await get('/api/overview', o)).body.months]).toEqual([statementRows, months])
+    for (const table of ['balances', 'codes', 'wallets', 'constructor', '__proto__']) expect((await exported(o, table)).status, table).toBe(404)
   })
 
   it('D3: the orders export holds the real orders with their state, and a cell that starts with = + - @ or a tab is made harmless', async () => {
@@ -9548,7 +9564,7 @@ const shownPartner = {
   sanctioned: [], // no list is loaded (section I empties them before each test)
 }
 const NO_BREAKDOWN = { daily: [], byChain: [], byToken: [], payouts: [] }
-const UNAVAILABLE = { kind: 'partner', waiting: 0, figures: { state: 'figures_unavailable' } }
+const UNAVAILABLE = { kind: 'partner', waiting: 0, months: [], figures: { state: 'figures_unavailable' } }
 const LISTED_TRADER = P.sanctioned[0].wallet // the contract's wallet that traded and is on a list
 const ON_LIST = `0x${'a11ce'.padStart(40, '0')}` // on a list, and never traded
 /** A sanctions list loaded straight into its tables, as the operator's load leaves them. */
@@ -9623,7 +9639,7 @@ describe('I. partner figures: live', () => {
     const o = await partnerOrg()
     const asked = indexer()
     for (const more of [{ INDEXER_URL: undefined }, { INDEXER_TOKEN: undefined }, { INDEXER_TOKEN: '' }, { INDEXER_URL: '' }, { INDEXER_URL: 'http://indexer.test' }, { INDEXER_URL: 'ftp://indexer.test' }, { INDEXER_URL: 'indexer.test' }, { INDEXER_URL: 'https://user:pw@indexer.test' }]) {
-      expect((await overviewOf(o, { ...liveEnv, ...more } as Env)).body, JSON.stringify(more)).toEqual({ kind: 'partner', waiting: 0, figures: { state: 'not_connected' } })
+      expect((await overviewOf(o, { ...liveEnv, ...more } as Env)).body, JSON.stringify(more)).toEqual({ kind: 'partner', waiting: 0, months: [], figures: { state: 'not_connected' } })
     }
     expect(asked).toEqual([])
   })
@@ -9642,7 +9658,7 @@ describe('I. partner figures: live', () => {
   it('no linked wallet: nothing is asked; a wallet that waits and one that was unlinked are never asked', async () => {
     const o = await owner()
     const asked = indexer()
-    expect((await overviewOf(o)).body).toEqual({ kind: 'partner', waiting: 0, figures: { state: 'no_wallet' } })
+    expect((await overviewOf(o)).body).toEqual({ kind: 'partner', waiting: 0, months: [], figures: { state: 'no_wallet' } })
     const pending = await walletRow(o.orgId, someAddress(), { state: 'pending' })
     await db.prepare(`INSERT INTO approvals (id, org_id, action, subject_id, payload, payload_hash, requester_seat_id, state, expires_at, created_at) VALUES (?, ?, 'wallet.link', ?, '{}', '', ?, 'pending', ?, ?)`)
       .bind(data.randomId(), o.orgId, pending, o.seatId, now + DAY, now).run() // the wallet is live, not linked
@@ -9661,7 +9677,7 @@ describe('I. partner figures: live', () => {
     const o = await partnerOrg()
     const asked = indexer()
     const members = [o, await colleague(o, 'admin'), await colleague(o, 'trader'), await colleague(o, 'approver'), await colleague(o, 'compliance'), await colleague(o, 'viewer')]
-    for (const m of members) expect((await overviewOf(m)).body).toEqual({ kind: 'partner', waiting: 0, figures: { state: 'live', asOf: contract.asOf, leftOut: 0, lists: [], wallets: [shownPartner] } })
+    for (const m of members) expect((await overviewOf(m)).body).toEqual({ kind: 'partner', waiting: 0, months: [], figures: { state: 'live', asOf: contract.asOf, leftOut: 0, lists: [], wallets: [shownPartner] } })
     expect(asked).toHaveLength(members.length) // one request per read
     // A wallet that is no fee recipient: zero fees, as the contract's second wallet.
     const other = someAddress()
@@ -10044,7 +10060,7 @@ describe('I. partner figures: live', () => {
     expect((await exportOf(viewer, 'traders')).rows.slice(1).map((row) => row[2])).toEqual([checksum(P.traders.wallets[0].wallet), 'Total, 1 wallet'])
     // The referred wallets, unknown tables, the demo tables and names of the prototype: not found, and the indexer is not asked.
     const quiet = indexer()
-    for (const table of ['referred', 'balances', 'statement', 'codes', 'audit', 'constructor', '__proto__', 'toString']) expect((await exportOf(o, table)).status, table).toBe(404) // 'orders' and 'assets' are its Desk's (owner, 2026-11-19)
+    for (const table of ['referred', 'balances', 'codes', 'audit', 'constructor', '__proto__', 'toString']) expect((await exportOf(o, table)).status, table).toBe(404) // 'orders', 'assets' and 'statement' are every organisation's (owner, 2026-11-19)
     expect(quiet).toEqual([])
     // No wallet, or not connected: no file.
     const bare = await owner()

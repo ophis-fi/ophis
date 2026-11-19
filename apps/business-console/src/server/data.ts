@@ -40,7 +40,7 @@ const KEY_SQL = `('owner', 'admin', 'approver', 'compliance')`
 // An Owner seat that a recovery replaced for good: the 7 days in which its passkeys could stop that recovery are over
 // and it holds no active passkey. Computed wherever seats are counted or listed (one bound
 // value: now); commit() writes it down with the organisation's next write. No scheduled job, no audit row of its own.
-const gone = (s: string) => `(${s}.role = 'owner' AND ${s}.state = 'active'
+export const gone = (s: string) => `(${s}.role = 'owner' AND ${s}.state = 'active'
   AND NOT EXISTS (SELECT 1 FROM credentials k WHERE k.org_id = ${s}.org_id AND k.seat_id = ${s}.id AND k.state = 'active')
   AND EXISTS (SELECT 1 FROM credentials k JOIN recovery_requests r ON r.org_id = k.org_id AND r.state = 'completed' AND r.closed_at + ${STOP_MS} = k.stop_right_until
               WHERE k.org_id = ${s}.org_id AND k.seat_id = ${s}.id AND k.state = 'suspended' AND k.stop_right_until <= ?))`
