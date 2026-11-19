@@ -991,12 +991,14 @@ const freeze = (frozen: boolean) => async (c: Ctx) => {
   return outcome === 'ok' ? json(200, { state: frozen ? 'frozen' : 'active' }) : refuse(outcome)
 }
 
-export const operatorRoutes: { method: 'GET' | 'POST'; path: string; handler: (c: Ctx) => Promise<Response> }[] = [
-  { method: 'GET', path: '/api/operator/organisations', handler: list },
-  { method: 'POST', path: '/api/operator/organisations/:id/decision', handler: decide },
+// page: the routes the review page calls, the only ones a request with no token reaches (Trail of Bits, PR #1670: the
+// sign-in cloudflared keeps in a file must not stand in for the Keychain's token on the other routes).
+export const operatorRoutes: { method: 'GET' | 'POST'; path: string; handler: (c: Ctx) => Promise<Response>; page?: true }[] = [
+  { method: 'GET', path: '/api/operator/organisations', handler: list, page: true },
+  { method: 'POST', path: '/api/operator/organisations/:id/decision', handler: decide, page: true },
   { method: 'POST', path: '/api/operator/organisations/:id/freeze', handler: freeze(true) },
   { method: 'POST', path: '/api/operator/organisations/:id/unfreeze', handler: freeze(false) },
-  { method: 'POST', path: '/api/operator/invites', handler: invite },
+  { method: 'POST', path: '/api/operator/invites', handler: invite, page: true },
   { method: 'GET', path: '/api/operator/organisations/:id/items', handler: items },
   { method: 'POST', path: '/api/operator/items/:id/download', handler: download },
   { method: 'POST', path: '/api/operator/organisations/:id/screening', handler: screen },
@@ -1049,9 +1051,11 @@ async function operate(request: Request, env: OperatorEnv, clock: () => number, 
   if (index < 0) return fail(404, 'not_found')
   if (request.method === 'POST' && request.headers.get('origin') !== OPERATOR[env.ENVIRONMENT]) return fail(403, 'bad_origin')
   const sent = request.headers.get('authorization')
-  const token = env.OPERATOR_TOKEN, operator = env.OPERATOR_EMAIL?.trim().toLowerCase() ?? ''
+  // ASCII letters only are folded (Trail of Bits, PR #1670: toLowerCase turns the Kelvin sign into k).
+  const fold = (text: string) => text.trim().replace(/[A-Z]/g, (letter) => letter.toLowerCase())
+  const token = env.OPERATOR_TOKEN, operator = fold(env.OPERATOR_EMAIL ?? '')
   if (sent === null) {
-    if (!operator.includes('@') || email.trim().toLowerCase() !== operator) return fail(401, 'operator_identity')
+    if (!operatorRoutes[index].page || !operator.includes('@') || fold(email) !== operator) return fail(401, 'operator_identity')
   } else if (typeof token !== 'string' || token.length < 32 || !sent.startsWith('Bearer ') || (await sha256Hex(sent.slice(7))) !== (await sha256Hex(token))) return fail(401, 'operator_token')
   let body: Record<string, unknown> = {}
   if (request.method === 'POST') {

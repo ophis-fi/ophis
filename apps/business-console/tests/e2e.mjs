@@ -1021,14 +1021,10 @@ try {
     opAnswer.status() === 200 && /require-trusted-types-for 'script'/.test(opAnswer.headers()['content-security-policy'] ?? '') && opAnswer.headers()['x-frame-options'] === 'DENY'
       && ['Alder Custody S.A.', domain, 'Ada Applicant', 'Ben Okoro, Head of Treasury', key.address, '2 rue de la Gare, L-1611 Luxembourg', 'Yes'].every((text) => opShown.includes(text))
       && await opCard.getByLabel(/^SHA-256 of the evidence/).inputValue() === /declaration .* sha256 ([0-9a-f]{64})/.exec(listed)?.[1] && await both(opPage, '73-operator-review'))
-  // Approve without the EU list file: refused on the page, before anything is sent.
   await opCard.getByLabel(/^Next review/).fill('2030-01-01')
   await opCard.getByLabel(/^SHA-256 of the evidence/).fill('ab'.repeat(32)) // the field takes another document's hash, as the command's --sha256
   await opCard.getByLabel(/^Evidence reference/).fill('e2e register extract')
   await opCard.getByLabel(/I searched these files/).check()
-  await opCard.getByLabel(/^EU consolidated list/).evaluate((input) => input.removeAttribute('required')) // past the browser's own check, to reach the page's
-  await opCard.getByRole('button', { name: 'Approve', exact: true }).click()
-  check('without the EU list the page refuses, and sends nothing', await opPage.getByText('Choose the EU list file: the EU list is in every screening.').isVisible())
   await opCard.getByLabel(/^EU consolidated list/).setInputFiles(LIST.eu)
   opPage.once('dialog', (dialog) => dialog.accept())
   await opCard.getByRole('button', { name: 'Approve', exact: true }).click()

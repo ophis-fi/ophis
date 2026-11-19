@@ -6859,7 +6859,7 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
     const page = { ...prod, OPERATOR_EMAIL: 'Operator@Example.com' } as unknown as Env
     const listedByPage = await ask(good, { env: page, headers: { authorization: null } })
     expect([listedByPage.status, listedByPage.body.organisations]).toEqual([200, []])
-    expect((await ask(good, { env: page, headers: { authorization: null } }, 'POST', '/api/operator/organisations/' + '0'.repeat(32) + '/freeze')).body).toEqual({ error: 'not_found' }) // a POST reaches the handler too
+    expect((await ask(good, { env: page, headers: { authorization: null } }, 'POST', '/api/operator/organisations/' + '0'.repeat(32) + '/decision')).body).toEqual({ error: 'invalid' }) // a POST of the page reaches its handler too
     // Refused: another person Access let in, a proof that names no email, no email set (or not one), and a token that is
     // wrong even when the email is the operator's (a token never falls back to the email).
     for (const jwt of [await proof({ ...CLAIMS, email: 'someone@example.com' }), await proof({ ...CLAIMS, email: undefined }), await proof({ ...CLAIMS, email: 'operator@example.com.evil' })]) {
@@ -6867,6 +6867,17 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
     }
     for (const OPERATOR_EMAIL of [undefined, '', 'operator']) expect((await ask(good, { env: { ...prod, OPERATOR_EMAIL } as unknown as Env, headers: { authorization: null } })).body, String(OPERATOR_EMAIL)).toEqual({ error: 'operator_identity' })
     expect((await ask(good, { env: page, headers: { authorization: 'Bearer wrong' } })).body).toEqual({ error: 'operator_token' })
+    expect((await ask(good, { env: page, headers: { authorization: '' } })).body).toEqual({ error: 'operator_token' }) // an empty header is a token, a wrong one
+    // Only the page's three routes take no token (Trail of Bits, PR #1670): every other one still needs it, right email or not.
+    expect(onboarding.operatorRoutes.filter((route) => route.page).map((route) => `${route.method} ${route.path}`)).toEqual(['GET /api/operator/organisations', 'POST /api/operator/organisations/:id/decision', 'POST /api/operator/invites'])
+    const id = '0'.repeat(32)
+    for (const [method, path] of [['POST', `/api/operator/organisations/${id}/freeze`], ['POST', `/api/operator/organisations/${id}/unfreeze`], ['GET', `/api/operator/organisations/${id}/items`], ['POST', `/api/operator/items/${id}/download`], ['POST', `/api/operator/organisations/${id}/screening`], ['POST', '/api/operator/sanctions'], ['POST', '/api/operator/sanctions/sync']]) {
+      expect((await ask(good, { env: page, body: {}, headers: { authorization: null } }, method, path)).body, path).toEqual({ error: 'operator_identity' })
+    }
+    // ASCII letters only are folded: the Kelvin sign is not k (Trail of Bits, PR #1670).
+    const kelvin = { ...prod, OPERATOR_EMAIL: 'k@example.com' } as unknown as Env
+    expect((await ask(await proof({ ...CLAIMS, email: 'K@example.com' }), { env: kelvin, headers: { authorization: null } })).body).toEqual({ error: 'operator_identity' })
+    expect((await ask(await proof({ ...CLAIMS, email: 'K@example.com' }), { env: kelvin, headers: { authorization: null } })).status).toBe(200)
     // Without the proof, the email decides nothing: 403 first. Cross-site and foreign origins stay refused.
     expect((await ask(null, { env: page, headers: { authorization: null } })).body).toEqual({ error: 'access_required' })
     expect((await ask(good, { env: page, headers: { authorization: null, 'sec-fetch-site': 'cross-site' } })).body).toEqual({ error: 'cross_site' })

@@ -95,14 +95,12 @@ function card(o: Application) {
         const file = field(code).files?.[0]
         if (file) lists[code] = await hashOf(file)
       }
-      if (!lists.eu) return say('Choose the EU list file: the EU list is in every screening.', 'bad')
       if (!confirm(`Approve ${o.legalName}? The organisation becomes active, with the people its application named.`)) return
       const done = await call<{ state: string }>('POST', `/api/operator/organisations/${o.id}/decision`, {
         decision: 'approve', tier: tier.value, source: source.value, evidenceRef: evidence, evidenceSha256: sha256, nextReview: field('next').value,
         submission: o.submission, screening: { outcome: 'clear', lists },
       })
-      await load()
-      say(done.ok ? `Approved: ${o.legalName} is now ${done.data.state}.` : failed(done.data.error), done.ok ? 'ok' : 'bad')
+      await settle(done, `Approved: ${o.legalName} is now ${done.data.state}.`)
     })
   })
   other.addEventListener('submit', (event) => {
@@ -112,8 +110,7 @@ function card(o: Application) {
     void act(async () => {
       if (!confirm(decision === 'refuse' ? `Refuse ${o.legalName}? The organisation is closed.` : `Send ${o.legalName} back for more information? The applicant reads the reason.`)) return
       const done = await call<{ state: string }>('POST', `/api/operator/organisations/${o.id}/decision`, { decision, reason, tier: tier.value, source: source.value })
-      await load()
-      say(done.ok ? `${decision === 'refuse' ? 'Refused' : 'Sent back for more information'}: ${o.legalName}.` : failed(done.data.error), done.ok ? 'ok' : 'bad')
+      await settle(done, `${decision === 'refuse' ? 'Refused' : 'Sent back for more information'}: ${o.legalName}.`)
     })
   })
   return node
@@ -126,9 +123,21 @@ function line(text: string, tone?: string) {
   return li
 }
 
-async function load() {
+// After a decision the list is read again, so that no card shows what changed; but not after a refusal the operator can
+// retry as it is (CodeRabbit, PR #1670): the form keeps the files and values entered.
+const KEEP = ['wallet_unreadable', 'invalid', 'screening_not_clear', 'screening_required']
+async function settle(done: { ok: boolean; data: { error?: string } }, success: string) {
+  const problem = done.ok || !KEEP.includes(done.data.error ?? '') ? await load() : ''
+  say([done.ok ? success : failed(done.data.error), problem].filter(Boolean).join(' '), done.ok && !problem ? 'ok' : 'bad')
+}
+
+/** Reads the list and shows it; answers what went wrong, or ''. A failed read takes the cards away: none is decided on stale data. */
+async function load(): Promise<string> {
   const read = await call<{ organisations: Application[]; more: number; reviews: Review[]; lists: List[] }>('GET', '/api/operator/organisations')
-  if (!read.ok) return say(failed(read.data.error), 'bad')
+  if (!read.ok) {
+    $('apps').replaceChildren(line('The list could not be read: reload the page.', 'warn'))
+    return failed(read.data.error)
+  }
   const { organisations, more, reviews, lists } = read.data
   const apps = $('apps')
   apps.replaceChildren(...organisations.map(card))
@@ -136,6 +145,7 @@ async function load() {
   if (more) apps.append(line(`${more} more under review: decide these first, then reload.`, 'warn'))
   $('reviews').replaceChildren(...(reviews.length ? reviews.map((r) => line(`${r.name} (${r.id}): ${r.state}, last screening ${r.outcome ? `${r.outcome} on ${day(r.screenedAt)}` : 'none'}, next review ${day(r.nextReview)}${r.lastAction ? `, frozen by ${r.lastAction}${r.lastDetail ? ` (${r.lastDetail})` : ''}` : ''}`)) : [line('No review is due, and no organisation is frozen.')]))
   $('lists').replaceChildren(...lists.map((l) => line(`${l.list.toUpperCase()}: ${l.entries} addresses, published ${l.published ?? 'not known'}, loaded ${day(l.loadedAt)}${l.stale ? '. Out of date: the desk sends no order. Load the list again with the command.' : ''}${l.held ? `. A newer list file was held (${l.held}).` : ''}`, l.stale || l.held ? 'warn' : undefined)))
+  return ''
 }
 
 /** Runs one action with every button off, and says plainly when the network or the sign-in failed. */
@@ -158,4 +168,7 @@ $('invite').addEventListener('click', () => void act(async () => {
   $('code').hidden = false
 }))
 
-void act(load)
+void act(async () => {
+  const problem = await load()
+  if (problem) say(problem, 'bad')
+})
