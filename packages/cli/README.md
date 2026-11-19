@@ -69,7 +69,7 @@ builder code `bc_8j4gt5x6` using
 estimation and submission use the same calldata, with the suffix included in
 Base L1 data-fee sizing. Signed orders and inner recovery calls stay unchanged;
 solver-submitted settlements are outside this integration. Other chains are
-unaffected. This behavior ships with CLI 0.1.8.
+unaffected. This behavior ships with CLI 0.1.9.
 
 ## How it keeps you safe
 
