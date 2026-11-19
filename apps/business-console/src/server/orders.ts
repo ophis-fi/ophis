@@ -399,11 +399,13 @@ async function readRoutes(env: Settings, chainId: number, sell: Symbol) {
         body: JSON.stringify({ sellToken: sold, buyToken: token, from: NOBODY, kind: 'sell', sellAmountBeforeFee: size.toString(), priceQuality: 'optimal', signingScheme: 'eip712', appData: data.full, appDataHash: data.hash }),
       })
       const q = (answer.body as { quote?: Record<string, unknown> } | null)?.quote
-      if (answer.status === 200 && q && digits(q.sellAmount) && digits(q.buyAmount) && BigInt(q.sellAmount as string) > 0n) return { sold: BigInt(q.sellAmount as string), bought: BigInt(q.buyAmount as string) }
-      return answer.status === 0 || answer.status === 429 || answer.status >= 500 ? 'unavailable' : 'none'
+      if (answer.status === 200 && q && digits(q.sellAmount) && digits(q.buyAmount) && BigInt(q.sellAmount as string) > 0n && BigInt(q.buyAmount as string) > 0n) return { sold: BigInt(q.sellAmount as string), bought: BigInt(q.buyAmount as string) }
+      // A refusal (4xx: no liquidity at that size) is no route; no answer, or an answer it cannot use, is not available now.
+      return answer.status >= 400 && answer.status < 500 && answer.status !== 429 ? 'none' : 'unavailable'
     }))
     const [first, ...rest] = quotes
-    if (typeof first === 'string') return { buy: symbols, score: first, moves: rest.map(() => null) }
+    // A size the orderbook did not answer for, the reference among them: not available now (and not cached), whatever the rest says.
+    if (typeof first === 'string') return { buy: symbols, score: quotes.includes('unavailable') ? 'unavailable' : first, moves: rest.map(() => null) }
     // How far the price at each size is from the reference, in bps, never below 0 (the fee weighs more on a small order).
     const moves = rest.map((q) => (typeof q === 'string' ? null : Number(10_000n - (q.bought * first.sold * 10_000n) / (q.sold * first.bought)))).map((m) => (m === null ? null : Math.max(m, 0)))
     const within = (m: number | null) => m !== null && m <= DEEP_BPS

@@ -1122,10 +1122,13 @@ export const orderCancelled = (db: D1Database, r: Opening, tokenHash: string, ho
 // With the holds of sends that stopped (an order id, no state): read until the orderbook says what became of them, expired or not.
 // And a filled order whose transaction was not read yet (the trades answer failed once), for 7 days after its expiry: its
 // fill is recorded, its transaction link follows (Codex, PR #1646). An order waiting for its transaction (a Safe's, an ETH
-// sale's) is read until 7 days after its expiry: an ETH sale never placed is never in the orderbook.
+// sale's) is read until 7 days after its expiry: an ETH sale never placed is never in the orderbook. So is an expired ETH
+// sale, whose wallet may take it back after its expiry: then the orderbook says cancelled (Codex, PR #1677). ponytail: a
+// take-back later than that is not read; its cancel page says the ETH went back.
 export async function openOrders(db: D1Database, orgId: string | null, limit: number, now: number) {
   const { results } = await db.prepare(`SELECT o.org_id AS orgId, o.id, o.uid, o.status, a.payload FROM orders o JOIN approvals a ON a.org_id = o.org_id AND a.id = o.id
-                                        WHERE (o.status = 'open' OR (o.status IS NULL AND o.uid IS NOT NULL) OR (o.status IN ('presignaturePending', 'fulfilled') AND (o.status <> 'fulfilled' OR o.tx_hash IS NULL) AND o.valid_to * 1000 > ?3))
+                                        WHERE (o.status = 'open' OR (o.status IS NULL AND o.uid IS NOT NULL) OR (o.status IN ('presignaturePending', 'fulfilled', 'expired') AND (o.status <> 'fulfilled' OR o.tx_hash IS NULL)
+                                          AND (o.status <> 'expired' OR json_extract(json_extract(a.payload, '$.value'), '$.sell.token') = '${NATIVE}') AND o.valid_to * 1000 > ?3))
                                           AND (?1 IS NULL OR o.org_id = ?1)
                                         ORDER BY o.checked_at, o.rowid LIMIT ?2`)
     .bind(orgId, limit, now - 7 * 24 * 60 * 60 * 1000).all<{ orgId: string; id: string; uid: string; status: string | null; payload: string }>()
@@ -1139,7 +1142,7 @@ export async function openOrders(db: D1Database, orgId: string | null, limit: nu
 // same, so orders an orderbook cannot answer for never hold the refresh's window (Codex, PR #1646).
 export async function orderStates(db: D1Database, read: { orgId: string; id: string; status: string; sold: string; bought: string; tx: string | null; fee: string | null }[], now: number, tried: { orgId: string; id: string }[] = []) {
   if (read.length || tried.length) await db.batch([
-    ...read.map((x) => db.prepare(`UPDATE orders SET status = ?, executed_sell = ?, executed_buy = ?, executed_fee = ?, tx_hash = COALESCE(?, tx_hash), checked_at = ? WHERE org_id = ? AND id = ? AND (status IN ('open', 'presignaturePending') OR (status = 'fulfilled' AND tx_hash IS NULL))`)
+    ...read.map((x) => db.prepare(`UPDATE orders SET status = ?, executed_sell = ?, executed_buy = ?, executed_fee = ?, tx_hash = COALESCE(?, tx_hash), checked_at = ? WHERE org_id = ? AND id = ? AND (status IN ('open', 'presignaturePending', 'expired') OR (status = 'fulfilled' AND tx_hash IS NULL))`)
       .bind(x.status, x.sold, x.bought, x.fee, x.tx, now, x.orgId, x.id)),
     ...tried.map((x) => db.prepare('UPDATE orders SET checked_at = ? WHERE org_id = ? AND id = ?').bind(now, x.orgId, x.id)),
   ])

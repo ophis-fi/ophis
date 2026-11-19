@@ -11388,6 +11388,35 @@ describe('J2. ETH itself, and the routes beside the ticket', () => {
     const cancel = await orderLink(team.t, id, 'cancel')
     await orderPage(cancel.token)
     expect((await orderSend(cancel.token)).body).toEqual({ state: 'asked' })
+    expect(await lastAudit(team.o.orgId)).toMatchObject({ action: 'order.cancel', detail: 'safe' }) // only proposed: the owners execute it
+  })
+
+  it('sold, expired, then taken back: the desk keeps reading it after its expiry, so the cancel shows and no cancel link is left (Codex, PR #1677)', async () => {
+    const team = await deskTeam()
+    book()
+    const id = await approvedOrder(team, { sell: 'ETH', buy: 'USDC', amount: '1.6' })
+    const { token } = await orderLink(team.t, id)
+    const { uid } = (await orderPage(token)).body
+    expect((await orderSend(token)).body.state).toBe('transaction')
+    sent.set(uid, { sellToken: WETH_OP, sellAmount: '1', buyAmount: '1', from: ETHFLOW_OP })
+    book({ state: 'expired' })
+    expect((await deskOrders(team.t)).find((o) => o.id === id)!.state).toBe('Expired')
+    const back = await orderLink(team.t, id, 'cancel')
+    await orderPage(back.token)
+    expect((await orderSend(back.token)).body).toEqual({ state: 'taken_back' })
+    expect(await lastAudit(team.o.orgId)).toMatchObject({ action: 'order.cancel', detail: 'eth' })
+    book({ state: 'cancelled' })
+    expect((await deskOrders(team.t)).find((o) => o.id === id)!.state).toBe('Cancelled')
+    expect((await orderLink(team.t, id, 'cancel')).status).toBe(404)
+    // A WETH order the orderbook says expired is not read again: only an ETH sale can still change after its expiry.
+    const weth = await approvedOrder(team)
+    const { answer } = await signed((await orderLink(team.t, weth)).token)
+    const asked = book({ state: 'expired' })
+    await deskOrders(team.t)
+    const reads = () => asked.filter((x) => x.url.endsWith(`/orders/${answer.body.uid}`)).length
+    const once = reads()
+    await deskOrders(team.t)
+    expect([once, reads()]).toEqual([1, 1])
   })
 
   it('sold, never placed: the orderbook never has it; it reads Expired after its expiry, and the daily run reads it until 7 days after', async () => {
@@ -11501,6 +11530,7 @@ describe('J2. ETH itself, and the routes beside the ticket', () => {
       [[0, 10, 30, 50], 'deep', [10, 30, 50]], [[0, 10, 30, 51], 'medium', [10, 30, 51]], [[0, 10, 51, 80], 'thin', [10, 51, 80]],
       [[0, 10, 30, 'none'], 'medium', [10, 30, null]], [[0, -20, 0, 'none'], 'medium', [0, 0, null]], [[0, -20, 'down', 'none'], 'unavailable', [0, null, null]],
       [['none', 0, 0, 0], 'none', [null, null, null]], [['down', 0, 0, 0], 'unavailable', [null, null, null]],
+      [['none', 0, 'down', 0], 'unavailable', [null, null, null]], [['zero', 0, 0, 0], 'unavailable', [null, null, null]],
     ] as [(number | string)[], string, (number | null)[]][]) {
       orders.ROUTES.clear()
       const asked = book({ twist: (x) => {
@@ -11509,6 +11539,7 @@ describe('J2. ETH itself, and the routes beside the ticket', () => {
         const answer = answers[sizes.indexOf(String(whole))]
         if (answer === 'none') return Response.json({ errorType: 'NoLiquidity' }, { status: 400 })
         if (answer === 'down') return new Response('', { status: 502 })
+        if (answer === 'zero') return Response.json({ id: 1, quote: { sellAmount: String(whole), buyAmount: '0', feeAmount: '0' } }) // an answer it cannot use
         return Response.json({ id: 1, quote: { sellAmount: String(whole), buyAmount: String((whole * BigInt(10_000 - (answer as number))) / 10_000n), feeAmount: '0' } })
       } })
       expect((await get('/api/desk/routes/10.USDC', m)).body.routes, JSON.stringify(answers)).toEqual([{ buy: ['ETH', 'WETH'], score, moves }])

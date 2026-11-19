@@ -672,9 +672,11 @@ export const EVENTS: Record<string, string> = {
   'order.send': 'Order sent to the orderbook',
   'order.send/eip712': 'Order signed by the wallet and sent to the orderbook',
   'order.send/presign': 'Order sent to the orderbook: it waits for the Safe owners to sign it onchain',
+  'order.send/eth': 'ETH sale checked and handed to the wallet: its own transaction places the order with its ETH',
   'order.cancel': 'Order cancelled',
   'order.cancel/key': 'Order cancelled by the signature of the wallet',
   'order.cancel/safe': 'Cancel of the order sent to the Safe, for its owners to sign onchain',
+  'order.cancel/eth': 'ETH sale taken back by the transaction of the wallet: the order is cancelled and its ETH returned',
   'order.sanctioned': 'Order refused before it was sent: an address of it is on a loaded sanctions list',
   'order.unsent': 'The orderbook did not take the order: nothing was sent',
   'order.found': 'The orderbook has the order of a send whose answer was lost: recorded as it read it',
@@ -865,7 +867,7 @@ async function orderSend(c: Context) {
     // A Safe's revocation and an ETH sale's take-back are the wallet's own transactions: recorded as asked, and the
     // refresh reads the cancel from the orderbook.
     // A key wallet's take-back is mined when the page sends this (taken_back); a Safe's waits for its owners (asked).
-    if (t.scheme === 'presign' || eth) return (await data.orderCancelled(c.env.DB, r, r.hash, eth ? 'eth' : 'safe', c.now)) ? json(200, { state: t.scheme === 'presign' ? 'asked' : 'taken_back' }) : fail(409, 'try_again')
+    if (t.scheme === 'presign' || eth) return (await data.orderCancelled(c.env.DB, r, r.hash, t.scheme === 'presign' ? 'safe' : 'eth', c.now)) ? json(200, { state: t.scheme === 'presign' ? 'asked' : 'taken_back' }) : fail(409, 'try_again')
     if (!(await orders.signedBy(orders.cancellation(t.chainId, built.uid).hashed, c.body.signature, t.wallet))) return fail(403, 'signature_rejected')
     const done = await orders.cancel(c.env, t.chainId, built.uid, c.body.signature as string)
     if (done !== 'ok') return refuse(done)

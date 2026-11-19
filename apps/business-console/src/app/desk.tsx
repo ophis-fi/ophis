@@ -515,7 +515,13 @@ const SCORE = { deep: 'Deep', medium: 'Medium', thin: 'Thin', none: 'No route', 
 const size = (amount: string) => Number(amount).toLocaleString('en-US', { maximumFractionDigits: 2 }) // a size, shown: never an amount signed
 function Routes({ chainId, sell, chain }: { chainId: number; sell: string; chain: string }) {
   const [view, setView] = useState<RouteView | null>()
-  useEffect(() => void api<RouteView>(`/api/desk/routes/${chainId}.${sell}`).then((out) => setView(out.status === 200 ? out.data : null)), [chainId, sell])
+  // Read again every 5 minutes while it shows: it says its quotes are at most 5 minutes old (CodeRabbit, PR #1677).
+  useEffect(() => {
+    const read = () => void api<RouteView>(`/api/desk/routes/${chainId}.${sell}`).then((out) => setView(out.status === 200 ? out.data : null))
+    read()
+    const timer = setInterval(read, 5 * 60_000)
+    return () => clearInterval(timer)
+  }, [chainId, sell])
   return (
     <Section icon="arrow-left-right" title="Routes and liquidity" hint={`What ${sell} can be sold for on ${chain}, and how far the price moves with the size of the order. From live quotes, at most 5 minutes old.`}>
       {view === undefined ? <p className="muted" role="status">Reading live quotes.</p> : view === null ? <p className="muted" role="status">The routes could not be read just now. Reload in a minute.</p> : (
