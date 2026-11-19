@@ -301,9 +301,14 @@ while IFS=$'\t' read -r cid name status; do
   target="$(restart_target "$name")"
   [ "$target" != "$name" ] && log "note: $name is a health sidecar; restart target is $target"
 
+  if [[ "$target" == unichain-mainnet-* ]]; then
+    log "retired chain, leaving alone: $name (target $target)"
+    continue
+  fi
+
   # ALLOW/DENY is decided on the TARGET, not the reporting sidecar — otherwise a
   # sidecar named `<something-db>-health` could smuggle a database past DENY.
-  if [[ "$target" == unichain-mainnet-* ]] || ! [[ "$target" =~ $ALLOW ]] || [[ "$target" =~ $DENY ]]; then
+  if ! [[ "$target" =~ $ALLOW ]] || [[ "$target" =~ $DENY ]]; then
     log "unhealthy but NOT allowlisted, leaving alone: $name (target $target)"
     continue
   fi

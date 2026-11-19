@@ -30,7 +30,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 it('requires explicit Arc bootstrap and does not activate genesis archive audits on the free RPC', () => {
   const compose = readFileSync(new URL('../docker-compose.yml', import.meta.url), 'utf8');
-  expect(compose).toContain('SETTLE_DECODER_CHAINS: ${SETTLE_DECODER_CHAINS-10,130}');
+  expect(compose).toContain('SETTLE_DECODER_CHAINS: ${SETTLE_DECODER_CHAINS-10}');
   expect(compose).not.toContain('SETTLE_SCAN_START_BLOCK_5042:');
 });
 
