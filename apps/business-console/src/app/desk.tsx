@@ -47,7 +47,7 @@ type Traded = { trades: number; volumeUsd: number; unpriced: number }
 type Flow = Traded & { shareUsd: number }
 type OnChain = { chainId: number; chain: string }
 interface Partner {
-  kind: 'partner'; waiting: number
+  kind: 'partner'; waiting: number; months: Institution['months']
   figures: { state: 'not_connected' | 'no_wallet' | 'figures_unavailable' | 'figures_rate' } | { state: 'live'; asOf: string; leftOut: number; lists: { name: string; published: string | null; loaded: string }[]; wallets: PartnerWallet[] }
 }
 interface DeskView {
@@ -148,13 +148,7 @@ function InstitutionOverview({ v }: { v: Institution }) {
           {v.orders.length ? <Table head={['Order', 'Sell, buy', 'Status']} rows={v.orders.map((o) => [orderCell(o), <>{o.words.sell}<small>for {o.words.buy}</small></>, <Status>{o.state}</Status>])} /> : <p className="muted">No order yet. Orders are prepared on the desk.</p>}
         </Section>
       </div>
-      <Section icon="receipt" title="Monthly statement" hint="Your filled orders of the last 12 months, by the month they were sent (UTC) and the asset sold. Amounts in units of the asset sold." action={<Export table="statement" />}>
-        {v.months.length ? <Table head={['Month', 'Orders', 'Volume', 'Fees']} rows={v.months.map((m) => [
-          <>{m.month}<small>{m.asset} sold</small></>, m.orders, money(m.volume, places(m.asset)),
-          <>{money(m.fee, places(m.asset))}{m.unreported > 0 && <small>{m.unreported} {m.unreported === 1 ? 'order' : 'orders'} with no fee reported</small>}</>,
-        ])} /> : <p className="muted">No filled order yet.</p>}
-        <p className="fine"><Icon name="info" size={16} />Fees: what the orderbook reports for each filled order, in the asset sold. The network fee and the protocol fees, the Ophis fee among them.</p>
-      </Section>
+      <Statement months={v.months} />
     </>
   )
 }
@@ -301,6 +295,19 @@ function PartnerWalletFigures({ w, asOf }: { w: PartnerWallet; asOf: string }) {
   )
 }
 
+/** The monthly statement of the desk's filled orders: an institution's, and a partner's since it trades too (owner, 2026-11-19). */
+function Statement({ months }: { months: Institution['months'] }) {
+  return (
+    <Section icon="receipt" title="Monthly statement" hint="Your filled orders of the last 12 months, by the month they were sent (UTC) and the asset sold. Amounts in units of the asset sold." action={<Export table="statement" />}>
+      {months.length ? <Table head={['Month', 'Orders', 'Volume', 'Fees']} rows={months.map((m) => [
+        <>{m.month}<small>{m.asset} sold</small></>, m.orders, money(m.volume, places(m.asset)),
+        <>{money(m.fee, places(m.asset))}{m.unreported > 0 && <small>{m.unreported} {m.unreported === 1 ? 'order' : 'orders'} with no fee reported</small>}</>,
+      ])} /> : <p className="muted">No filled order yet.</p>}
+      <p className="fine"><Icon name="info" size={16} />Fees: what the orderbook reports for each filled order, in the asset sold. The network fee and the protocol fees, the Ophis fee among them.</p>
+    </Section>
+  )
+}
+
 function PartnerOverview({ v, retry }: { v: Partner; retry: () => Promise<void> }) {
   const f = v.figures
   const [busy, setBusy] = useState(false)
@@ -330,6 +337,7 @@ function PartnerOverview({ v, retry }: { v: Partner; retry: () => Promise<void> 
           {f.wallets.map((w) => <PartnerWalletFigures key={w.wallet} w={w} asOf={f.asOf} />)}
         </>
       )}
+      <Statement months={v.months} />
       {v.waiting > 0 && <p className="note"><Icon name="users" /><span className="grow"><b data-waiting>{v.waiting}</b> {v.waiting === 1 ? 'request waits' : 'requests wait'} for your approval. <a className="link" href="/#/organisation">Open approvals</a></span></p>}
     </>
   )

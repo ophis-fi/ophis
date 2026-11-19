@@ -1031,6 +1031,8 @@ try {
   await opPage.getByText('Approved: Alder Custody S.A. is now active.').waitFor()
   check('the operator approves on the page, with a clear screening; the page sent no token and asked nothing of another site',
     await opPage.getByText('Nothing is under review.').isVisible() && opTokens.length === 0 && opOffSite.length === 0)
+  check('"All organisations" lists every organisation, the one just approved too, with its state (owner, 2026-11-19)',
+    /^Alder Custody S\.A\. \(institution, LU\): active, \d+ active members?, next review 2030-01-01\. [0-9a-f]{32}$/m.test(await opPage.locator('#all').innerText()))
   await opPage.getByRole('button', { name: 'New invitation code' }).click()
   await opPage.locator('#code').waitFor()
   check('the page makes an invitation code', /^[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}, valid until /.test(await opPage.locator('#code').innerText()))
@@ -1569,6 +1571,7 @@ try {
   const pat = await firstOwner(liveSeed.match(/http\S+\/#\/enrol\/\S+/)[0])
   await pat.page.getByRole('heading', { name: 'Your flow, in one view.' }).waitFor()
   await pat.page.getByText('Figures from the Ophis rebate service, read at').waitFor()
+  check('a partner\'s Overview has the monthly statement of its desk orders too (owner, 2026-11-19)', await pat.page.getByRole('heading', { name: 'Monthly statement' }).isVisible() && await pat.page.getByText('No filled order yet.').isVisible())
   const partnerMain = pat.page.locator('main')
   const feeSection = pat.page.locator('.pw section', { has: pat.page.getByRole('heading', { name: 'Partner fee' }) })
   const tradedSection = pat.page.locator('.pw section', { has: pat.page.getByRole('heading', { name: 'Wallets that traded through your integration' }) })
@@ -1653,7 +1656,9 @@ try {
     && (await Promise.all([payoutsSection, dailySection, chainSection, tokenSection].map((x) => x.locator('.table-wrap').evaluate((box) => box.scrollWidth <= box.clientWidth)))).every(Boolean))
   await pat.page.setViewportSize({ width: 1440, height: 900 })
 
-  const partnerText = await partnerMain.innerText()
+  // The statement of its desk orders (owner, 2026-11-19) names what an order paid, "the Ophis fee among them", word for
+  // word as an institution's does; the partner-fee figures never do.
+  const partnerText = (await partnerMain.innerText()).replace(await pat.page.locator('section', { has: pat.page.getByRole('heading', { name: 'Monthly statement' }) }).innerText(), '')
   check('no demo banner, no example, no referral share, none of the withheld figures, no word of a licence or of payout terms; the footer line',
     !(await pat.page.getByText(BANNER).count()) && !/example|demo data|illustrative/i.test(partnerText) && !/referr|partner code|net fee|earning|payout run/i.test(partnerText)
     && [P.fees.currentCycle.grossFeeUsd, P.fees.minPayoutUsd].every((n) => !partnerText.includes(usd(n))) && !partnerText.includes(String(P.fees.partnerShareBps)) && !/bps|minimum/i.test(partnerText)
@@ -1678,7 +1683,7 @@ try {
   check('the export of the wallets that traded downloads: named ophis-partner-traders-, every wallet of the contract file beside the partner wallet with its trades not priced yet, the trades of no known wallet, the total, source = live; the two are the only CSV',
     /^ophis-partner-traders-\d{4}-\d\d-\d\d\.csv$/.test(tradedFile.suggestedFilename()) && tradedLines[0] === '"Partner wallet","Wallet name","Wallet","Sanctions list","Trades","Volume (USD)","Trades not priced yet","source"'
     && JSON.stringify(tradedLines.slice(1).map((row) => row.toLowerCase())) === JSON.stringify([...P.traders.wallets.map((w) => tradedRow(w.wallet, w, w.wallet === S.wallet ? 'ofac sdn list; un security council consolidated list' : '')), tradedRow(UNKNOWN_ROW, P.traders.unknown), tradedRow('total, 3 wallets', P.traders.totals)])
-    && (await pat.page.getByRole('button', { name: /CSV/ }).count()) === 7)
+    && (await pat.page.getByRole('button', { name: /CSV/ }).count()) === 8) // and the statement's (owner, 2026-11-19)
   const [listedFile] = await Promise.all([pat.page.waitForEvent('download'), pat.page.getByRole('button', { name: 'Sanctioned wallets CSV' }).click()])
   const listedLines = readFileSync(await listedFile.path(), 'utf8').split('\r\n').filter(Boolean)
   check('the export of the wallets on a sanctions list downloads: named ophis-partner-sanctioned-, the wallet with its list, trades, volume, trades not priced yet, first and last trade, source = live',
@@ -1708,7 +1713,9 @@ try {
     await unavailable.waitFor({ timeout: 15_000 })
     check(`the indexer answers with ${failing}: "The figures are not available right now", a Retry button, and no figure at all`,
       await unavailable.getByText('The figures are not available right now.').isVisible() && await unavailable.getByRole('button', { name: 'Retry' }).isVisible()
-      && !(await pat.page.locator('.stats').count()) && !(await partnerMain.innerText()).includes('$') && !(await pat.page.getByRole('button', { name: /CSV/ }).count()))
+      && !(await pat.page.locator('.stats').count()) && !(await partnerMain.innerText()).includes('$')
+      // The one CSV left is the statement's (owner, 2026-11-19): its own desk orders, which the indexer does not give.
+      && (await pat.page.getByRole('button', { name: /CSV/ }).count()) === 1 && await pat.page.getByRole('button', { name: 'Export CSV', exact: true }).isVisible())
     if (failing === '500') check('the unavailable state fits a phone', await both(pat.page, '53-overview-partner-unavailable'))
   }
   await stubMode('ok')

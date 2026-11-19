@@ -16,6 +16,7 @@ interface Application {
 }
 interface Review { id: string; name: string; state: string; outcome: string | null; screenedAt: number | null; nextReview: number | null; lastAction?: string | null; lastDetail?: string | null }
 interface List { list: string; entries: number; published: string | null; loadedAt: number | null; stale?: boolean; held?: string | null }
+interface Organisation { id: string; name: string; kind: string; country: string | null; state: string; members: number; nextReview: number | null }
 
 const $ = (id: string) => document.getElementById(id)!
 const day = (time: number | null | undefined) => (time ? new Date(time).toISOString().slice(0, 10) : 'none')
@@ -135,12 +136,14 @@ async function settle(done: { ok: boolean; data: { error?: string } }, success: 
 /** Reads the list and shows it; answers what went wrong, or ''. A failed read, refused or never answered, takes the cards
  *  away: none is decided on stale data (CodeRabbit, PR #1670: a refresh that threw left the old cards live). */
 async function load(): Promise<string> {
-  const read = await call<{ organisations: Application[]; more: number; reviews: Review[]; lists: List[] }>('GET', '/api/operator/organisations').catch(() => null)
+  const read = await call<{ organisations: Application[]; more: number; reviews: Review[]; lists: List[]; all: Organisation[] }>('GET', '/api/operator/organisations').catch(() => null)
   if (!read?.ok) {
     $('apps').replaceChildren(line('The list could not be read: reload the page.', 'warn'))
     return read ? failed(read.data.error) : NETWORK
   }
-  const { organisations, more, reviews, lists } = read.data
+  const { organisations, more, reviews, lists, all } = read.data
+  // Every organisation, the approved ones too (owner, 2026-11-19).
+  $('all').replaceChildren(...(all.length ? all.map((o) => line(`${o.name} (${[o.kind, o.country].filter(Boolean).join(', ')}): ${o.state}, ${o.members} active ${o.members === 1 ? 'member' : 'members'}, next review ${day(o.nextReview)}. ${o.id}`)) : [line('No organisation yet.')]))
   const apps = $('apps')
   apps.replaceChildren(...organisations.map(card))
   if (!organisations.length) apps.replaceChildren(line('Nothing is under review.'))
