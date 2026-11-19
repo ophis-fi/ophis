@@ -9547,8 +9547,9 @@ describe('H. the institution: overview from its wallets and orders, the desk and
     for (const banned of [/licen[cs]ed|regulated|authori[sz]ed|MiCA|compliant/i, /—/, /honest/i, /paid (weekly|monthly|daily|every)|payout (terms|schedule)|\bdue\b|guarantee|no (other|hidden) fee|never charge|price improvement/i]) expect(said).not.toMatch(banned)
     for (const sentence of [
       'Nothing is signed at this step.', 'Use a larger screen.', 'Sent for approval.', 'Only the assets of the desk are shown.', 'Hand over the signing link', '<Ways link={link} walletConnect={false} />',
-      'The Safe owners or your custodian sign on the signing page. Ophis cannot.', 'Sending asks for your passkey.', 'Routes and liquidity', 'how far the price moves with the size of the order',
-      'Deep: at most 0.5% at the largest size, the most one order sells. Medium: at most 0.5% at a tenth of it. Thin: more.', 'The wallet sends the ETH in one transaction, which places the order.',
+      'The Safe owners or your custodian sign on the signing page. Ophis cannot.', 'Sending asks for your passkey.', 'Routes and liquidity', 'how well each route holds a large order.',
+      'Price impact: how much less an order gets, per unit, than an order of about €1,000.', '<b>Deep</b> stays under 0.5% up to €5M, the largest order. <b>Medium</b> stays under 0.5% up to €500k. <b>Thin</b> moves more.',
+      'A teammate approves it under Approvals, with a passkey: an Owner, Admin, Approver or Compliance officer, not the one who prepared it.', 'The wallet sends the ETH in one transaction, which places the order.',
     ]) expect(deskPage, sentence).toContain(sentence)
     // The tokens of the desk moved to the FAQ of Support (owner, 2026-11-19).
     expect(deskPage).not.toContain('Tokens you can trade')
@@ -11504,14 +11505,15 @@ describe('J2. ETH itself, and the routes beside the ticket', () => {
     const view = await get('/api/desk/routes/10.USDC', m)
     expect(view.body).toMatchObject({ chainId: 10, sell: 'USDC', sizes: ['55000', '550000', '5500000'], routes: [{ buy: ['ETH', 'WETH'], score: 'deep' }] })
     expect(view.body.routes[0].moves.every((x: number) => x >= 0 && x <= 1)).toBe(true) // the stand-in's price is the same at every size
-    // Four quotes of the one route: the reference (a thousandth of the most per order) and the three sizes, from no wallet.
+    // Four quotes of the one route: the reference (a five-thousandth of the most per order) and the three sizes, from no wallet.
     expect(quotesOf(asked).map((x) => [x.body!.sellToken, x.body!.buyToken, x.body!.sellAmountBeforeFee, x.body!.from])).toEqual(
-      [5_500n, 55_000n, 550_000n, 5_500_000n].map((n) => [USDC_OP, WETH_OP, String(n * 10n ** 6n), '0x000000000000000000000000000000000000dEaD']))
+      [1_100n, 55_000n, 550_000n, 5_500_000n].map((n) => [USDC_OP, WETH_OP, String(n * 10n ** 6n), '0x000000000000000000000000000000000000dEaD'])) // the reference: about 1,000 EUR
+    expect(view.body.at).toBe(now) // when its quotes were read
     now += 5 * MIN - 1
-    expect((await get('/api/desk/routes/10.USDC', m)).body).toEqual(view.body)
+    expect((await get('/api/desk/routes/10.USDC', m)).body).toEqual(view.body) // the cached answer keeps its time
     expect(quotesOf(asked)).toHaveLength(4)
     now += 1
-    await get('/api/desk/routes/10.USDC', m)
+    expect((await get('/api/desk/routes/10.USDC', m)).body.at).toBe(now)
     expect(quotesOf(asked)).toHaveLength(8)
     // ETH sells as WETH: its one route is USDC. On Ethereum, USDC has four routes: 16 quotes, under the 50 calls of a Free Worker.
     expect((await get('/api/desk/routes/10.ETH', m)).body.routes.map((x: { buy: string[] }) => x.buy)).toEqual([['USDC']])
@@ -11524,7 +11526,7 @@ describe('J2. ETH itself, and the routes beside the ticket', () => {
 
   it('routes: deep, medium, thin, none and unavailable, as the orderbook answers each size', async () => {
     const m = await member()
-    const sizes = [5_500n, 55_000n, 550_000n, 5_500_000n].map((n) => String(n * 10n ** 6n))
+    const sizes = [1_100n, 55_000n, 550_000n, 5_500_000n].map((n) => String(n * 10n ** 6n))
     // How much worse each size's price is, in bps; or the orderbook's refusal, or no answer.
     for (const [answers, score, moves] of [
       [[0, 10, 30, 50], 'deep', [10, 30, 50]], [[0, 10, 30, 51], 'medium', [10, 30, 51]], [[0, 10, 51, 80], 'thin', [10, 51, 80]],

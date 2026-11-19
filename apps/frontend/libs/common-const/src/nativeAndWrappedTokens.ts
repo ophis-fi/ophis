@@ -38,11 +38,6 @@ export const NATIVE_CURRENCY_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEE
 // Ophis fork: OP mainnet (chain 10) WETH address
 const OPTIMISM_WETH_ADDRESS = '0x4200000000000000000000000000000000000006'
 
-// Ophis fork: Unichain mainnet (chain 130) WETH address.
-// Unichain is an OP-Stack rollup, so WETH9 lives at the standard OP-Stack
-// predeploy slot 0x4200…0006.
-const UNICHAIN_WETH_ADDRESS = '0x4200000000000000000000000000000000000006'
-
 // Ophis fork: Robinhood Chain mainnet (4663) WETH9.
 const ROBINHOOD_WETH_ADDRESS = '0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73'
 const ETHEREUM_NATIVE_TOKEN_LOGO = ALL_SUPPORTED_CHAINS_MAP[SupportedChainId.MAINNET].nativeCurrency.logoUrl
@@ -55,15 +50,6 @@ export const WRAPPED_NATIVE_CURRENCIES: Record<SupportedChainId, TokenWithLogo> 
     undefined,
     10 as unknown as SupportedChainId,
     OPTIMISM_WETH_ADDRESS,
-    18,
-    'WETH',
-    'Wrapped Ether',
-  ),
-  // Ophis fork: WETH on Unichain mainnet (chain 130)
-  [130 as unknown as SupportedChainId]: new TokenWithLogo(
-    undefined,
-    130 as unknown as SupportedChainId,
-    UNICHAIN_WETH_ADDRESS,
     18,
     'WETH',
     'Wrapped Ether',
@@ -155,17 +141,6 @@ export const NATIVE_CURRENCIES: Record<TargetChainId, TokenWithLogo> = {
   [10 as unknown as SupportedChainId]: new TokenWithLogo(
     undefined,
     10 as unknown as SupportedChainId,
-    NATIVE_CURRENCY_ADDRESS,
-    18,
-    'ETH',
-    'Ether',
-  ),
-  // Native ETH on Unichain (chain 130). OP-stack-style native gas token.
-  // Same sentinel-address pattern as mainnet ETH; wraps to WETH at the
-  // OP-stack predeploy slot 0x4200…0006 (see WRAPPED_NATIVE_CURRENCIES).
-  [130 as unknown as SupportedChainId]: new TokenWithLogo(
-    undefined,
-    130 as unknown as SupportedChainId,
     NATIVE_CURRENCY_ADDRESS,
     18,
     'ETH',

@@ -37,12 +37,6 @@ export const CCTP_NETWORKS: readonly CctpNetwork[] = [
     rpc: 'https://mainnet.optimism.io',
   },
   {
-    chain: unichain,
-    domain: 10,
-    usdc: '0x078D782b760474a361dDA0AF3839290b0EF57AD6',
-    rpc: 'https://mainnet.unichain.org',
-  },
-  {
     chain: mainnet,
     domain: 0,
     usdc: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
@@ -56,7 +50,16 @@ export const CCTP_NETWORKS: readonly CctpNetwork[] = [
   },
 ]
 
+// Retired network metadata is needed to claim transfers burned before retirement.
+const RETIRED_UNICHAIN: CctpNetwork = {
+  chain: unichain,
+  domain: 10,
+  usdc: '0x078D782b760474a361dDA0AF3839290b0EF57AD6',
+  rpc: 'https://mainnet.unichain.org',
+}
+
 export function cctpNetwork(chainId: number): CctpNetwork {
+  if (chainId === RETIRED_UNICHAIN.chain.id) return RETIRED_UNICHAIN
   const network = CCTP_NETWORKS.find((item) => item.chain.id === chainId)
   if (!network) throw new Error('Unsupported CCTP network')
   return network

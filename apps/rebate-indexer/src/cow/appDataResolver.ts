@@ -35,9 +35,9 @@ export async function resolveAppData(chainId: number, hash: `0x${string}`): Prom
   // store first, then the other sovereign stores. Re-hashing makes this safe: a
   // fallback can provide availability, but cannot alter the signed document.
   // Hosted chains can recover a shared document from the mainnet store.
-  const sovereign = [OPTIMISM_CHAIN_ID, UNICHAIN_CHAIN_ID, ROBINHOOD_CHAIN_ID, ARC_CHAIN_ID];
+  const sovereign = [OPTIMISM_CHAIN_ID, ROBINHOOD_CHAIN_ID, ARC_CHAIN_ID];
   const bases = [
-    orderbookBase(chainId),
+    ...(chainId === UNICHAIN_CHAIN_ID ? sovereign.map(orderbookBase) : [orderbookBase(chainId)]),
     ...(sovereign.includes(chainId) ? sovereign.map(orderbookBase) : [orderbookBase(1)]),
   ].filter((base, index, all) => all.indexOf(base) === index);
 

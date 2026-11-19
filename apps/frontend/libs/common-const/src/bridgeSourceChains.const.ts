@@ -92,7 +92,7 @@ export const EXTRA_ACROSS_SOURCE_CHAIN_IDS: readonly number[] = [
  * EXTRA_ACROSS_SOURCE_CHAIN_IDS above (a math-helper deploy, no CoW Shed or
  * own-driver work — those chains ride upstream CoW solvers). Robinhood joins via
  * NEAR's attested deposit-address receiver; it does not need an Across hook.
- * Unichain still needs its own execution proof before it can be a source.
+ * Retired chains must not be added as executable sources.
  */
 export const BRIDGE_SOURCE_CHAIN_IDS: ReadonlySet<number> = new Set<number>([
   SupportedChainId.MAINNET,

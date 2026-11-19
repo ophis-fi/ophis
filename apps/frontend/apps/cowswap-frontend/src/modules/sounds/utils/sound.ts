@@ -5,7 +5,7 @@
 // stub). We DO play one branded sound the moment a swap (or bridge) order is
 // FILLED, wired through getCowSoundSuccess() below. The trigger sites are
 // chain-agnostic (soundMiddleware's fulfillOrdersBatch action + the bridge
-// EXECUTED updater), so this plays on every chain (mainnet, Unichain,
+// EXECUTED updater), so this plays on every chain (mainnet, Optimism,
 // Optimism, ...) with no per-chain gating. The asset lives in public/audio and
 // is served from the /audio/ root path on the deployed site.
 

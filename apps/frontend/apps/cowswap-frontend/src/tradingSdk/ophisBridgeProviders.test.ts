@@ -52,7 +52,7 @@ import { BRIDGE_QUOTE_ACCOUNT } from 'common/constants/bridgeQuoteAccount'
 import { getSwapErrorMessage } from 'common/utils/getSwapErrorMessage'
 
 import { loadHooks } from './ophisAcrossPlacedHooks'
-import { ROBINHOOD_BRIDGE_CHAIN, UNICHAIN_BRIDGE_CHAIN } from './ophisBridgeChains'
+import { ROBINHOOD_BRIDGE_CHAIN } from './ophisBridgeChains'
 import {
   ACROSS_EXECUTABLE_SOURCE_IDS,
   acrossValidToLimit,
@@ -151,15 +151,37 @@ describe('ophisBridgeProviders', () => {
       const extended = await new OphisAcrossBridgeProvider().getNetworks()
 
       expect(ids(extended)).toEqual(expect.arrayContaining(ids(base)))
-      // Avalanche, BNB, Plasma, Ink, Linea, Unichain, Robinhood Chain
-      expect(ids(extended)).toEqual(expect.arrayContaining([43114, 56, 9745, 57073, 59144, 130, 4663]))
+      // Avalanche, BNB, Plasma, Ink, Linea, Robinhood Chain
+      expect(ids(extended)).toEqual(expect.arrayContaining([43114, 56, 9745, 57073, 59144, 4663]))
       // Across has no Gnosis support (verified live 2026-08-10) — must NOT appear
       expect(ids(extended)).not.toContain(100)
+      expect(ids(extended)).not.toContain(130)
     })
 
     it('has no duplicate chain ids', async () => {
       const extended = ids(await new OphisAcrossBridgeProvider().getNetworks())
       expect(new Set(extended).size).toBe(extended.length)
+    })
+
+    it('rejects a retired destination before fetching a quote or tokens', async () => {
+      const fetchSpy = jest.spyOn(global, 'fetch')
+      try {
+        const provider = new TestableAcrossProvider()
+        await expect(provider.getQuote(acrossRequest({ buyTokenChainId: 130 as TargetChainId }))).rejects.toMatchObject(
+          {
+            context: { reason: 'Across is not executable for these networks' },
+          },
+        )
+        expect(
+          await provider.getBuyTokens({ sellChainId: SupportedChainId.MAINNET, buyChainId: 130 as TargetChainId }),
+        ).toEqual({
+          tokens: [],
+          isRouteAvailable: false,
+        })
+        expect(fetchSpy).not.toHaveBeenCalled()
+      } finally {
+        fetchSpy.mockRestore()
+      }
     })
 
     describe('getBuyTokens source gating', () => {
@@ -1327,23 +1349,23 @@ describe('ophisBridgeProviders: chains, decode-only provider, invariants', () =>
 
   describe('custom chain infos', () => {
     // NOTE: sdk-config's isEvmChainInfo() is enum-membership (chainId in
-    // EvmChains), so it can never accept 130/4663 — assert the EvmChainInfo
+    // EvmChains), so it can never accept 4663 — assert the EvmChainInfo
     // SHAPE structurally instead. The single isEvmChain() call inside
     // sdk-bridging 4.0.2 sits in the NEAR provider, which is not extended.
-    it.each([
-      [UNICHAIN_BRIDGE_CHAIN, 130, 'Unichain'],
-      [ROBINHOOD_BRIDGE_CHAIN, 4663, 'Robinhood Chain'],
-    ])('%#: is a complete EvmChainInfo', (chain, id, label) => {
-      expect(chain.id).toBe(id)
-      expect(chain.label).toBe(label)
-      expect(chain.eip155Label).toBeTruthy()
-      expect(chain.addressPrefix).toBeTruthy()
-      expect(chain.nativeCurrency.symbol).toBe('ETH')
-      expect(chain.nativeCurrency.chainId).toBe(id)
-      expect(chain.logo.light).toBeTruthy()
-      expect(chain.contracts.multicall3?.address).toMatch(/^0x[0-9a-fA-F]{40}$/)
-      expect(chain.rpcUrls.default.http[0]).toMatch(/^https:/)
-    })
+    it.each([[ROBINHOOD_BRIDGE_CHAIN, 4663, 'Robinhood Chain']])(
+      '%#: is a complete EvmChainInfo',
+      (chain, id, label) => {
+        expect(chain.id).toBe(id)
+        expect(chain.label).toBe(label)
+        expect(chain.eip155Label).toBeTruthy()
+        expect(chain.addressPrefix).toBeTruthy()
+        expect(chain.nativeCurrency.symbol).toBe('ETH')
+        expect(chain.nativeCurrency.chainId).toBe(id)
+        expect(chain.logo.light).toBeTruthy()
+        expect(chain.contracts.multicall3?.address).toMatch(/^0x[0-9a-fA-F]{40}$/)
+        expect(chain.rpcUrls.default.http[0]).toMatch(/^https:/)
+      },
+    )
   })
 
   describe('BRIDGE_SOURCE_CHAIN_IDS invariant', () => {

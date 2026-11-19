@@ -91,7 +91,6 @@ function bridgeChain(id: number, label: string): EvmChainInfo {
     rpcUrls: { default: { http: [...(PUBLIC_RPCS[id] ?? [])] } },
   } as unknown as EvmChainInfo
 }
-const UNICHAIN_BRIDGE_CHAIN = bridgeChain(130, 'Unichain')
 const ROBINHOOD_BRIDGE_CHAIN = bridgeChain(4663, 'Robinhood Chain')
 const ARC_BRIDGE_CHAIN = bridgeChain(5042, 'Arc')
 
@@ -237,7 +236,7 @@ function findTrusted(listed: TokenInfo[], chainId: number, address: string): Tok
  * sdk-bridging 4.0.2 hardcodes Across's network list far below what the
  * provider API actually serves (verified against the live API, 2026-08-10):
  * Across covers every Ophis chain except Gnosis — including Robinhood Chain
- * (USDG routes) and Unichain. This subclass widens ONLY the network list;
+ * (USDG routes). This subclass widens ONLY the network list;
  * quotes, token lists and route availability still come live from the provider
  * API, and unroutable corridors stay disabled through the existing getBuyTokens
  * probes.
@@ -254,7 +253,6 @@ const ACROSS_EXTRA_NETWORKS: ChainInfo[] = [
   plasma,
   ink,
   linea,
-  UNICHAIN_BRIDGE_CHAIN,
   ROBINHOOD_BRIDGE_CHAIN,
 ]
 
@@ -286,7 +284,7 @@ export class OphisAcrossBridgeProvider extends AcrossBridgeProvider {
   }
 
   async getNetworks(): Promise<ChainInfo[]> {
-    return [...(await super.getNetworks()), ...ACROSS_EXTRA_NETWORKS]
+    return [...(await super.getNetworks()), ...ACROSS_EXTRA_NETWORKS].filter((chain) => chain.id !== 130)
   }
 
   // Upstream getBuyTokens() reports availability from the DESTINATION token
@@ -297,7 +295,7 @@ export class OphisAcrossBridgeProvider extends AcrossBridgeProvider {
   // chain chip whose every quote fails. Gate availability on the executable
   // source set; other providers still contribute via the BridgingSdk union.
   async getBuyTokens(params: BuyTokensParams): Promise<GetProviderBuyTokens> {
-    if (params.sellChainId !== undefined && !ACROSS_EXECUTABLE_SOURCE_IDS.has(params.sellChainId)) {
+    if ((params.buyChainId as number) === 130 || (params.sellChainId !== undefined && !ACROSS_EXECUTABLE_SOURCE_IDS.has(params.sellChainId))) {
       return { tokens: [], isRouteAvailable: false }
     }
 
@@ -322,7 +320,7 @@ export class OphisAcrossBridgeProvider extends AcrossBridgeProvider {
     // the route fallback would surface. Returning [] here (not just in
     // getBuyTokens) keeps the direct getQuote path from advancing past this to a
     // later getUnsignedBridgeCall throw.
-    if (!ACROSS_EXECUTABLE_SOURCE_IDS.has(request.sellTokenChainId)) return []
+    if ((request.buyTokenChainId as number) === 130 || !ACROSS_EXECUTABLE_SOURCE_IDS.has(request.sellTokenChainId)) return []
 
     const bySymbol = await super.getIntermediateTokens(request)
     const candidates = bySymbol.length > 0 ? bySymbol : await this.getIntermediateTokensFromRoutes(request)
@@ -427,9 +425,9 @@ export class OphisAcrossBridgeProvider extends AcrossBridgeProvider {
   // without calling getIntermediateTokens.
   async getQuote(request: QuoteBridgeRequest): Promise<AcrossQuoteResult> {
     // A quote reached without getIntermediateTokens (the SDK's cached intermediates) skips its source gate.
-    if (!ACROSS_EXECUTABLE_SOURCE_IDS.has(request.sellTokenChainId)) {
+    if ((request.buyTokenChainId as number) === 130 || !ACROSS_EXECUTABLE_SOURCE_IDS.has(request.sellTokenChainId)) {
       throw new BridgeProviderQuoteError(BridgeQuoteErrors.NO_ROUTES, {
-        reason: 'Across is not executable from this source chain',
+        reason: 'Across is not executable for these networks',
         sellTokenChainId: request.sellTokenChainId,
       })
     }

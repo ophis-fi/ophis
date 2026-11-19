@@ -81,3 +81,9 @@ it('discovers WBTC conversion only for Ethereum to canonical Arc cirBTC, keeping
   expect(isBtcCctpSwap(wbtc, token(1))).toBe(false)
   expect(cctpBuyTokens({ sellChainId: 8453, buyChainId: ARC_CHAIN_ID, sellTokenAddress: wbtc.address })).toEqual([])
 })
+
+it('never advertises new routes to or from retired Unichain', () => {
+  expect(hasCctpRoute(130, 5042)).toBe(false)
+  expect(hasCctpRoute(5042, 130)).toBe(false)
+  expect(cctpBuyTokens({ sellChainId: 130, buyChainId: ARC_CHAIN_ID })).toEqual([])
+})

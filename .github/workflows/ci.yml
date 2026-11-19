@@ -286,6 +286,7 @@ jobs:
           }
           check "allowlist/deny removed"  's|if ! \[\[ "$target" =~ $ALLOW \]\] \|\| \[\[ "$target" =~ $DENY \]\]; then|if false; then|'
           check "DENY veto removed"       's|if ! \[\[ "$target" =~ $ALLOW \]\] \|\| \[\[ "$target" =~ $DENY \]\]; then|if ! [[ "$target" =~ $ALLOW ]]; then|'
+          check "retired-chain veto removed" 's|if \[\[ "$target" == unichain-mainnet-\* \]\]; then|if false; then|'
           check "sustained threshold removed" 's|if \[ "$unhealthy_for" -lt "$THRESHOLD_S" \]; then|if false; then|'
           check "restart cooldown removed"    's|if \[ "$last_restart" != "0" \] \&\& \[ "$since_restart" -lt "$COOLDOWN_S" \]; then|if false; then|'
           check "recovery timer reset removed" 's|      if ! clear_unhealthy "$name" "$cid"; then|      if false; then|'
@@ -395,7 +396,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: lint every chain's alert rules
         run: |
-          for chain in optimism-mainnet unichain-mainnet robinhood-mainnet; do
+          for chain in optimism-mainnet robinhood-mainnet; do
             echo "::group::promtool check rules — $chain"
             docker run --rm -v "$PWD/infra/$chain/observability":/w:ro \
               --entrypoint promtool prom/prometheus:v3.0.1 check rules /w/alerts.yml
@@ -406,7 +407,7 @@ jobs:
       - name: run alert unit tests where they exist
         run: |
           found=0
-          for chain in optimism-mainnet unichain-mainnet robinhood-mainnet; do
+          for chain in optimism-mainnet robinhood-mainnet; do
             test -f "infra/$chain/observability/alerts_test.yml" || continue
             found=1
             echo "::group::promtool test rules — $chain"

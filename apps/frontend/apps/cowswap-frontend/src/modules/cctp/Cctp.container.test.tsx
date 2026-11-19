@@ -1,6 +1,8 @@
 import { createStore, Provider } from 'jotai'
 import { type ReactNode } from 'react'
 
+import { useWalletChainId } from '@cowprotocol/wallet-provider'
+
 import { act, fireEvent, render, renderHook, screen } from '@testing-library/react'
 
 import { CctpSwapDetails, CctpSwapRecovery } from './Cctp.container'
@@ -12,8 +14,41 @@ jest.mock('legacy/state/application/hooks', () => ({ useToggleWalletModal: jest.
 jest.mock('@cowprotocol/wallet', () => ({
   useWalletInfo: () => ({ account: '0x0000000000000000000000000000000000000001', chainId: 1 }),
 }))
+jest.mock('@cowprotocol/wallet-provider', () => ({ useWalletChainId: jest.fn(() => 1) }))
 jest.mock('./useCctpWallet', () => ({ useCctpWallet: () => undefined }))
 jest.mock('./useCctpStatus', () => ({ useCctpStatus: () => ({ status: null, error: null }) }))
+
+it('claims a saved Unichain transfer after the actual wallet switches despite the app chain fallback', () => {
+  const claim = jest.fn()
+  const switchNetwork = jest.fn()
+  const route = {
+    active: false,
+    flow: {
+      transfer: {
+        source: 1,
+        destination: 130,
+        owner: '0x0000000000000000000000000000000000000001',
+        amount: '1000000',
+        maxFee: '1000',
+        quotedAt: 1,
+      },
+      status: { sourceConfirmed: true, message: '0x01', text: 'Ready to claim' },
+      claim,
+      switchNetwork,
+    },
+  } as unknown as ReturnType<typeof useCctpSwapRoute>
+  jest.mocked(useWalletChainId).mockReturnValue(1)
+  const { rerender } = render(<CctpSwapRecovery route={route} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Switch to Unichain' }))
+  expect(switchNetwork).toHaveBeenCalledWith(130)
+  expect(claim).not.toHaveBeenCalled()
+
+  jest.mocked(useWalletChainId).mockReturnValue(130)
+  rerender(<CctpSwapRecovery route={route} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Claim on Unichain' }))
+  expect(claim).toHaveBeenCalledTimes(1)
+  expect(screen.queryByRole('button', { name: 'Switch to Unichain' })).toBeNull()
+})
 
 it('keeps the CCTP constraint visible without replacing generic provider actions', () => {
   const route = {

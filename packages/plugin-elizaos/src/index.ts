@@ -7,7 +7,7 @@ import { ophisSwapAction } from './actions/swap.js';
  * The agent signs orders with its OWN EVM key (EIP-712), so there is no managed-
  * wallet dependency. Each order carries the Ophis partner fee in appData; set
  * OPHIS_REFERRAL_CODE for campaign-dependent attribution. Reuses the shared `@ophis/agent-swap`
- * core, so approve + sign + submit (and OP/Unichain non-canonical addresses) are
+ * core, so approve + sign + submit (and OP/Robinhood non-canonical addresses) are
  * handled for you.
  *
  * Settings (via character settings / env): EVM_PRIVATE_KEY (required),

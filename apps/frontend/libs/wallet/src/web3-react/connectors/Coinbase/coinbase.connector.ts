@@ -105,7 +105,6 @@ export class CoinbaseWallet extends Connector {
         appChainIds: [
           ...ALL_SUPPORTED_CHAIN_IDS,
           10 as unknown as SupportedChainId,
-          130 as unknown as SupportedChainId, // Ophis fork: Unichain
           4663 as unknown as SupportedChainId, // Ophis fork: Robinhood Chain
         ],
         appLogoUrl: CowImage,

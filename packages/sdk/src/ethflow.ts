@@ -14,7 +14,7 @@
  *
  * SOURCE OF TRUTH for the addresses (kept in lockstep with the frontend):
  *   - apps/frontend/libs/common-const/src/common.ts `OPHIS_ETHFLOW_OVERRIDES`
- *     (Ophis-operated chains: OP 10, Unichain 130, Robinhood 4663)
+ *     (Ophis-operated chains: OP 10, Robinhood 4663)
  *   - @cowprotocol/sdk-config `ETH_FLOW_ADDRESSES` (external canonical eth-flow,
  *     CREATE2-deterministic across the upstream protocol's SupportedChainId set)
  *   - the on-chain struct + selector: the CoWSwapEthFlow `createOrder` ABI
@@ -47,7 +47,6 @@ import {
  */
 const OPHIS_OPERATED_ETHFLOW: Readonly<Record<number, `0x${string}`>> = {
   10: '0x764fE4aa1FF493cf39931c7923C8ff5837596504',
-  130: '0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7', // Unichain — CoWSwapEthFlow (deployed 2026-06-29; verified on-chain, ToB+Verity reviewed)
   4663: '0xC1Ee77e8a1B85D5EED702a9bB435f434408A4d29', // Robinhood — CoWSwapEthFlow (deployed 2026-07-28; tx 0x2a53f639…21dcf)
 };
 
@@ -84,7 +83,8 @@ const buildEthFlowMap = (): Record<number, `0x${string}`> => {
 /**
  * Frozen, immutable, null-prototype per-chain eth-flow address map. Typed
  * `Partial` because most numeric chainIds are absent: a chain absent here does
- * NOT support native-ETH via Ophis (wrap to WETH and use `buildOphisOrderCreation`).
+ * NOT support native-ETH via Ophis. On supported orderbook chains only, wrap to
+ * WETH and use `buildOphisOrderCreation`.
  * The key set is a subset of `OPHIS_ORDERBOOK_URLS`, so native-ETH support always
  * implies a live orderbook to upload the appData to.
  */
@@ -98,7 +98,7 @@ export const isOphisEthFlowChain = (chainId: number): boolean => {
 
 /**
  * The eth-flow contract address for a chain, or `undefined` if native ETH is
- * not supported there (wrap to WETH instead). Throws on an invalid chainId.
+ * not supported there (wrap to WETH only on supported orderbook chains). Throws on an invalid chainId.
  * Uses an own-property check so a polluted prototype cannot make this return a
  * forged address for an unsupported chain (fail-closed).
  */
@@ -285,6 +285,9 @@ export const ethFlowOrderToTuple = (o: EthFlowOrderData): EthFlowOrderTuple =>
 export function buildOphisEthFlowOrder(params: OphisEthFlowParams): OphisEthFlowOrder {
   const { chainId, buyToken, owner, sellAmount, buyAmount, fullAppData, appDataHash, validTo, quoteId, hashAppData } = params;
 
+  if (chainId === 130) {
+    throw new Error('Ophis: Unichain (130) is retired and no longer supported. Choose a supported network.');
+  }
   const ethFlowContract = getOphisEthFlowAddress(chainId);
   if (ethFlowContract === undefined) {
     throw new Error(

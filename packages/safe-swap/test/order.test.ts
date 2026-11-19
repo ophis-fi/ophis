@@ -7,9 +7,9 @@ import { decodeFunctionData } from 'viem';
 // the transitive @cowprotocol/contracts source (the repo convention, see
 // packages/agent-swap/tests/swap.test.ts).
 const OP_SETTLEMENT = '0x310784c7FCE12d578dA6f53460777bAc9718B859';
-const UNI_SETTLEMENT = '0x108A678716e5E1776036eF044CAB7064226F714E';
+const ROBINHOOD_SETTLEMENT = '0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD';
 const OP_RELAYER = '0x8383838383838383838383838383838383838383';
-const UNI_RELAYER = '0xabababababababababababababababababababab';
+const ROBINHOOD_RELAYER = '0xabababababababababababababababababababab';
 
 vi.mock('@ophis/sdk', () => ({
   ophisOrderReceiver: (owner: string) => owner,
@@ -17,12 +17,12 @@ vi.mock('@ophis/sdk', () => ({
     if (owner.toLowerCase() !== receiver.toLowerCase()) throw new Error('receiver != owner');
   },
   getOphisSettlementAddress: (chainId: number) => {
-    const m: Record<number, string> = { 10: OP_SETTLEMENT, 130: UNI_SETTLEMENT };
+    const m: Record<number, string> = { 10: OP_SETTLEMENT, 4663: ROBINHOOD_SETTLEMENT };
     if (!m[chainId]) throw new Error(`no settlement for ${chainId}`);
     return m[chainId];
   },
   getOphisVaultRelayer: (chainId: number) => {
-    const m: Record<number, string> = { 10: OP_RELAYER, 130: UNI_RELAYER };
+    const m: Record<number, string> = { 10: OP_RELAYER, 4663: ROBINHOOD_RELAYER };
     if (!m[chainId]) throw new Error(`no relayer for ${chainId}`);
     return m[chainId];
   },
@@ -30,7 +30,7 @@ vi.mock('@ophis/sdk', () => ({
     name: 'Gnosis Protocol',
     version: 'v2',
     chainId,
-    verifyingContract: chainId === 130 ? UNI_SETTLEMENT : OP_SETTLEMENT,
+    verifyingContract: chainId === 4663 ? ROBINHOOD_SETTLEMENT : OP_SETTLEMENT,
   }),
 }));
 
@@ -160,12 +160,12 @@ describe('buildPresignTxBatch', () => {
     expect(decodeApprove(txs[1]!.data).args[1]).toBe(1_000_000n);
   });
 
-  it('resolves distinct Ophis settlement per chain (OP vs Unichain)', () => {
+  it('resolves distinct Ophis settlement per chain (OP vs Robinhood)', () => {
     const op = buildPresignTxBatch({ chainId: 10, orderUid: ORDER_UID, sellToken: SELL, pullAmount: 1n, currentAllowance: 1n });
-    const uni = buildPresignTxBatch({ chainId: 130, orderUid: ORDER_UID, sellToken: SELL, pullAmount: 1n, currentAllowance: 1n });
+    const robinhood = buildPresignTxBatch({ chainId: 4663, orderUid: ORDER_UID, sellToken: SELL, pullAmount: 1n, currentAllowance: 1n });
     expect(op.settlement.toLowerCase()).toBe(OP_SETTLEMENT.toLowerCase());
-    expect(uni.settlement.toLowerCase()).toBe(UNI_SETTLEMENT.toLowerCase());
-    expect(op.settlement.toLowerCase()).not.toBe(uni.settlement.toLowerCase());
+    expect(robinhood.settlement.toLowerCase()).toBe(ROBINHOOD_SETTLEMENT.toLowerCase());
+    expect(op.settlement.toLowerCase()).not.toBe(robinhood.settlement.toLowerCase());
   });
 });
 

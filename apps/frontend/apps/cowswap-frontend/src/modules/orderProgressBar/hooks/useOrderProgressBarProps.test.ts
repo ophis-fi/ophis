@@ -155,7 +155,7 @@ describe('solver attribution', () => {
     })
   })
 
-  it.each([10, 130, 4663, 5042])('resolves a registered routing lane on chain %s without CMS data', (chainId) => {
+  it.each([10, 4663, 5042])('resolves a registered routing lane on chain %s without CMS data', (chainId) => {
     expect(mergeSolverData({ solver: 'kyberswap-solve' }, {}, chainId, i18n._.bind(i18n))).toMatchObject({
       solver: 'kyberswap',
       displayName: 'Ophis',

@@ -33,7 +33,7 @@ describe('Ophis token policy', () => {
     ).toEqual({ allowed: true, reason: 'approved' })
   })
 
-  it.each([1, 10, 56, 100, 130, 137, 4_663, 8_453, 9_745, 42_161, 43_114, 57_073, 59_144])(
+  it.each([1, 10, 56, 100, 137, 4_663, 8_453, 9_745, 42_161, 43_114, 57_073, 59_144])(
     'keeps chain %s available under established settlement',
     (chainId) => {
       expect(

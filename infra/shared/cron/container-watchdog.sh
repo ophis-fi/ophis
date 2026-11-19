@@ -89,7 +89,7 @@ ALLOW="${WATCHDOG_ALLOW:-driver|orderbook|rpc-proxy|solver}"
 # `-chain-` (with both hyphens) matches the local Anvil node `local-chain-1`,
 # which HAS a healthcheck, without matching `unichain-mainnet-*` -- there the
 # preceding character is `i`, not `-`, so the Unichain driver/orderbook stay
-# eligible. Restarting a dev chain discards its state, which is the same class
+# separately retired below. Restarting a dev chain discards its state, the same class
 # of harm as bouncing a real node (Codex review, 2026-08-24).
 DENY="${WATCHDOG_DENY:--db-|postgres|-pg-|nitro|-chain-|jaeger|prometheus|alertmanager}"
 
@@ -300,6 +300,11 @@ while IFS=$'\t' read -r cid name status; do
   # --- container is unhealthy from here down ---
   target="$(restart_target "$name")"
   [ "$target" != "$name" ] && log "note: $name is a health sidecar; restart target is $target"
+
+  if [[ "$target" == unichain-mainnet-* ]]; then
+    log "retired chain, leaving alone: $name (target $target)"
+    continue
+  fi
 
   # ALLOW/DENY is decided on the TARGET, not the reporting sidecar — otherwise a
   # sidecar named `<something-db>-health` could smuggle a database past DENY.

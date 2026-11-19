@@ -27,7 +27,7 @@ fails=0
 # Deliberately NOT a reimplementation: a checker that reimplements what it
 # checks cannot fail on a bug in the original.
 extract() { awk -v fn="^$1\\\\(\\\\)" '$0 ~ fn{f=1} f{print} f&&/^\}/{exit}' "$SCRIPT"; }
-for fn in sdk_signal stub_signal; do
+for fn in sdk_signal stub_signal prev_of; do
   body=$(extract "$fn")
   [[ -z "$body" ]] && { echo "FATAL: could not extract $fn() from $SCRIPT"; exit 1; }
   eval "$body"
@@ -100,34 +100,34 @@ run() { # $1 probe fn, $2 label, $3 expected, $4 original ('' = not a mutation)
 mutate() { perl -0777 -pe "$1" <<< "$2"; }   # $1 = expr, $2 = input -> stdout
 
 echo "sdk_enum probe:"
-run sdk_signal "baseline (no CoW support)" "optimism=no unichain=no" "" <<< "$TYPES_TS"
+run sdk_signal "baseline (no CoW support)" "optimism=no" "" <<< "$TYPES_TS"
 
 # The neighbouring EvmChains enum legitimately lists OPTIMISM: must not leak in.
 # (Covered by the baseline above: the fixture already contains it.)
 
 # A member commented out with /* */ rather than // must NOT read as arrival.
-run sdk_signal "block-commented member" "optimism=no unichain=no" "$TYPES_TS" \
+run sdk_signal "block-commented member" "optimism=no" "$TYPES_TS" \
   <<< "$(mutate 's{^(export enum SupportedChainId \{\n)}{$1  /* OPTIMISM = OPTIMISM_ID, */\n}m' "$TYPES_TS")"
 
-run sdk_signal "multiline block comment" "optimism=no unichain=no" "$TYPES_TS" \
-  <<< "$(mutate 's{^(export enum SupportedChainId \{\n)}{$1  /* soon:\n     UNICHAIN = UNICHAIN_ID,\n   */\n}m' "$TYPES_TS")"
+run sdk_signal "multiline block comment" "optimism=no" "$TYPES_TS" \
+  <<< "$(mutate 's{^(export enum SupportedChainId \{\n)}{$1  /* soon:\n     OPTIMISM = OPTIMISM_ID,\n   */\n}m' "$TYPES_TS")"
 
 # A reflowed declaration must not blind the probe. The old line-anchored version
 # returned ERR here, and ERR transitions are suppressed by the alerting layer,
 # so the probe would have gone permanently silent.
-run sdk_signal "reflowed declaration" "optimism=no unichain=no" "$TYPES_TS" \
+run sdk_signal "reflowed declaration" "optimism=no" "$TYPES_TS" \
   <<< "$(mutate 's{^export enum SupportedChainId \{$}{export enum\n  SupportedChainId\n\{}m' "$TYPES_TS")"
 
-run sdk_signal "decoy commented enum ignored" "optimism=no unichain=no" "$TYPES_TS" \
+run sdk_signal "decoy commented enum ignored" "optimism=no" "$TYPES_TS" \
   <<< "$(mutate 's{^(// export enum SupportedChainId \{\n)}{$1//   OPTIMISM = 10,\n}m' "$TYPES_TS")"
 
 # THE POINT OF THE WHOLE TRIPWIRE: a genuine arrival must still fire.
-run sdk_signal "REAL optimism arrival" "optimism=YES unichain=no" "$TYPES_TS" \
+run sdk_signal "REAL optimism arrival" "optimism=YES" "$TYPES_TS" \
   <<< "$(mutate 's{^(export enum SupportedChainId \{\n)}{$1  OPTIMISM = OPTIMISM_ID,\n}m' "$TYPES_TS")"
 
 # ...even if upstream reflows in the same release.
-run sdk_signal "REAL arrival + reflow" "optimism=no unichain=YES" "$TYPES_TS" \
-  <<< "$(mutate 's{^(export enum SupportedChainId \{\n)}{$1  UNICHAIN = UNICHAIN_ID,\n}m; s{^export enum SupportedChainId \{$}{export enum\n  SupportedChainId\n\{}m' "$TYPES_TS")"
+run sdk_signal "REAL arrival + reflow" "optimism=YES" "$TYPES_TS" \
+  <<< "$(mutate 's{^(export enum SupportedChainId \{\n)}{$1  OPTIMISM = OPTIMISM_ID,\n}m; s{^export enum SupportedChainId \{$}{export enum\n  SupportedChainId\n\{}m' "$TYPES_TS")"
 
 # Structural change must surface as PARSE, not hide behind ERR suppression.
 run sdk_signal "enum renamed -> PARSE" "PARSE" "$TYPES_TS" \
@@ -153,6 +153,14 @@ run stub_signal "other chain only -> GONE" "GONE" "" \
   <<< "export const X = 1 // BASE is bridge-only for now."
 
 run stub_signal "fetch failure -> ERR" "ERR" "" <<< ""
+
+STATE_FILE=$(mktemp)
+trap 'rm -f "$STATE_FILE"' EXIT
+printf 'sdk_enum optimism=YES unichain=no\n' > "$STATE_FILE"
+if [[ "$(prev_of sdk_enum)" != "optimism=YES" ]]; then
+  echo "FAIL: retired SDK state must preserve the Optimism signal"
+  fails=$((fails + 1))
+fi
 
 echo
 if [[ $fails -eq 0 ]]; then echo "all probe tests passed"; else echo "$fails FAILING"; fi

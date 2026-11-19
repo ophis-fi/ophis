@@ -12,7 +12,7 @@ coverAlt: "Ophis emblem with Optimism and supported chain logos"
 
 To swap on Optimism, open the Ophis swap page with chain id 10 pre-selected, pick your pair, and sign the order your wallet shows. That order is an EIP-712 intent with a hard limit price, not a transaction: a competing solver network fills it and settles it in an MEV-protected batch. Pricing is a 1 bp base plus capped reference-quote improvement capture; see the [current schedule](/pricing/).
 
-Ophis, the intent-based DEX aggregator at ophis.fi, is a fork of CoW Protocol's frontend with a natural-language intent layer and an agent stack (MCP server, SDK, plugins) on top. It runs on 14 EVM chains, and Optimism is one of four where the deployment is sovereign, alongside [Unichain](/blog/how-to-swap-on-unichain/) [Robinhood Chain](/blog/swap-on-robinhood-chain/) and Arc: Ophis operates its own orderbook and settlement contracts there. This post covers the flow, what batch settlement changes versus a router, what it costs, and how integrators track routed volume.
+Ophis, the intent-based DEX aggregator at ophis.fi, is a fork of CoW Protocol's frontend with a natural-language intent layer and an agent stack (MCP server, SDK, plugins) on top. It runs on 13 EVM chains, and Optimism is one of three where the deployment is sovereign, alongside [Robinhood Chain](/blog/swap-on-robinhood-chain/) and Arc: Ophis operates its own orderbook and settlement contracts there. This post covers the flow, what batch settlement changes versus a router, what it costs, and how integrators track routed volume.
 
 ## Swap on Optimism in four steps
 
@@ -25,7 +25,7 @@ Step for step, this is the same flow as on any other Ophis chain. What is differ
 
 ## A sovereign deployment: own orderbook, own settlement
 
-On most of its chains, Ophis settles through CoW Protocol's canonical audited GPv2 contracts via api.cow.fi. On Optimism, Unichain, Robinhood Chain and Arc, Ophis operates its own orderbook and settlement deployment derived from CoW Protocol. The Optimism settlement address is:
+On most of its chains, Ophis settles through CoW Protocol's canonical audited GPv2 contracts via api.cow.fi. On Optimism, Robinhood Chain and Arc, Ophis operates its own orderbook and settlement deployment derived from CoW Protocol. The Optimism settlement address is:
 
 ```
 0x310784c7FCE12d578dA6f53460777bAc9718B859

@@ -759,7 +759,7 @@ export interface IntegratorEarnings {
 /**
  * Looks up what an integrator's own-fee routing earned, by appCode, from the live
  * rebate indexer's keyless GET /earnings/:appCode. The payload splits routed volume by
- * chain and by sovereign (Optimism, Unichain) vs externally hosted, and reports the Ophis base
+ * chain and by sovereign (Optimism, Robinhood Chain, Arc) vs externally hosted, and reports the Ophis base
  * fee, the integrator's OWN stacked fee, and the referral rebate paid-to-date with
  * payout tx links. Guaranteed/paid figures are scoped to the Ophis-operated chains; the
  * response carries a `disclaimer` describing the externally hosted accrual. Read-only, keyless.
@@ -797,7 +797,6 @@ const CHAIN_NAMES: Record<number, string> = {
   10: 'Optimism',
   56: 'BNB Chain',
   100: 'Gnosis',
-  130: 'Unichain',
   4663: 'Robinhood Chain',
   5042: 'Arc',
   137: 'Polygon',
@@ -883,7 +882,7 @@ const MULTICALL3: Address = '0xcA11bde05977b3631167028862bE2a173976CA11'
 
 /** Native gas-token symbol per chain (all 18-decimal). For display only. */
 export const NATIVE_SYMBOL: Record<number, string> = {
-  1: 'ETH', 10: 'ETH', 56: 'BNB', 100: 'xDAI', 130: 'ETH', 137: 'POL',
+  1: 'ETH', 10: 'ETH', 56: 'BNB', 100: 'xDAI', 137: 'POL',
   8453: 'ETH', 9745: 'XPL', 42161: 'ETH', 43114: 'AVAX',
   4663: 'ETH', 57073: 'ETH', 59144: 'ETH', 11155111: 'ETH',
   5042: 'USDC',
@@ -902,7 +901,6 @@ export const PUBLIC_RPCS: Record<number, string[]> = {
   10: ['https://optimism-rpc.publicnode.com', 'https://mainnet.optimism.io'],
   56: ['https://bsc-rpc.publicnode.com', 'https://bsc-dataseed.bnbchain.org'],
   100: ['https://gnosis-rpc.publicnode.com'],
-  130: ['https://mainnet.unichain.org'],
   4663: ['https://rpc.mainnet.chain.robinhood.com'],
   5042: ['https://rpc.mainnet.arc.io'],
   137: ['https://polygon-bor-rpc.publicnode.com', 'https://polygon.drpc.org'],
@@ -915,13 +913,13 @@ export const PUBLIC_RPCS: Record<number, string[]> = {
 
 /** GeckoTerminal network slug per chain (for the keyless OHLCV market API). */
 const GECKO_NETWORK: Record<number, string> = {
-  1: 'eth', 10: 'optimism', 56: 'bsc', 100: 'xdai', 130: 'unichain', 137: 'polygon_pos',
+  1: 'eth', 10: 'optimism', 56: 'bsc', 100: 'xdai', 137: 'polygon_pos',
   8453: 'base', 42161: 'arbitrum', 43114: 'avax', 57073: 'ink', 59144: 'linea',
 }
 
 /** KyberSwap aggregator path-slug per chain (the public beat-the-market reference). */
 const KYBER_SLUG: Record<number, string> = {
-  1: 'ethereum', 10: 'optimism', 130: 'unichain', 4663: 'robinhood', 56: 'bsc', 137: 'polygon', 8453: 'base',
+  1: 'ethereum', 10: 'optimism', 4663: 'robinhood', 56: 'bsc', 137: 'polygon', 8453: 'base',
   42161: 'arbitrum', 43114: 'avalanche', 59144: 'linea',
 }
 

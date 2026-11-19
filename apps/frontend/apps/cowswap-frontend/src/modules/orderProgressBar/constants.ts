@@ -105,8 +105,6 @@ export const CHAIN_SPECIFIC_BENEFITS: Record<SupportedChainId, MessageDescriptor
   [SupportedChainId.INK]: COW_SWAP_BENEFITS,
   // Ophis fork: OP mainnet (chain 10)
   [10 as unknown as SupportedChainId]: COW_SWAP_BENEFITS,
-  // Ophis fork: Unichain mainnet (chain 130)
-  [130 as unknown as SupportedChainId]: COW_SWAP_BENEFITS,
   // Ophis fork: Robinhood Chain mainnet (chain 4663)
   [4663 as unknown as SupportedChainId]: COW_SWAP_BENEFITS,
 }
@@ -135,11 +133,6 @@ export const CHAIN_AGGREGATION_INFO: Partial<Record<SupportedChainId, ChainAggre
       { solver: 'OKX V6', covers: 'OnchainOS aggregator covering Velodrome, Uniswap V3, Curve and others' },
       { solver: 'KyberSwap', covers: 'aggregator covering Velodrome, Uniswap V3, Beethoven X and OP-native pools' },
     ],
-  },
-  // Ophis fork: Unichain mainnet (chain 130)
-  [130 as unknown as SupportedChainId]: {
-    headline: 'Ophis aggregates liquidity across Unichain.',
-    sources: [{ solver: 'KyberSwap', covers: 'aggregator covering Uniswap V3/V4 and Unichain-native pools' }],
   },
   // Ophis fork: Robinhood Chain mainnet (chain 4663)
   [4663 as unknown as SupportedChainId]: {

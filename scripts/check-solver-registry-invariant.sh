@@ -30,7 +30,6 @@ set -euo pipefail
 #   <registry chain-id constant>|<autopilot config>
 CHAIN_PINS=(
   "OPHIS_SOLVER_REGISTRY_CHAIN_ID|infra/optimism-mainnet/configs/autopilot.toml"
-  "OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID|infra/unichain-mainnet/configs/autopilot.toml.tmpl"
   "OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID|infra/robinhood-mainnet/configs/autopilot.toml.tmpl"
   # Arc's autopilot template is embedded here; inspect it without rendering secrets.
   "OPHIS_ARC_SOLVER_REGISTRY_CHAIN_ID|infra/arc-mainnet/release/render.py"

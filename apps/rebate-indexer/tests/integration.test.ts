@@ -461,16 +461,23 @@ describe('GET /earnings/:appCode (getIntegratorEarnings)', () => {
     await sql`TRUNCATE wallet_chain_fetches, trades, tracked_wallets`;
   }, 30_000);
 
-  it('backfills own-fee columns on a verified pre-0014 row without rewriting the verified Ophis fee', async () => {
+  it.each([100, 130])('backfills historical own fees on chain %s without rewriting the verified Ophis fee', async (chain) => {
     const { sql } = await import('../src/db/index.js');
     const { backfillOwnFee } = await import('../src/fetcher.js');
     await sql`TRUNCATE wallet_chain_fetches, trades, tracked_wallets`;
     const INTEGRATOR = 'c1'.repeat(20); // the integrator's stacked own-fee recipient
     // A verified, fee-paying row indexed BEFORE 0014: own_fee columns NULL.
-    await insertTrade(sql, { uid: 'f1', chain: 100, code: 'bfcode', feeBps: 10, verified: true, volumeUsd: 1000, ownFeeBps: null, ownRecipHex: null, ts: OLDER });
+    await insertTrade(sql, { uid: 'f1', chain, code: 'bfcode', feeBps: 10, verified: true, volumeUsd: 1000, ownFeeBps: null, ownRecipHex: null, ts: OLDER });
     // An unverified discovery row must NOT be picked up by the backfill (it re-enriches
     // via the fetcher's upsert arm 2, not here).
     await insertTrade(sql, { uid: 'f2', chain: 100, code: 'bfcode', feeBps: 0, verified: false, volumeUsd: 1000, ownFeeBps: null, ownRecipHex: null, ts: NEWER });
+
+    if (chain === 130) {
+      expect(await backfillOwnFee(500)).toEqual({ scanned: 0, updated: 0 });
+      const [pending] = await sql<{ scanned: string | null }[]>`
+        SELECT own_fee_scanned_at AS scanned FROM trades WHERE trade_uid = decode(${'f1'.repeat(56)}, 'hex')`;
+      expect(pending?.scanned).toBeNull();
+    }
 
     // Stub the order read: a stacked partnerFee array (Ophis base + the integrator's own
     // 25 bps entry). No network / msw needed.

@@ -1,5 +1,5 @@
 import { sql as dsql } from 'drizzle-orm';
-import { listTrades, getOrder, hasAccountOrders, SUPPORTED_CHAIN_IDS } from './cow/client.js';
+import { listTrades, getOrder, hasAccountOrders, SUPPORTED_CHAIN_IDS, UNICHAIN_CHAIN_ID } from './cow/client.js';
 import { APP_CODES, type AppCode, type CowTrade } from './cow/types.js';
 import {
   HISTORICAL_OPHIS_FEE_MAX_BPS,
@@ -1632,11 +1632,13 @@ export async function backfillOwnFee(
   // Verified rows never yet scanned for an own-fee. The marker (not own_fee_bps) is the
   // work-queue state, so a no-own-fee row is scanned once and then leaves the set. No
   // volume_fee_bps filter, so surplus/PI rows (volume_fee_bps NULL) are covered too.
+  // Retired rows stay queued until an explicit historical order reader is supplied.
   const rows = await sql<{ uid_hex: string; chain_id: number }[]>`
     SELECT encode(trade_uid, 'hex') AS uid_hex, chain_id
     FROM trades
     WHERE own_fee_scanned_at IS NULL
       AND fee_verified = true
+      AND (chain_id <> ${UNICHAIN_CHAIN_ID} OR ${Boolean(deps.getOrder)})
     ORDER BY fetched_at ASC
     LIMIT ${limit}
   `;
@@ -1644,7 +1646,7 @@ export async function backfillOwnFee(
   let updated = 0;
   for (const r of rows) {
     scanned++;
-    if (!SUPPORTED_CHAIN_IDS.includes(r.chain_id)) {
+    if (!SUPPORTED_CHAIN_IDS.includes(r.chain_id) && r.chain_id !== UNICHAIN_CHAIN_ID) {
       // Not a chain we can re-fetch; it can never gain an own-fee here, so mark it
       // scanned so it leaves the queue and the backfill still converges.
       await markScanned(r.uid_hex);

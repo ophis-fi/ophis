@@ -102,7 +102,7 @@ export const ophisSwapAction: Action = {
       }
 
       // 4. Execute via the audited Ophis swap core (quote -> appData -> approve ->
-      // EIP-712 sign -> submit; OP/Unichain non-canonical addresses handled inside).
+      // EIP-712 sign -> submit; OP/Robinhood non-canonical addresses handled inside).
       // Trim the referral (env vars often carry a trailing newline) and validate the
       // grammar; an invalid code is DROPPED with a warning rather than blocking the
       // swap.
@@ -161,10 +161,10 @@ export const ophisSwapAction: Action = {
       },
     ],
     [
-      { name: '{{user}}', content: { text: 'Sell 0.5 WETH for USDC on Unichain' } },
+      { name: '{{user}}', content: { text: 'Sell 0.5 WETH for USDC on Optimism' } },
       {
         name: '{{agent}}',
-        content: { text: 'Routing 0.5 WETH → USDC on Unichain via Ophis for batch settlement…', actions: ['OPHIS_SWAP'] },
+        content: { text: 'Routing 0.5 WETH → USDC on Optimism via Ophis for batch settlement…', actions: ['OPHIS_SWAP'] },
       },
     ],
   ],

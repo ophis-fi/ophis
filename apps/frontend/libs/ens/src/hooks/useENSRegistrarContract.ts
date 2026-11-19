@@ -12,8 +12,6 @@ const ENS_REGISTRAR_ADDRESSES: Record<SupportedChainId, string | null> = {
   [SupportedChainId.SEPOLIA]: '0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e',
   // Ophis fork: no ENS registrar on OP mainnet
   [10 as unknown as SupportedChainId]: null,
-  // Ophis fork: no ENS registrar on Unichain mainnet (chain 130)
-  [130 as unknown as SupportedChainId]: null,
   [4663 as unknown as SupportedChainId]: null,
   // TODO: use mainnet registrar for all chains https://docs.ens.domains/learn/deployments, which means being connected to mainnet additionally to the other chain
 }

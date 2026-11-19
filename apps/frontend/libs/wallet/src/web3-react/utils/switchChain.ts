@@ -17,10 +17,6 @@ import {
 } from '@cowprotocol/cow-sdk'
 import { Connector } from '@web3-react/types'
 
-// Ophis fork: Unichain (130) isn't in the SDK chain set, so its RPC suggestion
-// comes from viem's `unichain` chain object.
-import { unichain } from 'viem/chains'
-
 import { getWeb3ReactConnection } from './getWeb3ReactConnection'
 import { isChainAllowed } from './isChainAllowed'
 
@@ -47,8 +43,6 @@ const WALLET_RPC_SUGGESTION: Record<SupportedChainId, HttpsString | null> = {
   [SupportedChainId.INK]: ink.rpcUrls.default.http[0],
   // Ophis fork: OP mainnet (chain 10)
   [10 as unknown as SupportedChainId]: optimism.rpcUrls.default.http[0],
-  // Ophis fork: Unichain (chain 130)
-  [130 as unknown as SupportedChainId]: unichain.rpcUrls.default.http[0] as HttpsString,
   // Ophis fork: Robinhood Chain (chain 4663)
   [4663 as unknown as SupportedChainId]: 'https://rpc.mainnet.chain.robinhood.com' as HttpsString,
 }

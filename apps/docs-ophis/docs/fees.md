@@ -29,7 +29,7 @@ On a 100 USDC swap, the Ophis base fee is 0.01 USDC.
 
 | Settlement stack | Networks |
 | --- | --- |
-| Ophis-operated | Optimism, Unichain, Robinhood Chain, Arc |
+| Ophis-operated | Optimism, Robinhood Chain, Arc |
 | Partner-hosted | Ethereum, Arbitrum, Avalanche, Base, BNB Chain, Gnosis, Ink, Linea, Plasma, Polygon |
 
 Gas, liquidity-pool fees, price impact and bridge costs also affect the amount you receive. Review the final quote before signing.

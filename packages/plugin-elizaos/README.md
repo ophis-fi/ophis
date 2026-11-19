@@ -37,13 +37,13 @@ Add it to your character:
 ## Use
 
 > "Swap 100 USDC for WETH on Base via Ophis"
-> "Sell 0.5 WETH for USDC on Unichain"
+> "Sell 0.5 WETH for USDC on Optimism"
 
 The `OPHIS_SWAP` action extracts the intent, resolves the chain + token addresses, and executes the swap through the shared `@ophis/agent-swap` core (quote → Ophis fee `appData` → approve the vault relayer → EIP-712-sign the order → submit). It returns the order UID and an `explorer.ophis.fi` tracking link.
 
 ## Supported chains
 
-Ethereum, Optimism, BNB, Gnosis, **Unichain**, Polygon, Base, Ink, Arbitrum, Avalanche, Linea. Optimism and Unichain are Ophis-operated and use the published capped improvement-capture policy. Same-chain only. Version 0.3.8 uses SDK 0.4.6; this does not expand the plugin's chain resolver to Arc, Robinhood Chain or Plasma. Its configured referral default applies if an Arc wallet is supplied through a custom resolver.
+Ethereum, Optimism, BNB, Gnosis, Polygon, Base, Ink, Arbitrum, Avalanche, Linea. Optimism is Ophis-operated and use the published capped improvement-capture policy. Same-chain only. Version 0.3.8 uses SDK 0.4.6; this does not expand the plugin's chain resolver to Arc, Robinhood Chain or Plasma. Its configured referral default applies if an Arc wallet is supplied through a custom resolver.
 
 ## Tokens
 

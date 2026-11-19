@@ -22,7 +22,6 @@ export const RELAY_CHAINS: Readonly<Record<number, string>> = {
   10: 'optimism',
   56: 'bnb',
   100: 'gnosis',
-  130: 'unichain',
   137: 'polygon',
   4663: 'robinhood',
   5042: 'arc',

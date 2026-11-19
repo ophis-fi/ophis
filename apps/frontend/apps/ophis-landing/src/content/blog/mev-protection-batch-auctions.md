@@ -80,7 +80,7 @@ and a network of competing solvers proposes settlements: which orders to fill,
 against which liquidity, at what prices. The solver offering the best execution
 wins the right to settle the batch on-chain, in a single transaction that the
 solver, not you, submits. On most chains that settlement goes through CoW
-Protocol's GPv2 contracts; on Optimism, Unichain, Robinhood Chain and Arc, Ophis
+Protocol's GPv2 contracts; on Optimism, Robinhood Chain and Arc, Ophis
 operates its own orderbook and settlement deployment derived from GPv2. Shared
 foundations do not establish identical audit coverage or execution quality.
 
@@ -147,8 +147,8 @@ still require gas. See the [docs FAQ](https://docs.ophis.fi/faq).
 
 ### Which chains support it?
 
-The app supports 14 EVM chains, including Arc. SDK v0.4.3 and hosted MCP mappings also cover
-all 14 chains. Venue liquidity, bridge coverage and wallet requirements
+The app supports 13 EVM chains, including Arc. SDK v0.4.3 and hosted MCP mappings also cover
+all 13 chains. Venue liquidity, bridge coverage and wallet requirements
 vary; see the [current network matrix](https://docs.ophis.fi/networks-assets).
 
 ## Sign an intent instead

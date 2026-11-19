@@ -16,7 +16,15 @@ import {
 import { z } from 'zod'
 
 import { CCTP_ABI, CCTP_API, FORWARD_HOOK, MESSAGE_TRANSMITTER, QUOTE_LIFETIME_MS, cctpNetwork } from './cctp.const'
-import { cctpAsset, cctpToken, cctpService, cctpSpender, cctpMaxAmount, type CctpAsset } from './cctpAssets.const'
+import {
+  cctpAsset,
+  cctpToken,
+  cctpService,
+  cctpSpender,
+  cctpMaxAmount,
+  supportsCctpAsset,
+  type CctpAsset,
+} from './cctpAssets.const'
 import {
   assertCctpxQuote,
   assertCctpxTerms,
@@ -106,6 +114,8 @@ export async function quoteCctp(
   asset: CctpAsset = 'USDC',
 ): Promise<CctpQuote> {
   if (source === destination) throw new Error('Choose two different networks')
+  if (!supportsCctpAsset(source, asset) || !supportsCctpAsset(destination, asset))
+    throw new Error('Unsupported CCTP network')
   cctpToken(source, asset)
   cctpToken(destination, asset)
   const amount = parseCctpAmount(input, asset)
@@ -151,6 +161,11 @@ export function assertCctpTerms(quote: CctpQuote): void {
 
 export function assertCctpQuote(quote: CctpQuote, now = Date.now()): void {
   assertCctpTerms(quote)
+  if (
+    !supportsCctpAsset(quote.source, quote.asset ?? 'USDC') ||
+    !supportsCctpAsset(quote.destination, quote.asset ?? 'USDC')
+  )
+    throw new Error('Unsupported CCTP network')
   if (now < quote.quotedAt || now - quote.quotedAt > QUOTE_LIFETIME_MS)
     throw new Error('Bridge quote expired. Refresh the fee before signing.')
 }

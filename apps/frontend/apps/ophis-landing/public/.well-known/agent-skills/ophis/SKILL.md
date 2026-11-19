@@ -13,39 +13,30 @@ metadata:
         - jq
         - cast
     web3:
-      networks: [10, 130, 4663]
+      networks: [10, 4663]
       protocol: intent-dex-aggregator
       policy:
         allowedContracts:
           10:
             - "0x310784c7FCE12d578dA6f53460777bAc9718B859" # GPv2Settlement (Ophis deployment, Optimism)
             - "0x83847EaB41ad9ea43809ce71569eB2e9daF51830" # GPv2VaultRelayer (Ophis deployment, Optimism)
-          130:
-            - "0x108A678716e5E1776036eF044CAB7064226F714E" # GPv2Settlement (Ophis deployment, Unichain)
-            - "0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb" # GPv2VaultRelayer (Ophis deployment, Unichain)
           4663:
             - "0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD" # GPv2Settlement (Ophis deployment, Robinhood Chain)
             - "0xB52C38097c19cd38238c62DD36027a7918eFa890" # GPv2VaultRelayer (Ophis deployment, Robinhood Chain)
         allowedSpenders:
           10: ["0x83847EaB41ad9ea43809ce71569eB2e9daF51830"]
-          130: ["0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb"]
           4663: ["0xB52C38097c19cd38238c62DD36027a7918eFa890"]
         eip712Domains:
           10:
             name: "Gnosis Protocol"
             version: "v2"
             verifyingContract: "0x310784c7FCE12d578dA6f53460777bAc9718B859"
-          130:
-            name: "Gnosis Protocol"
-            version: "v2"
-            verifyingContract: "0x108A678716e5E1776036eF044CAB7064226F714E"
           4663:
             name: "Gnosis Protocol"
             version: "v2"
             verifyingContract: "0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD"
         orderbooks:
           10: "https://optimism-mainnet.ophis.fi"
-          130: "https://unichain-mainnet.ophis.fi"
           4663: "https://robinhood-mainnet.ophis.fi"
         slippage:
           defaultBips: 50
@@ -68,7 +59,6 @@ three Ophis-operated chains, not every chain in the swap app:
 | Chain | chainId | Orderbook host |
 | --- | --- | --- |
 | Optimism | 10 | `https://optimism-mainnet.ophis.fi` |
-| Unichain | 130 | `https://unichain-mainnet.ophis.fi` |
 | Robinhood Chain | 4663 | `https://robinhood-mainnet.ophis.fi` |
 
 Arc (5042) is also Ophis-operated and is supported by the published SDK and
@@ -145,14 +135,11 @@ amounts exceed 53-bit floats; never do amount math in `jq` or shell).
 ## Picking the chain
 
 ```bash
-chainId=10   # or 130, or 4663
+chainId=10   # or 4663
 case "$chainId" in
   10)   ORDERBOOK="https://optimism-mainnet.ophis.fi"
         SETTLEMENT="0x310784c7FCE12d578dA6f53460777bAc9718B859"
         RELAYER="0x83847EaB41ad9ea43809ce71569eB2e9daF51830" ;;
-  130)  ORDERBOOK="https://unichain-mainnet.ophis.fi"
-        SETTLEMENT="0x108A678716e5E1776036eF044CAB7064226F714E"
-        RELAYER="0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb" ;;
   4663) ORDERBOOK="https://robinhood-mainnet.ophis.fi"
         SETTLEMENT="0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD"
         RELAYER="0xB52C38097c19cd38238c62DD36027a7918eFa890" ;;

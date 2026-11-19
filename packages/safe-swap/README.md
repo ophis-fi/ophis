@@ -11,7 +11,7 @@ core builder) never imports a wallet SDK.
 
 > Maturity: published to npm and live. The Phase-B **on-chain policy module**
 > (`OphisVaultPolicyModule`) is deployed and has settled real module-gated
-> rebalances on five chains (Ethereum, Optimism, Base, Arbitrum, Unichain) — it is
+> rebalances on four active chains (Ethereum, Optimism, Base, Arbitrum) — it is
 > the strongest curator model and the recommended one (model C below). The module
 > contracts went through a 12-agent adversarial audit, Trail of Bits semgrep,
 > Echidna/Foundry invariant fuzzing, and independent review. See "Security".
@@ -32,7 +32,7 @@ import { buildOphisSafePresign } from '@ophis/safe-swap'
 
 const { orderUid, order, fullAppData, txs, settlement, relayer, enrollmentWarning } =
   await buildOphisSafePresign({
-    chainId: 130,                 // Unichain (or 10 = OP, 1, 8453, 42161, ...)
+    chainId: 10,                  // Optimism (or 1, 8453, 42161, ...)
     safe: vaultSafeAddress,       // order.from AND order.receiver
     sellToken: USDC,
     buyToken: WETH,
@@ -57,7 +57,7 @@ relayer / orderbook / signing domain by `chainId`, with no per-chain code. (A fe
 resolve a settlement but have no live orderbook, e.g. paused chains like 4326 / 999; those
 throw at the quote step and are not tradeable.)
 
-- **Ophis-operated** (non-canonical settlement): Optimism, Unichain, Robinhood Chain, Arc.
+- **Ophis-operated** (non-canonical settlement): Optimism, Robinhood Chain, Arc.
 - **externally hosted** (canonical settlement, fee via appData): Ethereum, Base, Arbitrum, Polygon,
   Gnosis, BNB, Avalanche, Linea, Ink, Plasma.
 
@@ -66,7 +66,7 @@ including referral attribution and trader enrollment. Arc charges a 1 bp base,
 with no backend improvement capture. Native USDC sentinels are rejected; use its six-decimal
 ERC-20 interface. This adds no Arc policy-module deployment or fork-test claim.
 
-The existing 12-chain suite checks the batch's **on-chain effects** against the REAL deployed
+The existing 11-chain suite checks the batch's **on-chain effects** against the REAL deployed
 contracts (excluding Robinhood Chain and Arc) — each deploys a Safe, funds the sell token, executes `[approve, setPreSignature]`, and
 asserts exact allowance to the real relayer + presignature recorded in the real settlement +
 exact-pull. This proves the on-chain surface the builder produces; it does NOT quote/submit an
@@ -89,7 +89,7 @@ const { order } = await buildOphisSafePresign({ ...params, ttlSeconds: 1500 })
 // the module re-derives the same orderUid, sets an EXACT allowance, and presigns.
 ```
 
-Live on Ethereum, Optimism, Base, Arbitrum, and Unichain with real settled rebalances.
+Live on Ethereum, Optimism, Base, Arbitrum with real settled rebalances.
 Operator guide: `docs/operations/vault-policy-module-trial-runbook.md` in the repo.
 
 ## Curator model A: MPC / owner key (protocol-kit)
@@ -121,7 +121,7 @@ import { ophisCuratorRolesPreset } from '@ophis/safe-swap/roles-preset'
 import { processPermissions, /* apply flow */ } from 'zodiac-roles-sdk'
 
 const preset = ophisCuratorRolesPreset({
-  chainId: 130,
+  chainId: 10,
   sellTokens: [USDC, WETH],     // the underlyings the curator may approve
 })
 // Apply `preset` to the curator role on your Roles Modifier via the zodiac-roles-sdk
@@ -158,7 +158,7 @@ off-chain builder guards plus the vault's guardian / timelock. The true "curator
 drain even if its key leaks" guarantee is **curator model C: the on-chain policy module**
 (decodes the full order on-chain and asserts receiver == vault + token allowlist +
 oracle floor + pinned appData + turnover cap) — built, audited (12-agent adversarial
-pass + Trail of Bits semgrep + Echidna/Foundry invariants), and live on five chains.
+pass + Trail of Bits semgrep + Echidna/Foundry invariants), and live on four active chains.
 
 > **With models A/B (no policy module), treat the curator MPC / Roles key as full
 > vault-owner-level custody.** A compromised curator key can `approve(relayer, MaxUint)`
@@ -179,12 +179,11 @@ so the clamp doesn't make the other in-flight orders unfillable.
 pnpm --filter @ophis/safe-swap test        # unit tests (guards, order/uid, executor, roles preset)
 
 # Fork integration tests (env-gated, need anvil + a fork RPC). They deploy a real Safe,
-# fund it, execute the batch against the REAL deployed OP / Unichain contracts, and assert
+# fund it, execute the batch against the REAL deployed OP contracts, and assert
 # exact allowance + presignature-in-real-settlement + exact-pull. A local fork has no upstream
 # solver network, so end-to-end settlement + the partner-fee transfer is validated by M4's
 # monitored real-chain rollout, not here.
 OPHIS_FORK_RPC=https://mainnet.optimism.io \
-OPHIS_FORK_RPC_UNICHAIN=https://mainnet.unichain.org \
   pnpm --filter @ophis/safe-swap test:fork
 ```
 

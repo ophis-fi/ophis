@@ -17,6 +17,7 @@ import { CCTP_ABI, FORWARD_HOOK, MESSAGE_TRANSMITTER, TOKEN_MESSENGER } from './
 import {
   cctpClient,
   circleGet,
+  quoteCctp,
   assertCctpQuote,
   calculateCctpFee,
   cctpBurnData,
@@ -281,3 +282,15 @@ it('keeps a pending manual claim locked when forwarding reverted and recovers a 
   expect(forwarding.mintHash).toBe(forwardTxHash)
   expect(forwarding.claimPending).toBe(false)
 })
+
+it.each(['source', 'destination'] as const)(
+  'rejects retired Unichain as %s but retains historical recovery terms',
+  async (side) => {
+    const chainId = 130
+    const oldTransfer = { ...transfer, [side]: chainId }
+    expect(() => assertCctpQuote(oldTransfer, 1000)).toThrow('Unsupported CCTP network')
+    expect(cctpTransferSchema.safeParse(oldTransfer).success).toBe(true)
+    await expect(quoteCctp(chainId, 5042, owner, '2')).rejects.toThrow('Unsupported CCTP network')
+    await expect(quoteCctp(8453, chainId, owner, '2')).rejects.toThrow('Unsupported CCTP network')
+  },
+)

@@ -50,16 +50,6 @@ const CHAINS = [
     settlement: getAddress('0x310784c7FCE12d578dA6f53460777bAc9718B859'),
     relayer: getAddress('0x83847EaB41ad9ea43809ce71569eB2e9daF51830'),
   },
-  {
-    name: 'Unichain',
-    id: 130,
-    rpcEnv: 'OPHIS_FORK_RPC_UNICHAIN',
-    port: 8552,
-    usdc: getAddress('0x078D782b760474a361dDA0AF3839290b0EF57AD6'),
-    weth: getAddress('0x4200000000000000000000000000000000000006'),
-    settlement: getAddress('0x108A678716e5E1776036eF044CAB7064226F714E'),
-    relayer: getAddress('0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb'),
-  },
   // --- externally hosted (canonical settlement, fee via appData) ---
   {
     name: 'Base',

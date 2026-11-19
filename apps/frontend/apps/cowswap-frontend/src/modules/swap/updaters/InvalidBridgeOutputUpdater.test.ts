@@ -80,7 +80,7 @@ describe('getInvalidBridgeOutputPatch', () => {
 })
 
 describe('getUnsupportedBridgePairPatch', () => {
-  it.each([130, 5042])('requires surface-level CCTP support to preserve source %s', (sourceChainId) => {
+  it.each([5042])('requires surface-level CCTP support to preserve source %s', (sourceChainId) => {
     const params = {
       sourceChainId: sourceChainId as SupportedChainId,
       targetChainId: SupportedChainId.MAINNET,
@@ -160,10 +160,7 @@ describe('getUnsupportedBridgePairPatch', () => {
     expect(result).toBeNull()
   })
 
-  it('clears cross-chain state when the source is a destination-only chain, even if it is in the network union', () => {
-    // Unichain (130) is in the widened provider network lists as a
-    // DESTINATION, but has no bridge execution machinery as a source — a
-    // crafted URL must not keep a cross-chain output alive from it.
+  it.each([false, true])('clears retired-source state (CCTP enabled: %s)', (cctpEnabled) => {
     const UNICHAIN_CHAIN_ID = 130
 
     const result = getUnsupportedBridgePairPatch({
@@ -171,6 +168,7 @@ describe('getUnsupportedBridgePairPatch', () => {
       targetChainId: SupportedChainId.MAINNET,
       bridgeSupportedNetworks: [{ id: UNICHAIN_CHAIN_ID }, { id: SupportedChainId.MAINNET }],
       isBridgeSupportedNetworksLoading: false,
+      cctpEnabled,
     })
 
     expect(result).toEqual({

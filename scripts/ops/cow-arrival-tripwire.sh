@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # CoW-arrival tripwire: weekly check for signals that CoW Protocol is about to
 # launch (or has launched) hosted support on Ophis's sovereign chains
-# (Optimism 10, Unichain 130). The sovereign positioning ("the only
+# (Optimism 10). The sovereign positioning ("the only
 # batch-auction venue on these chains, 100% fee keep") needs weeks of notice,
 # not a surprise.
 #
 # Signals watched (ordered by how early they fire):
-#   1. cow-sdk SupportedChainId promotion: Optimism/Unichain appearing inside
+#   1. cow-sdk SupportedChainId promotion: Optimism appearing inside
 #      the SupportedChainId enum (sell-from) on cow-sdk main. Earliest public
-#      code signal; today both are bridge-only (AdditionalTargetChainId).
+#      code signal; today it is bridge-only (AdditionalTargetChainId).
 #   2. cowswap networks.ts: the "bridge-only" stub comment for OPTIMISM
 #      disappearing from main (frontend migration started).
-#   3. barn.api.cow.fi/{optimism,unichain} flipping 404 -> 200: the staging
+#   3. barn.api.cow.fi/optimism flipping 404 -> 200: the staging
 #      orderbook exists, launch is imminent (days to weeks).
-#   4. api.cow.fi/{optimism,unichain} flipping 404 -> 200: launched.
+#   4. api.cow.fi/optimism flipping 404 -> 200: launched.
 #
 # State: JSON at $STATE_FILE; alerts fire only on CHANGE (no weekly noise).
 # Alerting: Telegram, bot token read from the macOS keychain entry
@@ -38,7 +38,7 @@ STATE_FILE="${STATE_FILE:-$HOME/.local/state/ophis/cow-tripwire.json}"
 TELEGRAM_CHAT_ID="${TELEGRAM_CHAT_ID:-735726338}"
 CURL="curl -sS --max-time 20"
 UA="ophis-cow-tripwire/1.0 (+https://ophis.fi)"
-KEYS="api_optimism api_unichain barn_optimism barn_unichain sdk_enum networks_stub"
+KEYS="api_optimism barn_optimism sdk_enum networks_stub"
 
 mkdir -p "$(dirname "$STATE_FILE")"
 
@@ -70,9 +70,9 @@ fetch_raw() { # $1 = url -> echoes body, or "" on any failure (incl. 4xx/5xx)
   $CURL --fail -A "$UA" "$1" 2>/dev/null || true
 }
 
-# cow-sdk: does the SupportedChainId enum block on main mention optimism/unichain?
-sdk_signal() { # echoes e.g. "optimism=no unichain=no", or "ERR"
-  local src block op un
+# cow-sdk: does the SupportedChainId enum block on main mention optimism?
+sdk_signal() { # echoes e.g. "optimism=no", or "ERR"
+  local src block op
   src=$(fetch_raw "https://raw.githubusercontent.com/cowprotocol/cow-sdk/main/packages/config/src/chains/types.ts")
   [[ -z "$src" ]] && { echo "ERR"; return; }
   # Parsed in slurp mode, NOT line by line. The previous line-anchored awk was
@@ -103,8 +103,7 @@ sdk_signal() { # echoes e.g. "optimism=no unichain=no", or "ERR"
   # grep -c always exits 0 here via the || 0 guard; count matches on the
   # comment-stripped block.
   op=$(grep -ci "optimism" <<< "$block" || true)
-  un=$(grep -ci "unichain" <<< "$block" || true)
-  echo "optimism=$([[ ${op:-0} -gt 0 ]] && echo YES || echo no) unichain=$([[ ${un:-0} -gt 0 ]] && echo YES || echo no)"
+  echo "optimism=$([[ ${op:-0} -gt 0 ]] && echo YES || echo no)"
 }
 
 # cowswap networks.ts: is the OPTIMISM bridge-only stub comment still there?
@@ -138,18 +137,14 @@ stub_signal() { # echoes "present", "GONE", or "ERR"
 # --- run checks ------------------------------------------------------------
 
 api_optimism=$(http_status "https://api.cow.fi/optimism/api/v1/version")
-api_unichain=$(http_status "https://api.cow.fi/unichain/api/v1/version")
 barn_optimism=$(http_status "https://barn.api.cow.fi/optimism/api/v1/version")
-barn_unichain=$(http_status "https://barn.api.cow.fi/unichain/api/v1/version")
 sdk_enum=$(sdk_signal)
 networks_stub=$(stub_signal)
 
 cur_of() { # $1 = key -> echoes its current value
   case "$1" in
     api_optimism) echo "$api_optimism" ;;
-    api_unichain) echo "$api_unichain" ;;
     barn_optimism) echo "$barn_optimism" ;;
-    barn_unichain) echo "$barn_unichain" ;;
     sdk_enum) echo "$sdk_enum" ;;
     networks_stub) echo "$networks_stub" ;;
   esac
@@ -158,8 +153,8 @@ cur_of() { # $1 = key -> echoes its current value
 # A wholesale collection failure is an ops problem, not a signal.
 errs=0
 for k in $KEYS; do [[ "$(cur_of "$k")" == "ERR" ]] && errs=$((errs + 1)); done
-if [[ $errs -ge 4 ]]; then
-  echo "tripwire: $errs/6 checks failed to run; skipping state update" >&2
+if [[ $errs -ge 3 ]]; then
+  echo "tripwire: $errs/4 checks failed to run; skipping state update" >&2
   exit 2
 fi
 
@@ -169,7 +164,8 @@ fi
 
 prev_of() { # $1 = key -> echoes the stored value ('' if none)
   [[ -f "$STATE_FILE" ]] || return 0
-  grep "^$1 " "$STATE_FILE" 2>/dev/null | head -1 | cut -d' ' -f2- || true
+  # Drop the retired signal from saved SDK state without raising a false alert.
+  grep "^$1 " "$STATE_FILE" 2>/dev/null | head -1 | cut -d' ' -f2- | sed 's/ unichain=[^ ]*//g' || true
 }
 
 # The known-safe baseline per key (CoW has NOT arrived). Used as the comparison
@@ -179,8 +175,8 @@ prev_of() { # $1 = key -> echoes the stored value ('' if none)
 # re-baselined and missing the arrival signal.
 safe_baseline_of() { # $1 = key -> echoes its arrival-negative value
   case "$1" in
-    api_optimism|api_unichain|barn_optimism|barn_unichain) echo "404" ;;
-    sdk_enum) echo "optimism=no unichain=no" ;;
+    api_optimism|barn_optimism) echo "404" ;;
+    sdk_enum) echo "optimism=no" ;;
     networks_stub) echo "present" ;;
   esac
 }
@@ -217,15 +213,7 @@ if [[ -n "$changes" ]]; then
   alert_ok=0
   echo "tripwire: CHANGES DETECTED"
   printf '%s' "$changes"
-  # Derive the affected chain(s) from the changed keys so the playbook points at
-  # the right chain rather than hardcoding Optimism/Unichain (a Unichain arrival
-  # signal must not tell ops to lean on Unichain). sdk_enum and networks_stub can
-  # touch either chain, so name both when they change.
-  affected=""
-  case "$changed_keys" in *api_optimism*|*barn_optimism*) affected="Optimism" ;; esac
-  case "$changed_keys" in *api_unichain*|*barn_unichain*) affected="${affected:+$affected and }Unichain" ;; esac
-  case "$changed_keys" in *sdk_enum*|*networks_stub*) affected="${affected:-Optimism and/or Unichain (check the diff)}" ;; esac
-  [[ -z "$affected" ]] && affected="the sovereign chains"
+  affected="Optimism"
   msg="COW ARRIVAL TRIPWIRE
 
 Signals changed on CoW's side for the Ophis sovereign chains:

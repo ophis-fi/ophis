@@ -6,7 +6,7 @@ import type { ChainInfo, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { CCTP_NETWORKS, useIsCctpEnabled } from 'entities/cctp'
 import useSWR, { SWRResponse } from 'swr'
 import { bridgingSdk } from 'tradingSdk/bridgingSdk'
-import { toBridgeChainInfo } from 'tradingSdk/ophisBridgeChains'
+import { RETIRED_UNICHAIN_BRIDGE_CHAIN, toBridgeChainInfo } from 'tradingSdk/ophisBridgeChains'
 
 import { useBridgeProvidersIds } from './useBridgeProvidersIds'
 
@@ -38,7 +38,8 @@ export function useBridgeSupportedNetworks(): SWRResponse<ChainInfo[]> {
 
 /**
  * Metadata for ONE chain id: provider-advertised first, then the app's own
- * getChainInfo (CHAIN_INFO plus the bridge-only destinations). A chain no
+ * getChainInfo (CHAIN_INFO plus the bridge-only destinations), with retired
+ * Unichain metadata retained for old receipts. A chain no
  * enabled quote provider advertises (the decode-only
  * Bungee lists none; Across is off for smart-contract wallets; NEAR does not
  * list Unichain) still needs its label/logo to render a historical order's
@@ -50,6 +51,7 @@ export function useBridgeSupportedNetwork(chainId: number | undefined): ChainInf
 
   return useMemo(() => {
     if (!chainId) return undefined
+    if (chainId === RETIRED_UNICHAIN_BRIDGE_CHAIN.id) return RETIRED_UNICHAIN_BRIDGE_CHAIN
 
     const advertised = networks?.find((chain) => chain.id === chainId)
     if (advertised) return advertised

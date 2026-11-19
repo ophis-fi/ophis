@@ -47,7 +47,7 @@ describe('buildOphisOrderMetadata', () => {
     ]);
   });
 
-  it.each([10, 130, 4663])('uses the 1 bp sovereign base on chain %i', (chainId) => {
+  it.each([10, 4663])('uses the 1 bp sovereign base on chain %i', (chainId) => {
     const { metadata } = buildOphisOrderMetadata({ chainId, referralCode: 'yourcode' });
     expect(metadata.partnerFee).toEqual({ recipient: OPHIS_PARTNER_FEE_RECIPIENT, volumeBps: 1 });
   });
@@ -283,4 +283,8 @@ describe('buildOphisOrderCreation', () => {
   it('throws on a malformed owner', () => {
     expect(() => buildOphisOrderCreation({ ...base, owner: '0xbad' as `0x${string}`, order: { receiver: OWNER } })).toThrow();
   });
+});
+
+it('refuses metadata for retired Unichain orders', () => {
+  expect(() => buildOphisOrderMetadata({ chainId: 130 })).toThrow(/no live Ophis orderbook/);
 });

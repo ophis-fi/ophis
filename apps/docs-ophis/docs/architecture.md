@@ -27,7 +27,7 @@ Offchain order submission, uniform clearing prices and peer matching reduce fron
 
 | Networks | Orderbook and solvers |
 | --- | --- |
-| Optimism, Unichain, Robinhood Chain, Arc | Ophis operates the orderbook and solver |
+| Optimism, Robinhood Chain, Arc | Ophis operates the orderbook and solver |
 | Ethereum, Arbitrum, Avalanche, Base, BNB Chain, Gnosis, Ink, Linea, Plasma, Polygon | Partner-operated orderbooks and solver network |
 
 The onchain `GPv2AllowListAuthentication` contract controls which solvers can settle orders. Each settlement enforces your signed limit price.
@@ -56,7 +56,7 @@ The [Intent API](/intent-api) converts natural language into a structured `Parse
 | --- | --- |
 | Model | LibertAI Qwen 3.6 27B, hosted on Aleph Cloud |
 | Temperature | `0` |
-| Chain validation | 14 supported slugs, including Arc |
+| Chain validation | 13 supported slugs, including Arc |
 | Output checks | Symbol syntax and source-text spans |
 
 A Cloudflare Pages Function holds the LibertAI API key server-side and validates the response. Your integration resolves token contracts, requests a quote and asks the wallet to sign.

@@ -64,7 +64,7 @@ function round(n: number, dp = 6): number {
 export interface EarningsChainRow {
   chainId: number;
   chainName: string;
-  /** true when Ophis operates the chain's orderbook and settlement stack. */
+  /** true for fees from an Ophis-operated stack, including retired historical deployments. */
   sovereign: boolean;
   routedVolumeUsd: number;
   trades: number;
@@ -90,7 +90,7 @@ export interface EarningsPayout {
 export interface IntegratorEarnings {
   appCode: string;
   generatedAt: string; // ISO
-  /** The Ophis-operated chains whose figures Ophis guarantees end to end. */
+  /** Active Ophis-operated chains; historical fee classification is retained in byChain. */
   sovereignChains: number[];
   /** Top-level plain-language scoping statement (deliverable requirement). */
   disclaimer: string;
@@ -182,7 +182,7 @@ const HOSTED_ACCRUAL_LABEL =
  * and the absence of any 30d/next-cycle leak without a database.
  */
 export function assembleEarnings(appCode: string, input: EarningsInput, now: Date): IntegratorEarnings {
-  const sovereignChains = [...SOVEREIGN_CHAIN_IDS].sort((a, b) => a - b);
+  const sovereignChains = [...SOVEREIGN_CHAIN_IDS].filter((chainId) => chainId !== 130).sort((a, b) => a - b);
 
   const byChain: EarningsChainRow[] = input.byChain
     .map((c) => {
@@ -286,8 +286,8 @@ export function assembleEarnings(appCode: string, input: EarningsInput, now: Dat
   const sovereignPaidToDateWeth = round(Number(ownPaidWeiTotal) / 1e18);
 
   const disclaimer =
-    `Trades on Optimism (10), Unichain (130), Robinhood (4663), and Arc (5042) settle through Ophis-operated stacks. ` +
-    `Own-fee payouts are currently guaranteed only on Optimism and Unichain. ` +
+    `Trades on Optimism (10), Robinhood (4663), and Arc (5042) settle through Ophis-operated stacks; Unichain (130) is retired. ` +
+    `Own-fee payouts are currently guaranteed only on Optimism and historical Unichain trades. ` +
     `Figures on CoW-hosted chains are ${HOSTED_ACCRUAL_LABEL}. ` +
     `Routed volume is cumulative (lifetime); this surface never reports a 30-day figure or a next-payout time.`;
 

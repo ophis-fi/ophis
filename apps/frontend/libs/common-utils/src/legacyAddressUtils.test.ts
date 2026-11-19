@@ -14,7 +14,6 @@ import {
 const CONTRACT = '0x9008D19f58AAbD9eD0D60971565AA8510560ab41'
 const ORDER_ID = `0x${'ab'.repeat(56)}`
 const OPTIMISM = 10 as unknown as SupportedChainId
-const UNICHAIN = 130 as unknown as SupportedChainId
 const ROBINHOOD = 4663 as unknown as SupportedChainId
 
 describe('explorer links', () => {
@@ -29,7 +28,6 @@ describe('explorer links', () => {
     SupportedChainId.BASE,
     SupportedChainId.GNOSIS_CHAIN,
     OPTIMISM,
-    UNICHAIN,
     ROBINHOOD,
   ])('contract source links use the native scanner of chain %s with a matching label', (chainId) => {
     const { explorer, explorerTitle } = CHAIN_INFO[chainId]
@@ -39,10 +37,6 @@ describe('explorer links', () => {
     expect(getBlockExplorerUrl(chainId, 'contract', CONTRACT)).toBe(`${explorer}/address/${CONTRACT}#code`)
     expect(getEtherscanLink(chainId, 'contract', CONTRACT)).toBe(`${explorer}/address/${CONTRACT}#code`)
     expect(getExplorerLabel(chainId, 'contract', CONTRACT)).toBe(`View on ${explorerTitle}`)
-  })
-
-  it('links Unichain contract source to Uniscan', () => {
-    expect(getBlockExplorerUrl(UNICHAIN, 'contract', CONTRACT)).toBe(`https://uniscan.xyz/address/${CONTRACT}#code`)
   })
 
   it('keeps the explicit explorer base override for contract links', () => {

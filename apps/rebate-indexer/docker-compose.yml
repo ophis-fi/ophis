@@ -84,7 +84,7 @@ services:
       # SETTLE_RPC_URL_130 for a keyed archive endpoint if the backfill lags. Start
       # blocks = each sovereign GPv2Settlement's first activity (from the orderbook
       # DBs). Defaults ACTIVATE the feature; set SETTLE_DECODER_CHAINS='' to disable.
-      SETTLE_DECODER_CHAINS: ${SETTLE_DECODER_CHAINS-10,130}
+      SETTLE_DECODER_CHAINS: ${SETTLE_DECODER_CHAINS-10}
       SETTLE_DECODER_DISCOVERY_ONLY: ${SETTLE_DECODER_DISCOVERY_ONLY:-true}
       SETTLE_SCAN_START_BLOCK_10: ${SETTLE_SCAN_START_BLOCK_10:-151586936}
       SETTLE_SCAN_START_BLOCK_130: ${SETTLE_SCAN_START_BLOCK_130:-51998330}

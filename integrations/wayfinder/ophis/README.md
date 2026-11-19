@@ -55,7 +55,7 @@ ok, result = await adapter.swap_exact_in(
 
 Ophis chains that also exist in the Wayfinder SDK's supported set: **Ethereum (1),
 BNB (56), Polygon (137), Base (8453), Arbitrum (42161), Avalanche (43114)**. Ophis also
-runs on Optimism (10), Unichain (130), Gnosis (100), Linea (59144) and Ink (57073), but
+runs on Optimism (10), Gnosis (100), Linea (59144) and Ink (57073), but
 Wayfinder does not support those, so they are intentionally excluded.
 
 ## Fund-safety notes

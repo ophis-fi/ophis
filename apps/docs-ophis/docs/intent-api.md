@@ -145,7 +145,7 @@ The parser returns these lowercase slugs:
 | `gnosis` | `ink` |
 | `linea` | `optimism` |
 | `plasma` | `polygon` |
-| `robinhood` | `unichain` |
+| `robinhood` | |
 
 ## Access controls {/* #access-control */}
 

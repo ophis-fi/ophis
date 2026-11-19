@@ -16,7 +16,6 @@ import {
   plasma,
   polygon,
   sepolia,
-  unichain,
 } from 'viem/chains'
 import { createConfig, Transport } from 'wagmi'
 
@@ -24,8 +23,6 @@ const SUPPORTED_CHAIN_IDS = Object.values(SupportedChainId).filter((v) => typeof
 
 // Ophis fork: OP mainnet (chain 10) added at frontend layer.
 const OPTIMISM_CHAIN_ID = 10 as unknown as SupportedChainId
-// Ophis fork: Unichain (chain 130) added at frontend layer, same pattern as OP.
-const UNICHAIN_CHAIN_ID = 130 as unknown as SupportedChainId
 const ROBINHOOD_CHAIN_ID = 4663 as unknown as SupportedChainId
 const robinhood = defineChain({
   id: 4663,
@@ -46,7 +43,6 @@ const ALL_CHAIN_IDS_FOR_WAGMI: SupportedChainId[] = [
   ...ARC_ENABLED_CHAIN_IDS,
   ...SUPPORTED_CHAIN_IDS,
   OPTIMISM_CHAIN_ID,
-  UNICHAIN_CHAIN_ID,
   ROBINHOOD_CHAIN_ID,
 ]
 
@@ -82,7 +78,6 @@ const SUPPORTED_CHAINS: Record<SupportedChainId, Chain> = {
   [SupportedChainId.INK]: ink,
   [SupportedChainId.SEPOLIA]: sepolia,
   [OPTIMISM_CHAIN_ID]: optimism,
-  [UNICHAIN_CHAIN_ID]: unichain,
   [ROBINHOOD_CHAIN_ID]: robinhood,
 }
 

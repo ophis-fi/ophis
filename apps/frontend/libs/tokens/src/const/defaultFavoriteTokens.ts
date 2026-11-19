@@ -48,7 +48,6 @@ import {
   USDT_INK,
   USDC_INK,
   USDC_OPTIMISM,
-  USDC_UNICHAIN,
   USDG_ROBINHOOD,
 } from '@cowprotocol/common-const'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
@@ -144,11 +143,6 @@ export const DEFAULT_FAVORITE_TOKENS: Record<SupportedChainId, TokensMap> = {
   [10 as unknown as SupportedChainId]: tokensListToMap([
     WRAPPED_NATIVE_CURRENCIES[10 as unknown as SupportedChainId],
     USDC_OPTIMISM,
-  ]),
-  // Ophis fork: Unichain mainnet (chain 130) favorites — WETH + USDC
-  [130 as unknown as SupportedChainId]: tokensListToMap([
-    WRAPPED_NATIVE_CURRENCIES[130 as unknown as SupportedChainId],
-    USDC_UNICHAIN,
   ]),
   // Ophis fork: Robinhood Chain mainnet (chain 4663) favorites — WETH + USDG.
   [4663 as unknown as SupportedChainId]: tokensListToMap([

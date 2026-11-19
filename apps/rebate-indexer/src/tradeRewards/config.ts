@@ -23,7 +23,7 @@ export const TRADE_REWARDS_ELIGIBLE_CHAIN_IDS = Object.freeze([
   10,     // Optimism
   8453,   // Base
   4663,   // Robinhood Chain
-  130,    // Unichain
+  130,    // Retired Unichain: preserve eligibility of historical trades
   9745,   // Plasma
   57073,  // Ink
   100,    // Gnosis Chain

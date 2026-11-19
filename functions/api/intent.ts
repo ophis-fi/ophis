@@ -219,7 +219,7 @@ Rules:
   "shiba inu" -> SHIB.
 - "stables"/"stablecoin" alone (no specific symbol) -> OMIT.
 - Chain canonical values: lowercase slugs. Allowed (mirrors SORTED_CHAIN_IDS in the FE — chains the NetworkSelector actually surfaces):
-    ethereum, arbitrum, arc, avalanche, base, bnb, gnosis, ink, linea, optimism, plasma, polygon, robinhood, unichain
+    ethereum, arbitrum, arc, avalanche, base, bnb, gnosis, ink, linea, optimism, plasma, polygon, robinhood
 - Chain aliases: "eth mainnet"/"l1"/"mainnet" (in chain context) -> ethereum. "op" -> optimism. "polygon pos" -> polygon. "bsc"/"binance smart chain" -> bnb. "arbitrum one"/"arb" -> arbitrum. "robinhood chain" -> robinhood.
 - Amount: numeric string only ("100", "1.5"). "a hundred" -> "100". "a thousand" -> "1000". No units. No suffix multipliers like "k" / "m".
 - ETH disambiguation: chain only when preceded by "on"/"via"/"using"; otherwise it is a token.
@@ -265,7 +265,6 @@ const CHAIN_VALUES = new Set([
   'plasma',
   'polygon',
   'robinhood',
-  'unichain',
 ])
 
 // Aliases the SYSTEM_PROMPT documents (raw phrase -> canonical value). Used to
@@ -712,6 +711,13 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   }
   if (text.length > MAX_TEXT_LEN) {
     return json({ ok: false, error: { code: 'BAD_INPUT', message: `text exceeds ${MAX_TEXT_LEN} chars` } }, 400)
+  }
+
+  // Reject before cache/model lookup so retirement cannot silently change the requested chain. Its id in decimal or hex
+  // (0x82), in a chain position only: an address that starts with 0x82 is no chain (CodeRabbit, PR #1680). The same
+  // opening punctuation and article as inChainContext: "on (130)" names the chain as much as "on 130".
+  if (/\bunichain\b|\b(?:chain(?:\s+id)?\s*[:=#]?|(?:on|via|using)\s+)\s*[("'[]?\s*(?:the\s+|an?\s+)?(?:130|0x0*82)\b/i.test(text)) {
+    return json({ ok: false, error: { code: 'BAD_INPUT', message: 'Unichain (130) is retired. Choose a supported network.' } }, 400)
   }
 
   // Edge cache lookup (Phase 3.8 / 2026-05-20). Normalized text +

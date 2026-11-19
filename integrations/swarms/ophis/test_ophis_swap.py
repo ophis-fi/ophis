@@ -10,6 +10,8 @@ import json
 import os
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(__file__))
 import ophis_core as oc  # noqa: E402
 import ophis_swap as t  # noqa: E402
@@ -148,7 +150,8 @@ def test_appdata_deterministic():
 
 
 def test_sovereign_chains_use_noncanonical_settlement():
-    # OP/Unichain use their non-canonical Settlement as the EIP-712 verifyingContract.
+    # OP/Robinhood use their non-canonical Settlement as the EIP-712 verifyingContract.
     assert oc.settlement_address(10) == "0x310784c7FCE12d578dA6f53460777bAc9718B859"
     assert oc.settlement_address(8453) == "0x9008D19f58AAbD9eD0D60971565AA8510560ab41"
-    assert oc.vault_relayer(130) == "0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb"
+    with pytest.raises(ValueError):
+        oc.vault_relayer(130)

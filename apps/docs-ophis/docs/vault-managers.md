@@ -57,11 +57,11 @@ An unlisted token is rejected as `TokenNotAllowed`. Your vault can still hold as
 
 ## Operational chains
 
-The `@ophis/safe-swap` v0.1.7 builder uses SDK v0.4.4 and supports these 14 chains.
+The current `@ophis/safe-swap` source supports these 13 chains. Published versions from before retirement can still accept Unichain (130); reject it explicitly until you have verified a release that removes it.
 
 | Orderbook | Chains |
 | --- | --- |
-| Ophis self-hosted | Optimism, Unichain, Robinhood Chain (4663), Arc (5042) |
+| Ophis self-hosted | Optimism, Robinhood Chain (4663), Arc (5042) |
 | partner-hosted | Ethereum, Base, Arbitrum One, Polygon, Gnosis Chain, BNB Smart Chain, Avalanche, Linea, Ink, Plasma (9745) |
 
 Use ERC-20 token addresses on Arc; native-token sentinels are rejected. Plasma orders use the production Plasma orderbook and shared settlement contracts.
@@ -76,7 +76,6 @@ Each vault deploys a module through a factory with its own Safe, curator, token 
 | Optimism (10) | `0xd6e80ca05b8bfebdaf6338b1f22f98f065ce96f4` | Ophis self-hosted |
 | Base (8453) | `0xd6e80ca05b8bfebdaf6338b1f22f98f065ce96f4` | Shared settlement |
 | Arbitrum One (42161) | `0xd6e80ca05b8bfebdaf6338b1f22f98f065ce96f4` | Shared settlement |
-| Unichain (130) | `0x251195c88639fa9364302D51E649910A2537ee9d` | Ophis self-hosted |
 | Plasma (9745) | `0x8bfd02f98854647f4235d770a284ddbbac0bf2ca` | Shared settlement |
 
 The Plasma module uses WXPL/USDT0 with Chainlink XPL/USD and USDT0/USD feeds. Plasma has no native USDC.

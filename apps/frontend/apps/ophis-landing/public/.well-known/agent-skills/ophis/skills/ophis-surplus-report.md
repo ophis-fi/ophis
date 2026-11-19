@@ -17,7 +17,7 @@ remainder after fees.
 
 ## Inputs you need
 
-- **chainId**: 10, 130, or 4663.
+- **chainId**: 10 or 4663.
 - **address**: the wallet to report on.
 
 ## Total surplus

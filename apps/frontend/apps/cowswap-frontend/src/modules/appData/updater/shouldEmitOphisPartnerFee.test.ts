@@ -3,7 +3,7 @@ import { shouldEmitOphisPartnerFee } from './shouldEmitOphisPartnerFee'
 describe('shouldEmitOphisPartnerFee', () => {
   it('returns true for Ophis-operated chains', () => {
     expect(shouldEmitOphisPartnerFee(10)).toBe(true) // Optimism mainnet
-    expect(shouldEmitOphisPartnerFee(130)).toBe(true) // Unichain mainnet
+    expect(shouldEmitOphisPartnerFee(130)).toBe(false) // Retired Unichain
     expect(shouldEmitOphisPartnerFee(4663)).toBe(true) // Robinhood Chain
     expect(shouldEmitOphisPartnerFee(5042)).toBe(true) // Arc
   })

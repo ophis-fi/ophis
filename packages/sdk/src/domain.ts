@@ -23,9 +23,6 @@ const CANONICAL_COW_SETTLEMENT = '0x9008D19f58AAbD9eD0D60971565AA8510560ab41' as
 /** Ophis-deployed GPv2Settlement on Optimism (10). */
 const OPHIS_SETTLEMENT = '0x310784c7FCE12d578dA6f53460777bAc9718B859' as const;
 
-/** Ophis-deployed GPv2Settlement on Unichain (130). Verified on-chain (has code). */
-const OPHIS_UNICHAIN_SETTLEMENT = '0x108A678716e5E1776036eF044CAB7064226F714E' as const;
-
 /** Ophis-deployed GPv2Settlement on Robinhood Chain (4663). Verified on-chain. */
 const OPHIS_ROBINHOOD_SETTLEMENT = '0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD' as const;
 
@@ -44,8 +41,7 @@ export const OPHIS_SETTLEMENT_ADDRESSES: Readonly<Partial<Record<number, `0x${st
   9745: CANONICAL_COW_SETTLEMENT,
   57073: CANONICAL_COW_SETTLEMENT,
   11155111: CANONICAL_COW_SETTLEMENT,
-  10: OPHIS_SETTLEMENT, // Optimism — Ophis self-hosted settlement (verified on-chain)
-  130: OPHIS_UNICHAIN_SETTLEMENT, // Unichain — Ophis self-hosted settlement (verified on-chain)
+  10: OPHIS_SETTLEMENT,
   4663: OPHIS_ROBINHOOD_SETTLEMENT, // Robinhood — Ophis self-hosted settlement (verified on-chain)
   5042: OPHIS_ARC_SETTLEMENT,
 });
@@ -110,9 +106,6 @@ const CANONICAL_COW_VAULT_RELAYER = '0xC92E8bdf79f0507f65a392b0ab4667716BFE0110'
 /** Ophis-deployed GPv2VaultRelayer on Optimism (10). */
 const OPHIS_VAULT_RELAYER = '0x83847EaB41ad9ea43809ce71569eB2e9daF51830' as const;
 
-/** Ophis-deployed GPv2VaultRelayer on Unichain (130). Confirmed via settlement.vaultRelayer() on-chain. */
-const OPHIS_UNICHAIN_VAULT_RELAYER = '0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb' as const;
-
 /** Ophis-deployed GPv2VaultRelayer on Robinhood Chain (4663), read from settlement.vaultRelayer(). */
 const OPHIS_ROBINHOOD_VAULT_RELAYER = '0xB52C38097c19cd38238c62DD36027a7918eFa890' as const;
 
@@ -131,8 +124,7 @@ export const OPHIS_VAULT_RELAYER_ADDRESSES: Readonly<Partial<Record<number, `0x$
   9745: CANONICAL_COW_VAULT_RELAYER,
   57073: CANONICAL_COW_VAULT_RELAYER,
   11155111: CANONICAL_COW_VAULT_RELAYER,
-  10: OPHIS_VAULT_RELAYER, // Optimism — Ophis self-hosted relayer (NOT canonical)
-  130: OPHIS_UNICHAIN_VAULT_RELAYER, // Unichain — Ophis self-hosted relayer (NOT canonical; confirmed via settlement.vaultRelayer())
+  10: OPHIS_VAULT_RELAYER,
   4663: OPHIS_ROBINHOOD_VAULT_RELAYER, // Robinhood — Ophis self-hosted relayer (NOT canonical; confirmed on-chain)
   5042: OPHIS_ARC_VAULT_RELAYER,
 });

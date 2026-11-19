@@ -16,6 +16,54 @@ import assert from 'node:assert/strict'
 
 import * as intent from '../../functions/api/intent.ts'
 
+test('retired Unichain requests fail before a cached or model-produced chain-less swap can be served', async (t) => {
+  const fetch = t.mock.method(globalThis, 'fetch', async () => { throw new Error('must not call model') })
+  const cache = { get: t.mock.fn(async () => JSON.stringify({ ok: true, data: { intent: 'swap', entities: [] } })) }
+  for (const destination of ['on Unichain', 'on UNICHAIN', 'on chain 130', 'on chain ID: 130', 'on 130', 'via 130', 'using 130', 'on chain ID 0x82', 'on chain 0X82', 'on 0x0082', 'via 0x82', 'on (130)', 'on (0x82)', 'on [130]', 'via "0x82"', "using '130'", 'on chain (130)', 'on the 130']) {
+    const request = new Request('https://swap.ophis.fi/api/intent', {
+      method: 'POST', body: JSON.stringify({ text: `swap 1 ETH for USDC ${destination}` }),
+    })
+    const response = await intent.onRequestPost({
+      request, env: { LIBERTAI_API_KEY: 'test-only', OPHIS_RATELIMIT: cache },
+    } as Parameters<typeof intent.onRequestPost>[0])
+    assert.equal(response.status, 400)
+    assert.deepEqual(await response.json(), {
+      ok: false, error: { code: 'BAD_INPUT', message: 'Unichain (130) is retired. Choose a supported network.' },
+    })
+  }
+  assert.equal(fetch.mock.callCount(), 0)
+  assert.equal(cache.get.mock.callCount(), 0)
+})
+
+test('130 remains a valid swap amount on an active network', async (t) => {
+  const text = 'swap 130 USDC for ETH on Base'
+  const parsed = {
+    intent: 'swap',
+    entities: [ent('amount', '130', '130', text), ent('sellToken', 'USDC', 'USDC', text), ent('buyToken', 'ETH', 'ETH', text)],
+  }
+  t.mock.method(globalThis, 'fetch', async () => Response.json({
+    choices: [{ message: { content: JSON.stringify(parsed) } }],
+  }))
+  const request = new Request('https://swap.ophis.fi/api/intent', { method: 'POST', body: JSON.stringify({ text }) })
+  const response = await intent.onRequestPost({ request, env: { LIBERTAI_API_KEY: 'test-only' } } as Parameters<typeof intent.onRequestPost>[0])
+  assert.equal(response.status, 200)
+  const result = await response.json()
+  assert.equal(result.ok, true)
+  assert.equal(result.data.entities.find((entity: { type: string }) => entity.type === 'amount')?.value, '130')
+  assert.equal(result.data.entities.find((entity: { type: string }) => entity.type === 'chain')?.value, 'base')
+})
+
+test('an address that starts with 0x82 is a token, not the retired chain id', async (t) => {
+  const weth = '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1' // WETH on Arbitrum One
+  const text = `swap 1 USDC for WETH using ${weth} on Arbitrum` // "using" is a chain position: the guard reads what follows
+  const parsed = { intent: 'swap', entities: [ent('amount', '1', '1', text), ent('sellToken', 'USDC', 'USDC', text), ent('buyToken', weth, weth, text)] }
+  t.mock.method(globalThis, 'fetch', async () => Response.json({ choices: [{ message: { content: JSON.stringify(parsed) } }] }))
+  const request = new Request('https://swap.ophis.fi/api/intent', { method: 'POST', body: JSON.stringify({ text }) })
+  const response = await intent.onRequestPost({ request, env: { LIBERTAI_API_KEY: 'test-only' } } as Parameters<typeof intent.onRequestPost>[0])
+  assert.equal(response.status, 200)
+  assert.equal((await response.json()).ok, true)
+})
+
 test('intent timeout covers a stalled response body after successful headers', async (t) => {
   const deadline = new AbortController()
   t.mock.method(AbortSignal, 'timeout', (milliseconds: number) => {

@@ -75,8 +75,6 @@ const SHOW_TOKENS_TABLE: Record<SupportedChainId, boolean> = {
   [SupportedChainId.MAINNET]: true, // Only show tokens table for mainnet
   // Ophis fork: OP mainnet (chain 10)
   [10 as unknown as SupportedChainId]: false,
-  // Ophis fork: Unichain mainnet (chain 130)
-  [130 as unknown as SupportedChainId]: false,
   // Ophis fork: Robinhood Chain mainnet (chain 4663)
   [4663 as unknown as SupportedChainId]: false,
 }

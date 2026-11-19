@@ -57,7 +57,7 @@ export const CHAIN_NAME: Record<number, string> = {
 };
 
 /**
- * The production mainnet chains this public surface may report. Derived from the
+ * The current and retired mainnet chains this public surface may report. Derived from the
  * CHAIN_NAME keys so the /stats SQL filter and the display-name map can never
  * drift: every chain that can appear here has a name, and only named chains
  * appear. Used to exclude testnet settlement dust (e.g. Sepolia 11155111) from
@@ -79,18 +79,16 @@ export const EXECUTION_FACTS = {
   mevProtection: 'batch-auction',
   settlementModel: 'intent, uniform clearing price',
   solverCompetition: {
-    // Baseline has modeled liquidity on Optimism; it is excluded on Unichain
-    // and Robinhood, where the baseline liquidity reader is intentionally empty.
+    // Baseline has modeled liquidity on Optimism; Robinhood's reader is empty.
     sovereignChains: [
       { chainId: 10, solvers: 11 },
-      { chainId: 130, solvers: 7 },
       { chainId: 4663, solvers: 6 },
       { chainId: 5042, solvers: 5 },
     ],
     hostedChains: 'CoW Protocol solver network',
   },
   improvementSplit: {
-    sovereign: 'On in-market orders on Optimism, Unichain, Robinhood Chain and Arc, Ophis retains 80% of volatile improvement (99 bps cap) or 50% of stable improvement (20 bps cap). Arc uses the same capped backend improvement policy for in-market orders.',
+    sovereign: 'On in-market orders on Optimism, Robinhood Chain and Arc, Ophis retains 80% of volatile improvement (99 bps cap) or 50% of stable improvement (20 bps cap). Arc uses the same capped backend improvement policy for in-market orders.',
     hosted: 'The same Ophis capped capture applies, plus CoW Protocol quote-improvement fees upstream',
   },
 } as const;
@@ -167,7 +165,7 @@ export function renderStatsPage(s: PublicStats, query = new URLSearchParams()): 
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="index, follow">
 <title>Ophis: execution model and indexed volume</title>
-<meta name="description" content="How Ophis batch-auction swaps work, their execution limits, and cumulative indexed volume across ${PRODUCTION_CHAIN_IDS.length} EVM networks, including Arc.">
+<meta name="description" content="How Ophis batch-auction swaps work, their execution limits, and historical indexed volume across ${PRODUCTION_CHAIN_IDS.length} EVM networks, including retired Unichain.">
 <meta name="theme-color" content="#ffffff">
 <style>
 :root{color-scheme:light}
@@ -233,10 +231,10 @@ ${freshnessWarning}
   <li><strong>Batch-auction MEV mitigation</strong>Offchain orders and uniform clearing prices per token pair mitigate common MEV. Settlement transactions can still be public; this is not an absolute guarantee against front-running or sandwich attacks.</li>
   <li><strong>Signed order limits</strong>The batch settlement contract enforces your signed sell amount, receiver and limit price. A source-chain fill does not guarantee destination delivery on a bridge route.</li>
   <li><strong>Offchain signing, route-dependent gas</strong>Standard ERC-20 order signing needs no network transaction. Solvers pay settlement gas, with costs reflected in the quote. Approvals, native-token deposits, onchain cancellation, bridges and recovery can require gas.</li>
-  <li><strong>Configured routing lanes</strong>Ophis operates its own orderbooks and routing lanes on Robinhood Chain, Unichain, Optimism, and Arc. These lanes share one operator, with participation varying by token pair and auction. CoW-hosted networks use the ${esc(EXECUTION_FACTS.solverCompetition.hostedChains)}.</li>
+  <li><strong>Configured routing lanes</strong>Ophis operates its own orderbooks and routing lanes on Robinhood Chain, Optimism, and Arc. These lanes share one operator, with participation varying by token pair and auction. CoW-hosted networks use the ${esc(EXECUTION_FACTS.solverCompetition.hostedChains)}.</li>
 </ul>
 <h2 id="chains">Settled volume by chain</h2>
-<p class="note">This report is configured for ${PRODUCTION_CHAIN_IDS.length} EVM networks, including Arc. These are indexed batch-settlement records, not a complete ledger of every swap or bridge route. A missing chain row does not prove there was no activity.</p>
+<p class="note">This report covers historical records from ${PRODUCTION_CHAIN_IDS.length} EVM networks, including retired Unichain. These are indexed batch-settlement records, not a complete ledger of every swap or bridge route. A missing chain row does not prove there was no activity.</p>
 <form method="get" action="/stats#chains" aria-label="Filter settled volume">
 <div class="filters">
   <label><span>Chain</span><select name="chain"><option value="">All reporting chains</option>${chainOptions}</select></label>

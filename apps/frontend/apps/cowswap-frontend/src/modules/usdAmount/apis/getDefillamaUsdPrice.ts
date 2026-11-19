@@ -30,8 +30,6 @@ export const DEFILLAMA_PLATFORMS: Record<SupportedChainId, string | null> = {
   [SupportedChainId.INK]: 'ink',
   // Ophis fork: OP mainnet (chain 10)
   [10 as unknown as SupportedChainId]: 'optimism',
-  // Ophis fork: Unichain mainnet (chain 130) — DefiLlama 'unichain' slug
-  [130 as unknown as SupportedChainId]: 'unichain',
   // Robinhood Chain is not listed by DefiLlama yet; disable this source
   // explicitly instead of guessing a platform slug.
   [4663 as unknown as SupportedChainId]: null,

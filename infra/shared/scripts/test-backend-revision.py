@@ -33,7 +33,7 @@ class Provenance(unittest.TestCase):
                 self.assertIn("--no-env-resolution", call.call_args.args)
 
     def test_builds_each_real_shared_image_once(self):
-        for chain, image_count in [("optimism", 6), ("unichain", 6), ("robinhood", 6), ("arc", 2)]:
+        for chain, image_count in [("optimism", 6), ("robinhood", 6), ("arc", 2)]:
             compose = ROOT / f"infra/{chain}-mainnet" / ("release/docker-compose.yml" if chain == "arc" else "docker-compose.yml")
             document = compose.read_text()
             # Resolve the actual service aliases with synthetic env only; no keys or daemon.
@@ -256,7 +256,7 @@ class Provenance(unittest.TestCase):
             self.assertEqual(secret.stat().st_mode & 0o777, 0o600)
 
     def test_rollout_args_cannot_change_checked_images(self):
-        for chain in ["optimism", "unichain", "robinhood"]:
+        for chain in ["optimism", "robinhood"]:
             script = (ROOT / f"infra/{chain}-mainnet/compose-up.sh").read_text()
             start = script.index("UP_ARGS=()")
             end = script.index("\ndone", start) + len("\ndone")
@@ -297,7 +297,7 @@ docker() {
   return 0
 }
 """
-        for chain in ["optimism", "unichain", "robinhood"]:
+        for chain in ["optimism", "robinhood"]:
             stack = ROOT / f"infra/{chain}-mainnet"
             source = (stack / "compose-up.sh").read_text()
             tail = source[source.index('\nPROFILES_ARG=""'):]

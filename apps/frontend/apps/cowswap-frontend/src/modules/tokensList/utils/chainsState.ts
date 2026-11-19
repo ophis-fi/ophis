@@ -50,7 +50,7 @@ export function createInputChainsState(
 ): ChainsToSelectState {
   return {
     defaultChainId: selectedTargetChainId,
-    chains: sortChainsByDisplayOrder(supportedChains),
+    chains: sortChainsByDisplayOrder(filterDestinationChains(supportedChains) ?? []),
     isLoading: false,
   }
 }
@@ -67,14 +67,14 @@ export function createOutputChainsState({
 }: CreateOutputChainsOptions): ChainsToSelectState {
   const chainSet = new Set(supportedChains.map((c) => c.id))
   const chainsWithCurrent = chainSet.has(chainId) ? supportedChains : [...supportedChains, currentChainInfo]
-  const orderedChains = sortChainsByDisplayOrder(chainsWithCurrent)
+  const orderedChains = sortChainsByDisplayOrder(filterDestinationChains(chainsWithCurrent) ?? [])
 
   const destinationIds = new Set(filterDestinationChains(bridgeSupportedNetworks)?.map((c) => c.id) ?? [])
   // Source capability is NOT the destination list: destinations only need the
   // provider API to deliver there, while sources need on-chain execution
   // machinery (see BRIDGE_SOURCE_CHAIN_IDS). Gating on destinationIds here
-  // would offer bridging FROM destination-only chains (Unichain and, before
-  // their source flags are enabled, Ink/Linea) where every quote fails.
+  // would offer bridging FROM destination-only chains (Ink/Linea before
+  // their source flags are enabled) where every quote fails.
   const sourceSupported =
     BRIDGE_SOURCE_CHAIN_IDS.has(chainId) || (cctpEnabled && [...destinationIds].some((id) => hasCctpRoute(chainId, id)))
 
@@ -101,7 +101,7 @@ export function createOutputChainsState({
 
 export function filterDestinationChains(bridgeSupportedNetworks: ChainInfo[] | undefined): ChainInfo[] | undefined {
   // isSupportedChainId admits the Ophis chains missing from the SDK enums
-  // (Unichain 130, Robinhood Chain 4663) and BRIDGE_DESTINATION_CHAIN_INFO the
+  // (Robinhood Chain 4663) and BRIDGE_DESTINATION_CHAIN_INFO the
   // bridge-only destinations (Monad, X Layer), so the widened provider network
   // lists survive this filter; unknown chains a provider might list are dropped.
   return bridgeSupportedNetworks?.filter(

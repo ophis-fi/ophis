@@ -299,7 +299,7 @@ reset
 printf 'local-chain-1\tUp 2 hours (unhealthy)\nunichain-mainnet-driver-1\tUp 2 hours (unhealthy)\n' > "$WORK/table"
 WATCHDOG_ALLOW='.*' run 1000 >/dev/null
 out="$(WATCHDOG_ALLOW='.*' run 99000)"
-ck "local-chain denied, unichain driver still eligible" "$(restarts)" "unichain-mainnet-driver-1"
+ck "local-chain and retired Unichain denied even with a broad allowlist" "$(restarts)" ""
 
 # ── Codex round 3: a sidecar must track the TARGET's identity ──
 # compose-up.sh force-recreates rpc-proxy while leaving rpc-proxy-health running,

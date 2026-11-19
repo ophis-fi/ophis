@@ -43,10 +43,6 @@ function _getExplorerUrlByEnvironment(): Record<ChainId, string> {
     // points at the sovereign optimism-mainnet.ophis.fi orderbook), so OP
     // order/tx/address links resolve there like every other chain (#99).
     [10 as unknown as ChainId]: `${baseUrl}/opt`,
-    // Ophis fork: Unichain mainnet (chain 130). Ophis explorer serves Unichain
-    // at /unichain (SDK points at the sovereign unichain-mainnet.ophis.fi
-    // orderbook), so order/tx/address links resolve there.
-    [130 as unknown as ChainId]: `${baseUrl}/unichain`,
     // Ophis fork: Robinhood Chain mainnet (chain 4663).
     [4663 as unknown as ChainId]: `${baseUrl}/robinhood`,
     ...Object.fromEntries(ARC_ENABLED_CHAIN_IDS.map((chainId) => [chainId, `${baseUrl}/arc`])),

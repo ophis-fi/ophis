@@ -1,6 +1,7 @@
 import { ReactNode } from 'react'
 
 import { useWalletInfo } from '@cowprotocol/wallet'
+import { useWalletChainId } from '@cowprotocol/wallet-provider'
 
 import { useToggleWalletModal } from 'legacy/state/application/hooks'
 
@@ -82,7 +83,8 @@ export function CctpSwapDetails({
 }
 
 function CctpPendingTransfer({ flow }: { flow: ReturnType<typeof useCctpTransfer> }): ReactNode {
-  const { account, chainId } = useWalletInfo()
+  const { account } = useWalletInfo()
+  const chainId = useWalletChainId()
   const connect = useToggleWalletModal()
   const { transfer } = flow
   if (!transfer) return null

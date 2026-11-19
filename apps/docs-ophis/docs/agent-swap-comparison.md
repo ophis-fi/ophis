@@ -21,7 +21,7 @@ Ophis gives your agent quotes and orders with signed limits on the tokens, amoun
 
 ## Build an order {/* #try-it */}
 
-SDK v0.4.6 and hosted MCP cover 14 EVM mainnets, including Arc.
+SDK source and hosted MCP cover 13 EVM mainnets, including Arc.
 
 <Steps>
 

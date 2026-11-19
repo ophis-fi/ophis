@@ -10,7 +10,7 @@ cover: ./swap-on-arc.cover.webp
 coverAlt: "Three tokens cross a white ceramic arch toward an open wallet."
 ---
 
-**Ophis is now live on Arc, the stablecoin blockchain built by Circle. You can swap tokens on Arc, starting with USDC, EURC and cirBTC, bring USDC over from Ethereum, Base, Arbitrum, Optimism or Unichain, and trade with the protections Ophis offers everywhere: gasless settlement, MEV protection and a minimum you sign yourself.**
+**Ophis is now live on Arc, the stablecoin blockchain built by Circle. You can swap tokens on Arc, starting with USDC, EURC and cirBTC, bring USDC over from Ethereum, Base, Arbitrum, Optimism and trade with the protections Ophis offers everywhere: gasless settlement, MEV protection and a minimum you sign yourself.**
 
 Ophis is a member of the [Circle Alliance Program](https://www.circle.com/alliance-program), as shown in [Circle's member directory](https://partners.circle.com/partner/ophis).
 
@@ -38,9 +38,9 @@ For one real example, the first Ophis swap on Arc, on September 24, 2026, sold 2
 
 Getting started on a new network usually means juggling a bridge, an exchange and a block explorer. With Ophis, you can bring USDC to Arc and then trade it from the same swap box. The bridge and swap are separate steps.
 
-### A fourth Ophis-operated network
+### An Ophis-operated network
 
-Arc joins Optimism, Unichain and Robinhood Chain as a network where Ophis runs its own trading infrastructure. The [supported chains page](https://ophis.fi/supported-chains/) lists every network Ophis covers.
+Arc joins Optimism and Robinhood Chain as a network where Ophis runs its own trading infrastructure. The [supported chains page](https://ophis.fi/supported-chains/) lists every network Ophis covers.
 
 ## What is Arc?
 
@@ -82,7 +82,7 @@ A token's presence on the list does not guarantee an executable quote. Check the
 
 ### Bring USDC and more to Arc
 
-In the Ophis swap box, choose USDC on Ethereum, Base, Arbitrum, Optimism or Unichain as the token you send, and USDC on Arc as the token you receive. Ophis moves it with Circle's Cross-Chain Transfer Protocol (CCTP): your USDC is burned on the source network and native USDC is issued to you on Arc, so you never hold a wrapped copy. The same route takes you back when you want to leave Arc.
+In the Ophis swap box, choose USDC on Ethereum, Base, Arbitrum, Optimism as the token you send, and USDC on Arc as the token you receive. Ophis moves it with Circle's Cross-Chain Transfer Protocol (CCTP): your USDC is burned on the source network and native USDC is issued to you on Arc, so you never hold a wrapped copy. The same route takes you back when you want to leave Arc.
 
 Ophis also lists Circle-based bridge routes for EURC between Ethereum, Base and Arc, and for cirBTC between Ethereum and Arc. Check the current route, fee and wallet eligibility in the app. If you hold WBTC on Ethereum, the app can first swap it for cirBTC and then bridge it to Arc. Those are separate steps with separate costs, each confirmed in the same box.
 
@@ -98,7 +98,7 @@ Ophis also lists Circle-based bridge routes for EURC between Ethereum, Base and 
 
 ## How to bridge USDC to Arc
 
-1. **Choose your USDC.** In the swap box, select USDC on Ethereum, Base, Arbitrum, Optimism or Unichain as the token to send.
+1. **Choose your USDC.** In the swap box, select USDC on Ethereum, Base, Arbitrum, Optimism as the token to send.
 2. **Choose USDC on Arc** as the token to receive.
 3. **Review the transfer.** The swap box shows Circle's bridge fee and the minimum you will receive on Arc. Ophis adds no fee to this direct USDC bridge; source-network gas is separate.
 4. **Approve if needed and confirm in your wallet.** Approval and the source transfer each use ETH for gas. This CCTP route currently supports personal wallets and delivers to the same wallet address on Arc.
@@ -114,7 +114,7 @@ Arc is an open Layer-1 blockchain built by Circle, the issuer of USDC. It uses U
 
 ### Is Ophis live on Arc?
 
-Yes. Ophis went live on Arc on September 24, 2026. You can swap tokens on Arc and move USDC between Arc and Ethereum, Base, Arbitrum, Optimism or Unichain in the Ophis swap app.
+Yes. Ophis went live on Arc on September 24, 2026. You can swap tokens on Arc and move USDC between Arc and Ethereum, Base, Arbitrum, Optimism in the Ophis swap app.
 
 ### Do I need a separate token to pay fees on Arc?
 
@@ -122,7 +122,7 @@ No separate gas token is needed. Arc charges network fees in USDC. A solver pays
 
 ### How do I bridge USDC to Arc?
 
-In the Ophis swap box, choose USDC on Ethereum, Base, Arbitrum, Optimism or Unichain as the token to send and USDC on Arc as the token to receive. Circle's CCTP burns the USDC on the source network and normally forwards native USDC to the same personal wallet on Arc. Review the bridge fee and source gas before confirming.
+In the Ophis swap box, choose USDC on Ethereum, Base, Arbitrum, Optimism as the token to send and USDC on Arc as the token to receive. Circle's CCTP burns the USDC on the source network and normally forwards native USDC to the same personal wallet on Arc. Review the bridge fee and source gas before confirming.
 
 ### How much does it cost to swap on Arc with Ophis?
 

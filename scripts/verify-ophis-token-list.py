@@ -21,7 +21,6 @@ RPCS = {
     10: ["https://optimism-rpc.publicnode.com", "https://mainnet.optimism.io"],
     56: ["https://bsc-rpc.publicnode.com", "https://bsc-dataseed.bnbchain.org"],
     100: ["https://gnosis-rpc.publicnode.com", "https://rpc.gnosischain.com"],
-    130: ["https://unichain-rpc.publicnode.com", "https://mainnet.unichain.org"],
     137: ["https://polygon-bor-rpc.publicnode.com", "https://polygon.drpc.org"],
     4663: ["https://robinhood-rpc.publicnode.com", "https://hood-rpc.pastrylabs.cloud"],
     8453: ["https://base-rpc.publicnode.com", "https://mainnet.base.org"],

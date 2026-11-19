@@ -168,9 +168,7 @@ export function ProtocolPage(): ReactNode {
             <Tr>
               <RowTh scope="row">Backend services</RowTh>
               <Td>CoW-operated</Td>
-              <Td>
-                Ophis-operated orderbooks, drivers, and solver lanes on Optimism, Unichain, Robinhood Chain, and Arc
-              </Td>
+              <Td>Ophis-operated orderbooks, drivers, and solver lanes on Optimism, Robinhood Chain, and Arc</Td>
               <Td>
                 <Badge tone="live">Ophis</Badge>
               </Td>
@@ -295,8 +293,8 @@ export function ProtocolPage(): ReactNode {
             <Tr>
               <RowTh scope="row">EVM source chains</RowTh>
               <Td>
-                Ethereum, Arbitrum, Base, Optimism, Unichain, Robinhood Chain, Arc, and other networks in the app&#39;s
-                chain selector
+                Ethereum, Arbitrum, Base, Optimism, Robinhood Chain, Arc, and other networks in the app&#39;s chain
+                selector
               </Td>
               <Td>
                 <Badge tone="live">Selectable</Badge>
@@ -304,9 +302,7 @@ export function ProtocolPage(): ReactNode {
             </Tr>
             <Tr>
               <RowTh scope="row">Ophis-operated stack</RowTh>
-              <Td>
-                Ophis-operated orderbooks, drivers, and solver lanes on Optimism, Unichain, Robinhood Chain, and Arc
-              </Td>
+              <Td>Ophis-operated orderbooks, drivers, and solver lanes on Optimism, Robinhood Chain, and Arc</Td>
               <Td>
                 <Badge tone="live">Live</Badge>
               </Td>

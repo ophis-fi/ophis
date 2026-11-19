@@ -8,8 +8,7 @@ import { clean, tint, UserError } from './ui.ts'
 
 // Short names people type. The first name listed for a chain is the one we show.
 const ALIASES: Record<string, number> = {
-  ethereum: 1, eth: 1, mainnet: 1, optimism: 10, op: 10, bnb: 56, bsc: 56, gnosis: 100,
-  unichain: 130, polygon: 137, base: 8453, plasma: 9745, arbitrum: 42161, arb: 42161,
+  ethereum: 1, eth: 1, mainnet: 1, optimism: 10, op: 10, bnb: 56, bsc: 56, gnosis: 100, polygon: 137, base: 8453, plasma: 9745, arbitrum: 42161, arb: 42161,
   avalanche: 43114, avax: 43114, ink: 57073, linea: 59144, robinhood: 4663, arc: 5042,
   sepolia: 11155111, // testnet: free test funds, handy for a first try
 }
@@ -23,15 +22,14 @@ const MORE_RPCS: Record<number, string[]> = {
 
 // The website's explorer overrides in common-const/src/chainInfo.ts and robinhood.const.ts.
 const EXPLORERS: Record<number, { name: string; url: string }> = {
-  130: { name: 'Uniscan', url: 'https://uniscan.xyz' },
   4663: { name: 'Robinhood Chain Blockscout', url: 'https://robinhoodchain.blockscout.com' },
   5042: { name: 'Arcscan', url: 'https://arcscan.app' },
 }
 
 // Each chain's brand colour, as the Ophis website shows it (@cowprotocol/sdk-config chain colours, and
-// apps/frontend/libs/common-const/src/chainInfo.ts for Arc, Unichain and Robinhood Chain).
+// apps/frontend/libs/common-const/src/chainInfo.ts for Arc and Robinhood Chain).
 const COLOURS: Record<number, string> = {
-  1: '#62688F', 10: '#FF0420', 56: '#F0B90B', 100: '#07795B', 130: '#FF007A', 137: '#8247E5', 4663: '#CCFF00',
+  1: '#62688F', 10: '#FF0420', 56: '#F0B90B', 100: '#07795B', 137: '#8247E5', 4663: '#CCFF00',
   5042: '#2775CA', 8453: '#0052FF', 9745: '#569F8C', 42161: '#1B4ADD', 43114: '#FF3944', 57073: '#7132F5',
   59144: '#61DFFF', 11155111: '#C12FF2',
 }

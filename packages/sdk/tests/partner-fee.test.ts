@@ -29,7 +29,7 @@ describe('@ophis/sdk partner fee defaults', () => {
   });
 
   it('returns the CIP-75 flat volume fee on Ophis-operated chains', () => {
-    for (const chainId of [10, 130, 4663, 5042]) {
+    for (const chainId of [10, 4663, 5042]) {
       const fee = ophisDefaultPartnerFee(chainId) as { volumeBps: number; recipient: string };
       expect(fee?.volumeBps).toBe(OPHIS_SOVEREIGN_VOLUME_FEE_BPS);
       expect(fee?.recipient).toBe(OPHIS_PARTNER_FEE_RECIPIENT);
@@ -71,7 +71,7 @@ describe('@ophis/sdk partner fee defaults', () => {
 
   it('OPHIS_FEE_CHAIN_IDS covers all served chains (operated + externally hosted incl. Sepolia)', () => {
     expect([...OPHIS_FEE_CHAIN_IDS].sort((a, b) => a - b)).toEqual([
-      1, 10, 56, 100, 130, 137, 4663, 5042, 8453, 9745, 42161, 43114, 57073, 59144, 11155111,
+      1, 10, 56, 100, 137, 4663, 5042, 8453, 9745, 42161, 43114, 57073, 59144, 11155111,
     ]);
   });
 

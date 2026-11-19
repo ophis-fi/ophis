@@ -119,10 +119,10 @@ export const OPHIS_STABLE_APP_DATA_PARTNER_FEE = [
  * REJECTS Surplus/PriceImprovement partner fees at order ingress (app_data.rs
  * `validate_partner_fees`). The price-improvement fallback above
  * (OPHIS_DEFAULT_APP_DATA_PARTNER_FEE) must NEVER be emitted on these chains or
- * ingress returns 400. Optimism (10), Unichain (130), Robinhood Chain (4663),
+ * ingress returns 400. Optimism (10), Robinhood Chain (4663),
  * and Arc (5042) use this validator; CoW-hosted chains still accept the PI shape.
  */
-const VOLUME_ONLY_CHAIN_IDS: ReadonlySet<number> = new Set<number>([10, 130, 4663, 5042])
+const VOLUME_ONLY_CHAIN_IDS: ReadonlySet<number> = new Set<number>([10, 4663, 5042])
 
 /** The 1 bp base the front-end writes on Ophis-operated chains. */
 export const OPHIS_NON_STABLE_VOLUME_BPS = OPHIS_SOVEREIGN_BASE_FEE_BPS
@@ -134,7 +134,7 @@ export function isVolumeOnlyChain(chainId: number | undefined): boolean {
 
 /**
  * The Ophis floor VOLUME fee for an operated Volume-only chain (Optimism,
- * Unichain, Robinhood Chain, or Arc), or `undefined` off those chains. There the backend
+ * Robinhood Chain, or Arc), or `undefined` off those chains. There the backend
  * enforces a fee FLOOR and would
  * reject a sub-floor fee or let an ABSENT one ride free, so the Ophis fee must be
  * present at >= the floor whether or not the flat-volume flag is on. This is the

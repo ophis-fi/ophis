@@ -39,7 +39,7 @@ The orderbook and solver operator depend on the network. Use the chain-specific 
 
 | Stack | Networks | Operator |
 | --- | --- | --- |
-| Ophis-operated | Optimism, Unichain, Robinhood Chain, Arc | Ophis runs the orderbook and solver |
+| Ophis-operated | Optimism, Robinhood Chain, Arc | Ophis runs the orderbook and solver |
 | Partner-hosted | Ten other mainnets; see [network coverage](/networks-assets) | Partner-operated orderbooks and solver network |
 
 ## Available interfaces {/* #core-differences */}
@@ -47,7 +47,7 @@ The orderbook and solver operator depend on the network. Use the chain-specific 
 | Interface | Use |
 | --- | --- |
 | Swap app | Select tokens, review quotes and authorize trades |
-| SDK v0.4.6 / hosted MCP | Build batch-auction orders on 14 EVM mainnets, including Arc |
+| SDK source / hosted MCP | Build batch-auction orders on 13 EVM mainnets, including Arc |
 | Intent API | Parse natural-language requests into structured fields for your app or agent |
 | Standalone NEAR Intents flow | Fund external deposits and track destination delivery |
 

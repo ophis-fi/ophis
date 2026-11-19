@@ -32,7 +32,7 @@ const ARBITRUM = createChainInfo(SupportedChainId.ARBITRUM_ONE, 'Arbitrum')
 const BASE = createChainInfo(SupportedChainId.BASE, 'Base')
 const UNSUPPORTED = createChainInfo(999999, 'Unsupported')
 
-it.each([130, 5042])('requires surface-level CCTP support to enable source %s', (chainId) => {
+it.each([5042])('requires surface-level CCTP support to enable source %s', (chainId) => {
   const source = createChainInfo(chainId)
   const options: CreateOutputChainsOptions = {
     selectedTargetChainId: SupportedChainId.MAINNET,
@@ -369,12 +369,12 @@ describe('chainsState', () => {
       it('filterDestinationChains keeps the Ophis extra chains missing from the SDK enums', () => {
         const result = filterDestinationChains([MAINNET, UNICHAIN, ROBINHOOD, UNSUPPORTED])
 
-        expect(result).toContainEqual(UNICHAIN)
+        expect(result).not.toContainEqual(UNICHAIN)
         expect(result).toContainEqual(ROBINHOOD)
         expect(result).not.toContainEqual(UNSUPPORTED)
       })
 
-      it('offers Unichain and Robinhood Chain as destinations from a source-capable chain', () => {
+      it('excludes retired Unichain even when a provider still advertises it', () => {
         const result = createOutputChainsState(
           createOptions({
             chainId: SupportedChainId.MAINNET,
@@ -383,12 +383,12 @@ describe('chainsState', () => {
           }),
         )
 
-        expect(result.disabledChainIds?.has(130) ?? false).toBe(false)
+        expect(result.chains.map((chain) => chain.id)).not.toContain(130)
         expect(result.disabledChainIds?.has(4663) ?? false).toBe(false)
       })
 
       it('disables every destination when the current chain is destination-only', () => {
-        // Unichain is a destination only; its presence in the network list cannot enable a source.
+        // A stale chain selection cannot enable a source after retirement.
         const result = createOutputChainsState(
           createOptions({
             chainId: 130 as unknown as SupportedChainId,
@@ -400,7 +400,7 @@ describe('chainsState', () => {
 
         expect(result.disabledChainIds?.has(SupportedChainId.MAINNET)).toBe(true)
         expect(result.disabledChainIds?.has(SupportedChainId.GNOSIS_CHAIN)).toBe(true)
-        expect(result.disabledChainIds?.has(130) ?? false).toBe(false)
+        expect(result.chains.map((chain) => chain.id)).not.toContain(130)
       })
 
       it('offers destinations from Robinhood through NEAR even with the Across source flag off', () => {

@@ -1,12 +1,11 @@
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
-import { DEFAULT_TOKENS_LISTS, OPHIS_TOKENS_LIST_SOURCE, UNISWAP_TOKENS_LIST } from '../../const/tokensLists'
+import { DEFAULT_TOKENS_LISTS, OPHIS_TOKENS_LIST_SOURCE } from '../../const/tokensLists'
 import { ListState, TokenListsByChainState } from '../../types'
 import { isExcludedListToken } from '../../utils/excludedListTokens'
 
 const PREVIOUS_SOURCES: Record<number, string> = {
   10: 'https://static.optimism.io/optimism.tokenlist.json',
-  130: UNISWAP_TOKENS_LIST,
   4663: 'https://swap.ophis.fi/token-lists/robinhood.json',
   [SupportedChainId.SEPOLIA]: 'https://files.cow.fi/token-lists/CowSwapSepolia.json',
 }

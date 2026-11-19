@@ -356,8 +356,9 @@ export async function status(env: Settings, chainId: number, uid: string, sellTo
 }
 
 // ---- routes: what an asset sells for on its chain, and how far the price moves with the size ----
-/** The sizes read, as parts of the most one order sells: a thousandth (the reference, about 5,000 EUR), then a hundredth, a tenth and all of it. */
-const DEPTH = [1000n, 100n, 10n, 1n]
+/** The sizes read, as parts of the most one order sells (about 5,000,000 EUR): a five-thousandth (the reference, about
+ *  1,000 EUR, owner 2026-11-19), then a hundredth, a tenth and all of it (about 50,000, 500,000 and 5,000,000 EUR). */
+const DEPTH = [5000n, 100n, 10n, 1n]
 const DEEP_BPS = 50 // the price moves at most 0.5%
 const NOBODY = '0x000000000000000000000000000000000000dEaD' // a route names no wallet: the quote is from no one's
 const ROUTES_MS = 5 * 60_000
@@ -366,8 +367,8 @@ const ROUTES_MS = 5 * 60_000
 // Worker may make. An answer with a route the orderbook did not answer for is not kept. The Cache API if isolates multiply.
 export const ROUTES = new Map<string, { at: number; value: Awaited<ReturnType<typeof readRoutes>> }>()
 /**
- * Each asset the ticket's asset sells for on its chain, with how far the price moves at each size from the reference
- * (bps; null: no quote at that size), and a score: deep (at most 0.5% at the most per order), medium (at a tenth of it),
+ * Each asset the ticket's asset sells for on its chain, with how far the price moves at each size from the reference of
+ * about 1,000 EUR (bps; null: no quote at that size), and a score: deep (at most 0.5% at the most per order), medium (at a tenth of it),
  * thin (more), none (the orderbook has no route), unavailable (it did not answer at some size). ETH and WETH are one route,
  * read as WETH. One route at a time, its 4 quotes at once: a Worker waits on 6 connections at most, and each quote's 5
  * seconds start at its fetch.
@@ -375,10 +376,11 @@ export const ROUTES = new Map<string, { at: number; value: Awaited<ReturnType<ty
 export async function routes(env: Settings, chainId: number, sell: Symbol, now: number) {
   const key = `${chainId} ${sell}`
   const seen = ROUTES.get(key)
-  if (seen && now - seen.at < ROUTES_MS) return seen.value
+  // at: when its quotes were read, which a cached answer keeps (CodeRabbit, PR #1679): the page says how old they are.
+  if (seen && now - seen.at < ROUTES_MS) return { ...seen.value, at: seen.at }
   const value = await readRoutes(env, chainId, sell)
   if (!value.routes.some((r) => r.score === 'unavailable')) ROUTES.set(key, { at: now, value })
-  return value
+  return { ...value, at: now }
 }
 async function readRoutes(env: Settings, chainId: number, sell: Symbol) {
   const s = ASSETS[chainId][sell]!

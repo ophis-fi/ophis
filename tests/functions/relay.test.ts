@@ -60,6 +60,7 @@ test('rejects invalid money, addresses, chains and slippage before calling Relay
   await withFetch(async (calls) => {
     for (const value of [null, [], { ...body(), amount: '0' }, { ...body(), amount: '-1' }, { ...body(), amount: String(2n ** 256n) },
       { ...body(), user: '0x' }, { ...body(), destinationChainId: 123456 }, { ...body(), slippageBps: 101 },
+      { ...body(), originChainId: 130 }, { ...body(), destinationChainId: 130 },
       { ...body(), destinationChainId: 8453 }]) assert.equal((await call('quote', value)).status, 400);
     assert.equal(calls.length, 0);
   });

@@ -14,7 +14,6 @@ const OPHIS_ALL_SUPPORTED_CHAIN_IDS: SupportedChainId[] = [
   ...ALL_SUPPORTED_CHAIN_IDS,
   ...ARC_ENABLED_CHAIN_IDS,
   10 as unknown as SupportedChainId,
-  130 as unknown as SupportedChainId,
   4663 as unknown as SupportedChainId,
 ]
 

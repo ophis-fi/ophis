@@ -52,8 +52,7 @@ function resolveDestinationToken(
   const token = destinationChainTokens[address]
   if (token || !mapWrappedToNative) return token
 
-  // The app's own maps, not the SDK's: they know the Ophis chains (Unichain
-  // 130, Robinhood Chain 4663) the upstream sdk-config does not.
+  // The app's own maps, not the SDK's: they know the Ophis chains (Robinhood Chain 4663) the upstream sdk-config does not.
   const wrappedAddress = WRAPPED_NATIVE_ADDRESS[destinationChainId]
   const nativeToken = NATIVE_TOKEN_PER_NETWORK[destinationChainId]
 

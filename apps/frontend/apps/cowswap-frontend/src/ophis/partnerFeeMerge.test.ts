@@ -63,7 +63,7 @@ function hostedChainDoc(): AppDataDoc {
   }
 }
 
-// Ophis-operated chains (OP/Unichain/Robinhood) carry the single-object Volume
+// Ophis-operated chains (OP/Robinhood) carry the single-object Volume
 // shape instead of the pair; the reset must leave that shape intact too.
 function operatedChainFee(): PartnerFeeMetadata {
   return { volumeBps: 1, recipient: OPHIS_PARTNER_FEE_RECIPIENT }
