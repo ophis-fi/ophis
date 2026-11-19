@@ -59,7 +59,6 @@ const SAY: Record<string, string> = {
   single_key: 'A wallet with a single key can be the recovery wallet only in an organisation with one key-role member. Use a Safe or a custodian wallet.',
   change_waiting: 'Another change of recovery wallet waits for its 72 hours. An Owner cancels it first.',
   // The desk.
-  institution_only: 'The desk is for institutions.',
   type_invalid: 'Choose market or limit.',
   asset_not_permitted: 'Choose two of the assets permitted on this chain.',
   same_asset: 'Choose two different assets.',

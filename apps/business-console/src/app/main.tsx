@@ -147,7 +147,7 @@ function App() {
             : me && page === 'support' ? <Support onSignedOut={signedOut} />
             : me && page === 'onboarding' ? <Onboarding owner={me.seat.role === 'owner'} onSignedOut={signedOut} />
             : me && page === 'overview' ? <Overview onSignedOut={signedOut} />
-            : me && page === 'desk' ? <Desk kind={me.organisation.kind} onSignedOut={signedOut} />
+            : me && page === 'desk' ? <Desk onSignedOut={signedOut} />
             : me ? <Organisation me={me} onSignedOut={signedOut} onChanged={loadMe} />
             : <SignIn onSignedIn={loadMe} />}
           </main>

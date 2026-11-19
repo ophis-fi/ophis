@@ -1,5 +1,6 @@
-// Overview and Desk. An institution: its desk is real (src/server/orders.ts): an order is prepared on a live quote,
-// approved by a second person, then signed by the organisation's own wallet on the signing page. Its overview: the
+// Overview and Desk. Every organisation, an institution or a partner (owner, 2026-11-19): its desk is real
+// (src/server/orders.ts): an order is prepared on a live quote, approved by a second person, then signed by the
+// organisation's own wallet on the signing page. An institution's overview: the
 // balances of its linked wallets read on the chain, its orders and its monthly statement from the filled ones. A partner:
 // live figures from the Ophis rebate service, checked and rebuilt by the server (src/server/partner.ts). This file holds
 // no price and builds no order.
@@ -100,7 +101,7 @@ function useView<T>(path: string, onSignedOut: () => void) {
     const result = await api<T & { error?: string }>(path)
     if (result.status === 401) return onSignedOut()
     if (result.status === 200) return setView(result.data)
-    setProblem(result.data.error === 'institution_only' ? say(result.data) : 'This page could not be loaded. Reload it.')
+    setProblem('This page could not be loaded. Reload it.')
   }, [path, onSignedOut])
   useEffect(() => void load(), [load])
   return { view, problem, load }
@@ -489,19 +490,17 @@ function OrderRecord({ o, v, onClose, onChanged, onSignedOut }: { o: Order; v: D
   )
 }
 
-export function Desk({ kind, onSignedOut }: { kind: string; onSignedOut: () => void }) {
+// Every active organisation trades here, a partner as an institution (owner, 2026-11-19).
+export function Desk({ onSignedOut }: { onSignedOut: () => void }) {
   return (
     <>
       <header className="ph"><div><span className="cap eyebrow">Desk</span><h1 className="h-page">Prepare, approve, <em>then sign</em>.</h1><p className="lede">Prepare an order on a live quote, then a second person approves, then your wallet signs.</p></div></header>
-      {kind === 'institution' ? <InstitutionDesk onSignedOut={onSignedOut} /> : (
-        <div className="panel"><div className="stack" style={{ alignItems: 'flex-start' }}><Tile name="landmark" /><h2 className="h-panel">The desk is for institutions.</h2><p className="muted">Partners integrate the swap in their own product. Your figures are in Overview.</p>
-          <div className="acts"><a className="btn primary md" href="/#/overview"><Icon name="layout-dashboard" size={16} />Go to Overview</a></div></div></div>
-      )}
+      <Ticket onSignedOut={onSignedOut} />
     </>
   )
 }
 
-function InstitutionDesk({ onSignedOut }: { onSignedOut: () => void }) {
+function Ticket({ onSignedOut }: { onSignedOut: () => void }) {
   const { view: v, problem, load } = useView<DeskView>('/api/desk', onSignedOut)
   const [picked, setPicked] = useState('')
   const [failed, setFailed] = useState('')

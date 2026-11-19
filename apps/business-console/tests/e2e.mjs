@@ -1801,9 +1801,9 @@ try {
   await listMode('ok')
   check('the loaded file again: nothing changes, and nothing is held any more', (await operatorSync()).includes('The list file is the one already loaded.') && !operator('list').includes('WARNING'))
   await pat.page.getByRole('link', { name: 'Desk' }).first().click()
-  await pat.page.getByRole('heading', { name: 'The desk is for institutions.' }).waitFor()
-  check('a partner sees "The desk is for institutions.", no ticket, and the server refuses the desk',
-    (await pat.page.locator('form.ticket').count()) === 0 && (await status('/api/desk', pat.page)) === 403 && await both(pat.page, '51-desk-partner'))
+  await pat.page.getByRole('heading', { name: 'Order ticket' }).waitFor()
+  check('a partner gets the desk too (owner, 2026-11-19): the ticket and the permitted assets, and the server answers the desk',
+    !(await pat.page.getByText('The desk is for institutions.').count()) && await pat.page.getByText('Permitted assets').isVisible() && (await status('/api/desk', pat.page)) === 200 && await both(pat.page, '51-desk-partner'))
 
   // A partner with no linked wallet (the plain seed).
   const nell = await firstOwner(seeded().match(/http\S+\/#\/enrol\/\S+/)[0])

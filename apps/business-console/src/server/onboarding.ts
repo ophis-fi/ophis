@@ -487,8 +487,8 @@ const NAME = /^[\p{L}\p{M}\p{N} .'’-]{1,60}$/u
 const POSITION = /^[\p{L}\p{M}\p{N} .,'’&()/-]{2,60}$/u
 const POSTAL = /^(?=.*[\p{L}\p{N}])[^\p{C}<>]{5,200}$/u
 const MAX_PEOPLE = 4 // besides the applicant: 5 people in all
-// What the company does (owner, 2026-11-17), and the part of the console it gets: partners follow their partner fees,
-// institutions trade on the desk. The browser shows the names; the kind is set here, never sent by the page.
+// What the company does (owner, 2026-11-17), and the part of the console it gets: partners follow their partner fees in
+// Overview, institutions their orders and statement; every organisation trades on the desk (owner, 2026-11-19). The browser shows the names; the kind is set here, never sent by the page.
 export const BUSINESS: Record<string, 'partner' | 'institution'> = {
   wallet: 'partner', exchange: 'partner', app: 'partner', payments: 'partner', protocol: 'partner',
   fund: 'institution', vc: 'institution', bank: 'institution', broker: 'institution', family_office: 'institution', treasury: 'institution',
