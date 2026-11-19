@@ -2,9 +2,14 @@
 // Every text shown comes from the server's fixed answer base. Nothing a model wrote is ever displayed.
 import { useEffect, useState, type FormEvent } from 'react'
 import { api, Icon, ROLE, Section, Tile } from './ui.tsx'
+import { Export, named } from './desk.tsx'
+import { ASSET_LOGO, CHAIN_LOGO } from './logos.ts'
+import { money } from './money.ts'
 
 interface Entry { id: string; title: string; text: string; link: string }
 interface Right { can: string; roles: string[]; fresh: boolean; second: boolean }
+interface Asset { chainId: number; chain: string; symbol: string; token: string; cap: string }
+const NATIVE = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' // ETH itself: no token contract
 type View =
   | { kind: 'idle' } | { kind: 'busy' } | { kind: 'empty' } | { kind: 'secret' } | { kind: 'thanks' }
   | { kind: 'answer'; list: Entry[]; at: number }
@@ -23,9 +28,11 @@ const WHY = {
 export function Support({ onSignedOut }: { onSignedOut: () => void }) {
   const [question, setQuestion] = useState('')
   const [view, setView] = useState<View>({ kind: 'idle' })
-  // The FAQ item "What each role can do": the rows of the server's route table, as GET /api/org carries them.
-  const [rights, setRights] = useState<Right[]>()
-  useEffect(() => void api<{ rights?: Right[] }>('/api/org').then((result) => setRights(result.data.rights)), [])
+  // The FAQ items "What each role can do" (the rows of the server's route table) and "Which tokens can I trade" (the desk's
+  // assets, moved here from the desk: owner, 2026-11-19), as GET /api/org carries them.
+  const [faq, setFaq] = useState<{ rights?: Right[]; assets?: Asset[] }>({})
+  useEffect(() => void api<{ rights?: Right[]; assets?: Asset[] }>('/api/org').then((result) => setFaq(result.data)), [])
+  const { rights, assets } = faq
 
   async function ask(event: FormEvent) {
     event.preventDefault()
@@ -103,6 +110,24 @@ export function Support({ onSignedOut }: { onSignedOut: () => void }) {
               </table></div>
             </div>
           </details>
+          {assets && (
+            <details className="disclose">
+              <summary>Which tokens can I trade, and how much per order?<Icon name="chevron-down" /></summary>
+              <div className="body stack">
+                <p>An order on the desk sells one of these for another on the same chain. ETH is ETH itself: bought, it is paid into the wallet; sold, the wallet sends it in one transaction. WETH is ETH as a token. Most per order: the largest amount one order can sell, about 5,000,000 EUR.</p>
+                <div className="table-wrap"><table className="t">
+                  <thead><tr><th>Token</th><th>Chain</th><th>Most per order</th></tr></thead>
+                  <tbody>{assets.map((a) => (
+                    <tr key={`${a.chainId} ${a.symbol}`}>
+                      <td>{named(ASSET_LOGO[a.symbol], a.symbol, <><b>{a.symbol}</b><small className={a.token === NATIVE ? undefined : 'mono'}>{a.token === NATIVE ? 'No token contract' : a.token}</small></>)}</td>
+                      <td>{named(CHAIN_LOGO[a.chainId], a.chain)}</td><td>{money(a.cap, 0)}</td>
+                    </tr>
+                  ))}</tbody>
+                </table></div>
+                <Export table="assets" />
+              </div>
+            </details>
+          )}
         </Section>
       )}
     </div>
