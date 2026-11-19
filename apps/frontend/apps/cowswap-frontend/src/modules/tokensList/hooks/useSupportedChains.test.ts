@@ -34,9 +34,8 @@ describe('useSupportedChains', () => {
       // Ophis chains supported at FE layer even though the SDK enum
       // doesn't list them as primary SupportedChainId entries:
       //   - 10 (Optimism mainnet)
-      //   - 130 (Unichain mainnet — sovereign, live 2026-06-29)
       //   - 4663 (Robinhood Chain)
-      const OPHIS_NON_SDK_CHAINS = new Set([10, 130, 4663])
+      const OPHIS_NON_SDK_CHAINS = new Set([10, 4663])
       expect(chain.id in SupportedChainId || OPHIS_NON_SDK_CHAINS.has(chain.id)).toBe(true)
     })
   })

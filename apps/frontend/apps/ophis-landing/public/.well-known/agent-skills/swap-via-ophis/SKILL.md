@@ -7,8 +7,8 @@ license: MIT
 # Swap via Ophis
 
 Ophis is an intent-based DEX aggregator built on CoW Protocol. The swap app
-supports 14 EVM chains including Arc; `@ophis/sdk` v0.4.3 or later and the MCP
-server cover the same 14 mainnets, plus Sepolia for testing. Supported NEAR routes add Solana, Bitcoin, Monad, Hyperliquid,
+supports 13 EVM chains including Arc; `@ophis/sdk` v0.4.3 or later and the MCP
+server cover the same 13 mainnets, plus Sepolia for testing. Supported NEAR routes add Solana, Bitcoin, Monad, Hyperliquid,
 X Layer, Sui, Tron, Starknet and Zcash sources and destinations, subject to route availability. This MCP workflow describes same-chain
 signed ERC-20 orders, not every bridge flow. Batch auctions mitigate common MEV;
 they do not eliminate every execution risk. Signing happens in the user's wallet.
@@ -57,7 +57,7 @@ All endpoints are public and require no API key or authentication.
 
 Batch-auction orders carry a 1 bp base
 plus 80% of reference-quote improvement on volatile pairs (99 bps cap), or 50%
-on stable pairs (20 bps cap). Optimism, Unichain, Robinhood Chain and Arc operated
+on stable pairs (20 bps cap). Optimism, Robinhood Chain and Arc operated
 backends add improvement capture; hosted orders encode it in appData alongside
 the base, and CoW Protocol's own fees apply upstream. Use
 `buildOphisAppDataPartnerFee(chainId, isStablePair)` rather than a volume-only
@@ -78,7 +78,7 @@ The `@ophis/sdk` npm package exposes
 - Non-custodial: confirm the order's `receiver` equals the user's address before
   signing; `build_order` pins it by default.
 - The settlement contract on Optimism is Ophis's own GPv2Settlement at
-  `0x310784c7FCE12d578dA6f53460777bAc9718B859`, and on Unichain it is
+  `0x310784c7FCE12d578dA6f53460777bAc9718B859`, and on Optimism it is
   `0x108A678716e5E1776036eF044CAB7064226F714E` (NOT CoW's canonical address).
   Robinhood Chain and Arc also use non-canonical settlement contracts.
   Always resolve the per-chain settlement domain via `list_chains` or the SDK.

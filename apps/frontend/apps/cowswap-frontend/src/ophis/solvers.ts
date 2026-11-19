@@ -32,7 +32,6 @@
 
 /** Chain id of the Ophis-operated Optimism orderbook. */
 export const OPHIS_SOLVER_REGISTRY_CHAIN_ID = 10
-export const OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID = 130
 export const OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID = 4663
 export const OPHIS_ARC_SOLVER_REGISTRY_CHAIN_ID = 5042
 
@@ -55,48 +54,39 @@ export const OPHIS_SOLVERS: readonly OphisStaticSolverInfo[] = [
   // scripts/check-solver-registry-invariant.sh.
   {
     solverId: 'baseline',
-    chainIds: [
-      OPHIS_SOLVER_REGISTRY_CHAIN_ID,
-      OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID,
-      OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID,
-    ],
+    chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID, OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID],
   }, // Ophis baseline solver
   {
     solverId: 'okx',
-    chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID, OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID],
+    chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID],
   }, // OKX OnchainOS (external)
   {
     solverId: 'kyberswap',
     chainIds: [
       OPHIS_SOLVER_REGISTRY_CHAIN_ID,
-      OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID,
       OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID,
       OPHIS_ARC_SOLVER_REGISTRY_CHAIN_ID,
     ],
   }, // external aggregator
   {
     solverId: 'velora',
-    chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID, OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID],
+    chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID],
   }, // external aggregator
   {
     solverId: 'enso',
-    chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID, OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID],
+    chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID],
   }, // external routing engine
   {
     solverId: 'lifi',
-    chainIds: [
-      OPHIS_SOLVER_REGISTRY_CHAIN_ID,
-      OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID,
-      OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID,
-    ],
+    chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID, OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID],
   }, // external aggregation layer
   {
     solverId: 'openocean',
-    chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID, OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID],
+    chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID],
   }, // external aggregator
   {
     solverId: 'dodo',
-    chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID, OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID],
+    chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID],
   }, // external aggregator
   { solverId: 'curve', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] }, // direct on-chain lane
   { solverId: 'woofi', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] }, // direct on-chain lane
@@ -108,14 +98,13 @@ export const OPHIS_SOLVERS: readonly OphisStaticSolverInfo[] = [
     solverId: 'uniswap-v4',
     chainIds: [
       OPHIS_SOLVER_REGISTRY_CHAIN_ID,
-      OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID,
       OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID,
       OPHIS_ARC_SOLVER_REGISTRY_CHAIN_ID,
     ],
   }, // direct on-chain lane
   {
     solverId: 'velodrome',
-    chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID, OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID],
+    chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID],
   },
   { solverId: 'velodrome-slipstream', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] },
   { solverId: 'pancakeswap', chainIds: [OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID] },

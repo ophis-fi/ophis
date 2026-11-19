@@ -58,7 +58,7 @@ terminal; your wallet still asks), `--to-token <token>` (with bridge: get a diff
 ## Chains
 
 Arbitrum One, Arc, Avalanche, Base, BNB Chain, Ethereum, Gnosis, Ink, Linea, Optimism, Plasma, Polygon, Robinhood
-Chain, Unichain, and the Sepolia testnet. Bridges can start from Ethereum, Arbitrum or Base. In the terminal, each
+Chain, and the Sepolia testnet. Bridges can start from Ethereum, Arbitrum or Base. In the terminal, each
 chain shows with a dot in its brand colour.
 
 ## Base builder attribution

@@ -20,7 +20,7 @@ scheme so the Bankr wallet only sends transactions, never signs a raw message):
 
 Requires: BANKR_API_KEY (bankr.bot/api-keys) and a keccak lib (see ophis_common).
 Bankr's Submit API must support the target chain — the reliable overlap with Ophis
-is Base, Unichain, Arbitrum, Polygon, BNB, and Ethereum (see references/api.md).
+is Base, Optimism, Arbitrum, Polygon, BNB, and Ethereum (see references/api.md).
 """
 import sys
 import time

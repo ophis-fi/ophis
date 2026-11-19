@@ -11,7 +11,6 @@ import {
   USDC_MAINNET,
   USDC_OPTIMISM,
   USDC_POLYGON,
-  USDC_UNICHAIN,
 } from './tokens'
 
 export interface CircleTokenIdentity {
@@ -33,7 +32,6 @@ const CIRCLE_TOKENS = [
   ARC_USYC,
   USDC_MAINNET,
   USDC_OPTIMISM,
-  USDC_UNICHAIN,
   USDC_ARBITRUM_ONE,
   USDC_AVALANCHE,
   USDC_BASE,

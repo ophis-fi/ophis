@@ -286,8 +286,8 @@ export function assembleEarnings(appCode: string, input: EarningsInput, now: Dat
   const sovereignPaidToDateWeth = round(Number(ownPaidWeiTotal) / 1e18);
 
   const disclaimer =
-    `Trades on Optimism (10), Unichain (130), Robinhood (4663), and Arc (5042) settle through Ophis-operated stacks. ` +
-    `Own-fee payouts are currently guaranteed only on Optimism and Unichain. ` +
+    `Trades on Optimism (10), Robinhood (4663), and Arc (5042) settle through Ophis-operated stacks; Unichain (130) is retired. ` +
+    `Own-fee payouts are currently guaranteed only on Optimism and historical Unichain trades. ` +
     `Figures on CoW-hosted chains are ${HOSTED_ACCRUAL_LABEL}. ` +
     `Routed volume is cumulative (lifetime); this surface never reports a 30-day figure or a next-payout time.`;
 

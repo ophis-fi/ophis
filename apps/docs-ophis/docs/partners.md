@@ -106,7 +106,6 @@ Resolve the relayer with `getOphisVaultRelayer(chainId)`. An approval from the S
 | Chain | Orderbook host | Settlement (`verifyingContract`) |
 | --- | --- | --- |
 | Optimism | `optimism-mainnet.ophis.fi` | `0x310784c7FCE12d578dA6f53460777bAc9718B859` |
-| Unichain | `unichain-mainnet.ophis.fi` | `0x108A678716e5E1776036eF044CAB7064226F714E` |
 | Robinhood Chain | `robinhood-mainnet.ophis.fi` | `0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD` |
 | Arc | `arc-mainnet.ophis.fi` | `0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A` |
 | Partner-hosted: Ethereum, Base, Arbitrum, Gnosis, Polygon, Avalanche, BNB, Linea, Plasma, Ink | Resolve with `getOphisOrderbookUrl(chainId)`; URL slugs differ from chain names | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` |
@@ -114,7 +113,6 @@ Resolve the relayer with `getOphisVaultRelayer(chainId)`. An approval from the S
 | Chain | Vault Relayer |
 | --- | --- |
 | Optimism | `0x83847EaB41ad9ea43809ce71569eB2e9daF51830` |
-| Unichain | `0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb` |
 | Robinhood Chain | `0xB52C38097c19cd38238c62DD36027a7918eFa890` |
 | Arc | `0x895505F1FE6D762296685fF4a8201782FFdCB8E9` |
 | partner-hosted chains | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` |
@@ -335,7 +333,7 @@ await ethFlow.createOrder(built.orderTuple, { value: built.value });
 
 | Chain | Native-token path |
 | --- | --- |
-| Optimism, Unichain, Base, and other partner-hosted chains | Resolve EthFlow support through the SDK |
+| Optimism, Base, and other partner-hosted chains | Resolve EthFlow support through the SDK |
 | Robinhood Chain | `getOphisEthFlowAddress(4663)` resolves `0xC1Ee77e8a1B85D5EED702a9bB435f434408A4d29` |
 | Arc | Use the ERC-20 USDC interface for native USDC |
 

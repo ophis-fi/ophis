@@ -25,11 +25,11 @@ const COW_API_PATH: Readonly<Record<number, string>> = {
 // their host root (without a /{network}/ segment). Each base URL is independently
 // overridable for local development and incident response.
 export const OPTIMISM_CHAIN_ID = 10;
+// Retained for historical appData recovery; no active orderbook.
 export const UNICHAIN_CHAIN_ID = 130;
 export const ROBINHOOD_CHAIN_ID = 4663;
 export const ARC_CHAIN_ID = 5042;
 const OP_ORDERBOOK_BASE = (process.env.OP_ORDERBOOK_URL ?? 'https://optimism-mainnet.ophis.fi').replace(/\/+$/, '');
-const UNI_ORDERBOOK_BASE = (process.env.UNI_ORDERBOOK_URL ?? 'https://unichain-mainnet.ophis.fi').replace(/\/+$/, '');
 const ROBINHOOD_ORDERBOOK_BASE = (
   process.env.ROBINHOOD_ORDERBOOK_URL ?? 'https://robinhood-mainnet.ophis.fi'
 ).replace(/\/+$/, '');
@@ -38,7 +38,6 @@ const ARC_ORDERBOOK_BASE = (process.env.ARC_ORDERBOOK_URL ?? 'https://arc-mainne
 export const SUPPORTED_CHAIN_IDS = [
   ...Object.keys(COW_API_PATH).map(Number),
   OPTIMISM_CHAIN_ID,
-  UNICHAIN_CHAIN_ID,
   ROBINHOOD_CHAIN_ID,
   ARC_CHAIN_ID,
 ];
@@ -49,7 +48,6 @@ const BASE_URL = process.env.COW_API_BASE ?? 'https://api.cow.fi';
 // Hosted chains: `${api.cow.fi}/{network}`. Sovereign chains: their own host root.
 export function orderbookBase(chainId: number): string {
   if (chainId === OPTIMISM_CHAIN_ID) return OP_ORDERBOOK_BASE;
-  if (chainId === UNICHAIN_CHAIN_ID) return UNI_ORDERBOOK_BASE;
   if (chainId === ROBINHOOD_CHAIN_ID) return ROBINHOOD_ORDERBOOK_BASE;
   if (chainId === ARC_CHAIN_ID) return ARC_ORDERBOOK_BASE;
   const path = COW_API_PATH[chainId];

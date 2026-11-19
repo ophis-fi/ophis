@@ -9,7 +9,7 @@ chains (14 mainnets plus Sepolia).
 It exposes the Ophis trading surface to autonomous agents and MCP clients
 without making them re-derive chain-specific integration details
 (non-canonical settlement contracts on the Ophis-operated chains, the self
--hosted Optimism, Unichain, Robinhood Chain, and Arc orderbook hosts, the CIP-75 partner-fee appData shape, and
+-hosted Optimism, Robinhood Chain, and Arc orderbook hosts, the CIP-75 partner-fee appData shape, and
 receiver pinning).
 
 Arc (5042) charges the 1 bp base fee and supports routed-volume indexing and

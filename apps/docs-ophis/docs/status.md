@@ -21,7 +21,7 @@ Check service availability through the Ophis apps and health endpoints below.
 | MCP server | `https://mcp.ophis.fi/mcp` | Use Streamable HTTP POST with `Accept: application/json, text/event-stream`; see [AI agents](/ai-agents). |
 | Indexer | [rebates.ophis.fi/health](https://rebates.ophis.fi/health) | Check the JSON fields below. |
 | Optimism orderbook | [version check](https://optimism-mainnet.ophis.fi/api/v1/version) | HTTP 200 and a version string confirm chain-10 orderbook reachability. |
-| Unichain orderbook | [version check](https://unichain-mainnet.ophis.fi/api/v1/version) | HTTP 200 and a version string confirm chain-130 orderbook reachability. |
+| Unichain (130) | Retired | Removed from active trading on 19 November 2026; historical recovery and accounting remain available. |
 | Robinhood orderbook | [version check](https://robinhood-mainnet.ophis.fi/api/v1/version) | HTTP 200 and a version string confirm chain-4663 orderbook reachability. |
 | Arc orderbook | [version check](https://arc-mainnet.ophis.fi/api/v1/version) | Check chain-5042 orderbook reachability. |
 
@@ -46,7 +46,7 @@ The [daily Robinhood canary](https://github.com/ophis-fi/ophis/actions/workflows
 | Provider | Chains | Settlement |
 | --- | --- | --- |
 | Partner-hosted | Ethereum, BNB Chain, Gnosis, Polygon, Base, Arbitrum, Avalanche, Linea, Ink, Plasma | Production orderbooks at `api.cow.fi` and the shared settlement contracts; check the [upstream service status](https://status.cow.fi). |
-| Ophis-operated | Optimism (chain 10), Unichain (chain 130), Robinhood Chain (chain 4663), Arc (chain 5042) | Ophis orderbooks listed above and Ophis-deployed `GPv2Settlement` contracts. |
+| Ophis-operated | Optimism (chain 10), Robinhood Chain (chain 4663), Arc (chain 5042) | Ophis orderbooks listed above and Ophis-deployed `GPv2Settlement` contracts. |
 | [NEAR Intents](https://near.org/intents) | Solana, Bitcoin, Monad, Hyperliquid (Hypercore), X Layer, Sui, Tron, Starknet, Zcash | Sources and destinations in the standalone app; external-source swaps begin with a deposit. |
 
 Private mode is enabled for Ethereum, Arbitrum and BNB Chain; Base remains a held pilot and Polygon is deferred. Availability also depends on wallet synchronization, pool liquidity and the selected broadcaster. A reachable public orderbook does not confirm that a private route is available. Check the app's broadcaster and fee-credit status, and use the [private-transaction recovery guide](/privacy-pools#interrupted-transactions) for pending activity.

@@ -100,7 +100,7 @@ def ophis_swap(
         buy_token (str): ERC-20 buy token contract address (0x...).
         amount (str): Amount of sell_token in WHOLE units, e.g. "100" or "1.5".
         chain (str): Chain name or id — e.g. "base", "ethereum", "arbitrum", "optimism",
-            "polygon", "bnb", "gnosis", "avalanche", "unichain", "linea", "ink", or a chain id.
+            "polygon", "bnb", "gnosis", "avalanche", "linea", "ink", or a chain id.
         slippage_bps (int): Max slippage in basis points (0-5000). Default 50 (0.5%).
         referral_code (str): Ophis referral code that earns the rebate. Optional ("" for none).
         (The 1bp stable-pair fee tier is applied automatically when both tokens are in the

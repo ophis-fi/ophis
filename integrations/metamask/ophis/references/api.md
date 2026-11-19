@@ -12,7 +12,7 @@ Endpoints/addresses from `@ophis/sdk`; `mm` command surface from `@metamask/agen
 | Order status | `GET {orderbook}/api/v1/orders/{uid}` |
 | Enroll wallet | `GET https://rebates.ophis.fi/tier/{wallet}` (idempotent; once before the first order) |
 
-`{orderbook}` = `https://api.cow.fi/<slug>` for CoW-hosted chains, `https://optimism-mainnet.ophis.fi` (10) and `https://unichain-mainnet.ophis.fi` (130) for the Ophis-sovereign chains. Hitting api.cow.fi on OP/Unichain bypasses the Ophis solver + fee.
+`{orderbook}` = `https://api.cow.fi/<slug>` for CoW-hosted chains, `https://optimism-mainnet.ophis.fi` (10) and `https://unichain-mainnet.ophis.fi` (130) for the Ophis-sovereign chains. Hitting api.cow.fi on OP bypasses the Ophis solver + fee.
 
 ## The EIP-712 flow (why MetaMask is a clean fit)
 
@@ -50,7 +50,7 @@ mm wallet sign-typed-data --chain-id <CHAIN> \
 ## Gotchas
 
 1. Sign with `appData` = hash; submit with `appData` = full string + `appDataHash`.
-2. On OP/Unichain use the NON-canonical Settlement (signing domain) + VaultRelayer (approve) — canonical addresses fail silently.
+2. On OP use the NON-canonical Settlement (signing domain) + VaultRelayer (approve) — canonical addresses fail silently.
 3. `appCode` must be exactly `"ophis"`.
 4. Enroll the wallet (`GET rebates.ophis.fi/tier/{wallet}`) before the first order.
 5. Approve the VaultRelayer (not Settlement) for `sellAmount (+ feeAmount)`.
@@ -61,4 +61,4 @@ mm wallet sign-typed-data --chain-id <CHAIN> \
 - **`mm` JSON output field names are not documented** — the scripts probe `address`/`signature`/`transactionHash` (+ nested `data`/`result`) and fall back to a 0x regex. Confirm the exact keys on first run and pin them.
 - **Blockaid / Guard mode:** every `mm` tx runs simulation + Blockaid; an `approve` may be flagged, and in Guard mode gated by wallet policy (`mm wallet policy get/set`). Confirm whether a standard CoW approve/order passes in your mode.
 - **eip712 acceptance:** confirm the live orderbook accepts the `mm`-produced EIP-712 signature (signature encoding / v-value). If rejected, check the `mm sign-typed-data` signature format.
-- **Chain availability:** `mm chains list` for the current CLI build (esp. Unichain/Gnosis/Ink).
+- **Chain availability:** `mm chains list` for the current CLI build (esp. Gnosis/Ink).

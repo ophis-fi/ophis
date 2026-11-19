@@ -8,7 +8,6 @@ ROOT = Path(__file__).resolve().parents[1]
 STACKS = [
     ROOT / 'infra' / 'optimism-mainnet' / 'docker-compose.yml',
     ROOT / 'infra' / 'robinhood-mainnet' / 'docker-compose.yml',
-    ROOT / 'infra' / 'unichain-mainnet' / 'docker-compose.yml',
 ]
 TRIO = ('orderbook', 'autopilot', 'driver')
 TOKEN = 'OPHIS_INTER_SERVICE_AUTH_TOKEN'

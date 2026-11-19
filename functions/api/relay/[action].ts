@@ -4,7 +4,7 @@ interface RelayEnv {
 }
 class RelayRateLimitError extends Error {}
 const ORIGINS = new Set(['https://ophis.fi', 'https://swap.ophis.fi', 'https://explorer.ophis.fi'])
-const CHAINS = new Set([1, 10, 56, 100, 130, 137, 4663, 5042, 8453, 9745, 42161, 43114, 57073, 59144])
+const CHAINS = new Set([1, 10, 56, 100, 137, 4663, 5042, 8453, 9745, 42161, 43114, 57073, 59144])
 // Mirrored fee recipient: tests pin this to the SDK and both frontend constants.
 const FEE_RECIPIENT = '0x858f0F5eE954846D47155F5203c04aF1819eCeF8'
 const address = (v: unknown): v is string => typeof v === 'string' && /^0x[\da-f]{40}$/i.test(v)

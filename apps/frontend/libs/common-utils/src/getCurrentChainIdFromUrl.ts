@@ -20,7 +20,7 @@ export function getCurrentChainIdFromUrl(location = window.location): SupportedC
 export function getRawCurrentChainIdFromUrl(location = window.location): SupportedChainId | null {
   const chainId = readChainIdFromHash(location.hash)
 
-  // Ophis fork: chains 10 (Optimism), 130 (Unichain), and 4663 (Robinhood)
+  // Ophis fork: chains 10 (Optimism), 4663 (Robinhood), and Arc
   // are supported at frontend
   // layer even though the SDK enum doesn't include them as primary SupportedChainId.
   if (isSupportedChainId(chainId)) return chainId as SupportedChainId

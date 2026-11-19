@@ -10,7 +10,7 @@ import { defaultQuoteBridgeProviders } from 'tradingSdk/bridgingSdk'
 // LaunchDarkly on our deployment — the Updater's early-return path (when flags
 // are undefined) keeps whatever the atom defaults to. NEAR Intents gives
 // EVM→Solana/Bitcoin plus nine EVM chains; Across is the only route into
-// Unichain, Robinhood Chain, Ink and Linea. Bungee is not a quote provider any
+// Robinhood Chain, Ink and Linea. Bungee is not a quote provider any
 // more (its API is permanently 410); its decode-only registration lives in
 // tradingSdk/bridgingSdk (setQuoteBridgeProviders), not here.
 export const bridgeProvidersAtom = atom(new Set<DefaultBridgeProvider>(defaultQuoteBridgeProviders))

@@ -89,7 +89,7 @@ export const ophisVolumeBpsForPair = (isStablePair: boolean): number =>
  */
 const FEE_CHAIN_IDS = [
   // Ophis-operated (own stack — 100%; NOT cow-sdk SupportedChainId members)
-  10, 130, 4663, 5042,
+  10, 4663, 5042,
   // externally hosted = cow-sdk SupportedChainId (settle via api.cow.fi, 75% weekly).
   // Sepolia (11155111) is the testnet member — kept so the fee path is testable.
   1, 56, 100, 137, 8453, 9745, 42161, 43114, 57073, 59144, 11155111,
@@ -101,7 +101,7 @@ const FEE_CHAIN_IDS = [
  * elsewhere) cannot change which chains charge a fee by mutating a public value.
  */
 const FEE_CHAIN_ID_SET: ReadonlySet<number> = new Set<number>(FEE_CHAIN_IDS);
-const SOVEREIGN_CHAIN_ID_SET: ReadonlySet<number> = new Set<number>([10, 130, 4663, 5042]);
+const SOVEREIGN_CHAIN_ID_SET: ReadonlySet<number> = new Set<number>([10, 4663, 5042]);
 
 /** Chain-aware volume fee for high-level order builders: 1 bp on every served chain. */
 export const ophisVolumeBpsForChainAndPair = (chainId: number, isStablePair: boolean): number => {

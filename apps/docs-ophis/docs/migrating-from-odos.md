@@ -38,7 +38,6 @@ Use wrapped tokens such as WETH. Native-token inputs or outputs using `0xEeee…
 | `chainId` | Network | Orderbook | Runtime check |
 | --- | --- | --- | --- |
 | 10 | Optimism | `https://optimism-mainnet.ophis.fi` | [Version endpoint](https://optimism-mainnet.ophis.fi/api/v1/version) |
-| 130 | Unichain | `https://unichain-mainnet.ophis.fi` | [Version endpoint](https://unichain-mainnet.ophis.fi/api/v1/version) |
 | 4663 | Robinhood Chain | `https://robinhood-mainnet.ophis.fi` | [Version endpoint](https://robinhood-mainnet.ophis.fi/api/v1/version) |
 
 Other chains return `UNSUPPORTED_CHAIN` (4903). Use the [SDK](/partners) for Arc and the other supported mainnets.
@@ -204,7 +203,7 @@ Use the returned status and settlement amounts to update your app after executio
 | `sourceWhitelist`, `sourceBlacklist`, `poolBlacklist` | Ignored with a warning; solvers choose routing |
 | `disableRFQs`, `compact` | Ignored |
 | `likeAsset` | Ignored with a warning |
-| `pathViz`, `pathVizImage`, `pathVizImageConfig` | Route graph and rendered SVG on Optimism; Unichain and Robinhood Chain return `null` with a warning |
+| `pathViz`, `pathVizImage`, `pathVizImageConfig` | Route graph and rendered SVG on Optimism; Robinhood Chain return `null` with a warning |
 | `permit2` | `null` with `PERMIT2_UNAVAILABLE`; approve the vault relayer |
 
 ## Response field mapping

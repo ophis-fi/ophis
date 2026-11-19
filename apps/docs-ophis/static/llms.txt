@@ -1,10 +1,10 @@
 # Ophis Docs
 
-> Documentation for Ophis: intent-based token swaps authorized with your wallet, with a web app, CLI, SDK, MCP server, Intent API and widget. The app and CLI cover 15 EVM networks, including the Sepolia testnet. The standalone app also supports NEAR Intents sources and destinations and Circle bridges to and from Arc.
+> Documentation for Ophis: intent-based token swaps authorized with your wallet, with a web app, CLI, SDK, MCP server, Intent API and widget. The app and CLI cover 13 EVM networks, including the Sepolia testnet. The standalone app also supports NEAR Intents sources and destinations and Circle bridges to and from Arc.
 
 ## Build with Ophis
 
-SDK v0.4.6 and hosted MCP cover 14 EVM mainnets, including Arc.
+SDK v0.4.6 and hosted MCP cover 13 EVM mainnets, including Arc.
 
 - [AI agent integration](https://docs.ophis.fi/ai-agents): connect to the hosted MCP server at https://mcp.ophis.fi/mcp to parse requests, resolve tokens, quote, build orders and submit wallet-signed trades.
 - [Ophis CLI](https://docs.ophis.fi/cli): quote, swap and bridge from the terminal (`npm install -g @ophis/cli`, Node.js 20+), with wallet approval over WalletConnect.
@@ -23,8 +23,8 @@ The standard schedule charges a 1 bp Ophis base plus 80% of reference-quote impr
 
 Worked examples:
 
-- A $10,000 volatile trade with 20 bps of reference-quote improvement pays the $1 base plus $16 of captured improvement on Optimism, Unichain, Robinhood Chain or Arc.
-- A $10,000 stablecoin trade with 20 bps of improvement pays the $1 base plus $10 of captured improvement on Optimism, Unichain, Robinhood Chain or Arc.
+- A $10,000 volatile trade with 20 bps of reference-quote improvement pays the $1 base plus $16 of captured improvement on Optimism, Robinhood Chain or Arc.
+- A $10,000 stablecoin trade with 20 bps of improvement pays the $1 base plus $10 of captured improvement on Optimism, Robinhood Chain or Arc.
 
 ## Reference
 

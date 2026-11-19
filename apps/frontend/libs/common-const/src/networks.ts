@@ -36,8 +36,6 @@ const RPC_URL_ENVS: Record<SupportedChainId, HttpsString | undefined> = {
   [SupportedChainId.SEPOLIA]: (process.env['REACT_APP_NETWORK_URL_11155111'] as HttpsString) || undefined,
   // Ophis fork: OP mainnet (chain 10) added at frontend layer
   [10 as unknown as SupportedChainId]: (process.env['REACT_APP_NETWORK_URL_10'] as HttpsString) || undefined,
-  // Ophis fork: Unichain (chain 130) added at frontend layer
-  [130 as unknown as SupportedChainId]: (process.env['REACT_APP_NETWORK_URL_130'] as HttpsString) || undefined,
   // Ophis fork: Robinhood Chain (chain 4663)
   [4663 as unknown as SupportedChainId]: (process.env['REACT_APP_NETWORK_URL_4663'] as HttpsString) || undefined,
   // Ophis fork: NEAR Intents bridge destinations (no trading), see bridgeDestinationChains.ts
@@ -113,9 +111,7 @@ const DEFAULT_RPC_URL: Record<SupportedChainId, { url: HttpsString; usesInfura: 
   [SupportedChainId.SEPOLIA]: { url: `https://ethereum-sepolia-rpc.publicnode.com`, usesInfura: false },
   // Ophis fork: OP mainnet default public RPC
   [10 as unknown as SupportedChainId]: { url: `https://optimism.drpc.org`, usesInfura: false },
-  // Ophis fork: Unichain default public RPC
   [ARC_CHAIN_ID]: { url: ARC_RPC_URL, usesInfura: false },
-  [130 as unknown as SupportedChainId]: { url: `https://mainnet.unichain.org`, usesInfura: false },
   // Ophis fork: Monad + X Layer official public RPCs (bridge destinations only;
   // probed eth_chainId 0x8f / 0xc4 on 2026-09-11).
   [MONAD_CHAIN_ID as SupportedChainId]: { url: `https://rpc.monad.xyz`, usesInfura: false },
@@ -137,9 +133,7 @@ export const RPC_URLS: Record<SupportedChainId, HttpsString> = {
   ...mapSupportedNetworks(getRpcUrl),
   // Ophis fork: include OP mainnet (chain 10) which the SDK omits from ALL_SUPPORTED_CHAIN_IDS
   [10 as unknown as SupportedChainId]: getRpcUrl(10 as unknown as SupportedChainId),
-  // Ophis fork: include Unichain (chain 130) which the SDK omits from ALL_SUPPORTED_CHAIN_IDS
   [ARC_CHAIN_ID]: getRpcUrl(ARC_CHAIN_ID),
-  [130 as unknown as SupportedChainId]: getRpcUrl(130 as unknown as SupportedChainId),
   // Ophis fork: include Robinhood Chain (4663).
   [4663 as unknown as SupportedChainId]: getRpcUrl(4663 as unknown as SupportedChainId),
   // Ophis fork: NEAR Intents bridge destinations.
@@ -161,7 +155,6 @@ export const WALLET_RPC_URLS: Record<SupportedChainId, HttpsString> = {
   ...mapSupportedNetworks(getPublicRpcUrl),
   [10 as unknown as SupportedChainId]: getPublicRpcUrl(10 as unknown as SupportedChainId),
   [ARC_CHAIN_ID]: getPublicRpcUrl(ARC_CHAIN_ID),
-  [130 as unknown as SupportedChainId]: getPublicRpcUrl(130 as unknown as SupportedChainId),
   [4663 as unknown as SupportedChainId]: getPublicRpcUrl(4663 as unknown as SupportedChainId),
   [MONAD_CHAIN_ID as SupportedChainId]: getPublicRpcUrl(MONAD_CHAIN_ID as SupportedChainId),
   [XLAYER_CHAIN_ID as SupportedChainId]: getPublicRpcUrl(XLAYER_CHAIN_ID as SupportedChainId),

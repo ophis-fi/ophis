@@ -91,6 +91,7 @@ export const ARC_CHAIN_ID = 5042;
  *  CoW's 25% cut (keeps 75%).
  *  This set is the SINGLE source of truth for the keep fraction — keepFractionBps() and
  *  the api.ts payout SQL both derive from it, so adding a sovereign chain is one edit. */
+// Includes retired Unichain so historical fees never acquire a CoW service-fee cut.
 export const SOVEREIGN_CHAIN_IDS: ReadonlySet<number> = new Set([
   OPTIMISM_CHAIN_ID,
   UNICHAIN_CHAIN_ID,

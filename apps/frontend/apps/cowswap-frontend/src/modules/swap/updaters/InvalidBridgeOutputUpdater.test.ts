@@ -80,7 +80,7 @@ describe('getInvalidBridgeOutputPatch', () => {
 })
 
 describe('getUnsupportedBridgePairPatch', () => {
-  it.each([130, 5042])('requires surface-level CCTP support to preserve source %s', (sourceChainId) => {
+  it.each([5042])('requires surface-level CCTP support to preserve source %s', (sourceChainId) => {
     const params = {
       sourceChainId: sourceChainId as SupportedChainId,
       targetChainId: SupportedChainId.MAINNET,

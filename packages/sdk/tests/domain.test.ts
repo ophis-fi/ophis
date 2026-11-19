@@ -16,8 +16,6 @@ describe('getOphisSettlementAddress', () => {
   it('returns the Ophis-deployed settlement for the self-hosted chains, NOT canonical', () => {
     expect(getOphisSettlementAddress(10)).toBe(OPHIS_OP);
     expect(getOphisSettlementAddress(10)).not.toBe(CANONICAL);
-    expect(getOphisSettlementAddress(130)).toBe('0x108A678716e5E1776036eF044CAB7064226F714E'); // Unichain (verified on-chain)
-    expect(getOphisSettlementAddress(130)).not.toBe(CANONICAL);
     expect(getOphisSettlementAddress(4663)).toBe('0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD');
     expect(getOphisSettlementAddress(4663)).not.toBe(CANONICAL);
     expect(getOphisSettlementAddress(5042)).toBe('0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A');
@@ -62,8 +60,6 @@ describe('getOphisVaultRelayer', () => {
   it('returns the Ophis relayer for the self-hosted chains, NOT canonical (the approval footgun)', () => {
     expect(getOphisVaultRelayer(10)).toBe(OPHIS_OP_RELAYER);
     expect(getOphisVaultRelayer(10)).not.toBe(CANONICAL_RELAYER);
-    expect(getOphisVaultRelayer(130)).toBe('0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb'); // Unichain (confirmed via settlement.vaultRelayer())
-    expect(getOphisVaultRelayer(130)).not.toBe(CANONICAL_RELAYER);
     expect(getOphisVaultRelayer(4663)).toBe('0xB52C38097c19cd38238c62DD36027a7918eFa890');
     expect(getOphisVaultRelayer(4663)).not.toBe(CANONICAL_RELAYER);
     expect(getOphisVaultRelayer(5042)).toBe('0x895505F1FE6D762296685fF4a8201782FFdCB8E9');
@@ -88,4 +84,9 @@ describe('getOphisVaultRelayer', () => {
   it('OPHIS_VAULT_RELAYER_ADDRESSES is frozen', () => {
     expect(Object.isFrozen(OPHIS_VAULT_RELAYER_ADDRESSES)).toBe(true);
   });
+});
+
+it('refuses retired Unichain signing and approval targets', () => {
+  expect(() => getOphisOrderDomain(130)).toThrow(/no settlement address/);
+  expect(() => getOphisVaultRelayer(130)).toThrow(/no vault relayer/);
 });

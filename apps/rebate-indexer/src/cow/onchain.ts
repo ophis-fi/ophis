@@ -126,7 +126,7 @@ export function settleDecoderChains(): number[] {
     .map((s) => s.trim())
     .filter(Boolean)
     .map(Number)
-    .filter((n) => Number.isInteger(n) && n > 0);
+    .filter((n) => Number.isInteger(n) && n > 0 && n !== 130);
 }
 
 /** Provider-advertised maximum block span, when the error exposes one. */

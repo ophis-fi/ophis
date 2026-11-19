@@ -10,16 +10,6 @@ import {
   avalanche,
   linea,
 } from 'viem/chains';
-
-// Unichain (130) and Ink (57073) are defined inline so this plugin does not depend
-// on the installed viem version shipping them in its chain catalog. Unichain is the
-// Ophis-sovereign chain (MEV-protected, few agents route here) — the differentiator.
-const unichain = defineChain({
-  id: 130,
-  name: 'Unichain',
-  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-  rpcUrls: { default: { http: ['https://mainnet.unichain.org'] } },
-});
 const ink = defineChain({
   id: 57073,
   name: 'Ink',
@@ -46,7 +36,6 @@ export const OPHIS_CHAINS: Record<string, OphisChain> = {
   bsc: { id: 56, chain: bsc, settingKey: 'BNB' },
   gnosis: { id: 100, chain: gnosis, settingKey: 'GNOSIS' },
   xdai: { id: 100, chain: gnosis, settingKey: 'GNOSIS' },
-  unichain: { id: 130, chain: unichain, settingKey: 'UNICHAIN' },
   polygon: { id: 137, chain: polygon, settingKey: 'POLYGON' },
   matic: { id: 137, chain: polygon, settingKey: 'POLYGON' },
   base: { id: 8453, chain: base, settingKey: 'BASE' },
@@ -64,7 +53,6 @@ export const SUPPORTED_CHAIN_NAMES = [
   'optimism',
   'bnb',
   'gnosis',
-  'unichain',
   'polygon',
   'base',
   'ink',

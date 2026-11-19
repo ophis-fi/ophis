@@ -128,7 +128,7 @@ Both snippets pass a `referralCode`. Every order carries the Ophis partner fee p
 
 ## Not writing TypeScript? Use the MCP server
 
-If the agent is not TypeScript (an MCP-native setup, a Python loop, anything that speaks HTTP), point it at the hosted MCP server at `https://mcp.ophis.fi/mcp` ([connection guide](https://docs.ophis.fi/ai-agents#mcp-server-recommended)): keyless, unauthenticated, all 14 supported EVM chains including Arc, thirteen tools from `parse_intent` through `validate_order` and `submit_order`, and the same rule that the agent signs locally with its own key. For Arc referrals through MCP, pass the optional `referrerCode` to `build_order`; settled Arc trades are indexed for routed volume and referral attribution. Direct SDK integrations need v0.4.4 or later for Arc referral tags. The [first post](/blog/let-an-ai-agent-swap-tokens/) walks through it.
+If the agent is not TypeScript (an MCP-native setup, a Python loop, anything that speaks HTTP), point it at the hosted MCP server at `https://mcp.ophis.fi/mcp` ([connection guide](https://docs.ophis.fi/ai-agents#mcp-server-recommended)): keyless, unauthenticated, all 13 supported EVM mainnets including Arc, thirteen tools from `parse_intent` through `validate_order` and `submit_order`, and the same rule that the agent signs locally with its own key. For Arc referrals through MCP, pass the optional `referrerCode` to `build_order`; settled Arc trades are indexed for routed volume and referral attribution. Direct SDK integrations need v0.4.4 or later for Arc referral tags. The [first post](/blog/let-an-ai-agent-swap-tokens/) walks through it.
 
 ## FAQ
 
@@ -146,7 +146,7 @@ Whichever framework your agent already runs on; the swap behavior is identical b
 
 ### What does this cost?
 
-The packages are free and open source. Their SDK builders select the fee by chain and pair: a 1 bp base on Optimism, Unichain, and Robinhood Chain, where the backend also applies capped improvement capture; or the same 1 bp base plus pair-aware capped improvement policy in appData on CoW-hosted chains. CoW Protocol's fees apply upstream on hosted chains. Details are maintained at [docs.ophis.fi/fees](https://docs.ophis.fi/fees). A referral code attributes routed volume to your integration.
+The packages are free and open source. Their SDK builders select the fee by chain and pair: a 1 bp base on Optimism, and Robinhood Chain, where the backend also applies capped improvement capture; or the same 1 bp base plus pair-aware capped improvement policy in appData on CoW-hosted chains. CoW Protocol's fees apply upstream on hosted chains. Details are maintained at [docs.ophis.fi/fees](https://docs.ophis.fi/fees). A referral code attributes routed volume to your integration.
 
 ## Start here
 

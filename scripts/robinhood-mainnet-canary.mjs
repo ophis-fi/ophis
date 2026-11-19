@@ -6,7 +6,6 @@ const CHAIN_ID = 4663;
 const PUBLIC_RPC = 'https://rpc.mainnet.chain.robinhood.com';
 const SOVEREIGN_ORDERBOOKS = [
   ['Optimism', 'https://optimism-mainnet.ophis.fi'],
-  ['Unichain', 'https://unichain-mainnet.ophis.fi'],
   ['Robinhood', 'https://robinhood-mainnet.ophis.fi'],
 ];
 const ASSET_FACADE =

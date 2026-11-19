@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Ophis for Business: multi-chain swaps for desks &amp; platforms</title>
-<meta name="description" content="Offer token swaps across 14 EVM networks, with nine more source and destination networks in the Ophis app. Explore integration, referral attribution and published pricing.">
+<meta name="description" content="Offer token swaps across 13 EVM networks, with nine more source and destination networks in the Ophis app. Explore integration, referral attribution and published pricing.">
 <link rel="canonical" href="https://business.ophis.fi">
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Ophis">
 <meta property="og:title" content="Ophis for Business">
-<meta property="og:description" content="Bring multi-chain swaps to your desk or app. Explore 14 EVM trading networks, nine additional app networks and referral attribution.">
+<meta property="og:description" content="Bring multi-chain swaps to your desk or app. Explore 13 EVM trading networks, nine additional app networks and referral attribution.">
 <meta property="og:url" content="https://business.ophis.fi">
 <meta property="og:image" content="https://business.ophis.fi/ophis-og.jpg">
 <meta property="og:image:width" content="1920">
@@ -23,7 +23,7 @@
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:site" content="@ophisfi">
 <meta name="twitter:title" content="Ophis for Business">
-<meta name="twitter:description" content="Multi-chain swaps for desks and platforms: 14 EVM trading networks, nine additional app networks and referral attribution.">
+<meta name="twitter:description" content="Multi-chain swaps for desks and platforms: 13 EVM trading networks, nine additional app networks and referral attribution.">
 <meta name="twitter:image" content="https://business.ophis.fi/ophis-og.jpg">
 
 <script type="application/ld+json">
@@ -45,7 +45,7 @@
       "provider": { "@id": "https://ophis.fi/#organization" },
       "url": "https://business.ophis.fi",
       "areaServed": "Worldwide",
-      "description": "Ophis offers token swaps across 14 EVM trading networks through its app, widget and SDK. Its standalone app also supports nine additional source and destination networks where assets and quotes permit. Create a referral code, share your link and track referred wallets and volume. Orders carry a 1 bp base fee plus capped price-improvement capture."
+      "description": "Ophis offers token swaps across 13 EVM trading networks through its app, widget and SDK. Its standalone app also supports nine additional source and destination networks where assets and quotes permit. Create a referral code, share your link and track referred wallets and volume. Orders carry a 1 bp base fee plus capped price-improvement capture."
     },
     {
       "@type": "FAQPage",
@@ -54,7 +54,7 @@
         { "@type": "Question", "name": "How does Ophis price its service for partners?", "acceptedAnswer": { "@type": "Answer", "text": "Supported chains charge a 1 bp base plus 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted integrations additionally pay CoW Protocol fees upstream." } },
         { "@type": "Question", "name": "Can I get a custom rate limit?", "acceptedAnswer": { "@type": "Answer", "text": "The public Intent API allows 30 requests per minute per IP. Contact us with your throughput and integration requirements; no public API-key tier is available." } },
         { "@type": "Question", "name": "How do I integrate with Ophis?", "acceptedAnswer": { "@type": "Answer", "text": "Embed the Ophis widget, build EVM orders with the Ophis SDK, or point operators at swap.ophis.fi for direct use. Additional app networks are separate from widget and SDK order building. Documentation is at docs.ophis.fi." } },
-        { "@type": "Question", "name": "Which networks can my business access?", "acceptedAnswer": { "@type": "Answer", "text": "The widget and SDK build orders on 14 EVM networks. The standalone app additionally supports Bitcoin, Solana, Monad, Hyperliquid (Hypercore spot), X Layer, Sui, Tron, Starknet and Zcash as sources and destinations where assets and quotes permit. These additional routes are separate app flows." } },
+        { "@type": "Question", "name": "Which networks can my business access?", "acceptedAnswer": { "@type": "Answer", "text": "The widget and SDK build orders on 13 EVM networks. The standalone app additionally supports Bitcoin, Solana, Monad, Hyperliquid (Hypercore spot), X Layer, Sui, Tron, Starknet and Zcash as sources and destinations where assets and quotes permit. These additional routes are separate app flows." } },
         { "@type": "Question", "name": "What happens if a solver fails or the upstream protocol has an outage?", "acceptedAnswer": { "@type": "Answer", "text": "Solver competition handles single-solver failures automatically: the order is settled by whichever solver wins the batch. If the underlying CoW Protocol orderbook is degraded, Ophis surfaces an explicit error instead of routing through a degraded venue. Unsettled orders incur no Ophis or CoW settlement fee, though network gas may still apply to token approvals or other wallet actions you signed first." } },
         { "@type": "Question", "name": "Do you have references or case studies?", "acceptedAnswer": { "@type": "Answer", "text": "Specific partner integrations are listed only after a signed agreement exists." } }
       ]
@@ -309,7 +309,7 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
   <div class="wrap">
     <h1 class="rise">Multi-chain swaps for <em>your business</em>.</h1>
     <p class="sub rise d1">
-      Give customers or operators access to token swaps across 14 EVM networks. Integrate through
+      Give customers or operators access to token swaps across 13 EVM networks. Integrate through
       the widget or SDK, or use the standalone app for additional networks. Plan around published
       <a href="https://ophis.fi/pricing/">pricing</a>, partner terms and
       <a href="https://ophis.fi/security/">security limits</a>.
@@ -459,14 +459,14 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
     <div class="eyebrow reveal">Chain coverage</div>
     <h2 class="reveal">Trade across EVM. Reach further in the app.</h2>
     <p class="lede reveal">
-      The widget and SDK build orders on 14 EVM networks. The standalone app also supports nine
+      The widget and SDK build orders on 13 EVM networks. The standalone app also supports nine
       additional source and destination networks, including Hyperliquid's Hypercore spot balances
       and externally funded swaps. Availability depends on the asset and live quote.
       External-source routes use a deposit and refund address and are separate from widget,
       SDK and MCP order building.
     </p>
 
-    <h3 class="chain-label">14 EVM trading networks</h3>
+    <h3 class="chain-label">13 EVM trading networks</h3>
     <div class="chains reveal">
       <!-- Chain logos are decorative: the chain name is in the adjacent .name text, so
            the image is marked aria-hidden + empty alt to avoid screen readers announcing
@@ -529,7 +529,7 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
       <div class="card">
         <h3>Build your own trading flow</h3>
         <p>
-          Use <code>@ophis/sdk</code> to quote, build and submit orders across 14 EVM networks.
+          Use <code>@ophis/sdk</code> to quote, build and submit orders across 13 EVM networks.
           Use v0.4.4 or later for Arc referral tags. Native-token flows require an EthFlow deployment;
           Arc uses ERC-20 orders. See the <a href="https://docs.ophis.fi/ai-agents">integration guide</a>.
         </p>
@@ -776,7 +776,7 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
         <summary>Which networks can my business access?</summary>
         <div class="body">
           <p>
-            The widget and SDK build orders on 14 EVM networks. The standalone app additionally
+            The widget and SDK build orders on 13 EVM networks. The standalone app additionally
             supports Bitcoin, Solana, Monad, Hyperliquid (Hypercore spot), X Layer, Sui, Tron,
             Starknet and Zcash as sources and destinations where assets and quotes permit. These
             additional routes are separate app flows.

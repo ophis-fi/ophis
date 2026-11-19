@@ -57,7 +57,6 @@ Use these EIP-55 checksummed addresses from the pack's `addresses.json`:
 | Optimism *(sovereign)* | 10 | `0x310784c7FCE12d578dA6f53460777bAc9718B859` | `0x83847EaB41ad9ea43809ce71569eB2e9daF51830` |
 | BNB Chain | 56 | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` |
 | Gnosis | 100 | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` |
-| Unichain *(sovereign)* | 130 | `0x108A678716e5E1776036eF044CAB7064226F714E` | `0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb` |
 | Polygon | 137 | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` |
 | Robinhood Chain *(sovereign)* | 4663 | `0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD` | `0xB52C38097c19cd38238c62DD36027a7918eFa890` |
 | Arc *(sovereign)* | 5042 | `0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A` | `0x895505F1FE6D762296685fF4a8201782FFdCB8E9` |
@@ -70,12 +69,12 @@ Use these EIP-55 checksummed addresses from the pack's `addresses.json`:
 
 | Pack coverage | Networks |
 | --- | --- |
-| Production | The 14 networks above |
+| Production | The 13 networks above |
 | Testnet excluded | Sepolia (11155111) |
 
 :::info[Shared signing domains]
 
-On the 10 partner-hosted chains above, the domain also authorizes CoW Swap orders. Optimism, Unichain, Robinhood Chain and Arc use Ophis-deployed settlements. These example policies restrict the domain, tokens and receiver; they do not enforce a trade-size cap, a minimum exchange rate, empty appData hooks or a short expiry. Validate those fields in your signing service, and use explicit spending or turnover controls where needed. For Ophis-specific routing on a shared-domain chain, check the orderbook host and appData before signing.
+On the 10 partner-hosted chains above, the domain also authorizes CoW Swap orders. Optimism, Robinhood Chain and Arc use Ophis-deployed settlements. These example policies restrict the domain, tokens and receiver; they do not enforce a trade-size cap, a minimum exchange rate, empty appData hooks or a short expiry. Validate those fields in your signing service, and use explicit spending or turnover controls where needed. For Ophis-specific routing on a shared-domain chain, check the orderbook host and appData before signing.
 
 :::
 

@@ -1,10 +1,9 @@
 # CoW-arrival tripwire
 
 Weekly watcher for signals that CoW Protocol is about to launch (or has
-launched) hosted support on the Ophis sovereign chains (Optimism 10,
-Unichain 130). The sovereign story ("the only batch-auction venue on these
-chains, 100% fee keep, 100% of price improvement returned") needs weeks of
-notice to re-position, not a surprise.
+launched) hosted support on Optimism (10). Unichain monitoring was removed
+on 19 November 2026 when Ophis retired the chain. Existing saved SDK state is
+normalized to avoid a false alert during the update.
 
 Script: `scripts/ops/cow-arrival-tripwire.sh`. Pure read-only probes; no keys
 except the Telegram bot token (read from the macOS keychain at send time,
@@ -14,10 +13,10 @@ never echoed).
 
 | Signal | Meaning when it fires |
 | --- | --- |
-| `sdk_enum` optimism/unichain = YES | Sell-from support merged into cow-sdk main. Earliest public code signal, expect launch in weeks to months. |
+| `sdk_enum` optimism = YES | Sell-from support merged into cow-sdk main. Earliest public code signal, expect launch in weeks to months. |
 | `networks_stub` = GONE | The cowswap frontend's OPTIMISM "bridge-only" stub comment was removed, frontend migration started. |
-| `barn_optimism` / `barn_unichain` = 200 | CoW staging orderbook is live for the chain. Launch imminent (days to weeks). |
-| `api_optimism` / `api_unichain` = 200 | CoW hosted orderbook is LIVE. The only-venue claim on that chain is over. |
+| `barn_optimism` = 200 | CoW staging orderbook is live for the chain. Launch imminent (days to weeks). |
+| `api_optimism` = 200 | CoW hosted orderbook is LIVE. The only-venue claim on that chain is over. |
 | `sdk_enum` = PARSE | NOT an arrival. The SupportedChainId enum was renamed or moved; the probe needs updating. |
 
 Baseline as of 2026-07-04: all four orderbook probes 404, sdk enum has
@@ -46,7 +45,7 @@ reformats at will. Both have been fragile:
   slurp mode with comments stripped first, and a missing declaration reports
   `PARSE` (which alerts) rather than `ERR` (which does not).
 
-**Triage rule:** if a soft signal flips ALONE while all four orderbook probes
+**Triage rule:** if a soft signal flips ALONE while both Optimism orderbook probes
 are still 404, read the upstream file before acting on it. Only trust a soft
 signal that is corroborated by a hard one, or by your own reading of the diff.
 
@@ -70,7 +69,7 @@ restructures either file.
 
 - State lives at `~/.local/state/ophis/cow-tripwire.json`; alerts fire on
   CHANGE only, so a quiet week is silent.
-- Transitions into `ERR` (network noise) never alert; four or more failed
+- Transitions into `ERR` (network noise) never alert; three or more failed
   probes aborts without touching state (exit 2).
 - On change, a Telegram message goes to the ops chat with the diff and the
   playbook line.
@@ -106,9 +105,8 @@ launchctl load ~/Library/LaunchAgents/com.ophis.cow-tripwire.plist
 ## When it fires
 
 1. Confirm manually (curl the endpoint / read the upstream commit).
-2. Weight all sovereign marketing toward the unaffected chain (as of July 2026
-   there is no CoW orderbook on Unichain: api and barn both 404, and the chain
-   is absent from the cow-sdk enum and the cowswap networks map).
+2. Reassess sovereign marketing against the remaining active deployments;
+   do not direct users toward retired chains.
 3. Sweep the docs for only-venue claims about the affected chain
    (`docs/comparison.md`, `stats-page`, business page, llms.txt files).
 4. Reassess the 100% fee-keep story for the affected chain; the fee keep

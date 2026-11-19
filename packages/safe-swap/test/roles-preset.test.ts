@@ -60,14 +60,14 @@ describe('ophisCuratorRolesPreset', () => {
     }
   });
 
-  it('resolves per chain (Unichain relayer/settlement differ from OP)', () => {
-    const uni = ophisCuratorRolesPreset({ chainId: 130, sellTokens: [USDC] });
-    const uniJson = dump(processPermissions([uni]).targets);
-    expect(uniJson).toContain((getOphisVaultRelayer(130) as string).toLowerCase().slice(2));
-    expect(uniJson).not.toContain(RELAYER.slice(2)); // not the OP relayer
+  it('resolves per chain (Robinhood relayer/settlement differ from OP)', () => {
+    const robinhood = ophisCuratorRolesPreset({ chainId: 4663, sellTokens: [USDC] });
+    const robinhoodJson = dump(processPermissions([robinhood]).targets);
+    expect(robinhoodJson).toContain((getOphisVaultRelayer(4663) as string).toLowerCase().slice(2));
+    expect(robinhoodJson).not.toContain(RELAYER.slice(2)); // not the OP relayer
   });
 
-  it('scopes the CANONICAL settlement on Base (externally hosted), which is denied on OP/Unichain', () => {
+  it('scopes the CANONICAL settlement on Base (externally hosted), which is denied on OP/Robinhood', () => {
     // On Base the Ophis-resolved settlement IS the external canonical settlement, so the
     // preset correctly scopes setPreSignature there (invariant 4: use the SDK-resolved
     // address, canonical on externally hosted chains). The same address is a DENIED target on OP.

@@ -6,7 +6,6 @@ export const SCAN_CHAINS: readonly ChainConfig[] = [
   { chainId: 1,     name: 'ethereum',  kind: 'rpc', alchemySubdomain: 'eth-mainnet',     defaultRpcUrl: 'https://eth.drpc.org' },
   { chainId: 100,   name: 'gnosis',    kind: 'rpc',                                  defaultRpcUrl: 'https://gnosis-rpc.publicnode.com' },
   { chainId: 8453,  name: 'base',      kind: 'rpc', alchemySubdomain: 'base-mainnet',    defaultRpcUrl: 'https://mainnet.base.org' },
-  { chainId: 130,   name: 'unichain',  kind: 'rpc',                                  defaultRpcUrl: 'https://mainnet.unichain.org' },
   { chainId: 137,   name: 'polygon',   kind: 'rpc', alchemySubdomain: 'polygon-mainnet', defaultRpcUrl: 'https://polygon.drpc.org' },
   { chainId: 4663,  name: 'robinhood', kind: 'rpc',                                  defaultRpcUrl: 'https://rpc.mainnet.chain.robinhood.com' },
   {

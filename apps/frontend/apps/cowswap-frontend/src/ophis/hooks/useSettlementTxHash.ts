@@ -10,9 +10,7 @@ import useSWR from 'swr'
 // kept as the fallback when no trade is available (pending / failed / fetch
 // error). See `apps/frontend/libs/common-utils/src/explorer.ts`.
 
-const OPHIS_SUPPORTED_CHAINS: ReadonlyArray<number> = [
-  10 /* Optimism mainnet */, 130 /* Unichain mainnet */, 4663 /* Robinhood Chain mainnet */,
-]
+const OPHIS_SUPPORTED_CHAINS: ReadonlyArray<number> = [10 /* Optimism mainnet */, 4663 /* Robinhood Chain mainnet */]
 const COW_ORDER_UID_LENGTH = 114 // "0x" + 56 bytes hex
 
 /**

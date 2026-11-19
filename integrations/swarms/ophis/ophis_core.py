@@ -28,7 +28,6 @@ ORDERBOOK_URLS = {
     59144: "https://api.cow.fi/linea",
     57073: "https://api.cow.fi/ink",
     10:    "https://optimism-mainnet.ophis.fi",   # Ophis-sovereign
-    130:   "https://unichain-mainnet.ophis.fi",   # Ophis-sovereign
     4663:  "https://robinhood-mainnet.ophis.fi",  # Ophis-sovereign
 }
 
@@ -38,7 +37,6 @@ RPC_URLS = {
     10:    "https://mainnet.optimism.io",
     56:    "https://bsc-dataseed.binance.org",
     100:   "https://rpc.gnosischain.com",
-    130:   "https://mainnet.unichain.org",
     4663:  "https://rpc.mainnet.chain.robinhood.com",
     137:   "https://polygon-rpc.com",
     8453:  "https://mainnet.base.org",
@@ -54,12 +52,10 @@ _CANONICAL_SETTLEMENT = "0x9008D19f58AAbD9eD0D60971565AA8510560ab41"
 _CANONICAL_VAULT_RELAYER = "0xC92E8bdf79f0507f65a392b0ab4667716BFE0110"
 _SETTLEMENT = {
     10:  "0x310784c7FCE12d578dA6f53460777bAc9718B859",
-    130: "0x108A678716e5E1776036eF044CAB7064226F714E",
     4663: "0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD",
 }
 _VAULT_RELAYER = {
     10:  "0x83847EaB41ad9ea43809ce71569eB2e9daF51830",
-    130: "0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb",
     4663: "0xB52C38097c19cd38238c62DD36027a7918eFa890",
 }
 
@@ -67,7 +63,7 @@ _VAULT_RELAYER = {
 OPHIS_PARTNER_FEE_RECIPIENT = "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"  # Ophis Safe
 OPHIS_VOLUME_FEE_BPS = 1
 OPHIS_STABLE_VOLUME_FEE_BPS = 1
-OPHIS_OPERATED_CHAIN_IDS = frozenset({10, 130, 4663})
+OPHIS_OPERATED_CHAIN_IDS = frozenset({10, 4663})
 OPHIS_PRICE_IMPROVEMENT_BPS = 8000
 OPHIS_PRICE_IMPROVEMENT_MAX_VOLUME_BPS = 99
 OPHIS_STABLE_PRICE_IMPROVEMENT_BPS = 5000
@@ -105,7 +101,7 @@ CHAIN_ALIASES = {
     "ethereum": 1, "mainnet": 1, "eth": 1, "gnosis": 100, "xdai": 100,
     "polygon": 137, "matic": 137, "base": 8453, "arbitrum": 42161, "arb": 42161,
     "avalanche": 43114, "avax": 43114, "bnb": 56, "bsc": 56, "binance": 56,
-    "linea": 59144, "ink": 57073, "optimism": 10, "op": 10, "unichain": 130,
+    "linea": 59144, "ink": 57073, "optimism": 10, "op": 10,
     "plasma": 9745, "robinhood": 4663, "robinhood-chain": 4663,
 }
 
@@ -130,10 +126,12 @@ def orderbook_url(chain_id: int) -> str:
 
 
 def settlement_address(chain_id: int) -> str:
+    orderbook_url(chain_id)
     return _SETTLEMENT.get(int(chain_id), _CANONICAL_SETTLEMENT)
 
 
 def vault_relayer(chain_id: int) -> str:
+    orderbook_url(chain_id)
     return _VAULT_RELAYER.get(int(chain_id), _CANONICAL_VAULT_RELAYER)
 
 
@@ -329,7 +327,6 @@ STABLECOINS = {
     10: {"0x0b2c639c533813f4aa9d7837caf62653d097ff85", "0x7f5c764cbc14f9669b88837ca1490cca17c31607", "0x94b008aa00579c1307b0ef2c499ad98a8ce58e58", "0xda10009cbd5d07dd0cecc66161fc93d7c9000da1"},
     56: {"0x1af3f329e8be154074d8769d1ffa4ee058b1dbc3", "0x55d398326f99059ff775485246999027b3197955", "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d", "0xe9e7cea3dedca5984780bafc599bd69add087d56"},
     100: {"0x2a22f9c3b484c3629090feed35f17ff8f88f76f0", "0x4ecaba5870353805a9f068101a40e0f32ed605c6", "0x5cb9073902f2035222b9749f8fb0c9bfe5527108", "0xaf204776c7245bf4147c2612bf6e5972ee483701", "0xcb444e90d8198415266c6a2724b7900fb12fc56e", "0xddafbb505ad214d7b80b1f830fccc89b60fb7a83", "0xe91d153e0b41518a2ce8dd3d7944fa863463a97d"},
-    130: {"0x078d782b760474a361dda0af3839290b0ef57ad6"},
     137: {"0x3c499c542cef5e3811e1192ce70d8cc03d5c3359", "0x8f3cf7ad23cd3cadbd9735aff958023239c6a063", "0xc2132d05d31c914a87c6611c10748aeb04b58e8f", "0xe0aea583266584dafbb3f9c3211d5588c73fea8d"},
     8453: {"0x04d5ddf5f3a8939889f11e97f8c4bb48317f1938", "0x4621b7a9c75199271f773ebd9a499dbd165c3191", "0x50c5725949a6f0c72e6c4a641f24049a917db0cb", "0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42", "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", "0xb79dd08ea68a908a97220c76d19a6aa9cbde4376", "0xbf6e2966a9c3d99c9e4d069e04f7bdb9c8aa762c", "0xca72827a3d211cfd8f6b00ac98824872b72cab49", "0xcfa3ef56d303ae4faaba0592388f19d7c3399fb4", "0xfde4c96c8593536e31f229ea8f37b2ada2699bb2"},
     9745: {"0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb"},

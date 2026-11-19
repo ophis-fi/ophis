@@ -14,7 +14,7 @@
  *
  * SOURCE OF TRUTH for the addresses (kept in lockstep with the frontend):
  *   - apps/frontend/libs/common-const/src/common.ts `OPHIS_ETHFLOW_OVERRIDES`
- *     (Ophis-operated chains: OP 10, Unichain 130, Robinhood 4663)
+ *     (Ophis-operated chains: OP 10, Robinhood 4663)
  *   - @cowprotocol/sdk-config `ETH_FLOW_ADDRESSES` (external canonical eth-flow,
  *     CREATE2-deterministic across the upstream protocol's SupportedChainId set)
  *   - the on-chain struct + selector: the CoWSwapEthFlow `createOrder` ABI
@@ -47,7 +47,6 @@ import {
  */
 const OPHIS_OPERATED_ETHFLOW: Readonly<Record<number, `0x${string}`>> = {
   10: '0x764fE4aa1FF493cf39931c7923C8ff5837596504',
-  130: '0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7', // Unichain — CoWSwapEthFlow (deployed 2026-06-29; verified on-chain, ToB+Verity reviewed)
   4663: '0xC1Ee77e8a1B85D5EED702a9bB435f434408A4d29', // Robinhood — CoWSwapEthFlow (deployed 2026-07-28; tx 0x2a53f639…21dcf)
 };
 

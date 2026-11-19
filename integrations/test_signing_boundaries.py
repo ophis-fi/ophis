@@ -40,6 +40,27 @@ class SigningBoundaries(unittest.TestCase):
                     self.assertEqual(body["appData"], "{}")
                     self.assertEqual(body["appDataHash"], APP_HASH)
 
+    def test_retired_unichain_cannot_quote_or_resolve_signing_targets(self):
+        for name, path in [
+            ("bankr", "bankr/ophis/scripts/ophis_common.py"),
+            ("metamask", "metamask/ophis/scripts/ophis_common.py"),
+            ("swarms", "swarms/ophis/ophis_core.py"),
+            ("wayfinder", "wayfinder/ophis/ophis_core.py"),
+        ]:
+            with self.subTest(integration=name):
+                module = load(name, path)
+                with patch.object(module, "_http") as http:
+                    with self.assertRaises((ValueError, SystemExit)):
+                        module.get_quote(130, SELL, BUY, 1000, OWNER, "{}", APP_HASH)
+                    http.assert_not_called()
+                if name == "wayfinder":
+                    with self.assertRaises(ValueError):
+                        module.build_order_typed_data(130, {})
+                else:
+                    for resolve in (module.settlement_address, module.vault_relayer):
+                        with self.assertRaises((ValueError, SystemExit)):
+                            resolve(130)
+
     def test_bankr_uid_matches_independent_viem_vectors(self):
         module = load("bankr", "bankr/ophis/scripts/ophis_common.py")
         order = {

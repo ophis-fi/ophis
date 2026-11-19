@@ -102,7 +102,7 @@ import requests
 
 # The chains the Intent API can return, mapped to their chain IDs (see the docs).
 CHAIN_IDS = {
-    "ethereum": 1, "optimism": 10, "unichain": 130, "bnb": 56, "gnosis": 100,
+    "ethereum": 1, "optimism": 10, "bnb": 56, "gnosis": 100,
     "polygon": 137, "base": 8453, "ink": 57073, "linea": 59144,
     "arbitrum": 42161, "avalanche": 43114, "plasma": 9745, "robinhood": 4663,
 }
@@ -243,7 +243,7 @@ EIP-1271 policy gate rather than trusting the agent to honour them.
 
 ### What does it cost an agent to swap?
 
-Two things set the number, so it is worth being exact. On Optimism, Unichain,
+Two things set the number, so it is worth being exact. On Optimism,
 and Robinhood Chain, the MCP and high-level SDK builders embed a 1 bp base; the
 backend then retains 80% of reference-quote improvement on volatile pairs (99 bps
 cap), or 50% on stable pairs (20 bps cap). CoW-hosted orders encode the same
@@ -261,10 +261,10 @@ Allowances may need renewal; bridge, native-deposit and vault flows differ.
 
 ### Which chains can an agent trade on?
 
-SDK v0.4.3 and the hosted MCP server cover 14 EVM chains, including Arc. The
+SDK v0.4.3 and the hosted MCP server cover 13 EVM chains, including Arc. The
 standalone swap app separately offers NEAR sources and destinations, including externally funded Bitcoin and Solana balances; bridge
 coverage is route-specific. Do not hardcode endpoints: four of the EVM chains
-(Optimism, Unichain, Robinhood Chain and Arc) are Ophis-operated and settle through
+(Optimism, Robinhood Chain and Arc) are Ophis-operated and settle through
 Ophis's own GPv2Settlement at a non-canonical address, so an order signed
 against CoW's canonical domain will be rejected there. Resolve the settlement
 domain and orderbook host per chain through `list_chains` or the SDK helpers and

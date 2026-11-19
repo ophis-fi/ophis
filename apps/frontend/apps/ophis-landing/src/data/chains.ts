@@ -37,7 +37,6 @@ export const EVM_CHAINS: EvmChain[] = [
   { name: 'Ink', shortName: 'Ink', slug: 'ink', chainId: 57073, logo: '/logos/chain-ink.svg', sovereign: false },
   { name: 'Gnosis Chain', shortName: 'Gnosis', slug: 'gnosis', chainId: 100, logo: '/logos/chain-gnosis.png', sovereign: false },
   { name: 'Optimism', shortName: 'Optimism', slug: 'optimism', chainId: 10, logo: '/logos/chain-optimism.png', sovereign: true },
-  { name: 'Unichain', shortName: 'Unichain', slug: 'unichain', chainId: 130, logo: '/logos/chain-unichain.svg', sovereign: true },
   // -v2 filename: corrected brand art (black feather on #ccff00, per Robinhood
   // Chain team feedback 2026-08-02); /logos/* is cached immutable, so a brand
   // fix must ship under a new filename (see public/_headers).
@@ -49,7 +48,7 @@ export const EVM_CHAIN_COUNT = EVM_CHAINS.length
 
 export const SOVEREIGN_CHAINS = EVM_CHAINS.filter((c) => c.sovereign)
 
-/** Prose-ready sovereign list ("Optimism, Unichain, and Robinhood Chain"),
+/** Prose-ready sovereign list ("Optimism, Robinhood Chain, and Arc"),
     formatted from the full array so adding or removing an operated chain
     flows into every page that names them, at any cardinality. */
 export const SOVEREIGN_CHAIN_LIST = new Intl.ListFormat('en', {

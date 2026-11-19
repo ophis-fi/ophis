@@ -23,8 +23,6 @@ const COINGECKO_CHAINS: Record<SupportedChainId, string | null> = {
   [SupportedChainId.INK]: 'ink',
   // Ophis fork: OP mainnet (chain 10)
   [10 as unknown as SupportedChainId]: 'optimistic-ethereum',
-  // Ophis fork: Unichain mainnet (chain 130) — CoinGecko 'unichain' platform slug
-  [130 as unknown as SupportedChainId]: 'unichain',
   // CoinGecko Robinhood Chain platform slug.
   [4663 as unknown as SupportedChainId]: 'robinhood',
 }

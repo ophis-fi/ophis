@@ -162,7 +162,7 @@ import requests
 INTENT_API = "https://ophis.fi/api/intent"
 SWAP_APP = "https://swap.ophis.fi"
 
-# The 14 chain slugs returned by the Intent API.
+# The 13 chain slugs returned by the Intent API.
 CHAIN_SLUG_TO_ID = {
     "ethereum": 1,
     "optimism": 10,
@@ -175,7 +175,6 @@ CHAIN_SLUG_TO_ID = {
     "arbitrum": 42161,
     "avalanche": 43114,
     "plasma": 9745,
-    "unichain": 130,
     "robinhood": 4663,
     "arc": 5042,
 }
@@ -334,7 +333,7 @@ v0.1.2 for runtimes with a shell, `curl`, `jq` and Foundry's `cast`.
 | [Skill index](https://ophis.fi/.well-known/agent-skills/index.json) | Download files and verify their sha256 digests. |
 | [Umbrella skill](https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md) | Read contract addresses, signing domains, orderbook hosts and slippage limits. |
 | Sub-skills | `ophis-quote`, `ophis-swap`, `ophis-order-status`, `ophis-cancel`, `ophis-surplus-report` |
-| Skill chains | Optimism, Unichain and Robinhood Chain |
+| Skill chains | Optimism and Robinhood Chain |
 
 Use MCP `list_chains` for supported networks beyond the shell skills.
 
@@ -425,7 +424,6 @@ A different `receiver` sends the bought tokens to another account. Run `assertRe
 | Chain | Orderbook host | Settlement |
 | --- | --- | --- |
 | Optimism | `optimism-mainnet.ophis.fi` | `0x310784c7…B859` |
-| Unichain | `unichain-mainnet.ophis.fi` | `0x108A678716e5E1776036eF044CAB7064226F714E` |
 | Robinhood Chain | `robinhood-mainnet.ophis.fi` | `0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD` |
 | Arc (5042) | `arc-mainnet.ophis.fi` | `0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A` |
 

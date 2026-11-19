@@ -5,8 +5,7 @@ describe('getOphisOrderbookUrl', () => {
   it('returns the self-hosted Ophis hosts for operated chains, NOT api.cow.fi', () => {
     expect(getOphisOrderbookUrl(10)).toBe('https://optimism-mainnet.ophis.fi');
     expect(getOphisOrderbookUrl(10)).not.toContain('api.cow.fi');
-    expect(getOphisOrderbookUrl(130)).toBe('https://unichain-mainnet.ophis.fi');
-    expect(getOphisOrderbookUrl(130)).not.toContain('api.cow.fi');
+    expect(() => getOphisOrderbookUrl(130)).toThrow(/no orderbook URL/);
     expect(getOphisOrderbookUrl(4663)).toBe('https://robinhood-mainnet.ophis.fi');
     expect(getOphisOrderbookUrl(4663)).not.toContain('api.cow.fi');
     expect(getOphisOrderbookUrl(5042)).toBe('https://arc-mainnet.ophis.fi');

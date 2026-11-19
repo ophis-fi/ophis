@@ -137,10 +137,6 @@ const CHAIN_NAMES: Record<SupportedChainId, Chain | null> = {
   [SupportedChainId.INK]: null,
   // Ophis fork: OP mainnet (chain 10)
   [10 as unknown as SupportedChainId]: 'OPTIMISM',
-  // Ophis fork: Unichain mainnet (chain 130) — Uniswap token-search GraphQL has
-  // no 'UNICHAIN' Chain enum member; null disables remote search but local
-  // token list still works.
-  [130 as unknown as SupportedChainId]: null,
   // Ophis fork: no supported Uniswap token-search endpoint for Robinhood Chain.
   [4663 as unknown as SupportedChainId]: null,
 }

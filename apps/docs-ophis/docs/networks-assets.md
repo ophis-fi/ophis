@@ -9,19 +9,21 @@ sidebar_label: Networks & assets
 
 Use the swap app's token pickers to choose a network, asset and route.
 
+> **Unichain retired (19 November 2026).** Chain 130 is no longer supported for new swaps, bridge routes or agent orders. Older clients may still list it; do not submit new trades there. Historical trades, fee accounting and recovery records are retained. A replacement network will be considered after the Ophis security, code and development cleanup.
+
 ## Network coverage {/* #app-parser-and-sdk-coverage */}
 
 | Surface | Coverage |
 | --- | --- |
-| Swap app and CLI | 15 EVM networks, including the Sepolia testnet; see [the network list](/getting-started#supported-networks) |
-| SDK v0.4.6 and hosted MCP | 14 EVM mainnets, including Arc (5042), with chain-specific orderbook and signing-domain helpers |
-| Vault-order builder | `@ophis/safe-swap` v0.1.8 uses SDK v0.4.6 for ERC-20 presigned orders on 14 EVM mainnets, including Arc |
-| Intent parser | 14 chain slugs, including `arc` |
+| Swap app and CLI | 13 EVM networks, including the Sepolia testnet; see [the network list](/getting-started#supported-networks) |
+| SDK v0.4.6 and hosted MCP | 13 EVM mainnets, including Arc (5042), with chain-specific orderbook and signing-domain helpers |
+| Vault-order builder | `@ophis/safe-swap` v0.1.8 uses SDK v0.4.6 for ERC-20 presigned orders on 13 EVM mainnets, including Arc |
+| Intent parser | 13 chain slugs, including `arc` |
 | Standalone app through NEAR Intents | Bitcoin, Solana, Monad, Hyperliquid (Hypercore), X Layer, Sui, Tron, Starknet, Zcash |
 
 | Orderbook operator | Networks |
 | --- | --- |
-| Ophis | Optimism, Unichain, Robinhood Chain, Arc |
+| Ophis | Optimism, Robinhood Chain, Arc |
 | Partner-operated | Ethereum, Arbitrum, Avalanche, Base, BNB Chain, Gnosis, Ink, Linea, Plasma, Polygon |
 
 Use the SDK's chain-specific orderbook and signing-domain helpers for Arc orders.
@@ -68,11 +70,11 @@ Use a refund address on the source chain. For Zcash, use a mainnet transparent t
 
 ## Circle bridges {/* #arc-and-circle-bridges */}
 
-The swap form bridges assets through Circle between Arc, Ethereum, Base, Arbitrum, Optimism and Unichain. USDC uses CCTP. EURC, cirBTC and WETH use Circle's token service where both networks have a supported mapping.
+The swap form bridges assets through Circle between Arc, Ethereum, Base, Arbitrum, Optimism. USDC uses CCTP. EURC, cirBTC and WETH use Circle's token service where both networks have a supported mapping.
 
 | Requirement | Details |
 | --- | --- |
-| Network set | Arc, Ethereum, Base, Arbitrum, Optimism, Unichain |
+| Network set | Arc, Ethereum, Base, Arbitrum, Optimism |
 | Swap type | Exact input |
 | Wallet | Personal EOA without smart-account code |
 | Recipient | Connected wallet |

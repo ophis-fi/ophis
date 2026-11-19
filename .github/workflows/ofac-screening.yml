@@ -29,7 +29,7 @@ jobs:
         run: python3 -m unittest discover -s infra/shared/sanctions -v
       - name: Validate all four stack definitions without reading operator environment files
         run: |
-          for stack in optimism unichain robinhood; do
+          for stack in optimism robinhood; do
             docker compose -f infra/$stack-mainnet/docker-compose.yml config --no-interpolate --no-env-resolution --quiet
           done
           docker compose -f infra/arc-mainnet/release/docker-compose.yml config --no-interpolate --no-env-resolution --quiet

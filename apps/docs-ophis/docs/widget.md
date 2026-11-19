@@ -109,7 +109,7 @@ Set `theme` to `'light'`, `'dark'` or a full palette object. The default uses Op
 
 | Chains | Orderbook |
 | --- | --- |
-| Optimism, Unichain, Robinhood Chain, Arc | Ophis self-hosted orderbooks |
+| Optimism, Robinhood Chain, Arc | Ophis self-hosted orderbooks |
 | Ethereum, Base, Arbitrum, Polygon, BNB, Gnosis, Avalanche, Linea, Plasma, Ink | `api.cow.fi` |
 
 The widget selects the orderbook for the chosen chain. Use the standalone app for direct Circle bridging.

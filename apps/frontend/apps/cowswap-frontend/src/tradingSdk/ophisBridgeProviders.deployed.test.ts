@@ -72,7 +72,7 @@ it.each([1, 10, 137, 8453, 42161])('keeps chain %i USDC -> Robinhood USDG', asyn
   expect(await intermediates(usdc, USDG_4663)).toEqual([usdc.address])
 })
 
-it.each([1, 130, 8453, 42161])('keeps Robinhood USDG -> chain %i USDC', async (chainId) => {
+it.each([1, 10, 8453, 42161])('keeps Robinhood USDG -> chain %i USDC', async (chainId) => {
   expect(await intermediates(USDG_4663, listed(chainId, 'USDC'))).toEqual([USDG_4663.address])
 })
 
@@ -95,15 +95,14 @@ it.each([
 it('still refuses USDC into another USDG, USDG into another asset, other decimals and unlisted tokens', async () => {
   const usdc = listed(1, 'USDC')
 
-  expect(await intermediates(usdc, listed(130, 'USDG'))).toEqual([])
   expect(await intermediates(usdc, listed(57073, 'USDG'))).toEqual([])
-  expect(await intermediates(USDG_4663, listed(130, 'USDT'))).toEqual([])
+  expect(await intermediates(USDG_4663, listed(1, 'USDT'))).toEqual([])
   // BNB Chain's USDC has 18 decimals.
   expect(await intermediates(USDG_4663, listed(56, 'USDC'))).toEqual([])
   expect(await intermediates({ ...usdc, address: `0x${'cc'.repeat(20)}` }, USDG_4663)).toEqual([])
 })
 
-it('quotes Robinhood USDG -> Unichain USDC, which no other provider serves', async () => {
+it('quotes Robinhood USDG -> Optimism USDC', async () => {
   // The suggested-fees response shape (illustrative values); the 4663 SpokePool
   // is the one the sdk-bridging patch registers.
   const fees = {
@@ -129,10 +128,10 @@ it('quotes Robinhood USDG -> Unichain USDC, which no other provider serves', asy
   }
   const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true, json: async () => fees } as Response)
 
-  const quote = await new ShippedListProvider().getQuote(request(USDG_4663, listed(130, 'USDC')))
+  const quote = await new ShippedListProvider().getQuote(request(USDG_4663, listed(10, 'USDC')))
 
   const url = new URL(String(fetchSpy.mock.calls[0]?.[0]))
   expect(url.searchParams.get('originChainId')).toBe('4663')
-  expect(url.searchParams.get('destinationChainId')).toBe('130')
+  expect(url.searchParams.get('destinationChainId')).toBe('10')
   expect(quote.amountsAndCosts.afterFee.buyAmount).toBe(9_990_000n)
 })

@@ -11,7 +11,6 @@ const chains = [
   ['Optimism', 10, 'AdditionalTargetChainId.OPTIMISM'],
   ['BNB', 56, 'SupportedChainId.BNB'],
   ['Gnosis', 100, 'SupportedChainId.GNOSIS_CHAIN'],
-  ['Unichain', 130, '130 as unknown as SupportedChainId'],
   ['Polygon', 137, 'SupportedChainId.POLYGON'],
   ['Robinhood Chain', 4663, '4663 as unknown as SupportedChainId'],
   ['Arc', 5042, 'arc: 5042'],
@@ -36,7 +35,6 @@ const selectorEntries = [
   'SupportedChainId.INK',
   'SupportedChainId.GNOSIS_CHAIN',
   'AdditionalTargetChainId.OPTIMISM as unknown as SupportedChainId',
-  '130 as unknown as SupportedChainId',
   '4663 as unknown as SupportedChainId',
 ];
 
@@ -46,12 +44,6 @@ const sovereign = [
     chainId: 10,
     orderbook: 'https://optimism-mainnet.ophis.fi',
     settlement: '0x310784c7FCE12d578dA6f53460777bAc9718B859',
-  },
-  {
-    name: 'Unichain',
-    chainId: 130,
-    orderbook: 'https://unichain-mainnet.ophis.fi',
-    settlement: '0x108A678716e5E1776036eF044CAB7064226F714E',
   },
   {
     name: 'Robinhood Chain',
@@ -122,14 +114,14 @@ assert.deepEqual(feeChainIds.sort((a, b) => a - b), expectedSdkIds, 'SDK/MCP mai
 const orderbookIds = [...sdkOrderbook.matchAll(/^  (\d+): 'https:\/\//gm)].map((match) => Number(match[1]));
 assert.deepEqual(orderbookIds.sort((a, b) => a - b), expectedSdkIds, 'SDK orderbook coverage drift');
 
-const sdkCoverage = /SDK v(\S+)[^\d.;\n]*\b14 EVM mainnets\b[^.;\n]*including Arc/;
+const sdkCoverage = /SDK v(\S+)[^\d.;\n]*\b13 EVM mainnets\b[^.;\n]*including Arc/;
 assert.doesNotMatch(
-  `SDK v${sdkPackage.version}: 13 EVM mainnets, excluding Arc\nVault builder: 14 EVM mainnets, including Arc`,
+  `SDK v${sdkPackage.version}: 13 EVM mainnets, excluding Arc\nVault builder: 13 EVM mainnets, including Arc`,
   sdkCoverage,
   'SDK coverage guard must not borrow coverage from another table row',
 );
 assert.doesNotMatch(
-  `SDK v${sdkPackage.version}: 13 EVM mainnets; Vault builder: 14 EVM mainnets, including Arc`,
+  `SDK v${sdkPackage.version}: 13 EVM mainnets; Vault builder: 13 EVM mainnets, including Arc`,
   sdkCoverage,
   'SDK coverage guard must not borrow coverage from a later statement',
 );
@@ -209,7 +201,7 @@ for (const path of publicSitePaths) {
   const source = read(path);
   // Dated blog posts can quote historical counts, as in the landing count gate.
   if (!path.includes('/src/content/')) {
-    assert.doesNotMatch(source, /\b13 (?:supported )?EVM (?:chains|networks)\b|13 mainnets \+ Sepolia/, `${path}: stale network count`);
+    assert.doesNotMatch(source, /\b14 (?:supported )?EVM (?:chains|networks)\b|14 mainnets \+ Sepolia/, `${path}: stale network count`);
   }
   assert.doesNotMatch(source.replace(/\s+/g, ' '),
     staleArcIntegration,
@@ -228,7 +220,7 @@ for (const path of [
 ]) assert.match(read(path), /MCP clients pass `?referrerCode`? to\s+`?build_order`?/,
   `${path}: MCP guidance must explain its own referral parameter`);
 
-assert.match(faq, /14 EVM chains/, 'FAQ must state the canonical 14-EVM-chain count');
+assert.match(faq, /13 EVM chains/, 'FAQ must state the canonical 13-EVM-chain count');
 for (const mode of ['local', 'release']) {
   assert.match(read(`infra/arc-mainnet/${mode}/render.py`),
     /\[\[fee-policies\.policies\]\]\nkind\.price-improvement = \{\{ factor = 0\.80, max-volume-factor = 0\.0099 \}\}\norder-class = "market"/,
@@ -244,7 +236,7 @@ assert.match(read('apps/frontend/libs/common-const/src/arc.const.ts'), /ARC_CHAI
 assert.match(gettingStarted, /Arc is available in the swap app \(chain ID 5042\)/);
 assert.match(
   gettingStarted,
-  /Robinhood Chain, Unichain, and Arc/,
+  /Robinhood Chain, and Arc/,
   'getting-started chain list is incomplete',
 );
 
@@ -340,5 +332,11 @@ assert.ok(
   !`${chainInfo}\n${robinhoodConstants}`.includes('docs.robinhood.com/crypto/robinhood-chain'),
   'removed Robinhood docs URL reappeared',
 );
+
+for (const path of ['packages/sdk/src/orderbook.ts', 'apps/frontend/libs/common-utils/src/cowProtocolContracts.ts',
+  'apps/frontend/libs/wallet/src/wagmi/config.ts', 'functions/api/intent.ts',
+  'apps/frontend/apps/ophis-landing/src/data/chains.ts']) {
+  assert.doesNotMatch(read(path), /unichain/i, `${path}: retired Unichain was reintroduced`);
+}
 
 console.log(`Network/docs invariants are in sync (${chains.length} app and SDK/MCP mainnet chains; Sepolia is separate).`);

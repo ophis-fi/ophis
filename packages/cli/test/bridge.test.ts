@@ -255,7 +255,7 @@ describe('bridgeAccount: only the confirmed bridge reaches the wallet', () => {
   test('quotes no Across route from a source chain it cannot execute on, however getQuote is reached', async () => {
     const provider = new OphisAcrossBridgeProvider()
     const request = { sellTokenChainId: 100, sellTokenAddress: USDC_BASE, buyTokenChainId: 10, buyTokenAddress: USDC_OP, sellTokenDecimals: 6, buyTokenDecimals: 6, account: ME, amount: MIN_IN }
-    await expect(provider.getQuote(request as never)).rejects.toMatchObject({ context: { reason: 'Across is not executable from this source chain' } })
+    await expect(provider.getQuote(request as never)).rejects.toMatchObject({ context: { reason: 'Across is not executable for these networks' } })
   })
   test('the shed balance is read on the bridge source chain, never on another one', async () => {
     const provider = new OphisAcrossBridgeProvider()
@@ -515,7 +515,7 @@ describe('bridge routes', () => {
     globalThis.fetch = realFetch
   })
   const RPC = 'http://127.0.0.1:9' // never called: the routes are checked against the lists alone
-  const [ethereum, arbitrum, base, unichain, robinhood, bnb] = ['ethereum', 'arbitrum', 'base', 'unichain', 'robinhood', 'bnb'].map((c) => network(c, RPC))
+  const [ethereum, arbitrum, base, optimism, robinhood, bnb] = ['ethereum', 'arbitrum', 'base', 'optimism', 'robinhood', 'bnb'].map((c) => network(c, RPC))
   // From apps/frontend/apps/cowswap-frontend/public/token-lists/ophis.json (the Ophis list).
   const LISTED = {
     ethereumUsdt: { address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6 }, // USDT
@@ -523,8 +523,7 @@ describe('bridge routes', () => {
     baseUsdc: { address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', decimals: 6 }, // USDC
     baseUsdt: { address: '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2', decimals: 6 }, // USDT
     bnbUsdc: { address: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d', decimals: 18 }, // USDC, with 18 decimals
-    unichainUsdt0: { address: '0x9151434b16b9763660705744891fA906F660EcC5', decimals: 6 }, // USDT0
-    unichainUsdg: { address: '0x2A22868610610199D43fE93A16661473A9f86f1E', decimals: 6 }, // USDG
+    optimismUsdt0: { address: '0x01bFF41798a0BcF287b996046Ca68b395DbC1071', decimals: 6 }, // USDT0
     robinhoodUsdg: { address: ROBINHOOD_USDG.address, decimals: 6 }, // USDG
   } as const
 
@@ -534,8 +533,8 @@ describe('bridge routes', () => {
   test('bridges through the same asset as the destination token, as the trusted lists name it', async () => {
     expect((await bridgeVia(base, wrappedNative(base).address, arbitrum, wrappedNative(arbitrum))).symbol).toBe('WETH')
     expect((await bridgeVia(base, LISTED.baseUsdc.address, arbitrum, LISTED.arbitrumUsdc)).symbol).toBe('USDC')
-    // Tether's USDT0 on Unichain is USDT, and Robinhood Chain's USDG is reached from USDC: routes Across serves live.
-    expect((await bridgeVia(ethereum, LISTED.ethereumUsdt.address, unichain, LISTED.unichainUsdt0)).symbol).toBe('USDT')
+    // Tether's USD₮0 on Optimism is USDT, and Robinhood Chain's USDG is reached from USDC: routes Across serves live.
+    expect((await bridgeVia(ethereum, LISTED.ethereumUsdt.address, optimism, LISTED.optimismUsdt0)).symbol).toBe('USDT')
     expect((await bridgeVia(base, LISTED.baseUsdc.address, robinhood, LISTED.robinhoodUsdg)).address).toBe(getAddress(LISTED.baseUsdc.address))
     expect((await bridgeVia(robinhood, LISTED.robinhoodUsdg.address, base, LISTED.baseUsdc)).symbol).toBe('USDG') // and back, by the rule
   })
@@ -544,10 +543,9 @@ describe('bridge routes', () => {
       [() => bridgeVia(base, '0x1111111111111111111111111111111111111111', arbitrum, LISTED.arbitrumUsdc), 'not on the Ophis token list for Base'],
       [() => bridgeVia(base, LISTED.baseUsdc.address, arbitrum, { address: '0x1111111111111111111111111111111111111111', decimals: 6 }), 'does not match the Ophis token list'],
       [() => bridgeVia(base, LISTED.baseUsdc.address, arbitrum, { ...LISTED.arbitrumUsdc, decimals: 18 }), 'does not match the Ophis token list'], // decimals from the list
-      [() => bridgeVia(base, LISTED.baseUsdc.address, unichain, LISTED.unichainUsdt0), 'USDC (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913), which does not match USDT0 on Unichain'],
+      [() => bridgeVia(base, LISTED.baseUsdc.address, optimism, LISTED.optimismUsdt0), 'USDC (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913), which does not match USD₮0 on Optimism'],
       [() => bridgeVia(base, LISTED.baseUsdc.address, bnb, LISTED.bnbUsdc), 'does not match USDC on BNB'], // same symbol, other decimals
       [() => bridgeVia(base, LISTED.baseUsdt.address, robinhood, LISTED.robinhoodUsdg), 'does not match USDG'], // the corridor is USDC only
-      [() => bridgeVia(base, LISTED.baseUsdc.address, unichain, LISTED.unichainUsdg), 'does not match USDG'], // and Robinhood's USDG only
       [() => bridgeVia(base, wrappedNative(base).address, robinhood, LISTED.robinhoodUsdg), 'does not match USDG'],
     ]
     for (const [check, message] of refusals) await expect(check()).rejects.toThrow(message)

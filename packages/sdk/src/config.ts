@@ -6,7 +6,6 @@ import {
 /** Ophis-operated chains (where Ophis runs its own stack and the partner fee accrues). */
 export const OPHIS_CHAIN_IDS = Object.freeze({
   optimism: 10,
-  unichain: 130,
   robinhood: 4663,
   arc: 5042,
 } as const);

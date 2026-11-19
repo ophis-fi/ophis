@@ -22,12 +22,6 @@ const CANONICAL: Record<number, Record<string, `0x${string}`>> = {
     WETH: '0x4200000000000000000000000000000000000006',
     USDC: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
   },
-  // Unichain (OP-stack: WETH is the 0x4200..0006 predeploy; USDC = Circle native,
-  // verified on Uniscan + the Ophis unichain infra configs, 2026-07-13)
-  130: {
-    WETH: '0x4200000000000000000000000000000000000006',
-    USDC: '0x078D782b760474a361dDA0AF3839290b0EF57AD6',
-  },
   // Polygon
   137: {
     WETH: '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619',

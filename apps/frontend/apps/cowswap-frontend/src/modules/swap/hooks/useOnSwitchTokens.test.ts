@@ -25,6 +25,8 @@ jest.mock('modules/trade', () => ({
 jest.mock('./useSwapDerivedState', () => ({ useSwapDerivedState: () => mockState }))
 jest.mock('./useUpdateSwapRawState', () => ({ useUpdateSwapRawState: () => mockUpdateState }))
 
+afterEach(() => jest.restoreAllMocks())
+
 beforeEach(() => {
   jest.clearAllMocks()
   mockCctpEnabled = false
@@ -89,17 +91,18 @@ it.each([SupportedChainId.INK, SupportedChainId.LINEA])(
 )
 
 it.each([false, true])('requires surface CCTP support to reverse a CCTP-only source (enabled: %s)', (enabled) => {
+  jest.spyOn(BRIDGE_SOURCE_CHAIN_IDS, 'has').mockReturnValue(false)
   mockCctpEnabled = enabled
   mockHasCctpRoute.mockReturnValue(true)
-  mockState.outputCurrency = new Token(130, output.address, 6, 'USDC')
+  mockState.outputCurrency = new Token(10, output.address, 6, 'USDC')
   const { result } = renderHook(() => useOnSwitchTokens())
   act(() => {
     expect(result.current()).toBe(enabled)
   })
   if (enabled) {
-    expect(mockHasCctpRoute).toHaveBeenCalledWith(130, input.chainId)
+    expect(mockHasCctpRoute).toHaveBeenCalledWith(10, input.chainId)
     expect(mockNavigate).toHaveBeenCalledWith(
-      130,
+      10,
       { inputCurrencyId: output.address, outputCurrencyId: input.address },
       { targetChainId: input.chainId, kind: OrderKind.SELL, amount: '', clearRecipient: true },
     )
@@ -108,4 +111,16 @@ it.each([false, true])('requires surface CCTP support to reverse a CCTP-only sou
     expect(mockUpdateState).not.toHaveBeenCalled()
   }
   expect(mockSameChainSwitch).not.toHaveBeenCalled()
+})
+
+it('refuses to reverse a retired Unichain destination even with cached CCTP support', () => {
+  mockCctpEnabled = true
+  mockHasCctpRoute.mockReturnValue(true)
+  mockState.outputCurrency = new Token(130, output.address, 6, 'USDC')
+  const { result } = renderHook(() => useOnSwitchTokens())
+  act(() => {
+    expect(result.current()).toBe(false)
+  })
+  expect(mockNavigate).not.toHaveBeenCalled()
+  expect(mockUpdateState).not.toHaveBeenCalled()
 })

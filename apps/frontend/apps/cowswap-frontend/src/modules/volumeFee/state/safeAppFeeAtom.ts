@@ -15,8 +15,6 @@ const SAFE_FEE_RECIPIENT_PER_NETWORK: Record<SupportedChainId, string> = {
   ...mapAddressToSupportedNetworks('0x8025BAcF968aa82BDfE51B513123b55BFb0060D3'),
   // Ophis fork: OP mainnet (chain 10) — same Safe-app fee recipient
   [10 as unknown as SupportedChainId]: '0x8025BAcF968aa82BDfE51B513123b55BFb0060D3',
-  // Ophis fork: Unichain mainnet (chain 130) — same Safe-app fee recipient
-  [130 as unknown as SupportedChainId]: '0x8025BAcF968aa82BDfE51B513123b55BFb0060D3',
   // Ophis fork: Robinhood Chain mainnet (chain 4663)
   [4663 as unknown as SupportedChainId]: '0x8025BAcF968aa82BDfE51B513123b55BFb0060D3',
 }

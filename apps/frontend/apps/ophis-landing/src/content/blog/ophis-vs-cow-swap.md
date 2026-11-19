@@ -1,6 +1,6 @@
 ---
 title: "Ophis vs CoW Swap: what a CoW Protocol fork changes"
-description: "Ophis is a CoW Protocol fork with batch auctions, an agent stack, and solver-aligned sovereign pricing on Optimism, Unichain, and Robinhood Chain."
+description: "Ophis is a CoW Protocol fork with batch auctions, an agent stack, and solver-aligned sovereign pricing on Optimism, and Robinhood Chain."
 pubDate: 2026-07-11
 updatedDate: 2026-10-19
 author: Ophis
@@ -10,7 +10,7 @@ cover: ./ophis-vs-cow-swap.cover.jpg
 coverAlt: "Ophis emblem ringed by supported chain logos, a CoW Protocol fork"
 ---
 
-Ophis is a fork of CoW Protocol's frontend. On most chains an Ophis order settles through CoW Protocol's canonical audited GPv2 contracts and solver competition; on Optimism, Unichain, Robinhood Chain and Arc, Ophis operates sovereign deployments with its own orderbook and a settlement derived from GPv2 at a non-canonical address. What the fork changes is the layer on top: natural-language intent input, an agent stack, chain-aware pricing, referral attribution, and a live trade-rewards campaign.
+Ophis is a fork of CoW Protocol's frontend. On most chains an Ophis order settles through CoW Protocol's canonical audited GPv2 contracts and solver competition; on Optimism, Robinhood Chain and Arc, Ophis operates sovereign deployments with its own orderbook and a settlement derived from GPv2 at a non-canonical address. What the fork changes is the layer on top: natural-language intent input, an agent stack, chain-aware pricing, referral attribution, and a live trade-rewards campaign.
 
 That is the whole comparison in three sentences. The rest of this page unpacks it plainly, because Ophis (the intent-based DEX aggregator at [ophis.fi](https://ophis.fi/)) exists because of CoW Protocol, not despite it. A maintained side-by-side also lives in the [comparison docs](https://docs.ophis.fi/comparison).
 
@@ -28,14 +28,14 @@ If you have used CoW Swap, all three behave exactly the way you expect. It is th
 
 ## Where orders settle
 
-The Ophis app supports fourteen chains: Ethereum, Optimism, BNB, Gnosis, Unichain, Robinhood Chain, Polygon, Base, Plasma, Arbitrum, Avalanche, Ink, Linea, and Arc. They split into two groups:
+The Ophis app supports fourteen chains: Ethereum, Optimism, BNB, Gnosis, Robinhood Chain, Polygon, Base, Plasma, Arbitrum, Avalanche, Ink, Linea, and Arc. They split into two groups:
 
 | Chains | Orderbook | Settlement |
 | --- | --- | --- |
 | Ethereum, BNB, Gnosis, Polygon, Base, Plasma, Arbitrum, Avalanche, Ink, Linea | CoW Protocol's, via api.cow.fi | CoW Protocol's canonical audited GPv2 contracts |
-| Optimism, Unichain, Robinhood Chain, Arc | Ophis-operated | A settlement deployment derived from GPv2 at a non-canonical address |
+| Optimism, Robinhood Chain, Arc | Ophis-operated | A settlement deployment derived from GPv2 at a non-canonical address |
 
-On the ten hosted chains, an Ophis order is an order in CoW's orderbook, settled by the same contracts CoW Swap uses there. On Optimism, Unichain, [Robinhood Chain](/blog/swap-on-robinhood-chain/) and Arc, Ophis runs the stack itself: its own orderbook and its own settlement deployment. On Optimism that contract is 0x310784c7FCE12d578dA6f53460777bAc9718B859.
+On the ten hosted chains, an Ophis order is an order in CoW's orderbook, settled by the same contracts CoW Swap uses there. On Optimism, [Robinhood Chain](/blog/swap-on-robinhood-chain/) and Arc, Ophis runs the stack itself: its own orderbook and its own settlement deployment. On Optimism that contract is 0x310784c7FCE12d578dA6f53460777bAc9718B859.
 
 The practical consequence for anyone integrating: never hardcode api.cow.fi or the canonical settlement domain. Resolve supported orderbooks and signing domains with `@ophis/sdk` or MCP `list_chains`. SDK v0.4.3 and the hosted MCP server include Arc (5042). Signing against the wrong domain is the classic fork failure mode, and the tooling exists so you never have to guess.
 
@@ -67,11 +67,11 @@ Upstream CoW audits cover relevant shared code, not every Ophis modification or 
 
 ### Can I keep my CoW workflow on Ophis?
 
-Mostly, yes. You still build and sign a CoW Protocol order: same order struct, same EIP-712 signing flow. On the ten hosted chains your existing tooling already targets the right orderbook, because it is CoW's. On Optimism, Unichain, Robinhood Chain and Arc you must use the Ophis orderbook and non-canonical settlement domain. SDK v0.4.3 and the hosted MCP server resolve all four.
+Mostly, yes. You still build and sign a CoW Protocol order: same order struct, same EIP-712 signing flow. On the ten hosted chains your existing tooling already targets the right orderbook, because it is CoW's. On Optimism, Robinhood Chain and Arc you must use the Ophis orderbook and non-canonical settlement domain. SDK v0.4.3 and the hosted MCP server resolve all four.
 
 ### Why fork CoW Protocol at all?
 
-Three reasons. First, an agent-first product: a keyless MCP server, an Intent API, receiver pinning, and slippage caps need a different surface than a human-first swap UI. Second, sovereign chains: on Optimism, Unichain, Robinhood Chain and Arc, Ophis operates the orderbook and settlement deployment directly. Third, the economics: standard-policy revenue combines a low fixed base with capped price-improvement capture on eligible orders. Integrators can track routed volume and fees by appCode.
+Three reasons. First, an agent-first product: a keyless MCP server, an Intent API, receiver pinning, and slippage caps need a different surface than a human-first swap UI. Second, sovereign chains: on Optimism, Robinhood Chain and Arc, Ophis operates the orderbook and settlement deployment directly. Third, the economics: standard-policy revenue combines a low fixed base with capped price-improvement capture on eligible orders. Integrators can track routed volume and fees by appCode.
 
 ### What does a trade on Ophis cost?
 

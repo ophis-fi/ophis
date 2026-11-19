@@ -103,7 +103,7 @@ export function setQuoteBridgeProviders(quoteProviderIds: readonly string[]): vo
 }
 
 // Ophis fork (Path A, 2026-05-20): the live providers are Across for EVM<->EVM
-// (including Unichain, Robinhood Chain, Ink and Linea) and NEAR Intents for
+// (including Robinhood Chain, Ink and Linea) and NEAR Intents for
 // EVM<->Solana/Bitcoin plus its EVM routes, including Robinhood Chain.
 //
 // Upstream cowswap gates Near + Across behind LaunchDarkly feature flags

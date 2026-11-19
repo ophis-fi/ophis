@@ -1,9 +1,6 @@
 import { getAddress } from '@ethersproject/address'
 
-import {
-  DEFAULT_PARTNER_FEE_RECIPIENT_PER_NETWORK,
-  OPHIS_PARTNER_FEE_RECIPIENT,
-} from './feeRecipient'
+import { DEFAULT_PARTNER_FEE_RECIPIENT_PER_NETWORK, OPHIS_PARTNER_FEE_RECIPIENT } from './feeRecipient'
 
 /**
  * Phase 3 audit H1+H2 regression guard.
@@ -42,7 +39,7 @@ describe('feeRecipient', () => {
     // Chains where we operate stacks must route to our Safe.
     // Per-chain entries existing AT ALL is also load-bearing — a refactor
     // deleting them would fall back to the base placeholder.
-    const ophisChainIds = [10, 130, 4663, 5042] as const
+    const ophisChainIds = [10, 4663, 5042] as const
     for (const chainId of ophisChainIds) {
       const entry = (DEFAULT_PARTNER_FEE_RECIPIENT_PER_NETWORK as Record<number, string>)[chainId]
       expect(entry).toBe(OPHIS_PARTNER_FEE_RECIPIENT)

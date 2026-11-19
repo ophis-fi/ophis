@@ -46,7 +46,7 @@ import { amount, bold, clean, dim, finish, green, red, rows, saffron, spinner, U
 export const ORDER_TTL = 30 * 60 // seconds an order stays open, as in @ophis/agent-swap
 const WRAPPED_ABI = parseAbi(['function deposit() payable'])
 // OP-stack chains charge an L1 data fee on top of gas. Their fee oracle gives an upper bound per tx size.
-const OP_STACK = new Set([10, 130, 8453, 57073])
+const OP_STACK = new Set([10, 8453, 57073])
 const GAS_ORACLE = '0x420000000000000000000000000000000000000F'
 const ORACLE_ABI = parseAbi(['function getL1FeeUpperBound(uint256 unsignedTxSize) view returns (uint256)'])
 // Arc's gas token, USDC, as its 6-decimal ERC-20 (apps/frontend/libs/common-const/src/arc.const.ts).
@@ -61,7 +61,6 @@ export const WRAPPED: Record<number, readonly [Address, string]> = {
   10: ['0x4200000000000000000000000000000000000006', 'WETH'],
   56: ['0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c', 'WBNB'],
   100: ['0xe91D153E0b41518A2Ce8Dd3D7944Fa863463a97d', 'WXDAI'],
-  130: ['0x4200000000000000000000000000000000000006', 'WETH'],
   137: ['0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', 'WPOL'],
   4663: ['0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73', 'WETH'],
   8453: ['0x4200000000000000000000000000000000000006', 'WETH'],

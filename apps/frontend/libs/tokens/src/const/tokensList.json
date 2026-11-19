@@ -241,18 +241,6 @@
       "source": "https://tokens.coingecko.com/optimistic-ethereum/all.json"
     }
   ],
-  "130": [
-    {
-      "priority": 1,
-      "enabledByDefault": true,
-      "source": "https://swap.ophis.fi/token-lists/ophis.json"
-    },
-    {
-      "priority": 2,
-      "enabledByDefault": true,
-      "source": "https://ipfs.io/ipns/tokens.uniswap.org"
-    }
-  ],
   "4663": [
     {
       "priority": 0,

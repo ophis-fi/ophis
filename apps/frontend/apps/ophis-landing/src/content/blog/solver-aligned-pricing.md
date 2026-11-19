@@ -18,7 +18,7 @@ On volatile pairs, Ophis retains **80% of price improvement, capped at 99 bps
 of trade volume**. On same-chain stablecoin pairs, Ophis retains **50%, capped
 at 20 bps**. The base remains 1 bp in both cases.
 
-The standard policy applies to Optimism, Unichain, Robinhood Chain, Arc and the ten
+The standard policy applies to Optimism, Robinhood Chain, Arc and the ten
 CoW-hosted networks. Those four operated backends enforce it directly; CoW-hosted orders encode the same policy in
 CIP-75 appData, with CoW Protocol's upstream fees applied separately.
 
@@ -66,7 +66,7 @@ the user's signed limit or treat loose slippage tolerance as protocol revenue.
 That distinction matters: the fee should reflect execution Ophis created, not
 room the trader allowed for safe settlement.
 
-On Optimism, Unichain, Robinhood Chain and Arc, the backend applies the reference quote, capture
+On Optimism, Robinhood Chain and Arc, the backend applies the reference quote, capture
 factor and cap; omitting metadata does not remove that backend policy. On
 CoW-hosted chains the Ophis policy is encoded in signed appData, alongside
 CoW's upstream fees. Use the complete SDK fee helper output.

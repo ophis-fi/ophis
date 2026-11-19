@@ -34,7 +34,7 @@ Open the [Rewards page](https://swap.ophis.fi/#/rewards) to check remaining tick
 | --- | --- |
 | Trade value | At least $100 |
 | Timing | Swap settles after the campaign starts |
-| Networks | Ethereum, BNB Chain, Arbitrum, Optimism, Base, Robinhood Chain, Unichain, Plasma, Ink, Gnosis, Avalanche, Polygon |
+| Networks | Ethereum, BNB Chain, Arbitrum, Optimism, Base, Robinhood Chain, Plasma, Ink, Gnosis, Avalanche, Polygon |
 | Fee verification | Settled Ophis trade with a verified Ophis fee |
 | Token pair | Different sell and buy tokens |
 | Wallet age and balance | No minimum |
@@ -57,3 +57,5 @@ Self-dealing, automation abuse and coordinated attempts to manufacture qualifyin
 <Card icon="rocket" title="Getting started" href="/getting-started">Make your first Ophis swap.</Card>
 <Card icon="receipt" title="Fees" href="/fees">Review swap fees before trading.</Card>
 </Cards>
+
+Unichain was retired on 19 November 2026. Eligible historical trades retain their campaign accounting; no new Unichain trading is supported.

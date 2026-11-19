@@ -39,7 +39,7 @@ each other on price, and the winner settles a whole batch of orders in one
 on-chain transaction. Ophis is a fork of [CoW Protocol's](https://docs.cow.fi)
 frontend with a natural-language intent layer and an agent stack, and
 settlement uses CoW Protocol's GPv2 design, with Ophis-operated deployments on
-Optimism, Unichain, Robinhood Chain and Arc. The
+Optimism, Robinhood Chain and Arc. The
 solver builds the settlement transaction, broadcasts it, and pays its gas.
 
 Note that this is different from gas sponsorship. Sponsorship models (relayers,
@@ -98,8 +98,8 @@ an existing allowance or a supported permit flow before gasless signing can help
 not all wallet operations. Keep gas available for approvals and other required transactions; the integration pattern is in
 [how to let an AI agent swap tokens](/blog/let-an-ai-agent-swap-tokens/).
 
-**Multichain traders.** The Ophis app supports 14 chains: Ethereum, Optimism, BNB,
-Gnosis, Unichain, Robinhood Chain, Polygon, Base, Plasma, Arbitrum, Avalanche,
+**Multichain traders.** The Ophis app supports 13 chains: Ethereum, Optimism, BNB,
+Gnosis, Robinhood Chain, Polygon, Base, Plasma, Arbitrum, Avalanche,
 Ink, Linea, and Arc. SDK v0.4.3 and the hosted MCP server also include Arc.
 They do not all share one gas token. Pre-funding a native balance on every
 chain you might trade on is dead capital and real friction; signed orders

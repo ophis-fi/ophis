@@ -10,7 +10,7 @@
   <a href="https://github.com/ophis-fi/ophis/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://github.com/ophis-fi/ophis/actions/workflows/ci.yml/badge.svg?branch=main" alt="Core CI on main" /></a>
   <a href="https://github.com/ophis-fi/ophis/actions/workflows/frontend-ci.yml?query=branch%3Amain"><img src="https://github.com/ophis-fi/ophis/actions/workflows/frontend-ci.yml/badge.svg?branch=main" alt="Frontend checks on main" /></a>
   <a href="https://github.com/ophis-fi/ophis/actions/workflows/security.yml?query=branch%3Amain"><img src="https://github.com/ophis-fi/ophis/actions/workflows/security.yml/badge.svg?branch=main" alt="Dependency and security checks on main" /></a>
-  <a href="https://docs.ophis.fi/networks-assets"><img src="https://img.shields.io/badge/networks-14_EVM_mainnets-7c3aed" alt="14 supported EVM mainnets" /></a>
+  <a href="https://docs.ophis.fi/networks-assets"><img src="https://img.shields.io/badge/networks-13_EVM_mainnets-7c3aed" alt="13 supported EVM mainnets" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="GPL-3.0 license" /></a>
 </p>
 
@@ -51,11 +51,11 @@ CoW Protocol's upstream fees. See the [fee guide](https://docs.ophis.fi/fees).
 
 ## Networks
 
-The EVM order infrastructure supports **14 mainnets** across two settlement models:
+The EVM order infrastructure supports **13 mainnets** across two settlement models:
 
 | Settlement model                                                | Networks                                                                            |
 | --------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| **Ophis-operated** orderbooks, solvers and settlement contracts | Optimism (10), Unichain (130), Robinhood Chain (4663), Arc (5042)                   |
+| **Ophis-operated** orderbooks, solvers and settlement contracts | Optimism (10), Robinhood Chain (4663), Arc (5042)                   |
 | **CoW-hosted** settlement and solver network                    | Ethereum, BNB Chain, Gnosis, Polygon, Base, Plasma, Arbitrum, Avalanche, Ink, Linea |
 
 The swap app also offers NEAR-powered routes to supported non-EVM networks.

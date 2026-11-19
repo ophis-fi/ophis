@@ -5,7 +5,7 @@ import type { HttpsString } from '@cowprotocol/cow-sdk'
  * correct brand mark supplied by the Robinhood Chain team (2026-08-02); the
  * bare white CDN feather-light glyph previously used here is a monochrome
  * wordmark glyph, not the chain icon. Inlined as a data: URI (same pattern as
- * the Unichain entry in chainInfo.ts): CHAIN_INFO is consumed by multiple
+ * other custom entries in chainInfo.ts): CHAIN_INFO is consumed by multiple
  * apps, so the icon must be origin-independent. Source of truth for the art:
  * apps/frontend/apps/cowswap-frontend/public/logos/chain-robinhood.svg.
  */

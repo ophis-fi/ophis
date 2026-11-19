@@ -42,7 +42,7 @@ beforeEach(() => {
   mockIsWalletConnect.mockReturnValue(false)
 })
 
-it.each([1, 10, 56, 100, 130, 137, 4663, 8453, 9745, 42161, 43114, 57073, 59144])(
+it.each([1, 10, 56, 100, 137, 4663, 8453, 9745, 42161, 43114, 57073, 59144])(
   'uses the configured chain RPC for WalletConnect reads on %i',
   (chainId) => {
     mockWalletChainId.mockReturnValue(chainId)

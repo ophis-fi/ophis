@@ -508,9 +508,9 @@ describe('listChains', () => {
     expect(op?.partnerFee).toEqual({ volumeBps: 1, recipient: OPHIS_SAFE })
   })
 
-  it('names Unichain (130) with its real display name, not a chain-130 placeholder', () => {
+  it('does not advertise retired Unichain', () => {
     const uni = listChains().tradeable.find((c) => c.chainId === 130)
-    expect(uni?.name).toBe('Unichain')
+    expect(uni).toBeUndefined()
   })
 
   it('exposes Robinhood Chain with the deployed settlement and public orderbook', () => {
@@ -853,7 +853,7 @@ describe('resolveToken (fail-closed canonical symbol resolution)', () => {
       calls.push(String(source))
       return jsonResponse(String(source) === url ? shipped : { tokens: [] })
     }) as unknown as typeof fetch
-    for (const [chainId, symbol] of [[10, 'USDC'], [130, 'USDC'], [4663, 'USDG'], [4663, 'WETH'], [4663, 'TINY']] as const) {
+    for (const [chainId, symbol] of [[10, 'USDC'], [4663, 'USDG'], [4663, 'WETH'], [4663, 'TINY']] as const) {
       const result = await resolveToken({ chainId, symbol }, mock)
       expect(result.found).toBe(true)
       expect(result.ambiguous).toBe(false)

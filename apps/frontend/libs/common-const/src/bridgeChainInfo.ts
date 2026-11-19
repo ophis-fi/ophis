@@ -10,7 +10,7 @@ const MULTICALL3_ADDRESS = '0xcA11bde05977b3631167028862bE2a173976CA11'
 
 /**
  * SDK-shaped ChainInfo for the chains the upstream sdk-config does not know
- * (Unichain 130, Robinhood Chain 4663, and the NEAR-only destinations Monad
+ * (Robinhood Chain 4663 and the NEAR-only destinations Monad
  * 143 / X Layer 196), so they can appear in bridge provider network lists.
  * Cosmetics come from the app's own chain infos (getChainInfo, which also
  * covers BRIDGE_DESTINATION_CHAIN_INFO): one source of truth for labels,

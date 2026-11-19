@@ -120,7 +120,7 @@ For an Arbitrum order, use `ophis status <order id> on arbitrum`.
 
 | Network list | Chains |
 | --- | --- |
-| Mainnets | Arbitrum One, Arc, Avalanche, Base, BNB Chain, Ethereum, Gnosis, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, Unichain |
+| Mainnets | Arbitrum One, Arc, Avalanche, Base, BNB Chain, Ethereum, Gnosis, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain |
 | Testnet | Sepolia |
 | Total | 15 |
 
@@ -135,7 +135,7 @@ Run `ophis chains` to see the names to type.
 | Upstream volume fee on partner-hosted networks | 0.02%, or 0.003% on correlated pairs such as stablecoins |
 | Combined volume fee on partner-hosted networks | 0.03% standard / 0.013% correlated; improvement and execution costs are additional |
 | Partner-hosted networks | 10, including Base |
-| Ophis-operated networks | Optimism, Unichain, Robinhood Chain, Arc; no upstream fee |
+| Ophis-operated networks | Optimism, Robinhood Chain, Arc; no upstream fee |
 | Across bridge fee | Included in the displayed amounts |
 
 If the order fills, settlement enforces the amount shown as **At least**. A quote or signed order does not guarantee a fill. See [Fees](/fees) for improvement capture and upstream fee details.

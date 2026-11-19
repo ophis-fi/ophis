@@ -44,13 +44,13 @@ describe('hasAccountOrders — absence must be confirmed', () => {
 describe('SUPPORTED_CHAIN_IDS / orderbookBase — sovereign + hosted routing', () => {
   it('includes every sovereign Ophis chain', () => {
     expect(SUPPORTED_CHAIN_IDS).toContain(OPTIMISM_CHAIN_ID);
-    expect(SUPPORTED_CHAIN_IDS).toContain(UNICHAIN_CHAIN_ID); // else 130 trades never index
+    expect(SUPPORTED_CHAIN_IDS).not.toContain(UNICHAIN_CHAIN_ID); // retired, historical rows stay intact
     expect(SUPPORTED_CHAIN_IDS).toContain(ROBINHOOD_CHAIN_ID);
   });
 
   it('routes each sovereign chain to its own self-hosted orderbook host root (NOT api.cow.fi)', () => {
     expect(orderbookBase(OPTIMISM_CHAIN_ID)).toBe('https://optimism-mainnet.ophis.fi');
-    expect(orderbookBase(UNICHAIN_CHAIN_ID)).toBe('https://unichain-mainnet.ophis.fi');
+    expect(() => orderbookBase(UNICHAIN_CHAIN_ID)).toThrow(/unsupported chain/);
     expect(orderbookBase(ROBINHOOD_CHAIN_ID)).toBe('https://robinhood-mainnet.ophis.fi');
   });
 

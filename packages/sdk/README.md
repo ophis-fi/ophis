@@ -11,6 +11,8 @@ swap app also supports externally funded NEAR swaps, including Bitcoin and
 Solana sources; those deposits are a separate flow and are not built or signed
 by these order helpers. See [network and funding coverage](https://docs.ophis.fi/networks-assets).
 
+Unichain (130) is retired. This source version rejects its orderbook, signing-domain and native-order helpers. Older published clients may still list it.
+
 ## Install
 
 ```bash
@@ -19,8 +21,8 @@ npm install @ophis/sdk
 
 ## What's in it
 
-- **`getOphisOrderbookUrl(chainId)`** — the correct orderbook host per chain. Optimism, Unichain, Robinhood Chain, and Arc use Ophis-operated hosts; getting this wrong bypasses the intended Ophis settlement path.
-- **`getOphisOrderDomain(chainId)`** / **`getOphisSettlementAddress(chainId)`** — the EIP-712 signing domain with the correct per-chain `verifyingContract` (all four Ophis-operated settlements are non-canonical, so the upstream default is wrong there).
+- **`getOphisOrderbookUrl(chainId)`** — the correct orderbook host per chain. Optimism, Robinhood Chain, and Arc use Ophis-operated hosts; getting this wrong bypasses the intended Ophis settlement path.
+- **`getOphisOrderDomain(chainId)`** / **`getOphisSettlementAddress(chainId)`** — the EIP-712 signing domain with the correct per-chain `verifyingContract` (all three Ophis-operated settlements are non-canonical, so the upstream default is wrong there).
 - **`buildOphisAppDataPartnerFee(chainId, isStablePair)`** — the exact CIP-75 fee config. Operated chains return the 1 bp base (their backend adds improvement capture when configured); hosted chains return base + pair-aware capped improvement entries.
 - **`ophisOrderReceiver`** / **`assertReceiverIsOwner`** — pin an order's `receiver` to the owner. An unpinned receiver is the #1 drain vector for an automated signer.
 - **`buildOphisOrderMetadata`** / **`enrollOphisTrader`** / **`buildOphisOrderCreation`** — the high-level order-flow helpers: `appCode` is always `'ophis'` (a custom one bypasses Ophis attribution), the receiver is asserted, and the `sendOrder` wire shape (full `appData` string + `appDataHash`) is correct. Call `await enrollOphisTrader(owner, { blocking: true })` separately before **each submission**, including delayed vault trades; constructing metadata or an order does not enroll the wallet. Use the actual order owner (the Safe for a vault), not its curator.

@@ -88,7 +88,6 @@ describe('Ophis list migration during successful upsert', () => {
 
   it.each([
     [10, 'https://static.optimism.io/optimism.tokenlist.json', true],
-    [130, 'https://ipfs.io/ipns/tokens.uniswap.org', true],
     [4663, 'https://swap.ophis.fi/token-lists/robinhood.json', false],
     [11155111, 'https://files.cow.fi/token-lists/CowSwapSepolia.json', false],
   ] as const)(

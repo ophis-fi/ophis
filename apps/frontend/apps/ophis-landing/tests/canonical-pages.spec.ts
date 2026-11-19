@@ -164,7 +164,7 @@ test('acquisition pages are linked from their relevant guides', async ({ page })
 test('supported-chains lists every chain from the canonical data, sovereigns badged', async ({ page }) => {
   await page.goto('/supported-chains')
   const table = page.locator('.prose table').first()
-  for (const name of ['Ethereum', 'Robinhood Chain', 'Unichain', 'Optimism', 'Plasma', 'Solana', 'Bitcoin']) {
+  for (const name of ['Ethereum', 'Robinhood Chain', 'Optimism', 'Plasma', 'Solana', 'Bitcoin']) {
     await expect(table).toContainText(name)
   }
   await expect(table.locator('.badge')).toHaveCount(SOVEREIGN_CHAINS.length)

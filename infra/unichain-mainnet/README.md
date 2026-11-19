@@ -1,127 +1,21 @@
-# Ophis — Unichain Mainnet Operator Runbook
+# Retired Unichain deployment
 
-This stack runs the Ophis Protocol deployment on **Unichain mainnet (chain 130)**. It serves user intents submitted via [unichain-mainnet.ophis.fi](https://unichain-mainnet.ophis.fi), runs a solver auction, and settles trades through the sovereign `GPv2Settlement` contract on Unichain.
+Ophis retired Unichain (chain 130) on 19 November 2026. It is removed from
+active trading, bridge routing, agent integrations and scheduled trade indexing.
+The Compose deployment, renderer, boot restoration and tunnel service installers
+have been removed. The shared watchdog must never restart this stack.
 
-**Two hard prerequisites before this stack can run:**
-1. **Sovereign contracts are not deployed yet (WS3).** See `FILL-IN-AFTER-DEPLOY.md` for the Phase-1 Ledger ceremony checklist before starting.
-2. **A self-hosted Unichain op-reth node (WS13) must be reachable** at `ophis-uni-node:8545` over Tailscale. The autopilot HARD-requires `debug_traceTransaction` (settlement decode) and no free public Unichain RPC serves it — the self-node is the only source. It must be Karst-ready (op-reth v2.3.1 + op-node v1.19.0) before the **2026-07-08 16:00 UTC** Karst hardfork or it halts.
+The remaining configuration, deployment receipts, contract addresses, recovery
+and sweep scripts are historical records. They are retained to reconcile old
+trades, refunds and treasury balances. They do not describe a supported trading
+deployment. Do not delete databases, wallet records or keys as part of retirement.
 
-**If you're paged at 3am: jump to [Common Failures](#common-failures).**
+During deployment of this removal, stop and disable any installed Unichain
+boot, tunnel and health-check services; remove the retired public orderbook route.
+Check for outstanding native-order refunds, bridge claims and fee payouts before
+removing any persistent infrastructure. The accounting chain IDs and historical
+reward eligibility remain intact; the settlement-buffer monitor remains available
+for treasury wind-down. Existing CCTP claims retain their network metadata.
 
----
-
-## Stack Overview
-
-| Component     | Port (host) | Description |
-|---------------|-------------|-------------|
-| orderbook     | 8400        | REST API — order creation, quotes, status |
-| driver        | 8401        | Solver engine + settlement submitter |
-| baseline      | 9301        | On-chain liquidity solver — **ships empty on Unichain** (dedicated solvers handle direct routing) |
-| okx-solver    | 9302        | OKX DEX aggregator (staged — see Solver Status) |
-| kyberswap-solver | 9303     | KyberSwap aggregator (the active first-fill connector) |
-| velora-solver | 9304        | Velora/ParaSwap — **disabled on Unichain** (no v4 adapter) |
-| rpc-proxy     | 4002        | eRPC 2-of-3 consensus proxy (chain 130) |
-| prometheus    | 9092        | Metrics (observability profile) |
-| alertmanager  | 9095        | Telegram alerts (observability profile) |
-| jaeger UI     | 16687       | Distributed tracing (when enabled) |
-| postgres      | 5439        | Database |
-
-Chain: **130 (Unichain)**, ~1s blocks
-Domain: **unichain-mainnet.ophis.fi**
-eRPC endpoint: `http://rpc-proxy:4000/main/evm/130`
-
----
-
-## Prerequisites
-
-1. Complete the Phase-1 Ledger ceremony (WS3) — see `FILL-IN-AFTER-DEPLOY.md`.
-2. Replace every `__FILL_AFTER_DEPLOY_*__` placeholder in `configs/*.toml.tmpl` with the deployed address.
-3. The self-hosted op-reth node (WS13) is up, synced, and **trace-verified** (`debug_traceTransaction` returns on a recent tx), reachable at `ophis-uni-node:8545` over Tailscale.
-4. Copy `.env.example` to `.env`, fill in credentials.
-5. A **funded, Tier-1-isolated submitter EOA for Unichain** — a NEW per-chain EOA, added to the Unichain Authenticator's solver allowlist and funded with ~0.02 ETH on chain 130. Stored at `/Users/ophis-driver/.config/submitter.key` (Tier-1 PK isolation, same scheme as the OP stack).
-
----
-
-## First Start
-
-```bash
-cd infra/unichain-mainnet
-# Use a clean reviewed commit; retain this export for Compose inspection commands.
-export OPHIS_GIT_SHA="$(python3 ../shared/scripts/backend-revision.py source ../..)"
-./render-configs.sh     # renders *.toml.tmpl → rendered/*.toml (RAM-disk for PK-bearing)
-./compose-up.sh         # brings up the full stack
-docker compose ps       # verify all services healthy
-```
-
-
-Docker Compose 5.0.0 or newer is required: older releases read and discard service
-`env_file` entries even with `--no-env-resolution`.
-
-The wrapper pins every rollout step to `docker-compose.yml` and rejects conflicting
-`COMPOSE_FILE`, preferred Compose files or automatic overrides. Review and migrate
-any required override settings into the approved deployment configuration before
-retrying; do not discard private operator settings to pass this check.
-
-`compose-up.sh` verifies clean backend/infra source, builds all backend images
-under the full commit SHA, and checks their OCI revision labels before restarting
-services. All five binaries embed that revision; `/api/v1/version` returns it.
-Old `latest` images and mutable labels require a rebuild. Use the wrapper for
-backend/config rollouts. After successful startup it appends the verified revision
-to ignored `.env`, preserving existing credentials without reading or rewriting
-them. Later bare Compose inspection commands and verification scripts therefore
-work in new shells; the next rollout still rechecks source and image revisions.
-
-
----
-
-## eRPC Upstreams
-
-Unichain diverges from a public-only stack: the autopilot needs `debug_traceTransaction`, which free public Unichain RPCs do not serve. So this stack runs a **self-hosted node as the `debug`/`trace` leg**, alongside two free public **read** legs. Reads use 2-of-3 consensus; `debug_`/`trace_` route only to the self-node (eRPC's unsupported-method failover).
-
-| ID              | Endpoint                       | Role |
-|-----------------|--------------------------------|------|
-| ophis-self-uni  | ophis-uni-node:8545            | Self-hosted op-reth (WS13) — the ONLY `debug`/`trace` source + a read-consensus voter |
-| unichain-public | mainnet.unichain.org           | Unichain Labs public node — reads |
-| publicnode-uni  | unichain-rpc.publicnode.com    | PublicNode (independent operator/DNS) — reads |
-
-If the self-node is down, `debug`/`trace` fail-closed and the autopilot **pauses settlement** (safe — it never mis-settles; it just stops processing until the node returns). The fail-closed consensus invariants (2-of-3, `lowParticipants:returnError`) are enforced by `assert-erpc-failclosed.py` in CI. Unichain's ~1s blocks cause more tip-drift than a 2s chain; `preferBlockHeadLeader` breaks those ties without downgrading consensus.
-
----
-
-## Solver Status
-
-The auction configuration includes seven aggregator lanes and dedicated
-`velodrome` (V2) and `uniswap-v4` (ETH/USDC) lanes. The baseline remains empty.
-The direct lanes require rollout; configuration alone does not establish live status.
-Deploy the pinned V4 adapter before starting its solver.
-See [direct route scope and rollout](../../docs/operations/direct-dex-routes.md).
-
-
----
-
-## Common Failures
-
-**Stack won't start — contract placeholder errors:**
-All `__FILL_AFTER_DEPLOY_*__` strings must be replaced with real addresses (see `FILL-IN-AFTER-DEPLOY.md`).
-
-**Autopilot stops processing settlements / `debug_traceTransaction` errors:**
-The self-node is the only trace source. Check it: `cast block-number --rpc-url http://ophis-uni-node:8545` (is it at the tip?), confirm `debug` is in its `RETH_HTTP_API`, and that op-node is synced. If the node is down, settlement is paused by design — restore the node.
-
-**eRPC consensus disputes:**
-Check `docker compose logs rpc-proxy | grep dispute`. Unichain has ~1s blocks; tip-drift between providers is expected. Only sustained disputes (>60 in 10min for Block A) indicate a problem.
-
-**Driver unhealthy:**
-```bash
-docker inspect unichain-mainnet-driver-1 --format '{{.State.Health.Status}}'
-curl -s http://127.0.0.1:8401/healthz
-```
-Most likely: low ETH balance on the submitter EOA. Top up to ~0.02 ETH on chain 130.
-
-**Database port conflict:**
-This stack uses port **5439**. On its own dedicated Aleph VM this should not collide; if co-located, edit `docker-compose.yml`.
-
----
-
-## Merge Ordering (Frontend)
-
-See `FILL-IN-AFTER-DEPLOY.md` — the `feeRecipient.ts` fix is safe to merge anytime, but the `cowSdk.ts` Unichain flip must NOT ship until the Unichain stack is live and shadow-validated.
+The previous deployment procedure is available in Git history. A replacement
+network is deferred until the Ophis security, code and development cleanup.

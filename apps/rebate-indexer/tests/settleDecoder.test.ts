@@ -183,7 +183,7 @@ describe('settleDecoderChains / isRangeError', () => {
     const prev = process.env.SETTLE_DECODER_CHAINS;
     process.env.SETTLE_DECODER_CHAINS = '';
     expect(settleDecoderChains()).toEqual([]);
-    process.env.SETTLE_DECODER_CHAINS = '8453, 10';
+    process.env.SETTLE_DECODER_CHAINS = '8453, 130, 10';
     expect(settleDecoderChains()).toEqual([8453, 10]);
     if (prev === undefined) delete process.env.SETTLE_DECODER_CHAINS;
     else process.env.SETTLE_DECODER_CHAINS = prev;
@@ -240,7 +240,7 @@ describe('resolveAppData (re-hash guard)', () => {
     stubAppDataApi({}); // any hash -> 404
     expect(await resolveAppData(8453, hashOf(ophisDoc()))).toBeNull();
   });
-  it('uses another hash-verified sovereign content store after a native 404', async () => {
+  it('recovers retired Unichain appData from a live hash-verified store', async () => {
     const doc = ophisDoc({ quote: { slippageBips: 123 } });
     const h = hashOf(doc);
     const fetchMock = vi.fn(async (url: string) =>
@@ -254,9 +254,8 @@ describe('resolveAppData (re-hash guard)', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
     expect(await resolveAppData(130, h)).toBe(doc);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchMock.mock.calls[0]?.[0]).toContain('unichain-mainnet.ophis.fi');
-    expect(fetchMock.mock.calls[1]?.[0]).toContain('optimism-mainnet.ophis.fi');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toContain('optimism-mainnet.ophis.fi');
   });
   it('uses the hash-verified mainnet store when a hosted chain has lost its document', async () => {
     const doc = ophisDoc();

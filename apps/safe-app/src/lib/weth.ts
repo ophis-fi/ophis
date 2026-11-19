@@ -16,7 +16,6 @@ export const WETH_DEPOSIT_IFACE = new Interface(['function deposit() payable']);
 // supported set). Unichain (130) is an OP-Stack rollup whose canonical WETH is the 0x4200…0006
 // predeploy (the same address the autopilot/EthFlow native-token config and the frontend use).
 const OPHIS_WRAPPED_NATIVE: Record<number, string> = {
-  130: '0x4200000000000000000000000000000000000006', // Unichain WETH (OP-Stack predeploy)
   4663: '0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73', // Robinhood Chain WETH9
 };
 

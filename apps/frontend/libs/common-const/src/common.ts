@@ -72,8 +72,7 @@ export const STAGING_MIGRATED_CONTRACT_NETWORKS = [SupportedChainId.MAINNET]
 // path — the SDK treats zero-address as "not configured" downstream. Deploys
 // happen in feat/ethflow-* PRs.
 const OPHIS_ETHFLOW_OVERRIDES: Partial<Record<number, string>> = {
-  10: '0x764fE4aa1FF493cf39931c7923C8ff5837596504', // OP — deployed 2026-06-07 (tx 0xc0316c2c…c48e) + sdk patch
-  130: '0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7', // Unichain — EthFlow deployed 2026-06-29 (Codex+ToB+Verity reviewed)
+  10: '0x764fE4aa1FF493cf39931c7923C8ff5837596504',
   4663: '0xC1Ee77e8a1B85D5EED702a9bB435f434408A4d29', // Robinhood — deployed 2026-07-28, tx 0x2a53f639…21dcf
 }
 
@@ -103,8 +102,6 @@ export const V_COW_CONTRACT_ADDRESS: Record<SupportedChainId, string | null> = {
   [SupportedChainId.SEPOLIA]: '0x21d06a222bbb94ec1406a0a8ba86b4d761bc9864',
   // Ophis fork: vCOW not deployed on OP mainnet
   [10 as unknown as SupportedChainId]: null,
-  // Ophis fork: vCOW not deployed on Unichain (chain 130)
-  [130 as unknown as SupportedChainId]: null,
   // Ophis fork: vCOW not deployed on Robinhood Chain (4663)
   [4663 as unknown as SupportedChainId]: null,
 }
@@ -124,8 +121,6 @@ export const COW_CONTRACT_ADDRESS: Record<SupportedChainId, string | null> = {
   [SupportedChainId.INK]: null,
   // Ophis fork: COW token not deployed on OP mainnet
   [10 as unknown as SupportedChainId]: null,
-  // Ophis fork: COW token not deployed on Unichain (chain 130)
-  [130 as unknown as SupportedChainId]: null,
   // Ophis fork: COW token not deployed on Robinhood Chain (4663)
   [4663 as unknown as SupportedChainId]: null,
 }
@@ -153,8 +148,6 @@ export const ETH_FLOW_SLIPPAGE_WARNING_THRESHOLD: Record<SupportedChainId, numbe
   ...mapSupportedNetworks(200 as number), // 2%
   // Ophis fork: OP mainnet
   [10 as unknown as SupportedChainId]: 200,
-  // Ophis fork: Unichain mainnet (chain 130)
-  [130 as unknown as SupportedChainId]: 200,
   [4663 as unknown as SupportedChainId]: 200,
 }
 
@@ -180,12 +173,12 @@ export const GAS_PRICE_UPDATE_THRESHOLD = ms`5s`
 
 // See https://docs.blocknative.com/gas-prediction/gas-platform
 export const GAS_FEE_ENDPOINTS: Record<SupportedChainId, string> = {
-  // Blocknative's gas API was shut down 2026-06-19 (see the Unichain note below):
+  // Blocknative's gas API was shut down 2026-06-19:
   // the old mainnet endpoint now hard-fails (ERR_CONNECTION_RESET) and, since
   // GasUpdater re-fetches every block, it spammed the console + churned the main
   // thread on the swap app's default (mainnet) chain. Use Ethereum's Blockscout
   // gas-price-oracle — same {slow,average,fast} response shape the parser already
-  // reads for Gnosis/Arbitrum/Base/Polygon/Unichain (verified live HTTP 200).
+  // reads for Gnosis/Arbitrum/Base/Polygon (verified live HTTP 200).
   [SupportedChainId.MAINNET]: 'https://eth.blockscout.com/api/v1/gas-price-oracle',
   [SupportedChainId.GNOSIS_CHAIN]: 'https://gnosis.blockscout.com/api/v1/gas-price-oracle',
   [SupportedChainId.ARBITRUM_ONE]: 'https://arbitrum.blockscout.com/api/v1/gas-price-oracle',
@@ -206,11 +199,6 @@ export const GAS_FEE_ENDPOINTS: Record<SupportedChainId, string> = {
   // Ophis fork: OP mainnet (chain 10). optimism.blockscout.com 301-redirects to the
   // canonical explorer.optimism.io Blockscout gas oracle (verified live HTTP 200).
   [10 as unknown as SupportedChainId]: 'https://explorer.optimism.io/api/v1/gas-price-oracle',
-  // Ophis fork: Unichain mainnet (chain 130) — Blocknative gas API was shut
-  // down 2026-06-19, so use Unichain's Blockscout gas-price-oracle (same
-  // response shape the GasUpdater parser already reads for Gnosis/Arbitrum/
-  // Base/Polygon; verified live HTTP 200).
-  [130 as unknown as SupportedChainId]: 'https://unichain.blockscout.com/api/v1/gas-price-oracle',
   // Robinhood Chain Blockscout gas oracle.
   [4663 as unknown as SupportedChainId]: 'https://robinhoodchain.blockscout.com/api/v1/gas-price-oracle',
 }
@@ -236,8 +224,6 @@ export const GAS_API_KEYS: Record<SupportedChainId, string | null> = {
   [SupportedChainId.INK]: null,
   // Ophis fork: OP mainnet (chain 10). Blockscout gas oracle needs no key.
   [10 as unknown as SupportedChainId]: null,
-  // Ophis fork: Unichain mainnet (chain 130) — Blockscout gas oracle needs no key
-  [130 as unknown as SupportedChainId]: null,
   [4663 as unknown as SupportedChainId]: null,
 }
 

@@ -11,9 +11,9 @@ describe('getCurrentChainIdFromUrl()', () => {
     expect(chainId).toBe(SupportedChainId.SEPOLIA)
   })
 
-  it('When chainId from the url path is not valid, then should take mainnet as default', () => {
+  it.each([999, 130])('defaults to mainnet for unsupported or retired chain %s', (unsupportedChainId) => {
     const chainId = getCurrentChainIdFromUrl({
-      hash: '#/999/WETH',
+      hash: `#/${unsupportedChainId}/WETH`,
     } as Location)
 
     expect(chainId).toBe(SupportedChainId.MAINNET)
