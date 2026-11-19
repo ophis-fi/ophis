@@ -130,7 +130,7 @@ describe('renderStatsPage', () => {
     expect(html).toContain('Settlement transactions can still be public');
     expect(html).toContain('not an absolute guarantee');
     expect(html).toContain('native-token deposits, onchain cancellation, bridges and recovery can require gas');
-    expect(html).toContain('Ophis operates its own orderbooks and routing lanes on Robinhood Chain, Unichain, Optimism, and Arc');
+    expect(html).toContain('Ophis operates its own orderbooks and routing lanes on Robinhood Chain, Optimism, and Arc');
     expect(html).toContain('These lanes share one operator');
     expect(html).not.toContain('Arc is Ophis-operated but not yet indexed here');
     expect(html).not.toContain('On Unichain, 8 aggregator solvers');
@@ -145,7 +145,7 @@ describe('renderStatsPage', () => {
 
   it('includes Arc reporting without promising exhaustive history for every route', () => {
     const html = renderStatsPage(sample);
-    expect(html).toContain('This report is configured for 14 EVM networks, including Arc');
+    expect(html).toContain('This report covers historical records from 14 EVM networks, including retired Unichain');
     expect(html).not.toContain('Arc activity is not yet included');
     expect(html).toContain('A missing chain row does not prove there was no activity');
     expect(html).toContain('A recent publication time does not establish complete coverage');
@@ -174,12 +174,9 @@ describe('renderStatsPage', () => {
 
 describe('EXECUTION_FACTS (static execution-model facts on the public JSON)', () => {
   it('matches the sovereign driver configs', () => {
-    // Counts mirror the [[solver]] blocks in
-    // infra/optimism-mainnet/configs/driver.toml.tmpl and
-    // infra/unichain-mainnet/configs/driver.toml.tmpl.
+    // Counts mirror the active sovereign driver configs.
     expect(EXECUTION_FACTS.solverCompetition.sovereignChains).toEqual([
       { chainId: 10, solvers: 11 },
-      { chainId: 130, solvers: 7 },
       { chainId: 4663, solvers: 6 },
       { chainId: 5042, solvers: 5 },
     ]);
@@ -189,14 +186,14 @@ describe('EXECUTION_FACTS (static execution-model facts on the public JSON)', ()
     expect(EXECUTION_FACTS.mevProtection).toBe('batch-auction');
     expect(EXECUTION_FACTS.settlementModel).toBe('intent, uniform clearing price');
     expect(EXECUTION_FACTS.solverCompetition.hostedChains).toBe('CoW Protocol solver network');
-    expect(EXECUTION_FACTS.improvementSplit.sovereign).toContain('On in-market orders on Optimism, Unichain, Robinhood Chain and Arc, Ophis retains 80%');
+    expect(EXECUTION_FACTS.improvementSplit.sovereign).toContain('On in-market orders on Optimism, Robinhood Chain and Arc, Ophis retains 80%');
     expect(EXECUTION_FACTS.improvementSplit.sovereign).toContain('Arc uses the same capped backend improvement policy for in-market orders');
     expect(EXECUTION_FACTS.improvementSplit.hosted).toBe('The same Ophis capped capture applies, plus CoW Protocol quote-improvement fees upstream');
   });
 });
 
 describe('PRODUCTION_CHAIN_IDS (public /stats allow-list)', () => {
-  it('lists exactly the 14 named mainnet chains', () => {
+  it('retains retired Unichain in historical mainnet reporting', () => {
     expect([...PRODUCTION_CHAIN_IDS].sort((a, b) => a - b)).toEqual([
       1, 10, 56, 100, 130, 137, 4663, 5042, 8453, 9745, 42161, 43114, 57073, 59144,
     ]);
