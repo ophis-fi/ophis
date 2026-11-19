@@ -309,7 +309,7 @@ driven through `meter()` and named in `JOBS`. The largest count of each, 2026-11
 | `GET /api/export/:id` | 4 | 16 (the balances of wallets on 4 chains, past the cache) | 0 | 3,058 (a partner, as its Overview) | 2 |
 | `GET /api/me` | 7 | 0 | 0 | 163 | 1 |
 | `GET /api/onboarding` | 10 | 0 | 0 | 110 | 1 |
-| `GET /api/operator/organisations` | 24 | 42 (in production 43: each operator request also reads the Access keys) | 0 | 9,675 (every organisation of the test database: the reviews due) | 0 |
+| `GET /api/operator/organisations` | 25 (2026-11-19: one more, every organisation) | 42 (in production 43: each operator request also reads the Access keys) | 0 | 9,675 (every organisation of the test database: the reviews due) | 0 |
 | `GET /api/operator/organisations/:id/items` | 1 | 0 | 0 | 3 | 0 |
 | `GET /api/org` | 7 | 0 | 0 | 126 | 1 |
 | `GET /api/overview` | 20 | 16 (an institution's balances on 4 chains: an `aggregate3` on 2 endpoints, each after its `eth_chainId`) | 0 | 3,059 (a partner: the three lists at their largest go to the indexer) | 34 |

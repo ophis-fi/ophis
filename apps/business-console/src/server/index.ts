@@ -906,8 +906,13 @@ const waiting = async (c: Context) => (await data.openRequests(c.env.DB, c.actor
 async function overview(c: Context) {
   const kind = c.session.org_kind
   // A partner: its real figures (partner.ts), or the plain state that says why there are none. Never an example.
-  // And, since it trades on the desk too (owner, 2026-11-19), the statement of its filled orders.
-  if (kind === 'partner') return json(200, { kind, waiting: await waiting(c), figures: await partner.figures(c.env, c.actor.orgId, c.now), months: await statement(c) })
+  // And, since it trades on the desk too (owner, 2026-11-19), the statement of its filled orders, read while the indexer answers.
+  // ponytail: the statement reads every filled order of 12 months; with the lists a partner page nears its 5,000-row share
+  // at about 1,000 filled orders a year. An index on orders (org_id, status, sent_at) if a partner ever trades that much.
+  if (kind === 'partner') {
+    const [figures, months] = await Promise.all([partner.figures(c.env, c.actor.orgId, c.now), statement(c)])
+    return json(200, { kind, waiting: await waiting(c), figures, months })
+  }
   const list = await ordersOf(c)
   return json(200, { kind, waiting: await waiting(c), asOf: new Date(c.now).toISOString(), balances: await balances(c), months: await statement(c), orders: list.slice(0, 8), open: list.filter((o) => o.state === 'Open').length })
 }

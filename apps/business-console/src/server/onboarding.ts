@@ -259,7 +259,7 @@ const everyOrganisation = async (db: D1Database) =>
   (await db.prepare(`SELECT o.id, o.name, o.kind, o.country, k.recheck_at AS nextReview, (SELECT count(*) FROM seats s WHERE s.org_id = o.id AND s.state = 'active') AS members,
                             CASE WHEN o.state <> 'unverified' THEN o.state WHEN o.review_at IS NULL THEN 'applying' ELSE 'under review' END AS state
                      FROM organisations o LEFT JOIN kyb_records k ON k.rowid = (SELECT rowid FROM kyb_records WHERE org_id = o.id ORDER BY created_at DESC, rowid DESC LIMIT 1)
-                     ORDER BY o.name, o.id`).all()).results
+                     ORDER BY o.name, o.id`).all<{ id: string; name: string; kind: string; country: string | null; nextReview: number | null; members: number; state: string }>()).results
 const underReview = async (db: D1Database) =>
   (await db.prepare(`SELECT ${COMPANY} WHERE state = 'unverified' AND review_at IS NOT NULL ORDER BY review_at, id`).all<Company>()).results
 
