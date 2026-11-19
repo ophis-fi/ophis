@@ -724,20 +724,19 @@ async function judge(db: D1Database, orgId: string, role: Role, kind: Kind | Dir
     // An order of the desk (orders.ts). The value is its terms, complete: chain, wallet, both tokens, the exact amount
     // sold, the least amount bought, validity, appData and fee. Everything that decides it is read here, when it is filed
     // and again when it is approved: the terms are what this server makes of their own inputs now (an asset, a cap, an
-    // appData or a fee it would not make is refused), the organisation (an active institution, not in quarantine), the
+    // appData or a fee it would not make is refused), the organisation (active, of either kind since 2026-11-19, not in quarantine), the
     // preparer (`by`: an active seat whose role may prepare, now), the wallet (this organisation's, linked, with this name,
     // address and kind, on the chain of the order) and the number of orders that wait. The approval makes its order row.
     const terms = again(value)
     if (typeof terms === 'string') return terms
     if (JSON.stringify(terms) !== value) return 'invalid'
-    const r = await db.prepare(`SELECT o.kind, s.role, max(COALESCE(s.quarantine_until, 0), COALESCE(o.quarantine_until, 0)) AS quarantine,
+    const r = await db.prepare(`SELECT s.role, max(COALESCE(s.quarantine_until, 0), COALESCE(o.quarantine_until, 0)) AS quarantine,
                                   (SELECT w.label FROM wallets w WHERE w.org_id = o.id AND w.id = ?1 AND w.state = 'linked') AS wallet, (SELECT w.address FROM wallets w WHERE w.org_id = o.id AND w.id = ?1) AS address,
                                   (SELECT w.chain_id FROM wallets w WHERE w.org_id = o.id AND w.id = ?1) AS chain, (SELECT w.kind FROM wallets w WHERE w.org_id = o.id AND w.id = ?1) AS walletKind, (SELECT w.proof_by FROM wallets w WHERE w.org_id = o.id AND w.id = ?1) AS proofBy,
                                   (SELECT count(*) FROM approvals a WHERE a.org_id = o.id AND a.action = 'order' AND a.subject_id <> ?2 AND a.state = 'pending' AND a.expires_at > ?3) AS waiting
                                 FROM organisations o LEFT JOIN seats s ON s.org_id = o.id AND s.id = ?4 AND s.state = 'active' WHERE o.id = ?5 AND o.state = 'active'`)
-      .bind(terms.walletId, subjectId, now, by, orgId).first<{ kind: string; role: Role | null; quarantine: number; wallet: string | null; address: string | null; chain: number | null; walletKind: string | null; proofBy: string | null; waiting: number }>()
+      .bind(terms.walletId, subjectId, now, by, orgId).first<{ role: Role | null; quarantine: number; wallet: string | null; address: string | null; chain: number | null; walletKind: string | null; proofBy: string | null; waiting: number }>()
     return !r ? 'org_inactive'
-      : r.kind !== 'institution' ? 'institution_only'
       : !r.role || !(PREPARERS as readonly Role[]).includes(r.role) ? 'forbidden'
       : r.quarantine > now ? 'quarantine'
       : r.wallet === null || r.wallet !== terms.label || checksum(r.address!) !== terms.wallet || (r.walletKind === 'safe') !== (terms.scheme === 'presign') ? 'wallet_not_linked'
@@ -958,7 +957,7 @@ export async function filledOrders(db: D1Database, orgId: string, since: number)
 const ORDER_ROW = `SELECT o.org_id AS orgId, o.id, o.approved_at AS approvedAt, o.link_purpose AS purpose, o.valid_to AS validTo, o.uid, o.status, o.sent_at AS sentAt, a.payload,
                           w.id AS walletId, w.chain_id AS walletChain, w.address AS walletAddress
                    FROM orders o JOIN approvals a ON a.org_id = o.org_id AND a.id = o.id
-                   JOIN organisations g ON g.id = o.org_id AND g.state = 'active' AND g.kind = 'institution'
+                   JOIN organisations g ON g.id = o.org_id AND g.state = 'active'
                    LEFT JOIN wallets w ON w.org_id = o.org_id AND w.state = 'linked' AND w.id = json_extract(json_extract(a.payload, '$.value'), '$.walletId')`
 type OrderRow = { orgId: string; id: string; approvedAt: number; purpose: 'sign' | 'cancel' | null; validTo: number | null; uid: string | null; status: string | null; sentAt: number | null; payload: string; walletId: string | null; walletChain: number | null; walletAddress: string | null }
 /**

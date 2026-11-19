@@ -5570,9 +5570,11 @@ describe('D. Support: the model selects, the server decides', () => {
     // speaks of a referral share, referred wallets, codes or earnings: the console's partners get none (2026-11-13).
     const text = (id: string) => ANSWERS.find((a) => a.id === id)!.text
     expect(text('KB-13')).toMatch(/Overview shows a partner organisation its fee owed this cycle \(an estimate\), its payouts, the daily volume, the split by chain and fee token, and wallets whose orders carried its fee, flagging those on a sanctions list\. Figures are read for the fee recipient address you link\./)
-    expect(text('KB-16')).toMatch(/A partner, in Overview: the partner-fee months, payouts, daily volume, the split by chain and by fee token, the wallets that traded, and those of them on a sanctions list\./)
+    expect(text('KB-16')).toMatch(/Overview of a partner: the partner-fee months, payouts, daily volume, the split by chain and by fee token, the wallets that traded, and those on a sanctions list\./)
+    // Every organisation trades on the desk (owner, 2026-11-19): its two tables are every organisation's.
+    expect(text('KB-16')).toMatch(/Desk \(every organisation\): the orders with every term and what was executed, and the permitted assets\./)
     // The institution's exports are real since 2026-11-14: balances read on the chain, its orders, the statement of its filled orders.
-    expect(text('KB-16')).toMatch(/An institution, in Overview: the balances of its linked wallets, its orders, and the monthly statement of its filled orders/)
+    expect(text('KB-16')).toMatch(/Overview of an institution: the balances of its linked wallets, its orders, and the monthly statement of its filled orders/)
     expect(text('KB-16')).not.toMatch(/Not available|example/i)
     expect(text('KB-13') + text('KB-16')).not.toMatch(/no fees view|does not show|one export that exists/)
     for (const a of ANSWERS) expect(a.title + a.about + a.text, a.id).not.toMatch(/referr|affiliate|partner code|earning/i)
@@ -9336,7 +9338,7 @@ describe('H. the institution: overview from its wallets and orders, the desk and
     expect((await get('/api/overview', admin)).body.waiting).toBe(1)
   })
 
-  it('D1: GET /api/desk is for institutions: a partner gets 403 institution_only, an institution the permitted assets, its linked wallets on the wallet chains, and the limits', async () => {
+  it('D1: GET /api/desk, for an institution and (owner, 2026-11-19) a partner alike: the permitted assets, its linked wallets on the wallet chains, and the limits', async () => {
     book()
     const { o, walletId } = await deskTeam()
     const pending = await demoWallet(o.orgId, 'Waits', 'pending')
@@ -9359,8 +9361,9 @@ describe('H. the institution: overview from its wallets and orders, the desk and
       expect((({ mayPrepare, maySign }) => [mayPrepare, maySign])((await get('/api/desk', await colleague(o, role))).body), role).toEqual([prepares, signs])
     }
     await setOrg(o.orgId, `kind = 'partner'`)
-    const refused = await get('/api/desk', o)
-    expect([refused.status, refused.body]).toEqual([403, { error: 'institution_only' }])
+    const partnerView = await get('/api/desk', o)
+    expect([partnerView.status, partnerView.body.wallets, partnerView.body.mayPrepare]).toEqual([200, view.body.wallets, true])
+    expect((await prepare(o, walletId)).status).toBe(200) // and its ticket is reviewed and sent for approval
   })
 
   it('D1: overview and desk are for an active organisation: unverified, frozen and closed ones get nothing', async () => {
@@ -9376,7 +9379,7 @@ describe('H. the institution: overview from its wallets and orders, the desk and
     expect((await get('/api/desk', o)).status).toBe(200)
   })
 
-  it('D3: the exports of an institution: its orders, the balances of its wallets, its statement and the permitted assets, named ophis-, every row source = live; a partner gets none of these', async () => {
+  it('D3: the exports of an institution: its orders, the balances of its wallets, its statement and the permitted assets, named ophis-, every row source = live; a partner gets the two of its Desk (owner, 2026-11-19), none of the others', async () => {
     book()
     const { o, a, t, walletId } = await deskTeam()
     const id = await approvedOrder({ o, a, t, walletId })
@@ -9397,7 +9400,8 @@ describe('H. the institution: overview from its wallets and orders, the desk and
     expect((await exported(o, 'assets')).rows.slice(1).map((r) => r.slice(0, 3).join(' '))).toContain(`OP Mainnet USDC ${USDC_OP}`)
     for (const table of ['referred', 'months', 'traders', 'codes', 'daily', 'audit', 'constructor', '__proto__', 'toString']) expect((await exported(o, table)).status, table).toBe(404)
     await setOrg(o.orgId, `kind = 'partner'`)
-    for (const table of ['orders', 'assets', 'balances', 'statement', 'codes', 'wallets', 'constructor', '__proto__']) expect((await exported(o, table)).status, table).toBe(404)
+    for (const table of ['orders', 'assets']) expect((await exported(o, table)).status, table).toBe(200)
+    for (const table of ['balances', 'statement', 'codes', 'wallets', 'constructor', '__proto__']) expect((await exported(o, table)).status, table).toBe(404)
   })
 
   it('D3: the orders export holds the real orders with their state, and a cell that starts with = + - @ or a tab is made harmless', async () => {
@@ -9469,9 +9473,10 @@ describe('H. the institution: overview from its wallets and orders, the desk and
     const said = [deskPage, demoSource, ordersSource, signScript, signPage, ...Object.entries(EVENTS).filter(([k]) => k.startsWith('order')).map(([, v]) => v), EVENTS['wallet.link/demo']].join('\n')
     for (const banned of [/licen[cs]ed|regulated|authori[sz]ed|MiCA|compliant/i, /—/, /honest/i, /paid (weekly|monthly|daily|every)|payout (terms|schedule)|\bdue\b|guarantee|no (other|hidden) fee|never charge|price improvement/i]) expect(said).not.toMatch(banned)
     for (const sentence of [
-      'Nothing is signed at this step.', 'The desk is for institutions.', 'Use a larger screen.', 'Sent for approval.', 'Only the assets of the desk are shown.', 'Hand over the signing link', '<Ways link={link} walletConnect={false} />',
+      'Nothing is signed at this step.', 'Use a larger screen.', 'Sent for approval.', 'Only the assets of the desk are shown.', 'Hand over the signing link', '<Ways link={link} walletConnect={false} />',
       'The Safe owners or your custodian sign on the signing page. Ophis cannot.', 'Sending asks for your passkey.', 'Each is listed on a chain where two independent sources agree on its address.',
     ]) expect(deskPage, sentence).toContain(sentence)
+    expect(deskPage).not.toContain('The desk is for institutions.') // every organisation trades on the desk (owner, 2026-11-19)
     expect(deskPage).not.toMatch(/Demo data|not part of this demo|Execution: none/)
     expect(pagesSource).toContain('<dt>Settle from</dt><dd>{order.terms.label}, <span className="mono">{order.terms.wallet}</span></dd>')
     // No example figure is left: no banner, no example tag, no example table. The footer line is the shell's, so it is on every screen.
@@ -10039,7 +10044,7 @@ describe('I. partner figures: live', () => {
     expect((await exportOf(viewer, 'traders')).rows.slice(1).map((row) => row[2])).toEqual([checksum(P.traders.wallets[0].wallet), 'Total, 1 wallet'])
     // The referred wallets, unknown tables, the demo tables and names of the prototype: not found, and the indexer is not asked.
     const quiet = indexer()
-    for (const table of ['referred', 'orders', 'balances', 'codes', 'audit', 'constructor', '__proto__', 'toString']) expect((await exportOf(o, table)).status, table).toBe(404)
+    for (const table of ['referred', 'balances', 'statement', 'codes', 'audit', 'constructor', '__proto__', 'toString']) expect((await exportOf(o, table)).status, table).toBe(404) // 'orders' and 'assets' are its Desk's (owner, 2026-11-19)
     expect(quiet).toEqual([])
     // No wallet, or not connected: no file.
     const bare = await owner()
@@ -10336,7 +10341,7 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     const cases: [string, () => Promise<unknown>, () => Promise<unknown>][] = [
       ['forbidden', () => seat(`role = 'viewer'`), () => seat(`role = 'trader'`)], ['forbidden', () => seat(`state = 'frozen'`), () => seat(`state = 'active'`)],
       ['quarantine', () => seat(`quarantine_until = ${now + HOUR}`), () => seat('quarantine_until = NULL')], ['quarantine', () => setOrg(o.orgId, `quarantine_until = ${now + HOUR}`), () => setOrg(o.orgId, 'quarantine_until = NULL')],
-      ['institution_only', () => setOrg(o.orgId, `kind = 'partner'`), () => setOrg(o.orgId, `kind = 'institution'`)], ['org_inactive', () => setOrg(o.orgId, `state = 'frozen'`), () => setOrg(o.orgId, `state = 'active'`)],
+      ['org_inactive', () => setOrg(o.orgId, `state = 'frozen'`), () => setOrg(o.orgId, `state = 'active'`)],
       ['wallet_not_linked', () => wallet(`state = 'unlinked'`), () => wallet(`state = 'linked'`)], ['wallet_not_linked', () => wallet(`kind = 'safe'`), () => wallet(`kind = 'custodian'`)],
       ['wallet_not_linked', () => wallet(`label = 'Renamed'`), () => wallet(`label = 'Operations Safe'`)], ['wallet_chain', () => wallet('chain_id = 8453'), () => wallet('chain_id = 10')],
       ['wallet_contract', () => wallet(`proof_by = 'contract', kind = 'single_key'`), () => wallet(`proof_by = NULL, kind = 'custodian'`)],
@@ -10349,6 +10354,8 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
       await undo()
     }
     expect(await snapshot()).toBe(before)
+    // Every organisation trades on the desk (owner, 2026-11-19): from here on a partner files, approves, links and opens its order.
+    await setOrg(o.orgId, `kind = 'partner'`)
     // At the approval: the same rows, read again inside the approving commit.
     const id = (await file(terms) as { id: string }).id
     const approver = await actorOf(a, 'approver')
@@ -10368,6 +10375,8 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     expect(await row('SELECT org_id, approved_at, uid, link_hash FROM orders WHERE id = ?', id)).toEqual({ org_id: o.orgId, approved_at: now, uid: null, link_hash: null })
     expect(await lastAudit(o.orgId)).toMatchObject({ action: 'order', actor_id: a.seatId })
     expect((await deskOrders(t))[0]).toMatchObject({ id, state: 'Approved: waiting for signature', decidedBy: 'A approver' })
+    const { status, token } = await orderLink(t, id)
+    expect([status, (await orderPage(token)).status]).toEqual([200, 200])
   })
 
   it('the role table of an order: Trader, Owner and Admin prepare; the preparer never approves; at most 20 wait; 30 an hour per member', async () => {
@@ -11186,7 +11195,7 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     expect((await orderLink(team.t, id, 'cancel')).status).toBe(404)
     const next = await approvedOrder(team, { amount: '9' })
     const link = await orderLink(team.t, next)
-    await setOrg(team.o.orgId, `kind = 'partner'`)
+    await setOrg(team.o.orgId, `state = 'frozen'`) // the organisation is read again with the link (a partner's link works since 2026-11-19)
     expect((await orderPage(link.token)).body).toEqual({ error: 'link_invalid' })
   })
 

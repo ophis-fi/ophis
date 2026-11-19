@@ -79,7 +79,7 @@ const NAME = /^[\p{L}\p{N} .'-]{1,60}$/u
 
 const mustBeDeviceBound = (t: { role: data.Role; synced_keys_allowed: number }) => data.needsHardware(t.role, t.synced_keys_allowed)
 // What a refusal of the data module answers. Everything not listed is a conflict with the present state: 409.
-const STATUS: Record<string, number> = { not_found: 404, link_invalid: 404, forbidden: 403, own_request: 403, quarantine: 403, override: 403, institution_only: 403, too_many_orders: 429, invalid: 400, ticket_limit: 429, quote_unavailable: 503, orderbook_unavailable: 503 }
+const STATUS: Record<string, number> = { not_found: 404, link_invalid: 404, forbidden: 403, own_request: 403, quarantine: 403, override: 403, too_many_orders: 429, invalid: 400, ticket_limit: 429, quote_unavailable: 503, orderbook_unavailable: 503 }
 const refuse = (error: string) => fail(STATUS[error] ?? 409, error)
 // The database refuses a second passkey with the same label on one seat (migrations/0002_labels.sql).
 const labelTaken = (error: unknown) => /credentials\.label/.test(String((error as Error)?.message))
@@ -730,7 +730,7 @@ async function auditExport(c: Context) {
 /** A CSV file as the browser saves it: the name ends with today's date, and every cell goes through csvCell. */
 const csvFile = (c: Context, name: string, lines: unknown[][], more: object = {}) => json(200, { name: `${name}-${new Date(c.now).toISOString().slice(0, 10)}.csv`, csv: lines.map((cells) => `${cells.map(csvCell).join(',')}\r\n`).join(''), ...more })
 
-// ---- overview and desk. An institution: its desk (orders.ts), the balances of its linked wallets read on the chain,
+// ---- overview and desk. Every organisation: its desk (orders.ts; a partner too since 2026-11-19). An institution: the balances of its linked wallets read on the chain,
 // and its statement from its filled orders. A partner: live figures (partner.ts). The approvals counted are real. ----
 
 // The organisation's own orders as the pages show them: the approval row, the terms in words, the state, and once
@@ -750,7 +750,6 @@ const REVIEW = 'order-review' // the label of a review under the challenge key
  * change for two people, exactly as the member reviewed them. Every check is made again inside the commit (judge()).
  */
 async function order(c: Context) {
-  if (c.session.org_kind !== 'institution') return fail(403, 'institution_only')
   if (c.body.send === true) {
     // Sending needs a fresh passkey check; the review above needs none, so the row of the table carries no `fresh`.
     // Judged here, as the sealed upload does it: the clock and the session were read after the body arrived (api()).
@@ -963,7 +962,6 @@ async function statement(c: Context) {
     .map((m) => ({ month: m.month, asset: m.asset, orders: m.orders, volume: orders.decimal(m.volume, m.decimals), fee: orders.decimal(m.fee, m.decimals), unreported: m.unreported }))
 }
 async function desk(c: Context) {
-  if (c.session.org_kind !== 'institution') return fail(403, 'institution_only')
   await refresh(c.env, c.actor.orgId, c.now, 10)
   const wallets = (await data.wallets(c.env.DB, c.actor.orgId, c.now)).filter((w) => w.state === 'linked' && Object.hasOwn(orders.CHAINS, w.chainId))
   return json(200, {
@@ -979,7 +977,7 @@ const assetRows = () => Object.entries(orders.ASSETS).flatMap(([id, assets]) => 
 })))
 
 // Every "Export CSV" button of Overview and Desk. The tables follow the kind of the organisation; every row says
-// source = live. An institution: its orders (every term, the state, what the orderbook executed), the balances of its
+// source = live. Every organisation, from the Desk: its orders and the permitted assets. An institution: its orders (every term, the state, what the orderbook executed), the balances of its
 // linked wallets, its statement and the permitted assets. A partner: its figures from a fresh read of the indexer; no read, no file.
 const utc = (time: number | null) => (time === null ? '' : new Date(time).toISOString())
 const INSTITUTION: Record<string, [head: string[], rows: (c: Context) => Promise<unknown[][]>]> = {
@@ -1001,7 +999,8 @@ const INSTITUTION: Record<string, [head: string[], rows: (c: Context) => Promise
 }
 async function tableExport(c: Context) {
   const table = c.params.id ?? ''
-  if (c.session.org_kind !== 'partner') {
+  // The two tables of the Desk are every organisation's (owner, 2026-11-19); a partner's Overview keeps its own.
+  if (c.session.org_kind !== 'partner' || table === 'orders' || table === 'assets') {
     if (!Object.hasOwn(INSTITUTION, table)) return fail(404, 'not_found')
     const [head, rows] = INSTITUTION[table]
     return csvFile(c, `ophis-${table}`, [[...head, 'source'], ...(await rows(c)).map((cells) => [...cells, 'live'])])
@@ -1065,7 +1064,7 @@ export const routes: Route[] = [
   { method: 'POST', path: '/api/audit/export', roles: READERS, fresh: true, can: 'Export the audit log', handler: auditExport },
   { method: 'GET', path: '/api/screening', roles: READERS, can: 'See the sanctions screening Ophis recorded for the organisation, and the address lists its linked wallets are compared with', handler: screening },
   { method: 'GET', path: '/api/overview', roles: ANY, can: 'See the overview of the organisation (an institution: the balances of its linked wallets, its orders and its statement; a partner: its figures from the Ophis rebate service)', handler: overview },
-  { method: 'GET', path: '/api/desk', roles: ANY, can: 'See the desk of an institution: permitted assets, orders and their records', handler: desk },
+  { method: 'GET', path: '/api/desk', roles: ANY, can: 'See the desk: permitted assets, orders and their records', handler: desk },
   { method: 'GET', path: '/api/export/:id', roles: ANY, can: 'Export a table of the overview or the desk as CSV', handler: tableExport },
   { method: 'POST', path: '/api/desk/orders', roles: orders.PREPARERS, settled: true, can: 'Prepare an order on the desk, which a second person approves before the wallet signs it', handler: order },
   { method: 'POST', path: '/api/desk/orders/:id/link', roles: orders.SIGNERS, fresh: true, settled: true, can: 'Give the wallet the link to sign an approved order, or to cancel an open one', handler: orderLink },
