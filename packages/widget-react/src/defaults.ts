@@ -42,7 +42,7 @@ export const OPHIS_WIDGET_PARTNER_FEE: NonNullable<CowSwapWidgetParams['partnerF
  * thread `baseUrl`/`appCode` from optional env/config that resolves to `''`
  * when missing. A plain `?? default` keeps that `''`, and because this wrapper
  * depends on the PUBLISHED `@cowprotocol/widget-react` (whose sanitizer falls
- * back to the CoW host, not the Ophis-flipped vendored default), a blank
+ * back to the upstream host, not the Ophis-flipped vendored default), a blank
  * `baseUrl` would silently load swap.cow.fi instead of the Ophis surface. So we
  * normalize blanks to the Ophis default here, before handing params upstream.
  */

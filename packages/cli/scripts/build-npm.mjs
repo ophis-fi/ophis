@@ -44,7 +44,7 @@ const published = {
   license: pkg.license,
   homepage: 'https://ophis.fi',
   repository: { type: 'git', url: 'git+https://github.com/ophis-fi/ophis.git', directory: 'packages/cli' },
-  keywords: ['ophis', 'swap', 'bridge', 'cli', 'cow-protocol', 'walletconnect'],
+  keywords: ['ophis', 'swap', 'bridge', 'cli', 'walletconnect'],
   bin: { ophis: 'ophis.js' },
   files: ['ophis.js', 'README.md', 'LICENSE', 'THIRD_PARTY_LICENSES.md'],
   engines: { node: '>=20' },

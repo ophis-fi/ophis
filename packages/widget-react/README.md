@@ -1,23 +1,18 @@
 # @ophis/widget-react
 
-Embed the [Ophis](https://ophis.fi) swap widget in any React app. A thin,
-Ophis-branded wrapper over [`@cowprotocol/widget-react`](https://www.npmjs.com/package/@cowprotocol/widget-react)
-that defaults the iframe host to `swap.ophis.fi`, tags orders with the Ophis
-`appCode`, and pins the CIP-75 partner fee to the Ophis Safe.
+Embed the [Ophis](https://ophis.fi) swap widget in a React app. It defaults the
+iframe host to `swap.ophis.fi`, tags orders with the Ophis `appCode`, and applies
+the Ophis partner-fee policy.
 
 ## Install
 
 ```bash
-npm install @ophis/widget-react react react-dom
+npm install @ophis/widget-react react@19.1.2 react-dom@19.1.2
 ```
 
-Requires **React exactly 19.1.2**. The wrapped `@cowprotocol/widget-react@3.1.1`
-declares an *exact* `react: 19.1.2` peer, so this wrapper mirrors it rather than
-advertising broader 19.x support the underlying widget would reject. Default
-npm/yarn treat a peer mismatch as a warning; strict installers (pnpm,
-`--strict-peer-deps`) will fail. If you're on a different React, use the
-[Vanilla JS](#vanilla-js--no-react) path below (`@cowprotocol/widget-lib` has no
-React peer) until upstream loosens its pin.
+Requires **React and React DOM exactly 19.1.2**, matching the underlying widget's
+peer requirements. Other versions can fail dependency resolution. For an app
+using another React version, use the iframe integration described below.
 
 ## Use it
 
@@ -51,23 +46,18 @@ them. Pass a `provider` for an injected wallet.
 | `partnerFee` | Omitted so the Ophis iframe applies the complete all-chain policy | Yes; an explicit override is honored |
 | `partnerFee.recipient` | Ophis Safe `0x858f0F5e...CeF8` when overridden | No, always pinned |
 
-Everything else is the upstream `CowSwapWidgetParams` API. The raw
-`CowSwapWidget` and all types are re-exported if you need the escape hatch.
+Use the exported `OphisWidgetProps` type for the supported component properties.
 
 ## Vanilla JS / no React?
 
-Use [`@cowprotocol/widget-lib`](https://www.npmjs.com/package/@cowprotocol/widget-lib)
-directly and pass `baseUrl: 'https://swap.ophis.fi'`, `appCode: 'ophis'`, and the
-partner fee from [`@ophis/sdk`](https://www.npmjs.com/package/@ophis/sdk)
-(`buildOphisAppDataPartnerFee`). See the [integration guide](https://docs.ophis.fi/widget).
+Use the Ophis iframe integration without installing this React package.
+See the [integration guide](https://docs.ophis.fi/widget) for the embed URL,
+configuration and provider integration.
 
 ## Footprint
 
-This package is a thin wrapper, but installing it pulls in `@cowprotocol/widget-react`
-and its full transitive tree (the CoW SDK plus an IPFS/libp2p/multiformats stack and
-an HTTP client). If your bundle is size-sensitive, the iframe embed only needs the
-URL: use [`@cowprotocol/widget-lib`](https://www.npmjs.com/package/@cowprotocol/widget-lib)
-directly (see [Vanilla JS](#vanilla-js--no-react) above) for a lighter footprint.
+The React package includes a trading SDK, networking utilities and their
+dependencies. For a smaller integration, use the iframe embed described above.
 
 ## License
 

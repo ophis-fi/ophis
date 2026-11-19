@@ -14,8 +14,8 @@ Use the swap app's token pickers to choose a network, asset and route.
 | Surface | Coverage |
 | --- | --- |
 | Swap app and CLI | 15 EVM networks, including the Sepolia testnet; see [the network list](/getting-started#supported-networks) |
-| SDK v0.4.5 and hosted MCP | 14 EVM mainnets, including Arc (5042), with chain-specific orderbook and signing-domain helpers |
-| Vault-order builder | `@ophis/safe-swap` v0.1.7 uses SDK v0.4.4 for ERC-20 presigned orders on 14 EVM mainnets, including Arc |
+| SDK v0.4.6 and hosted MCP | 14 EVM mainnets, including Arc (5042), with chain-specific orderbook and signing-domain helpers |
+| Vault-order builder | `@ophis/safe-swap` v0.1.8 uses SDK v0.4.6 for ERC-20 presigned orders on 14 EVM mainnets, including Arc |
 | Intent parser | 14 chain slugs, including `arc` |
 | Standalone app through NEAR Intents | Bitcoin, Solana, Monad, Hyperliquid (Hypercore), X Layer, Sui, Tron, Starknet, Zcash |
 

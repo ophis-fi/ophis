@@ -113,7 +113,7 @@ describe('the Across provider adapted from the frontend', () => {
 describe('bridgeAccount: only the confirmed bridge reaches the wallet', () => {
   // Encoding only: this RPC is never called.
   const client = createPublicClient({ transport: http('http://127.0.0.1:1') }) as never
-  // Answered locally: an ordinary wallet (no code), on Base, whose CoW Shed holds nothing yet.
+  // Answered locally: an ordinary wallet (no code), on Base, whose bridge account holds nothing yet.
   const adapter = () => Object.assign(new BridgeAdapter({ provider: client }), { getCode: async () => '0x', getChainId: async () => 8453, readContract: async () => 0n }) as never
   setGlobalAdapter(adapter())
   const phone = privateKeyToAccount(generatePrivateKey()) // the test plays the user's wallet app
@@ -172,7 +172,7 @@ describe('bridgeAccount: only the confirmed bridge reaches the wallet', () => {
     target: o.target ?? USDC_BASE, value: 0n, callData: encodeFunctionData({ abi: TRANSFER, functionName: 'transfer', args: [(o.to ?? SHED) as Hex, o.amount ?? MIN_IN] }),
     allowFailure: false, isDelegateCall: false,
   })
-  /** The hook as the CoW Shed typed data the user is asked to sign: the guard, then the real SDK program. */
+  /** The hook as the bridge account typed data the user is asked to sign: the guard, then the real SDK program. */
   const hook = async (o: Terms & { version?: string; calls?: (program: Record<string, unknown>) => Record<string, unknown>[] } = {}) => {
     const call = await unsigned(o)
     const program = { target: call.to, value: BigInt(call.value), callData: call.data as Hex, allowFailure: false, isDelegateCall: true }

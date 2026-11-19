@@ -96,7 +96,7 @@ export interface OphisAppDataInput {
  * Hash the result with `generateAppDataDoc` + `stringifyDeterministic` +
  * `keccak256` (the non-validating path the orderbook and indexer use). Do NOT run
  * `validateAppDataDoc` / `getAppDataInfo` on the doc: `ophisReferrer` is an Ophis
- * extension key, and CoW's strict app-data schema (additionalProperties: false)
+ * extension key, and the upstream protocol's strict app-data schema (additionalProperties: false)
  * rejects it. The orderbook itself accepts it; only that local validator does not.
  *
  * @example
@@ -272,7 +272,7 @@ export interface OphisOrderCreationOptions {
    */
   readonly chainId?: number;
   /**
-   * The signed CoW order object. Its `appData` field must be the bytes32 HASH
+   * The signed order object. Its `appData` field must be the bytes32 HASH
    * (the value that was signed). `receiver` must already be set on it.
    */
   readonly order: Record<string, unknown>;
@@ -304,7 +304,7 @@ export interface OphisOrderCreationOptions {
  *    uses a deprecated form the orderbook is phasing out.
  *  - the RECEIVER: asserted to be the owner (a drain guard) and PRESERVED exactly
  *    as signed. It is part of the signed order, so it is never rewritten; an
- *    absent/zero receiver (which CoW resolves to the owner) is left as is. A
+ *    absent/zero receiver (which the upstream protocol resolves to the owner) is left as is. A
  *    non-owner receiver throws unless allowReceiver names that exact destination.
  *
  * NOTE: for the rebate to accrue, `owner` must already have been registered via
@@ -350,7 +350,7 @@ export function buildOphisOrderCreation(opts: OphisOrderCreationOptions): Record
       );
     }
   } else {
-    // Default drain guard: a foreign receiver throws; absent/zero (CoW resolves it
+    // Default drain guard: a foreign receiver throws; absent/zero (the upstream protocol resolves it
     // to the owner at settlement) is fine and is left exactly as signed.
     assertReceiverIsOwner(owner, rawReceiver);
   }

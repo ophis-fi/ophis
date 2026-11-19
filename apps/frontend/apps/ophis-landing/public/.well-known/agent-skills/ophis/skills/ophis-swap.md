@@ -144,7 +144,7 @@ signature=$(cast wallet sign --data --from-file /tmp/ophis-order-typed-data.json
 ```
 
 Sign exactly the struct you showed the user (SKILL.md rule 2). The domain's
-`verifyingContract` MUST be the pinned per-chain settlement; the CoW
+`verifyingContract` MUST be the pinned per-chain settlement; the upstream
 canonical address is wrong on these chains and the deployed contract rejects
 such signatures.
 

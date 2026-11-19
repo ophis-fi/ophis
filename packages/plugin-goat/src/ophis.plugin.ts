@@ -25,9 +25,9 @@ class OphisService {
   @Tool({
     name: 'ophis_swap',
     description:
-      'Swap one ERC-20 for another via Ophis (a CoW Protocol fork): MEV-protected, gasless, intent-based. ' +
-      'The order carries Ophis appData so the integrator earns the rebate. sellAmount is in WHOLE units ' +
-      '(e.g. "1.5"). Native ETH is NOT supported — use WETH. Returns the CoW order UID and an explorer URL.',
+      'Swap one ERC-20 for another via Ophis: intent-based batch settlement. ' +
+      'The order carries Ophis appData for optional referral attribution. sellAmount is in WHOLE units ' +
+      '(e.g. "1.5"). Native ETH is NOT supported — use WETH. Returns the order UID and an explorer URL.',
   })
   async ophisSwap(walletClient: EVMWalletClient, parameters: OphisSwapParameters): Promise<OphisSwapResult> {
     const wallet = toOphisWallet(walletClient);

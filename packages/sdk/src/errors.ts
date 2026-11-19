@@ -4,7 +4,7 @@
  * The self-hosted orderbook attaches a numeric `code` (1xxx-5xxx band table,
  * frozen v1), a UUID `traceId` (body field on errors, `X-Trace-Id` header on
  * every response) and optional `data` to its error envelope
- * `{ errorType, description, code?, traceId?, data? }`. CoW-hosted chains
+ * `{ errorType, description, code?, traceId?, data? }`. externally hosted chains
  * never send codes or traceIds, so everything here degrades gracefully: an
  * unknown or absent code preserves the raw payload and falls back to the
  * `errorType` string.
@@ -56,7 +56,7 @@ export const OPHIS_UNROUTABLE_CODES: readonly number[] = Object.freeze([
 ]);
 
 /**
- * CoW-hosted chains send only `errorType` strings. These are the strings whose
+ * externally hosted chains send only `errorType` strings. These are the strings whose
  * meaning matches the unroutable set, used as the no-code fallback signal.
  */
 const UNROUTABLE_ERROR_TYPES: ReadonlySet<string> = new Set(['NoLiquidity', 'UnsupportedToken']);
@@ -162,14 +162,14 @@ export interface OphisApiErrorOptions {
 /**
  * An error response from the Ophis orderbook API. Carries the numeric `code`
  * and `traceId` when the self-hosted orderbook sent them, the `errorType`
- * string always (CoW-hosted chains send only that), and the raw `payload` so
+ * string always (externally hosted chains send only that), and the raw `payload` so
  * nothing is lost when the SDK predates a new code.
  */
 export class OphisApiError extends Error {
   override readonly name: string = 'OphisApiError';
   /** HTTP status of the response. */
   readonly status: number;
-  /** CoW-style `errorType` string, when the body carried one. */
+  /** orderbook-style `errorType` string, when the body carried one. */
   readonly errorType?: string;
   /** Numeric v1 band code, when the self-hosted orderbook sent one. */
   readonly code?: number;
@@ -224,7 +224,7 @@ const isUnroutableShape = (parsed: ParsedErrorBody): boolean => {
     const cls = (parsed.data as Record<string, unknown>).class;
     if (cls === 'unroutable') return true;
   }
-  // Codeless CoW-hosted fallback: classify by errorType string.
+  // Codeless externally hosted fallback: classify by errorType string.
   return parsed.errorType !== undefined && UNROUTABLE_ERROR_TYPES.has(parsed.errorType);
 };
 
@@ -236,7 +236,7 @@ const isUnroutableShape = (parsed: ParsedErrorBody): boolean => {
  *   const res = await fetch(url);
  *   if (!res.ok) throw parseOphisApiError({ status: res.status, body: await res.json().catch(() => undefined), headers: res.headers });
  *
- * Degrades gracefully: a body without a numeric code (CoW-hosted chains, or
+ * Degrades gracefully: a body without a numeric code (externally hosted chains, or
  * a backend older than the code table) still produces a classified error via
  * status + errorType, and the raw body is always preserved on `.payload`.
  */
@@ -267,7 +267,7 @@ export function parseOphisApiError(response: OphisErrorResponse): OphisApiError 
 /**
  * True when the error means "no route exists" (the answer class), whether it
  * arrived with a 2000-2002 code, a `data.class: "unroutable"` marker, or a
- * codeless CoW-hosted `NoLiquidity`/`UnsupportedToken` errorType.
+ * codeless externally hosted `NoLiquidity`/`UnsupportedToken` errorType.
  */
 export const isUnroutable = (error: unknown): boolean => error instanceof OphisUnroutableError;
 

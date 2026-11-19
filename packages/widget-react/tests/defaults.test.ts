@@ -32,7 +32,7 @@ describe('withOphisDefaults', () => {
     expect(merged.partnerFee?.bps).toBe(5);
   });
 
-  it('treats a blank or whitespace baseUrl/appCode as unset (no silent leak to the CoW host)', () => {
+  it('treats a blank or whitespace baseUrl/appCode as unset (no silent leak to the upstream host)', () => {
     const blank = withOphisDefaults({ tradeType: 'swap', baseUrl: '', appCode: '   ' } as any);
     expect(blank.baseUrl).toBe('https://swap.ophis.fi');
     expect(blank.appCode).toBe('ophis');

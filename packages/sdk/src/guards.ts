@@ -40,7 +40,7 @@ const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 /** EIP-7528 native-token placeholder, not an ERC-20 contract. */
 export const NATIVE_TOKEN_SENTINEL = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' as const;
 
-/** True for the zero address. CoW treats a zero/absent `receiver` as "send to the order owner". */
+/** True for the zero address. The upstream protocol treats a zero/absent `receiver` as "send to the order owner". */
 export const isZeroAddress = (value: string): boolean => addressesEqual(value, ZERO_ADDRESS);
 
 /**

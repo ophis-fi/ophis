@@ -33,8 +33,8 @@ export class OphisActionProvider extends ActionProvider<EvmWalletProvider> {
   @CreateAction({
     name: 'swap',
     description:
-      'Swap one ERC-20 for another via Ophis (a CoW Protocol fork): gasless, MEV-protected, intent-based. ' +
-      'Quotes, signs an EIP-712 order pinned to your own wallet, and submits it so the Ophis rebate accrues. ' +
+      'Swap one ERC-20 for another via Ophis: intent-based batch settlement. ' +
+      'Quotes, signs an EIP-712 order pinned to your own wallet, and submits it with optional referral attribution. ' +
       'sellAmount is in WHOLE units (e.g. "1.5"). Native ETH is NOT supported — use WETH. ' +
       'Returns a JSON string with the order UID and an explorer URL.',
     schema: OphisSwapSchema,

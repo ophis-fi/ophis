@@ -17,7 +17,7 @@ import { GPV2_ORDER_EIP712_TYPES, GPV2_ORDER_PRIMARY_TYPE } from './order-types.
 import type { Address, OphisAgentWallet } from './wallet.js';
 
 // EIP-7528 native sentinel + the zero address. The EOA EIP-712 path is ERC-20 only; native-ETH
-// sells need CoW eth-flow (owner becomes a contract, which also changes rebate attribution), so the
+// sells need the native-ETH order path (owner becomes a contract, which also changes rebate attribution), so the
 // agent must wrap to WETH instead. Reject both up front with a clear message.
 const NATIVE_SENTINEL = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
@@ -54,7 +54,7 @@ export interface OphisSwapOptions {
 let warnedNoReferral = false;
 
 export interface OphisSwapResult {
-  /** The CoW order UID; track it on the Ophis explorer. */
+  /** The order UID; track it on the Ophis explorer. */
   orderUid: string;
   chainId: number;
   owner: string;
@@ -75,7 +75,7 @@ function assertErc20(addr: string, label: string): Address {
   if (lower === ZERO_ADDRESS || lower === NATIVE_SENTINEL) {
     throw new Error(
       `${label} is native ETH / the zero address. This agent path is ERC-20 only — sell WETH instead ` +
-        `(native-ETH sells require CoW eth-flow, a separate path).`,
+        `(native-ETH sells require the native-ETH order path, a separate path).`,
     );
   }
   return toChecksum(addr);
@@ -86,7 +86,7 @@ function applySlippage(amount: bigint, bps: number): bigint {
 }
 
 /**
- * Quote, sign (EIP-712), and submit an ERC-20 -> ERC-20 Ophis (CoW) swap from an agent's EOA wallet,
+ * Quote, sign (EIP-712), and submit an ERC-20 -> ERC-20 Ophis swap from an agent's EOA wallet,
  * carrying the Ophis partner fee + referrer code in appData so the integrator earns the rebate.
  * Returns the order UID. The signature is produced by the framework wallet's `signTypedData`.
  */
@@ -161,7 +161,7 @@ export async function executeOphisSwap(
   }
 
   // Build the fee-bearing appData (appCode 'ophis' + CIP-75 partner fee + ophisReferrer code) and
-  // hash it. NON-validating path: ophisReferrer is an Ophis extension key CoW's strict schema rejects.
+  // hash it. NON-validating path: ophisReferrer is an Ophis extension key the upstream protocol's strict schema rejects.
   const appDataInput = buildOphisOrderMetadata({ chainId, referralCode: options.referralCode, isStablePair: options.isStablePair });
   const appDataDoc = await new MetadataApi().generateAppDataDoc(appDataInput as never);
   const fullAppData = await stringifyDeterministic(appDataDoc as never);
@@ -187,9 +187,9 @@ export async function executeOphisSwap(
   // Assemble the order to sign. appData = the bytes32 HASH (this is what is signed). Slippage lowers
   // the buyAmount so the quoted price is a floor, not an exact requirement.
   const minBuyAmount = applySlippage(BigInt(String(q.buyAmount)), slippageBps).toString();
-  // The order sells the GROSS amount with a signed feeAmount of 0: Ophis/CoW orders take the fee from
+  // The order sells the GROSS amount with a signed feeAmount of 0: Ophis orders take the fee from
   // surplus + the appData partner fee, never a signed feeAmount (a non-zero one is unslipped extra
-  // spend and the orderbook rejects it — see apps/mcp-server assertion). For a sell quote CoW splits
+  // spend and the orderbook rejects it — see apps/mcp-server assertion). For a sell quote the upstream protocol splits
   // sellAmountBeforeFee into (sellAmount NET, feeAmount); their sum is the gross the caller asked for.
   const grossSell = BigInt(String(q.sellAmount)) + BigInt(String(q.feeAmount));
   const order = {
@@ -212,7 +212,7 @@ export async function executeOphisSwap(
   // fields the wallet approves + signs must not drift from what the caller asked for: a compromised
   // quote must not substitute tokens or change the amount pulled. Tokens must match exactly (both
   // already checksummed), and the gross (quote sellAmount + feeAmount) must EQUAL the requested
-  // amount — an honest CoW sell quote splits sellAmountBeforeFee exactly, so any drift up (over-pull)
+  // amount — an honest orderbook sell quote splits sellAmountBeforeFee exactly, so any drift up (over-pull)
   // or down (selling less than asked while reporting the full amount) means a bad/hostile quote.
   if (order.sellToken !== sellToken)
     throw new Error(`quote sellToken ${order.sellToken} != requested ${sellToken}; refusing to sign`);

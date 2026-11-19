@@ -28,7 +28,7 @@
  * calls buildOphisSafePresign emits, and nothing else. The Roles Modifier is
  * default-DENY: only the targets/functions listed here are permitted, so every
  * other call (transfer, transferFrom, approving a foreign spender, presigning on
- * the canonical CoW settlement, any other target) is rejected on-chain even if the
+ * the external canonical settlement, any other target) is rejected on-chain even if the
  * curator key is compromised.
  *
  * Scope granted:
@@ -40,7 +40,7 @@
  *  2. setPreSignature(orderUid, signed) on the OPHIS settlement only
  *     (getOphisSettlementAddress). The orderUid embeds the Safe as owner and the
  *     settlement enforces msg.sender == owner, so only the Safe's own orders can be
- *     presigned; the canonical CoW settlement is a different address and is denied.
+ *     presigned; the external canonical settlement is a different address and is denied.
  *
  * Both are ExecutionOptions.None (plain CALL, no value, no delegatecall).
  *

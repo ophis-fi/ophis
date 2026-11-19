@@ -1,7 +1,7 @@
 /**
- * Native-ETH support for Ophis integrators via the CoW Protocol eth-flow path.
+ * Native-ETH support for Ophis integrators via the settlement eth-flow path.
  *
- * WHY THIS EXISTS: a standard CoW intent sells an ERC-20 token. To sell NATIVE
+ * WHY THIS EXISTS: a standard intent sells an ERC-20 token. To sell NATIVE
  * ETH the user instead calls the on-chain `CoWSwapEthFlow` contract's payable
  * `createOrder(...)`, which wraps the ETH to WETH and places + EIP-1271-signs a
  * GPv2 order on the user's behalf. Without this, an aggregator integrating
@@ -15,8 +15,8 @@
  * SOURCE OF TRUTH for the addresses (kept in lockstep with the frontend):
  *   - apps/frontend/libs/common-const/src/common.ts `OPHIS_ETHFLOW_OVERRIDES`
  *     (Ophis-operated chains: OP 10, Unichain 130, Robinhood 4663)
- *   - @cowprotocol/sdk-config `ETH_FLOW_ADDRESSES` (canonical CoW eth-flow,
- *     CREATE2-deterministic across CoW's SupportedChainId set)
+ *   - @cowprotocol/sdk-config `ETH_FLOW_ADDRESSES` (external canonical eth-flow,
+ *     CREATE2-deterministic across the upstream protocol's SupportedChainId set)
  *   - the on-chain struct + selector: the CoWSwapEthFlow `createOrder` ABI
  *     `createOrder((address,address,uint256,uint256,bytes32,uint256,uint32,bool,int64))`
  *   - the value + fee semantics: @cowprotocol/sdk-trading sets the struct
@@ -39,7 +39,7 @@ import {
 
 /**
  * Ophis-deployed eth-flow contracts on operated chains. These are NOT the
- * canonical CoW addresses: each is wired to its Ophis settlement, so a native-
+ * external canonical addresses: each is wired to its Ophis settlement, so a native-
  * currency sell on an operated chain MUST use the matching address below.
  *   - 10 Optimism: deployed 2026-06-07, indexed by the Ophis autopilot. VERIFIED LIVE.
  * Chains without a live orderbook are absent: native-ETH support must imply a
@@ -52,14 +52,14 @@ const OPHIS_OPERATED_ETHFLOW: Readonly<Record<number, `0x${string}`>> = {
 };
 
 /**
- * Canonical CoW eth-flow proxy (prod). CREATE2-deterministic, so it is the same
- * address on every chain in CoW's `SupportedChainId` set that Ophis also serves.
+ * Canonical native-ETH order proxy (prod). CREATE2-deterministic, so it is the same
+ * address on every chain in the upstream protocol's `SupportedChainId` set that Ophis also serves.
  * Mirrors @cowprotocol/sdk-config `ETH_FLOW_ADDRESS`.
  */
 const CANONICAL_COW_ETHFLOW = '0xba3cb449bd2b4adddbc894d8697f5170800eadec' as const;
 
 /**
- * CoW-hosted chains (cow-sdk `SupportedChainId` members) where the canonical
+ * externally hosted chains (cow-sdk `SupportedChainId` members) where the canonical
  * eth-flow proxy is deployed. Same set as the SDK's fee chains minus the
  * Ophis-operated ones. Update in lockstep with cow-sdk's SupportedChainId.
  */
@@ -165,7 +165,7 @@ export interface EthFlowOrderData {
   readonly validTo: number;
   /** eth-flow orders are fill-or-kill; this is false. */
   readonly partiallyFillable: boolean;
-  /** The quote id (int64) from the CoW quote response. */
+  /** The quote id (int64) from the orderbook quote response. */
   readonly quoteId: number;
 }
 
@@ -201,7 +201,7 @@ export interface OphisEthFlowParams extends ReceiverOptions {
   readonly appDataHash: `0x${string}`;
   /** uint32 expiry (unix seconds). */
   readonly validTo: number;
-  /** The quote id (int64) from the CoW quote response. */
+  /** The quote id (int64) from the orderbook quote response. */
   readonly quoteId: number;
   /**
    * Optional keccak256 function, e.g. `(s) => keccak256(toUtf8Bytes(s))`. When
@@ -307,7 +307,7 @@ export function buildOphisEthFlowOrder(params: OphisEthFlowParams): OphisEthFlow
   // Pin the receiver to the taker by default; a non-owner receiver is a named,
   // deliberate opt-in (parity with the ERC-20 order.ts / flow.ts receiver guard).
   const receiver = ophisOrderReceiver(owner, { unsafeCustomReceiver: params.unsafeCustomReceiver });
-  // A zero receiver in a normal CoW order means "send to owner". For eth-flow the
+  // A zero receiver in a normal order means "send to owner". For eth-flow the
   // owner is the contract, so a zero receiver would deliver the bought tokens to
   // the eth-flow contract. Require an explicit, real recipient.
   if (isZeroAddress(receiver)) {

@@ -1,6 +1,6 @@
 # @ophis/agentkit-ophis
 
-A [Coinbase AgentKit](https://github.com/coinbase/agentkit) action provider that lets an AI agent swap ERC-20 tokens via **Ophis** (a CoW Protocol fork): gasless, MEV-protected, intent-based. Orders carry the Ophis partner fee and optional referral attribution for rebates on indexed chains.
+A [Coinbase AgentKit](https://github.com/coinbase/agentkit) action provider that lets an AI agent swap ERC-20 tokens via **Ophis**: intent-based batch settlement. Orders carry the Ophis partner fee and optional referral attribution on indexed chains.
 
 ## Install
 
@@ -32,13 +32,15 @@ This registers an **`OphisActionProvider_swap`** action:
 | `sellAmount` | whole units, e.g. `"1.5"` |
 | `slippageBps` | max slippage in bps, or `null` for the default (50 = 0.5%) |
 
-It quotes against the Ophis orderbook, signs the order EIP-712 via the wallet provider, approves the CoW vault relayer once, submits, and returns a JSON string with the order UID + an explorer URL.
+It quotes against the Ophis orderbook, signs the order EIP-712 via the wallet provider, approves the vault relayer once, submits, and returns a JSON string with the order UID + an explorer URL.
 
 ## Notes
 
-- **ERC-20 → ERC-20 only.** Native-ETH sells need CoW eth-flow (a separate path); wrap to WETH first.
-- The agent's wallet is the order **owner and receiver** — funds only ever move through the audited CoW settlement contract, back to the same wallet.
-- Version 0.3.7 uses SDK 0.4.5. An EVM wallet can trade on its supported chains, including Arc (5042), using ERC-20 addresses. Configured referral defaults apply on Arc; native USDC sentinels are rejected.
+- **ERC-20 → ERC-20 only.** Native-ETH sells need the native-ETH order path (a separate path); wrap to WETH first.
+- The agent's wallet is the order **owner and receiver** — funds only ever move through the chain-specific settlement contract, with purchased tokens returned to the same wallet.
+- Version 0.3.8 uses SDK 0.4.6. An EVM wallet can trade on its supported chains, including Arc (5042), using ERC-20 addresses. Configured referral defaults apply on Arc; native USDC sentinels are rejected.
 - Get a referral code (it carries the rebate): https://docs.ophis.fi/ai-agents
 
 The order-flow core is [`@ophis/agent-swap`](../agent-swap); see also [`@ophis/plugin-goat`](../plugin-goat) for the GOAT SDK.
+
+For shielded balances and private swaps, use the separate [privacy pools flow](https://docs.ophis.fi/privacy-pools); these adapters submit public orderbook orders.

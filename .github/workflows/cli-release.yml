@@ -1,0 +1,66 @@
+name: Publish @ophis/cli to npm
+
+on:
+  push:
+    tags:
+      - 'cli-v*'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    environment: Package Release
+    name: build + test + publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: verify tag and main ancestry
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::release tags must point to a commit reachable from main" >&2
+            exit 1
+          fi
+          PKG_VERSION="$(node -p "require('./packages/cli/package.json').version")"
+          if [ "${TAG#cli-v}" != "$PKG_VERSION" ]; then
+            echo "::error::release tag must match the CLI package version" >&2
+            exit 1
+          fi
+
+      - uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788 # v6.0.6
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: '1.3.12'
+
+      - name: install
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: build and test
+        run: |
+          pnpm --filter @ophis/cli build:npm
+          pnpm --filter @ophis/cli typecheck
+          pnpm --filter @ophis/cli test
+          node packages/cli/dist/npm/ophis.js --version
+          node packages/cli/dist/npm/ophis.js --help
+
+      - name: publish prebuilt package
+        run: pnpm --dir packages/cli/dist/npm publish --no-git-checks --access public --provenance --ignore-scripts
+        env:
+          NPM_CONFIG_PROVENANCE: 'true'
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

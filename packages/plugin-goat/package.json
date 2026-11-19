@@ -1,7 +1,7 @@
 {
   "name": "@ophis/plugin-goat",
-  "version": "0.3.7",
-  "description": "GOAT SDK plugin: let an AI agent swap ERC-20s via Ophis (CoW Protocol), with the Ophis partner fee + your referral code in appData so you earn the 8-12% rebate.",
+  "version": "0.3.8",
+  "description": "GOAT SDK plugin for Ophis ERC-20 swaps, with partner fees and optional referral attribution.",
   "license": "GPL-3.0-or-later",
   "type": "module",
   "main": "./dist/index.js",
@@ -31,7 +31,6 @@
     "ai-agent",
     "agent",
     "swap",
-    "cow-protocol",
     "defi",
     "rebate"
   ],

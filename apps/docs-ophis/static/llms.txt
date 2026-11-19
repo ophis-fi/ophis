@@ -4,7 +4,7 @@
 
 ## Build with Ophis
 
-SDK v0.4.5 and hosted MCP cover 14 EVM mainnets, including Arc.
+SDK v0.4.6 and hosted MCP cover 14 EVM mainnets, including Arc.
 
 - [AI agent integration](https://docs.ophis.fi/ai-agents): connect to the hosted MCP server at https://mcp.ophis.fi/mcp to parse requests, resolve tokens, quote, build orders and submit wallet-signed trades.
 - [Ophis CLI](https://docs.ophis.fi/cli): quote, swap and bridge from the terminal (`npm install -g @ophis/cli`, Node.js 20+), with wallet approval over WalletConnect.

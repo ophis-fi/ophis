@@ -36,7 +36,7 @@ describe('@ophis/sdk partner fee defaults', () => {
     }
   });
 
-  it('returns the CIP-75 fee on all CoW-supported chains (restored all-chain model 2026-05-27)', () => {
+  it('returns the CIP-75 fee on all supported chains (restored all-chain model 2026-05-27)', () => {
     // cow-sdk SupportedChainId members, incl. the Sepolia (11155111) testnet.
     for (const chainId of [1, 100, 8453, 42161, 137, 43114, 56, 59144, 9745, 57073, 11155111]) {
       const fee = ophisDefaultPartnerFee(chainId);
@@ -69,7 +69,7 @@ describe('@ophis/sdk partner fee defaults', () => {
     expect(ophisVolumeBpsForChainAndPair(1, true)).toBe(1);
   });
 
-  it('OPHIS_FEE_CHAIN_IDS covers all served chains (operated + CoW-hosted incl. Sepolia)', () => {
+  it('OPHIS_FEE_CHAIN_IDS covers all served chains (operated + externally hosted incl. Sepolia)', () => {
     expect([...OPHIS_FEE_CHAIN_IDS].sort((a, b) => a - b)).toEqual([
       1, 10, 56, 100, 130, 137, 4663, 5042, 8453, 9745, 42161, 43114, 57073, 59144, 11155111,
     ]);

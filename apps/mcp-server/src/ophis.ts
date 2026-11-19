@@ -78,7 +78,7 @@ export {
 // --- validate_order: pure offline preflight --------------------------------
 
 /**
- * CoW Protocol's canonical GPv2Settlement. On the Ophis-operated chains the
+ * the upstream protocol's canonical GPv2Settlement. On the Ophis-operated chains the
  * deployed settlement is a DIFFERENT contract, so an EIP-712 domain built on
  * this address there is rejected by the deployed contract (every signature
  * fails validation). validateOrder names this failure mode explicitly.
@@ -103,7 +103,7 @@ const OPHIS_NON_STABLE_FLOOR_BPS = OPHIS_SOVEREIGN_VOLUME_FEE_BPS
 /**
  * Normalizes an orderbook base URL to `origin + pathname` (lowercased, a single
  * trailing slash stripped) so two base URLs compare equal regardless of a
- * trailing slash. Compared over the FULL base, not just the host: CoW serves
+ * trailing slash. Compared over the FULL base, not just the host: the upstream protocol serves
  * every hosted chain under one host (api.cow.fi) and selects the chain by PATH
  * (api.cow.fi/mainnet vs api.cow.fi/xdai), so a host-only check accepts the
  * wrong chain's orderbook.
@@ -212,7 +212,7 @@ export function validateOrder(p: ValidateOrderParams, nowSeconds: number): Valid
         exp.verifyingContract.toLowerCase() !== COW_CANONICAL_SETTLEMENT.toLowerCase()
       ) {
         errors.push(
-          `signingDomain.verifyingContract is CoW Protocol's canonical settlement ${COW_CANONICAL_SETTLEMENT}, but chain ${chainId} is Ophis-operated and settles on Ophis's own deployed contract: signing against the canonical address produces an EIP-712 domain separator the deployed contract rejects, so every signature fails validation. Sign against ${exp.verifyingContract}.`,
+          `signingDomain.verifyingContract is the upstream protocol's canonical settlement ${COW_CANONICAL_SETTLEMENT}, but chain ${chainId} is Ophis-operated and settles on Ophis's own deployed contract: signing against the canonical address produces an EIP-712 domain separator the deployed contract rejects, so every signature fails validation. Sign against ${exp.verifyingContract}.`,
         )
       } else {
         errors.push(
@@ -223,7 +223,7 @@ export function validateOrder(p: ValidateOrderParams, nowSeconds: number): Valid
   }
 
   // (4) Orderbook base URL. api.cow.fi does not serve the Ophis-operated chains,
-  // and CoW selects the hosted chain by PATH under one host, so this compares the
+  // and the upstream protocol selects the hosted chain by PATH under one host, so this compares the
   // FULL normalized base (origin + path), not just the host.
   if (p.orderbookUrl !== undefined) {
     let givenUrl: URL | null = null
@@ -240,7 +240,7 @@ export function validateOrder(p: ValidateOrderParams, nowSeconds: number): Valid
         )
       } else if (normalizeOrderbookBase(givenUrl) !== normalizeOrderbookBase(new URL(expected.orderbookUrl))) {
         errors.push(
-          `orderbookUrl ${p.orderbookUrl} is wrong for chain ${chainId}; the correct orderbook is ${expected.orderbookUrl}. CoW serves every hosted chain under api.cow.fi and selects the chain by path, so a matching host alone is not enough.`,
+          `orderbookUrl ${p.orderbookUrl} is wrong for chain ${chainId}; the correct orderbook is ${expected.orderbookUrl}. The upstream protocol serves every hosted chain under api.cow.fi and selects the chain by path, so a matching host alone is not enough.`,
         )
       }
     }
@@ -344,7 +344,7 @@ export function validateOrder(p: ValidateOrderParams, nowSeconds: number): Valid
               errors.push(`${label} does not match either canonical Ophis PriceImprovement policy (80%/99 bps volatile or 50%/20 bps stable).`)
             }
             // Token-pair Volume floor, enforced ONLY on Ophis-operated chains (the
-            // self-hosted backend applies partner_fee_floor_bps; CoW-hosted chains do
+            // self-hosted backend applies partner_fee_floor_bps; externally hosted chains do
             // not). The preflight has no cheap stablecoin list, so it applies the
             // conservative non-stable floor and names the reduced stable-pair floor.
             const tokensGiven = typeof o?.sellToken === 'string' && typeof o?.buyToken === 'string'
@@ -479,7 +479,7 @@ export function validateOrder(p: ValidateOrderParams, nowSeconds: number): Valid
 
   // (8) Signed feeAmount must be 0, the same policy build_order enforces: the
   // Ophis fee is taken via the appData partner fee (from the trade output at
-  // settlement), not a signed feeAmount, and CoW accounting treats a signed
+  // settlement), not a signed feeAmount, and the upstream protocol accounting treats a signed
   // feeAmount as ADDITIONAL sell-token spend no slippage check covers.
   if (o?.feeAmount !== undefined && o.feeAmount !== '0') {
     errors.push(
@@ -759,10 +759,10 @@ export interface IntegratorEarnings {
 /**
  * Looks up what an integrator's own-fee routing earned, by appCode, from the live
  * rebate indexer's keyless GET /earnings/:appCode. The payload splits routed volume by
- * chain and by sovereign (Optimism, Unichain) vs CoW-hosted, and reports the Ophis base
+ * chain and by sovereign (Optimism, Unichain) vs externally hosted, and reports the Ophis base
  * fee, the integrator's OWN stacked fee, and the referral rebate paid-to-date with
  * payout tx links. Guaranteed/paid figures are scoped to the Ophis-operated chains; the
- * response carries a `disclaimer` describing the CoW-hosted accrual. Read-only, keyless.
+ * response carries a `disclaimer` describing the externally hosted accrual. Read-only, keyless.
  */
 export async function getIntegratorEarnings(appCode: string, fetchImpl: typeof fetch = fetch): Promise<IntegratorEarnings> {
   const code = String(appCode).trim().toLowerCase()

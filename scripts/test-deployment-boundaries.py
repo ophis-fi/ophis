@@ -62,7 +62,7 @@ class DeploymentBoundaries(unittest.TestCase):
                             self.assertIn('git merge-base --is-ancestor', str(job))
         self.assertEqual(counts, {
             'TS_OIDC_CLIENT_ID': 2, 'TS_OIDC_AUDIENCE': 2,
-            'MCP_PRIVATE_KEY': 1, 'NPM_TOKEN': 5,
+            'MCP_PRIVATE_KEY': 1, 'NPM_TOKEN': 6,
         })
 
     def test_host_credentials_stay_on_main(self):

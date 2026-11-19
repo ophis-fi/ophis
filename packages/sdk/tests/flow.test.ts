@@ -260,7 +260,7 @@ describe('buildOphisOrderCreation', () => {
   });
 
   it('PRESERVES the signed receiver, never rewriting zero/absent to owner (would break the signature)', () => {
-    // absent receiver stays absent (CoW resolves it to the owner at settlement)
+    // absent receiver stays absent (the upstream protocol resolves it to the owner at settlement)
     const b1 = buildOphisOrderCreation({ ...base, order: {} });
     expect(b1.receiver).toBeUndefined();
     // zero receiver is preserved exactly as signed

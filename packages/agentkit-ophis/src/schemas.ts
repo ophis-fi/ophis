@@ -19,4 +19,4 @@ export const OphisSwapSchema = z
       .nullable()
       .describe('Max slippage in basis points (capped at 5000 = 50%); pass null for the default (50 = 0.5%).'),
   })
-  .describe('Swap two ERC-20 tokens via Ophis (a CoW Protocol fork): gasless, MEV-protected intent. The order carries Ophis appData so the integrator earns the rebate.');
+  .describe('Swap two ERC-20 tokens via Ophis: intent-based batch settlement. The order carries Ophis appData for optional referral attribution.');

@@ -1,5 +1,5 @@
 /**
- * @ophis/safe-swap - headless Ophis (CoW Protocol) swap builder for a Safe (vault) trader.
+ * @ophis/safe-swap - headless Ophis swap builder for a Safe (vault) trader.
  *
  * buildOphisSafePresign() lets a vault curator / manager (Zodiac Roles module, MPC signer,
  * or multisig) rebalance the vault's underlying: it quotes against the Ophis
@@ -125,7 +125,7 @@ export async function buildOphisSafePresign(p: OphisSafePresignParams): Promise<
   const requestedGross = BigInt(p.sellAmount);
   if (requestedGross <= 0n) throw new Error(`sellAmount must be > 0 (atomic units); got ${p.sellAmount}`);
 
-  // Lazy-load the CoW SDKs here (see the module-top note): the wire enum values are
+  // Lazy-load the trading SDKs here (see the module-top note): the wire enum values are
   // the plain strings 'sell' / 'presign', so no static enum import is needed.
   const [{ OrderBookApi }, { MetadataApi, stringifyDeterministic }] = await Promise.all([
     import('@cowprotocol/cow-sdk'),

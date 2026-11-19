@@ -105,7 +105,7 @@ export const ACROSS_CALLDATA_DELIMITER = '0x1dc0de'
  * Appends Across's on-chain integrator tag (delimiter + ID) to a hook's
  * calldata. Across attributes a deposit by the LAST bytes of the transaction
  * that made it (their toolkit checks with endsWith). Our deposit runs inside a
- * CoW Shed post-hook, so the transaction is the solver's settle(): its tail is
+ * bridge account post-hook, so the transaction is the solver's settle(): its tail is
  * the last post-interaction's calldata, i.e. this hook. Zero-padding first so
  * the tagged bytes end on a 32-byte boundary means every ABI layer above
  * (HooksTrampoline, settle) adds no padding of its own and the tag stays the
@@ -258,7 +258,7 @@ const ACROSS_EXTRA_NETWORKS: ChainInfo[] = [
   ROBINHOOD_BRIDGE_CHAIN,
 ]
 
-// Source support requires deployed SpokePool, math helper, CoW Shed and hook
+// Source support requires deployed SpokePool, math helper, bridge account and hook
 // execution. EXTRA_ACROSS_SOURCE_CHAIN_IDS keeps additional chains gated until
 // their deployment and execution checks pass (including Polygon and Optimism).
 export const ACROSS_EXECUTABLE_SOURCE_IDS: ReadonlySet<number> = new Set<number>([
@@ -360,7 +360,7 @@ export class OphisAcrossBridgeProvider extends AcrossBridgeProvider {
   }
 
   /**
-   * The signed CoW Shed hook: the guard call, then upstream's deposit program,
+   * The signed bridge account hook: the guard call, then upstream's deposit program,
    * with Across's on-chain integrator tag appended to the factory calldata (see
    * tagAcrossIntegratorCalldata; the SDK reads deposits back from the
    * FundsDeposited event, never from this calldata).

@@ -18,7 +18,7 @@ Connect your agent to Ophis to parse requests, get quotes and build orders for w
 
 ## Connect a client {/* #connect-your-mcp-client */}
 
-The current server release is **v0.2.0**. It uses streamable HTTP and requires no API key:
+The current server release is **v0.2.1**. It uses streamable HTTP and requires no API key:
 
 ```
 https://mcp.ophis.fi/mcp
@@ -258,14 +258,14 @@ The handler posts `{ "text": <text> }` to `https://ophis.fi/api/intent`, then re
 
 ## Framework adapters {/* #drop-in-framework-adapters */}
 
-The v0.3.7 adapter family is built and published against `@ophis/sdk` v0.4.5. These packages quote, sign EIP-712 orders, approve the relayer and submit using the agent's wallet:
+The v0.3.8 adapter family is built and published against `@ophis/sdk` v0.4.6. These packages quote, sign EIP-712 orders, approve the relayer and submit using the agent's wallet:
 
 | Package | Version | Framework | Entry point |
 | --- | --- | --- | --- |
-| [`@ophis/agentkit-ophis`](https://www.npmjs.com/package/@ophis/agentkit-ophis) | v0.3.7 | [Coinbase AgentKit](https://github.com/coinbase/agentkit) | `OphisActionProvider_swap` |
-| [`@ophis/plugin-goat`](https://www.npmjs.com/package/@ophis/plugin-goat) | v0.3.7 | [GOAT SDK](https://github.com/goat-sdk/goat) | `ophis_swap` |
-| [`@ophis/plugin-elizaos`](https://www.npmjs.com/package/@ophis/plugin-elizaos) | v0.3.7 | [elizaOS](https://github.com/elizaOS/eliza) | `swap` |
-| [`@ophis/agent-swap`](https://www.npmjs.com/package/@ophis/agent-swap) | v0.3.7 | Custom EOA frameworks | `executeOphisSwap()` |
+| [`@ophis/agentkit-ophis`](https://www.npmjs.com/package/@ophis/agentkit-ophis) | v0.3.8 | [Coinbase AgentKit](https://github.com/coinbase/agentkit) | `OphisActionProvider_swap` |
+| [`@ophis/plugin-goat`](https://www.npmjs.com/package/@ophis/plugin-goat) | v0.3.8 | [GOAT SDK](https://github.com/goat-sdk/goat) | `ophis_swap` |
+| [`@ophis/plugin-elizaos`](https://www.npmjs.com/package/@ophis/plugin-elizaos) | v0.3.8 | [elizaOS](https://github.com/elizaOS/eliza) | `swap` |
+| [`@ophis/agent-swap`](https://www.npmjs.com/package/@ophis/agent-swap) | v0.3.8 | Custom EOA frameworks | `executeOphisSwap()` |
 
 | Requirement | Value |
 | --- | --- |
@@ -327,7 +327,7 @@ See [Fees](/fees) for the chain-specific policy and [Security and audits](/audit
 ## Shell agent skills {/* #markdown-skill-family-shell-capable-agents */}
 
 Use [`@ophis/agent-skills`](https://www.npmjs.com/package/@ophis/agent-skills)
-v0.1.1 for runtimes with a shell, `curl`, `jq` and Foundry's `cast`.
+v0.1.2 for runtimes with a shell, `curl`, `jq` and Foundry's `cast`.
 
 | Resource | Use |
 | --- | --- |
@@ -340,7 +340,7 @@ Use MCP `list_chains` for supported networks beyond the shell skills.
 
 ## Build SDK orders {/* #submitting-orders-programmatically */}
 
-**`@ophis/sdk`**, published on npm (v0.4.5, public), provides chain-specific orderbook, signing-domain, fee and receiver-safety helpers. Use it with the trading client shown below to quote and submit orders. Install it with `npm install @ophis/sdk`.
+**`@ophis/sdk`**, published on npm (v0.4.6, public), provides chain-specific orderbook, signing-domain, fee and receiver-safety helpers. Use it with the trading client shown below to quote and submit orders. Install it with `npm install @ophis/sdk`.
 
 <Steps>
 

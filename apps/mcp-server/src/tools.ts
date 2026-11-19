@@ -34,7 +34,7 @@ import {
 import { resolveStablePair } from './stablePair.js'
 
 /** Identity reported by both transports (stdio + Worker). */
-export const MCP_SERVER_VERSION = '0.2.0' as const
+export const MCP_SERVER_VERSION = '0.2.1' as const
 
 /** Canonical public tool inventory. Metadata tests fail if registration or server.json drifts. */
 export const OPHIS_TOOL_NAMES = [
@@ -160,7 +160,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
       // enforce slippage); it never moves funds. submit_order is the write path.
       annotations: { title: 'Build signable order', readOnlyHint: true, openWorldHint: true },
       description:
-        "Build a bounded, ready-to-sign CoW order on Ophis. Returns { order, signing:{domain,types,primaryType}, fullAppData, appDataHash, partnerFee, next }. The receiver is ALWAYS PINNED to the owner (proceeds cannot leave the account); this public endpoint exposes no custom-receiver option. Uses the correct per-chain settlement contract (Optimism, Unichain, Robinhood Chain, and Arc are non-canonical) and applies the canonical Ophis fee policy. Apply slippage to the LIMIT side by kind: for kind 'sell' lower buyAmount (your minimum out); for kind 'buy' raise sellAmount (your maximum in). slippageBips is capped at 5000 (50%); when omitted, the enforced backstop defaults to 100 bps (1%). ENFORCED: build_order fetches a live quote and REJECTS the call if the limit is worse than slippageBips vs that quote (or if a quote cannot be fetched; retry). Sign `order` as EIP-712 with `signing`, then call submit_order.",
+        "Build a bounded, ready-to-sign order on Ophis. Returns { order, signing:{domain,types,primaryType}, fullAppData, appDataHash, partnerFee, next }. The receiver is ALWAYS PINNED to the owner (proceeds cannot leave the account); this public endpoint exposes no custom-receiver option. Uses the correct per-chain settlement contract (Optimism, Unichain, Robinhood Chain, and Arc are non-canonical) and applies the canonical Ophis fee policy. Apply slippage to the LIMIT side by kind: for kind 'sell' lower buyAmount (your minimum out); for kind 'buy' raise sellAmount (your maximum in). slippageBips is capped at 5000 (50%); when omitted, the enforced backstop defaults to 100 bps (1%). ENFORCED: build_order fetches a live quote and REJECTS the call if the limit is worse than slippageBips vs that quote (or if a quote cannot be fetched; retry). Sign `order` as EIP-712 with `signing`, then call submit_order.",
       inputSchema: {
         chainId: z.number().int().describe('EVM chain id (use a chainId from list_chains `tradeable`).'),
         owner: z.string().describe('The signer/owner address (receiver defaults to this).'),
@@ -190,7 +190,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
             'Order lifetime in seconds (default 1200 = 20 min; minimum 60). The enforced live-quote fetch can consume several seconds, so very short lifetimes would return a near-expired order the orderbook rejects.',
           ),
         // feeAmount must be 0 on this public tool: Ophis orders take the fee from
-        // surplus + the CIP-75 appData partner fee, never a signed feeAmount. CoW
+        // surplus + the CIP-75 appData partner fee, never a signed feeAmount. upstream
         // accounting treats a signed feeAmount as ADDITIONAL sell-token spend that
         // the slippage check does not cover, so a non-zero fee is a fleecing vector
         // on a no-auth tool. Reject it explicitly rather than silently strip it. (reviewer P1)
@@ -393,7 +393,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
     {
       annotations: { title: 'Get integrator earnings', readOnlyHint: true, openWorldHint: true },
       description:
-        "Look up routed volume, the Ophis base fee, and the integrator's own fee on CoW-hosted chains, by appCode (your widget appCode or SDK ophisReferrer code). Routed volume is reported in USD, split by chain and by Ophis-operated versus CoW-hosted chains. Read-only, keyless, cumulative.",
+        "Look up routed volume, the Ophis base fee, and the integrator's own fee on externally hosted chains, by appCode (your widget appCode or SDK ophisReferrer code). Routed volume is reported in USD, split by chain and by Ophis-operated versus externally hosted chains. Read-only, keyless, cumulative.",
       inputSchema: {
         appCode: z
           .string()
@@ -585,7 +585,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
     {
       annotations: { title: 'Validate order preflight', readOnlyHint: true, openWorldHint: false },
       description:
-        "Offline preflight for an order you built OUTSIDE build_order (no network call, no keys). Catches the documented silent-failure modes before you sign or submit: wrong appCode (prevents Ophis referral attribution), wrong orderbook host (api.cow.fi silently bypasses the Ophis stack on Ophis-operated chains), wrong EIP-712 domain (signing against CoW's canonical settlement on an Ophis-operated chain yields a domain the deployed contract rejects), appData hash mismatch (order.appData must equal keccak256 of the exact fullAppData string), an unpinned receiver (proceeds leaving the owner), an expired or non-zero-fee order, and malformed partnerFee entries. Pass whatever you have (chainId is required; owner, order, fullAppData, signingDomain, orderbookUrl are all optional and each is checked if present). Returns { valid, errors, warnings, expected } where `expected` echoes the correct per-chain orderbook host, settlement, EIP-712 domain, appCode, and partnerFee. Prefer build_order to construct orders; use this to verify externally-built ones.",
+        "Offline preflight for an order you built OUTSIDE build_order (no network call, no keys). Catches the documented silent-failure modes before you sign or submit: wrong appCode (prevents Ophis referral attribution), wrong orderbook host (api.cow.fi silently bypasses the Ophis stack on Ophis-operated chains), wrong EIP-712 domain (signing against the upstream protocol's canonical settlement on an Ophis-operated chain yields a domain the deployed contract rejects), appData hash mismatch (order.appData must equal keccak256 of the exact fullAppData string), an unpinned receiver (proceeds leaving the owner), an expired or non-zero-fee order, and malformed partnerFee entries. Pass whatever you have (chainId is required; owner, order, fullAppData, signingDomain, orderbookUrl are all optional and each is checked if present). Returns { valid, errors, warnings, expected } where `expected` echoes the correct per-chain orderbook host, settlement, EIP-712 domain, appCode, and partnerFee. Prefer build_order to construct orders; use this to verify externally-built ones.",
       inputSchema: {
         chainId: z.number().int().describe('EVM chain id the order is for (use list_chains `tradeable`).'),
         owner: z.string().optional().describe('The signing account address; enables the receiver drain-guard check.'),

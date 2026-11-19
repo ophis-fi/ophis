@@ -23,7 +23,7 @@ export function toOphisWallet(provider: EvmWalletProvider): OphisAgentWallet {
         args: [address(), spender],
       })) as bigint;
       if (current < minAmount) {
-        // Approve the CoW vault relayer (audited, fixed). Max approval avoids a re-approve per swap.
+        // Approve the vault relayer (audited, fixed). Max approval avoids a re-approve per swap.
         const hash = await provider.sendTransaction({
           to: token,
           data: encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [spender, maxUint256] }),

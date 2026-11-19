@@ -269,7 +269,7 @@ describe('buildOrder', () => {
 });
 
 describe('extractQuoteAmounts', () => {
-  it('extracts sell/buy atoms from a CoW quote response', () => {
+  it('extracts sell/buy atoms from an orderbook quote response', () => {
     expect(
       extractQuoteAmounts({ quote: { sellAmount: '1000000', buyAmount: '250000000000000' } }),
     ).toEqual({
