@@ -5,7 +5,7 @@
 // This file holds its own handlers and, in its first half, its own rows: every statement is prepared with bound
 // parameters, and every change goes through commit() of the data module, with what decides it read inside the plan.
 import { checksum, colour, parseAddress, readCapped, safeState, verify, verifyDigest, type SafeState } from './chain.ts'
-import { commit, DOMAIN, emailAt, freezing, LISTED, listed, listedWallet, PEOPLE, randomId, REVIEWED, sha256Hex, type Actor, type WalletKind } from './data.ts'
+import { commit, DOMAIN, emailAt, freezing, gone, LISTED, listed, listedWallet, PEOPLE, randomId, REVIEWED, sha256Hex, type Actor, type WalletKind } from './data.ts'
 import { challengeIsOurs, creationOptions, credentialHash, fromBase64Url, newChallenge, seal, unseal, verifyRegistration, type Config } from './passkeys.ts'
 import { indexerBase } from './partner.ts'
 import { standIn } from './orders.ts'
@@ -253,13 +253,14 @@ const reviewsDue = async (db: D1Database, now: number) =>
 const refusedOf = async (db: D1Database, orgId: string) =>
   (await db.prepare(`SELECT detail FROM audit_log WHERE org_id = ? AND action = 'screening.refused' ORDER BY seq`).bind(orgId).all<{ detail: string }>()).results.map((row) => row.detail)
 // Every organisation, for the operator's page (owner, 2026-11-19): the approved ones too, which no other field lists.
-// Under review: submitted and waiting for a decision; applying: not submitted yet. Members: the active seats.
+// Under review: submitted and waiting for a decision; applying: not submitted yet. Members: the active seats, less an Owner seat
+// a recovery replaced for good (data.ts, gone; CodeRabbit, PR #1672).
 // ponytail: the whole list in one D1 query at each call. Page it when the organisations pass some hundreds.
-const everyOrganisation = async (db: D1Database) =>
-  (await db.prepare(`SELECT o.id, o.name, o.kind, o.country, k.recheck_at AS nextReview, (SELECT count(*) FROM seats s WHERE s.org_id = o.id AND s.state = 'active') AS members,
+const everyOrganisation = async (db: D1Database, now: number) =>
+  (await db.prepare(`SELECT o.id, o.name, o.kind, o.country, k.recheck_at AS nextReview, (SELECT count(*) FROM seats s WHERE s.org_id = o.id AND s.state = 'active' AND NOT ${gone('s')}) AS members,
                             CASE WHEN o.state <> 'unverified' THEN o.state WHEN o.review_at IS NULL THEN 'applying' ELSE 'under review' END AS state
                      FROM organisations o LEFT JOIN kyb_records k ON k.rowid = (SELECT rowid FROM kyb_records WHERE org_id = o.id ORDER BY created_at DESC, rowid DESC LIMIT 1)
-                     ORDER BY o.name, o.id`).all<{ id: string; name: string; kind: string; country: string | null; nextReview: number | null; members: number; state: string }>()).results
+                     ORDER BY o.name, o.id`).bind(now).all<{ id: string; name: string; kind: string; country: string | null; nextReview: number | null; members: number; state: string }>()).results
 const underReview = async (db: D1Database) =>
   (await db.prepare(`SELECT ${COMPANY} WHERE state = 'unverified' AND review_at IS NOT NULL ORDER BY review_at, id`).all<Company>()).results
 
@@ -884,7 +885,7 @@ async function list(c: Ctx) {
       wallet: wallet && { ...walletView(wallet), colour: colour({ kind: wallet.kind, snapshot: wallet.snapshot, inForce: true }, live) },
     })
   }
-  return json(200, { organisations, more: waiting.length - organisations.length, reviews: await reviewsDue(c.env.DB, c.now), lists: await listsOf(c.env, c.now), all: await everyOrganisation(c.env.DB) })
+  return json(200, { organisations, more: waiting.length - organisations.length, reviews: await reviewsDue(c.env.DB, c.now), lists: await listsOf(c.env, c.now), all: await everyOrganisation(c.env.DB, c.now) })
 }
 
 const MAX_REVIEW_MS = 5 * 365 * 24 * 60 * 60 * 1000 // owner's call: a next review lies at most 5 years ahead; a date further off would hide the organisation from "Reviews due" for good

@@ -5754,11 +5754,15 @@ describe('E. account recovery: a stop undoes all of it, the organisation is read
     const n = await completed(asked)
     const active = async () => ((await call('GET', '/api/org', { cookie: n.cookie })).body.members as { id: string; state: string }[]).filter((m) => m.state === 'active').map((m) => m.id)
     const owners = async () => (await call('GET', '/api/readiness', { cookie: n.cookie })).body.owners.count
+    // The operator page's member count reads the same rule (CodeRabbit, PR #1672).
+    const opToken = `operator-${crypto.randomUUID()}${crypto.randomUUID()}`
+    const listedMembers = async () => ((await (await handle(new Request(`${onboarding.OPERATOR.local}/api/operator/organisations`, { headers: { 'sec-fetch-site': 'same-origin', authorization: `Bearer ${opToken}` } }),
+      { ...testEnv, OPERATOR_TOKEN: opToken } as unknown as Env, () => now)).json()) as { all: { id: string; members: number }[] }).all.find((x) => x.id === o.orgId)?.members
     now += WEEK - MIN
     await again(n)
-    expect([await active(), await owners()]).toEqual([[o.seatId, asked.seat], 2])
+    expect([await active(), await owners(), await listedMembers()]).toEqual([[o.seatId, asked.seat], 2, 2])
     now += MIN
-    expect([await active(), await owners(), (await seatOf(o.seatId))?.state]).toEqual([[asked.seat], 1, 'active'])
+    expect([await active(), await owners(), (await seatOf(o.seatId))?.state, await listedMembers()]).toEqual([[asked.seat], 1, 'active', 1])
     // The new Owner is the last Owner: the seat that is gone does not stand in for one.
     expect((await act(n, asked.seat, 'freeze')).body).toEqual({ error: 'last_owner' })
     // The seat that is gone is nobody's to freeze: it would come back as a frozen Owner seat.
