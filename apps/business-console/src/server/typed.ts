@@ -13,8 +13,8 @@ export const CHAIN_NAME: Record<number, string> = { 1: 'Ethereum', 10: 'OP Mainn
 // What a wallet that does not know a chain needs to add it (wallet_addEthereumChain, after error 4902 on a switch): the
 // chains most wallets lack (owner, 2026-11-19). The RPC is the first endpoint of passkeys.ts; tests/worker.test.ts compares.
 export const NETWORKS: Record<number, { chainName: string; nativeCurrency: { name: string; symbol: string; decimals: number }; rpcUrls: string[]; blockExplorerUrls: string[] }> = {
-  4663: { chainName: 'Robinhood Chain', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: ['https://rpc.mainnet.chain.robinhood.com'], blockExplorerUrls: ['https://robinhoodchain.blockscout.com'] },
-  5042: { chainName: 'Arc', nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 }, rpcUrls: ['https://rpc.mainnet.arc.io'], blockExplorerUrls: ['https://explorer.arc.io'] },
+  4663: { chainName: CHAIN_NAME[4663], nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: ['https://rpc.mainnet.chain.robinhood.com'], blockExplorerUrls: ['https://robinhoodchain.blockscout.com'] },
+  5042: { chainName: CHAIN_NAME[5042], nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 }, rpcUrls: ['https://rpc.mainnet.arc.io'], blockExplorerUrls: ['https://explorer.arc.io'] },
 }
 /** The signing page's wallet moves to the chain; one that does not know it (4902, which some wallets nest) is asked to add
  *  it first, from NETWORKS. Here, with no DOM, so that tests/worker.test.ts runs it against a stand-in wallet. */
@@ -26,6 +26,8 @@ export async function switchTo(wallet: { request(call: { method: string; params?
     const e = error as { code?: number; data?: { originalError?: { code?: number } } } | null
     if ((e?.code !== 4902 && e?.data?.originalError?.code !== 4902) || !NETWORKS[chainId]) throw error
     await wallet.request({ method: 'wallet_addEthereumChain', params: [{ chainId: hex, ...NETWORKS[chainId] }] })
+    // Adding need not switch (EIP-3085): switch again, so that nothing after runs on the old chain (review, PR #1674).
+    await wallet.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: hex }] })
   }
 }
 /** The sanctions lists the operator loads (onboarding.ts), by code, with the names the pages show. */

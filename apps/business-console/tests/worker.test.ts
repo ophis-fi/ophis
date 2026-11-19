@@ -13,7 +13,7 @@ import worker, { csvCell, daily as dailyRun, EVENTS, handle as handleRequest, ro
 import wranglerConfig from '../wrangler.jsonc?raw'
 import { challengeIsOurs, configFor, credentialHash, fromBase64Url, newChallenge, seal, SUPPORT_HOSTS, toBase64Url, userHandle } from '../src/server/passkeys.ts'
 import { checksum, colour, LIMITS, SAFES, type SafeState } from '../src/server/chain.ts'
-import { CHAIN_NAME, LINK_ACTION, NETWORKS, PROOF_ACTION, switchTo, typedLink, typedProof, type Typed } from '../src/server/typed.ts'
+import { LINK_ACTION, NETWORKS, PROOF_ACTION, switchTo, typedLink, typedProof, type Typed } from '../src/server/typed.ts'
 import * as orders from '../src/server/orders.ts'
 import realBook from './fixtures/orderbook.json'
 import golden from './fixtures/appdata-golden.json'
@@ -4180,13 +4180,14 @@ describe('y. wallets and the recovery wallet', () => {
       const calls: string[] = []
       return { calls, request: async ({ method, params }: { method: string; params?: unknown[] }) => {
         calls.push(`${method} ${JSON.stringify(params)}`)
-        if (method === 'wallet_switchEthereumChain' && refusal) throw refusal
+        if (method === 'wallet_switchEthereumChain' && refusal && calls.length === 1) throw refusal // the first switch only: the chain is unknown until added
       } }
     }
+    // Added, then switched to again: adding need not switch (EIP-3085).
     for (const refusal of [{ code: 4902 }, { code: -32603, data: { originalError: { code: 4902 } } }]) {
       const w = wallet(refusal)
       await switchTo(w, 5042)
-      expect(w.calls).toEqual(['wallet_switchEthereumChain [{"chainId":"0x13b2"}]', `wallet_addEthereumChain ${JSON.stringify([{ chainId: '0x13b2', ...NETWORKS[5042] }])}`])
+      expect(w.calls).toEqual(['wallet_switchEthereumChain [{"chainId":"0x13b2"}]', `wallet_addEthereumChain ${JSON.stringify([{ chainId: '0x13b2', ...NETWORKS[5042] }])}`, 'wallet_switchEthereumChain [{"chainId":"0x13b2"}]'])
     }
     // A known chain switches and adds nothing; a refusal of the person (4001), or 4902 for a chain not in NETWORKS, stays a refusal.
     const known = wallet(null)
@@ -4196,8 +4197,8 @@ describe('y. wallets and the recovery wallet', () => {
     await expect(switchTo(wallet({ code: 4902 }), 8453)).rejects.toEqual({ code: 4902 })
     for (const environment of ['local', 'production']) {
       expect(Object.keys(configFor(environment).chains), environment).toEqual(['1', '10', '4663', '5042', '8453', '42161'])
-      // A wallet that lacks Robinhood Chain or Arc adds it (2026-11-19): with this environment's first endpoint and the chain's name.
-      for (const [id, n] of Object.entries(NETWORKS)) expect([n.chainName, n.rpcUrls[0]], id).toEqual([CHAIN_NAME[Number(id)], configFor(environment).chains[Number(id)][0]])
+      // A wallet that lacks Robinhood Chain or Arc adds it (2026-11-19) with this environment's first endpoint.
+      for (const [id, n] of Object.entries(NETWORKS)) expect(n.rpcUrls[0], id).toBe(configFor(environment).chains[Number(id)][0])
       expect(SUPPORT_HOSTS[environment], environment).toBe('api.typesafe.ai')
       expect(onboarding.OPERATOR[environment], environment).toMatch(/^https?:\/\/operator\./)
     }
@@ -5607,7 +5608,7 @@ describe('D. Support: the model selects, the server decides', () => {
     expect(text('KB-19')).toContain('Sent: waiting for the Safe transaction')
     expect(text('KB-19')).not.toMatch(/demo|Not available/)
     expect(text('KB-01') + text('KB-19')).not.toMatch(/not built|shows no orders/)
-    expect(supportPage).toContain("'An outside provider, TypeSafe AI (USA), matches your question to our help texts. It receives your question without your name, organisation or wallet. Ophis does not store your question.'")
+    expect(supportPage).not.toMatch(/TypeSafe|outside provider|Leave out names/) // the provider notice was removed (owner, 2026-11-19)
     expect(supportPage).toContain('Did this answer your question?')
     expect(supportPage).toContain("mailto:clement@ophis.fi?subject=${encodeURIComponent('Ophis Business support')}&body=${encodeURIComponent('What I was doing:\\r\\n\\r\\nWhat I expected:\\r\\n\\r\\nWhat happened:\\r\\n')}")
     expect(supportPage).toContain('>Write to Ophis</a>')
@@ -5924,7 +5925,6 @@ describe('F. Support: attacks tried by the review of milestone 6', () => {
     expect([sent.length, await counted(m.seatId)]).toEqual([4, 4])
     expect(supportServer).not.toMatch(/checksum\(/)
     expect(supportPage).toContain('This looks like a wallet recovery phrase')
-    expect(supportPage).toContain('<span>{PRIVACY} {CARE}</span>')
   })
 
   it('the one request follows no redirect: the provider cannot send the question or the key to another host, and a redirect is a hand-over', async () => {

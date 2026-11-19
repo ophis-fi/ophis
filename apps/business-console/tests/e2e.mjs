@@ -793,9 +793,9 @@ try {
   await page.locator('.rail').getByRole('link', { name: 'Support' }).click()
   await page.getByRole('heading', { name: /Ask a question/ }).waitFor()
   check('the band at the top reads "Local build. Test data only." and nothing else', (await page.locator('.band').innerText()).trim() === 'Local build. Test data only.')
-  check('Support opens from the rail and from the top button, with the provider notice under the box and the footer line',
-    (await page.locator('[data-support]').getAttribute('href')) === '/#/support' && await page.locator(".foot-line", { hasText: FOOTER }).isVisible() && await page.getByText('Leave out names and anything secret.').isVisible()
-    && await page.getByText('An outside provider, TypeSafe AI (USA), matches your question to our help texts. It receives your question without your name, organisation or wallet. Ophis does not store your question.').isVisible())
+  check('Support opens from the rail and from the top button, with the footer line and no provider notice (owner, 2026-11-19)',
+    (await page.locator('[data-support]').getAttribute('href')) === '/#/support' && await page.locator(".foot-line", { hasText: FOOTER }).isVisible()
+    && !(await page.getByText(/TypeSafe|Leave out names and anything secret/).count()))
   const write = page.getByRole('link', { name: 'Write to Ophis' })
   // A wallet recovery phrase (a public test vector) is refused by the server and the page says so; nothing is asked of the provider.
   await page.getByLabel('Your question').fill('legal winner thank year wave sausage worth useful legal winner thank yellow')
@@ -1531,7 +1531,7 @@ try {
   await sixth.page.getByText('Signed and sent. The order is open on the orderbook').waitFor()
   const wide = sixth.calls.find(([method]) => method === 'eth_sendTransaction')?.[1][0]
   check('with an order of 5 WETH open on the same wallet, the order of 6 WETH has the wallet, whose allowance is 6 WETH, approve exactly 11 WETH, and the page says why',
-    approveStep.startsWith('Approve exactly 11 WETH for the CoW Protocol vault relayer') && advice.includes('The approval covers this order and the other open orders of this wallet in this asset.')
+    approveStep.startsWith('Approve exactly 11 WETH for the vault relayer of the settlement contract') && advice.includes('The approval covers this order and the other open orders of this wallet in this asset.')
     && wide?.data === `0x095ea7b3${'83847eab41ad9ea43809ce71569eb2e9daf51830'.padStart(64, '0')}${(11n * 10n ** 18n).toString(16).padStart(64, '0')}`)
   await sixth.context.close()
 

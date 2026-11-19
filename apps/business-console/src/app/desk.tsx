@@ -59,8 +59,6 @@ interface DeskView {
 }
 
 const places = (asset: string) => (asset === 'WETH' ? 4 : 2)
-// An order signs over tokens, so ETH is sold and bought as WETH, ETH as a token (owner asked, 2026-11-19).
-const ASSET_NAME: Record<string, string> = { WETH: 'WETH (wrapped ETH)' }
 /** A chain's or an asset's logo beside its name (decorative: the name is the text); its first letter where there is none. */
 const Logo = ({ src, name }: { src?: string; name: string }) => (src ? <img className="logo" src={src} alt="" width={20} height={20} /> : <span className="logo glyph" aria-hidden="true">{name.slice(0, 1)}</span>)
 const named = (src: string | undefined, name: string, text: ReactNode = name) => <span className="with-logo"><Logo src={src} name={name} /><span>{text}</span></span>
@@ -418,7 +416,8 @@ function TicketForm({ v, onSent }: { v: DeskView; onSent: () => Promise<void> })
   const assets = (label: string, field: 'sell' | 'buy', value?: string) => (
     <label className="field">{label}<span className="pick">{value && <Logo src={ASSET_LOGO[value]} name={value} />}
       <select className="input" value={value} onChange={(event) => set({ [field]: event.target.value })}>{here.map((a) => <option key={a.symbol} value={a.symbol}>{a.symbol}</option>)}</select></span>
-      {value === 'WETH' && <small className="muted">{field === 'sell' ? 'Wrapped ETH. An order sells tokens: wrap ETH in the wallet first.' : 'Wrapped ETH. Unwrap it in the wallet to hold ETH.'}</small>}</label>
+      {value === 'WETH' && <small className="muted">{field === 'sell' ? 'Wrapped ETH. An order signs over tokens, not ETH: wrap ETH in the wallet first.' : 'Wrapped ETH. Unwrap it in the wallet to hold ETH.'}</small>}
+      {field === 'sell' && value === 'USDC' && wallet.chainId === 5042 && <small className="muted">On Arc the network fee is paid in USDC: keep a little for the approval.</small>}</label>
   )
   return (
     <form className="ticket" data-step="ticket" onSubmit={(event) => ask(false, event)}>
@@ -534,7 +533,7 @@ function Ticket({ onSignedOut }: { onSignedOut: () => void }) {
         <section className="panel"><h2 className="cap">Order ticket</h2><TicketForm v={v} onSent={load} /></section>
         <div className="stack">
           <Section icon="list-checks" title="Tokens you can trade" hint="An order sells one of these for another on the same chain. Most per order: the largest amount one order can sell." action={<Export table="assets" />}>
-            <Table head={['Token', 'Chain', 'Most per order']} rows={v.assets.map((a) => [named(ASSET_LOGO[a.symbol], a.symbol, <><b>{ASSET_NAME[a.symbol] ?? a.symbol}</b><small className="mono">{short(a.token)}</small></>),
+            <Table head={['Token', 'Chain', 'Most per order']} rows={v.assets.map((a) => [named(ASSET_LOGO[a.symbol], a.symbol, <><b>{a.symbol === 'WETH' ? 'WETH (wrapped ETH)' : a.symbol}</b><small className="mono">{short(a.token)}</small></>),
               named(CHAIN_LOGO[a.chainId], a.chain), money(a.cap, 0)])} />
           </Section>
           <ol className="stats flow">
