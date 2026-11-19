@@ -39,7 +39,9 @@ This registers an **`ophis_swap`** tool the agent can call:
 | `sellAmount` | whole units, e.g. `"1.5"` |
 | `slippageBps` | optional, default `50` (0.5%) |
 
-It quotes against the Ophis orderbook, signs the order EIP-712 with the agent's wallet, approves the vault relayer once, submits, and returns the order UID + an explorer URL.
+It quotes against the Ophis orderbook, approves the vault relayer, then signs the order EIP-712 with the agent's wallet, submits, and returns the order UID + an explorer URL.
+
+An approval transaction can remain in place if signing or submission fails. Review or revoke an unused allowance in your wallet.
 
 ## Notes
 

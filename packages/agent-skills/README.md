@@ -2,7 +2,7 @@
 
 The Ophis agent-skill family, packaged for npm. Markdown skills for AI agents
 with local tool access (bash, `curl`, `jq`, Foundry's `cast`) that drive
-Ophis, the non-custodial, intent-based, MEV-protected DEX aggregator, on the
+Ophis, the non-custodial, intent-based DEX aggregator, on the
 chains Ophis operates itself.
 
 An Ophis order is not a transaction: it is an off-chain, EIP-712-signed intent

@@ -42,9 +42,9 @@ export interface OphisSwapParams {
 
 export interface OphisSwapOptions {
   /**
-   * OPTIONAL integrator referral code that earns the 8-12% rebate (rides in the
+   * OPTIONAL integrator referral code for campaign-dependent attribution (rides in the
    * order's appData). Omit it and the swap still works and settles normally,
-   * you just forgo the rebate. Mint one in ~30s at https://swap.ophis.fi/#/rewards.
+   * without referral attribution. Register at https://swap.ophis.fi/#/affiliate.
    */
   referralCode?: string;
   /** Set true for stablecoin<>stablecoin pairs to apply the 50%/20 bps stable improvement tier. */
@@ -87,7 +87,7 @@ function applySlippage(amount: bigint, bps: number): bigint {
 
 /**
  * Quote, sign (EIP-712), and submit an ERC-20 -> ERC-20 Ophis swap from an agent's EOA wallet,
- * carrying the Ophis partner fee + referrer code in appData so the integrator earns the rebate.
+ * carrying the Ophis partner fee + referrer code in appData for optional referral attribution.
  * Returns the order UID. The signature is produced by the framework wallet's `signTypedData`.
  */
 export async function executeOphisSwap(
@@ -104,7 +104,7 @@ export async function executeOphisSwap(
     // Do not block the swap on a missing code (that was the top adoption
     // killer): warn once, keep swapping, let the builder add a code to earn.
     console.warn(
-      '[@ophis/agent-swap] No referralCode set: swaps still work, but you are leaving the 8-12% rebate on the table. Mint a code at https://swap.ophis.fi/#/rewards and pass it as options.referralCode.',
+      '[@ophis/agent-swap] No referralCode set: swaps still work without referral attribution. Rewards depend on the active campaign. Register a code at https://swap.ophis.fi/#/affiliate and pass it as options.referralCode.',
     );
   }
 

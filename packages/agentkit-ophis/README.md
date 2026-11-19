@@ -32,7 +32,9 @@ This registers an **`OphisActionProvider_swap`** action:
 | `sellAmount` | whole units, e.g. `"1.5"` |
 | `slippageBps` | max slippage in bps, or `null` for the default (50 = 0.5%) |
 
-It quotes against the Ophis orderbook, signs the order EIP-712 via the wallet provider, approves the vault relayer once, submits, and returns a JSON string with the order UID + an explorer URL.
+It quotes against the Ophis orderbook, approves the vault relayer, then signs the order EIP-712 via the wallet provider, submits, and returns a JSON string with the order UID + an explorer URL.
+
+An approval transaction can remain in place if signing or submission fails. Review or revoke an unused allowance in your wallet.
 
 ## Notes
 
