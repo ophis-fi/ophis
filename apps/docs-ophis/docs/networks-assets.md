@@ -107,14 +107,14 @@ Check the token contract, issuer disclosures and trading restrictions before swa
 
 ## Private swaps
 
-Select **Private** in the standalone swap app to open the RAILGUN shielded-wallet flow. It supports **Ethereum, Arbitrum and BNB Chain**. Private mode has its own token list, balances, quotes and broadcaster availability; public-mode network coverage does not apply.
+Select **Private** in the standalone swap app to open the RAILGUN shielded-wallet flow. It supports **Ethereum, Arbitrum and BNB Chain**. Base remains a held pilot and Polygon is deferred. Private mode has its own token list, balances, quotes and broadcaster availability; public-mode network coverage does not apply.
 
 1. Create or unlock the private wallet and keep its recovery material securely.
 2. Shield supported assets from your public wallet. Approvals and deposits require public transactions; a deposit must synchronize and become **Spendable** before it can fund a private swap.
 3. Review the supported pool route, minimum output, Ophis fee and broadcaster fee, then authorize the private transaction.
 4. Use the saved transaction and recovery controls to reconcile pending activity before retrying or withdrawing.
 
-Private swaps use supported Uniswap v3 pool routes rather than public batch auctions. Shielding and unshielding are public onchain actions; privacy does not mean that every transaction detail is hidden. See [private-swap costs](/fees#private-swap-costs) and [security limits](/audits#private-wallet-security).
+Private swaps use supported Uniswap v3 pool routes rather than public batch auctions. Shielding and unshielding are public onchain actions; privacy does not mean that every transaction detail is hidden. Use the [Privacy pools guide](/privacy-pools) for supported assets, wallet setup, gas credit, refunds and recovery. See also [private-swap costs](/fees#private-swap-costs) and [security limits](/audits#private-wallet-security).
 
 ## Ethereum OTC trading {/* #otc-is-a-separate-ethereum-flow */}
 

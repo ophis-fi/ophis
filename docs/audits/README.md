@@ -12,6 +12,8 @@ machine-readable scan baselines and verification data used by tooling.
 
 For vulnerability disclosure, see [SECURITY.md](../../SECURITY.md).
 
+For the latest recorded dependency inventory, see the [19 November 2026 status](dependency-review-2026-11-03.md#current-status-2026-11-19): three open high-severity alerts with tested local backports, and the upstream picomatch advisory withdrawal.
+
 | Date       | Report                                                                                                                   |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------ |
 | 2026-11-17 | [Picomatch advisory review](picomatch-GHSA-fc5q-2026-11-17.md) |

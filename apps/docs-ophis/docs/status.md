@@ -49,7 +49,7 @@ The [daily Robinhood canary](https://github.com/ophis-fi/ophis/actions/workflows
 | Ophis-operated | Optimism (chain 10), Unichain (chain 130), Robinhood Chain (chain 4663), Arc (chain 5042) | Ophis orderbooks listed above and Ophis-deployed `GPv2Settlement` contracts. |
 | [NEAR Intents](https://near.org/intents) | Solana, Bitcoin, Monad, Hyperliquid (Hypercore), X Layer, Sui, Tron, Starknet, Zcash | Sources and destinations in the standalone app; external-source swaps begin with a deposit. |
 
-Private-mode availability also depends on the selected RAILGUN network, wallet synchronization, pool liquidity and broadcaster. A reachable public orderbook does not confirm that a private route is available.
+Private mode is enabled for Ethereum, Arbitrum and BNB Chain; Base remains a held pilot and Polygon is deferred. Availability also depends on wallet synchronization, pool liquidity and the selected broadcaster. A reachable public orderbook does not confirm that a private route is available. Check the app's broadcaster and fee-credit status, and use the [private-transaction recovery guide](/privacy-pools#interrupted-transactions) for pending activity.
 
 Resolve SDK-supported chains through `@ophis/sdk` v0.4.5 or MCP `list_chains`; both include Arc.
 

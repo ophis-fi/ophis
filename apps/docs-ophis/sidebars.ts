@@ -14,7 +14,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Overview',
       collapsed: false,
-      items: [doc('getting-started', 'rocket'), doc('cli', 'terminal'), doc('networks-assets', 'globe'), doc('architecture', 'workflow'), doc('fees', 'receipt'), doc('trade-rewards', 'gift'), doc('comparison', 'scale')],
+      items: [doc('getting-started', 'rocket'), doc('privacy-pools', 'shield-check'), doc('cli', 'terminal'), doc('networks-assets', 'globe'), doc('architecture', 'workflow'), doc('fees', 'receipt'), doc('trade-rewards', 'gift'), doc('comparison', 'scale')],
     },
     {
       type: 'category',

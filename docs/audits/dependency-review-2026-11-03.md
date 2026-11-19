@@ -1,8 +1,24 @@
 # Dependabot sweep: 2026-11-03
 
+## Current status: 2026-11-19
+
+[PR #1650](https://github.com/ophis-fi/ophis/pull/1650) was merged and deployed on 18 November. The authenticated Dependabot inventory checked on 19 November at 14:20 UTC has **three open high-severity alerts**:
+
+| Alert | Package and manifest | Current treatment | Upstream migration target |
+| --- | --- | --- | --- |
+| 1144 | Broadcaster `zod`, `pnpm-lock.yaml` | Installed array/set bound backport, with CJS/ESM regression checks | 4.6.6 or a later compatible fixed release; the current SDK uses Zod 3 |
+| 1143 | Broadcaster `@graphql-tools/utils`, `pnpm-lock.yaml` | Installed prototype-pollution backport, with CJS/ESM regression checks | 12.0.1 or a later compatible fixed release |
+| 1141 | Broadcaster `@graphql-tools/utils`, `package.json` | Same backport and compatibility constraint | The pinned Mesh stack still needs the removed `AggregateError` export |
+
+These are version-matched alerts against patched older packages. A tested backport does not close a GitHub version alert or establish that the entire dependency is free of vulnerabilities. Replacing the backports with compatible upstream releases remains outstanding; forcing either major version without migrating and testing its consumers is not a safe substitute.
+
+Of the original 22 alerts, **14 are fixed, five were withdrawn upstream, and three remain open**. GitHub withdrew [picomatch GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) on **18 November at 15:38:56 UTC**. Alert endpoints 1163, 1161, 1160, 1159 and 1157 now return HTTP 410 as withdrawn; this reduction was not a new Ophis fix or a manual dismissal. The separate contracts-tooling alert 1162 also returns withdrawn. Existing picomatch patches and bounded regression checks remain; see the [updated advisory review](picomatch-GHSA-fc5q-2026-11-17.md).
+
+This follow-up verifies alert status and the retained patches. It does not rerun or expand the November 18 scans. Their limitations below remain relevant. Use the [live Dependabot page](https://github.com/ophis-fi/ophis/security/dependabot) for changes after this snapshot.
+
 ## Follow-up: 2026-11-18
 
-PR #1650 addresses the 22 alerts open on 18 November. Earlier counts and dismissal decisions below describe the November 3 review, not this follow-up. This update dismisses no alerts and keeps the PR unmerged.
+The following records PR #1650's pre-merge treatment of the 22 alerts open on 18 November. Earlier counts and dismissal decisions below describe the November 3 review. No alerts were manually dismissed by this remediation; see the current status above for the subsequent merge and advisory withdrawal.
 
 | Alerts | Package | Remediation |
 | --- | --- | --- |
@@ -17,7 +33,7 @@ PR #1650 addresses the 22 alerts open on 18 November. Earlier counts and dismiss
 | 1143, 1141 | broadcaster `@graphql-tools/utils` 8/9 | Retain prototype-pollution backports and CJS/ESM regressions. Version 12 removes `AggregateError`, still used by the pinned Mesh stack. |
 | 1142 | broadcaster `elliptic` | Remove the wallet SDK's unused React Native `crypto-browserify` dependency in this Node-only service; exercise the real SDK's import/sign/recover path. |
 
-Thirteen alerts are addressed by fixed upstream versions, one by removing an unused dependency chain, and eight by tested local backports. GitHub evaluates the default branch, so the upgrades do not close its alerts before merge; version-matched backports may stay flagged afterward. No new advisory exception or relaxed severity threshold is introduced.
+At that review, thirteen alerts were addressed by fixed upstream versions, one by removing an unused dependency chain, and eight by tested local backports. GitHub evaluates the default branch and upstream package versions; it cannot infer a local backport from the version number. No new advisory exception or relaxed severity threshold was introduced.
 
 The wider source review used Trail of Bits rules/Slither, a scoped Pashov and ETHSKILLS review, Semgrep OSS, Cloudflare runtime checks, Trivy, Verity, Gitleaks and a Jev cross-check. It found unauthenticated development services listening on all host interfaces: 40 published ports across the backend and two playground compose files now bind to `127.0.0.1`. Container-to-container connections and all non-port YAML values are unchanged.
 

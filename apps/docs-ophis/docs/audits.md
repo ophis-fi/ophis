@@ -89,15 +89,21 @@ Ophis uses these tools and guides in its reviews:
 <Card icon="check" title="Verity Lang" href="https://veritylang.com">Ophis uses Lean 4 proofs for access-control models.</Card>
 </Cards>
 
+### Dependency status — 19 November 2026
+
+[Dependabot](https://github.com/ophis-fi/ophis/security/dependabot) has three open high-severity alerts: broadcaster `zod` (#1144) and `@graphql-tools/utils` (#1143 and #1141). Tested local security backports are installed, but their upstream version numbers remain flagged. Migrating to compatible upstream fixed versions remains outstanding. This is not a claim of zero vulnerabilities or a complete audit.
+
+Five picomatch alerts disappeared after [GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) was withdrawn on 18 November; they were not closed by another release. Existing patches and regression checks remain. The [dependency review](https://github.com/ophis-fi/ophis/blob/main/docs/audits/dependency-review-2026-11-03.md) records the dated inventory, backports and scan limitations.
+
 ## Private wallet security
 
 Private mode uses a separate RAILGUN wallet on Ethereum, Arbitrum and BNB Chain. Keep its recovery material secure. Public deposits and withdrawals remain visible onchain; shielding does not guarantee anonymity or hide every aspect of a pool swap. Only synchronized balances marked **Spendable** can fund a private transaction.
 
 Review the minimum output, broadcaster identity, fee and any native-gas prepayment before authorizing. A pending transaction must be reconciled with the recovery controls before another spend. The public batch-auction solver allowlist and fee schedule do not govern this path.
 
-Unused native-prepaid gas credit is **custodial**. Refunds require the operator's enabled signing service and sufficient backing; balances below the maximum processing allowance cannot produce a positive refund. There is no independent onchain withdrawal of this operator-held balance. These limits concern fee credit, not all shielded wallet assets. Read the [refund policy](https://github.com/ophis-fi/ophis/blob/main/apps/broadcaster/PREPAID-REFUNDS.md) and [private recovery instructions](https://github.com/ophis-fi/ophis/blob/main/apps/railgun/README.md#interrupted-transactions).
+Unused native-prepaid gas credit is **custodial**. Refunds require the operator's enabled signing service and sufficient backing; balances below the maximum processing allowance cannot produce a positive refund. There is no independent onchain withdrawal of this operator-held balance. These limits concern fee credit, not all shielded wallet assets. Follow [Privacy pools and private swaps](/privacy-pools) for wallet setup, deposits, fees, refunds and recovery. Read the [refund policy](https://github.com/ophis-fi/ophis/blob/main/apps/broadcaster/PREPAID-REFUNDS.md) and [private recovery instructions](https://github.com/ophis-fi/ophis/blob/main/apps/railgun/README.md#interrupted-transactions).
 
-The production RPC allowlist enables Ethereum, BNB Chain and Arbitrum. Base remains a held pilot and Polygon is deferred; SDK configuration and local fork tests do not establish production availability. Private spending also depends on proof-of-innocence eligibility, RPC access and transaction delivery. Public deposits, withdrawals and the pool swap remain visible. Ophis's gateway and Cloudflare can see the client's IP; the gateway's simulation upstream receives the signed batch without the original client-IP header.
+The production RPC allowlist enables Ethereum, BNB Chain and Arbitrum. Base remains a held pilot and Polygon is deferred; SDK configuration and local fork tests do not establish production availability. The current Ophis wallet and broadcaster disable PPOI checks; other RAILGUN wallets and services can enforce their own policies. Transaction proofs and synchronized spendable balances remain required. Private spending also depends on RPC access and transaction delivery. Public deposits, withdrawals and the pool swap remain visible. Ophis's gateway and Cloudflare can see the client's IP; the gateway's simulation upstream receives the signed batch without the original client-IP header.
 
 The upstream settlement audits linked above concern the GPv2 contracts. They do not certify Ophis frontend changes, the private wallet, broadcasters, bridge providers or deployment configuration.
 

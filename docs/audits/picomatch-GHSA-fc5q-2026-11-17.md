@@ -1,6 +1,8 @@
 # picomatch GHSA-fc5q-39xc-vjpf (CVE-2026-112366): review, 2026-11-17
 
-**Advisory.** "picomatch vulnerable to ReDoS through single-branch repeated extglobs", HIGH, published 2026-10-19, in the OSV data the CI gates read from about 2026-11-17 16:00 UTC (the security workflow passed at 15:50 UTC and failed at 16:20 UTC on unchanged lockfiles). Affected: every picomatch release up to 4.0.7. **No patched release exists.**
+**Status checked 2026-11-19.** GitHub [withdrew this advisory](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) on 2026-11-18 at 15:38:56 UTC. The five previously open Dependabot alerts (1163, 1161, 1160, 1159 and 1157), and the separate contracts-tooling alert 1162, now return HTTP 410 as withdrawn. This is an upstream advisory change, not an additional Ophis release or proof that every parser input is safe. Keep the existing patches and regression checks pending review of the upstream resolution. The remaining three Dependabot alerts concern Zod and GraphQL Tools, as recorded in the [dependency status](dependency-review-2026-11-03.md#current-status-2026-11-19).
+
+**Original advisory snapshot, 2026-11-17.** "picomatch vulnerable to ReDoS through single-branch repeated extglobs", HIGH, published 2026-10-19, in the OSV data the CI gates read from about 2026-11-17 16:00 UTC (the security workflow passed at 15:50 UTC and failed at 16:20 UTC on unchanged lockfiles). The advisory then identified releases through 4.0.7 as affected, with no patched release listed.
 
 **What it takes.** A crafted glob pattern (repeated single-branch extglobs) compiles to a regular expression that backtracks catastrophically. Exploitation needs an attacker to choose the pattern, or the input matched against such a pattern.
 
@@ -19,8 +21,8 @@
 
 `scripts/test-picomatch-security.cjs` tests every installed lockfile version, requires an active pnpm patch, and bounds the whole probe with a child-process timeout. It covers the reported patterns and ordinary matching behavior; removing the new condition reproduces the timeout. Each affected pnpm project's CI runs it, including Business console, which the initial Dependabot inventory did not list.
 
-No reviewed running service accepts an untrusted glob. The two `contracts/yarn.lock` copies remain unpatched Hardhat/test tooling with repository-defined patterns, recorded in `audit/contracts-osv-baseline.json`; they are outside the five open Dependabot alerts. Do not interpret the pnpm fix as a fix for those Yarn copies.
+No reviewed running service accepts an untrusted glob. The two `contracts/yarn.lock` copies remain unpatched Hardhat/test tooling with repository-defined patterns, recorded in `audit/contracts-osv-baseline.json`; they were outside the five open Dependabot alerts at the November 18 review. Do not interpret the pnpm fix or advisory withdrawal as a fix for those Yarn copies.
 
-**Scanner handling.** The existing dated `--ignore GHSA-fc5q-39xc-vjpf:2026-12-17` remains because OSV and Dependabot match the upstream version and cannot see the patch. Installed-package regression checks enforce the backport. No alert was dismissed and no expiry was extended. [Upstream advisory](https://github.com/advisories/GHSA-fc5q-39xc-vjpf).
+**Scanner handling.** The existing dated `--ignore GHSA-fc5q-39xc-vjpf:2026-12-17` was retained during remediation because version scanners could not see the patch. This documentation follow-up does not change it or extend its expiry. Installed-package regression checks still enforce the backport; scanner databases can receive the withdrawal at different times. No alert was manually dismissed by this remediation.
 
 **Re-check by 2026-12-17**, or earlier if picomatch ships a fix (then upgrade and drop the ignores and the baseline lines), or if any service starts matching user-supplied globs.

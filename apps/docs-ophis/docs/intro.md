@@ -30,7 +30,7 @@ Ophis is a multichain DEX aggregator that brings token swaps, cross-chain transf
 <Card icon="globe" title="Cross-chain swaps" href="/networks-assets">Use NEAR Intents, Circle or Across routes in the swap app.</Card>
 </Cards>
 
-Standard signed ERC-20 orders keep funds in your wallet until settlement. Direct swaps use wallet transactions; native-token and bridge routes have their own funding steps. Private mode uses a separate shielded wallet; see [Networks & assets](/networks-assets#private-swaps).
+Standard signed ERC-20 orders keep funds in your wallet until settlement. Direct swaps use wallet transactions; native-token and bridge routes have their own funding steps. Private mode uses a separate shielded wallet; see [Privacy pools and private swaps](/privacy-pools) for deposits, fees, recovery and privacy limits.
 
 ## Swap fees
 
@@ -59,5 +59,6 @@ Find the [source code](https://github.com/ophis-fi/ophis), [OpenAPI spec](https:
 <Cards>
 <Card icon="rocket" title="Getting started" href="/getting-started">Make your first swap.</Card>
 <Card icon="terminal" title="Ophis CLI" href="/cli">Swap and bridge from your terminal.</Card>
+<Card icon="lock" title="Privacy pools" href="/privacy-pools">Use the shielded wallet and manage private swaps.</Card>
 <Card icon="shield-check" title="Security and audits" href="/audits">Review wallet custody and settlement contracts.</Card>
 </Cards>

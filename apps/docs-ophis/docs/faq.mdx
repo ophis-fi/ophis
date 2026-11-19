@@ -189,7 +189,9 @@ Yes. Use the public API to turn natural-language requests into structured trade 
 
 ## Private swaps
 
-**Private** mode uses a RAILGUN shielded wallet on Ethereum, Arbitrum and BNB Chain. Switching modes does not shield your public balance. Deposits must synchronize and become **Spendable** before use. The Ophis private-swap fee is 0.1% of output, with pool, broadcaster and applicable deposit or withdrawal costs in addition. See [Networks & assets](/networks-assets#private-swaps) for funding and recovery.
+**Private** mode uses a RAILGUN shielded wallet on Ethereum, Arbitrum and BNB Chain. Switching modes does not shield your public balance. Deposits must synchronize and become **Spendable** before use. The Ophis private-swap fee is 0.1% of output, with pool, broadcaster and applicable deposit or withdrawal costs in addition. Follow [Privacy pools and private swaps](/privacy-pools) for wallet setup, supported assets, funding and recovery.
+
+Gas credit is a separate, operator-held native-currency balance. It is not part of your shielded wallet; [refunds](/privacy-pools#refund-unused-fee-credit) depend on the operator and have processing costs. Ophis does not require PPOI checks, though other RAILGUN services may. Public deposits, withdrawals, pool trades and gas-credit transfers remain visible; see [privacy limits](/privacy-pools#what-remains-visible).
 
 ## Next
 
