@@ -714,7 +714,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   }
 
   // Reject before cache/model lookup so retirement cannot silently change the requested chain.
-  if (/\bunichain\b|\bchain(?:\s+id)?\s*[:=#]?\s*130\b/i.test(text)) {
+  if (/\bunichain\b|\b(?:chain(?:\s+id)?\s*[:=#]?|(?:on|via|using)\s+)\s*130\b/i.test(text)) {
     return json({ ok: false, error: { code: 'BAD_INPUT', message: 'Unichain (130) is retired. Choose a supported network.' } }, 400)
   }
 

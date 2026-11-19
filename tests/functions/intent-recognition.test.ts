@@ -19,9 +19,9 @@ import * as intent from '../../functions/api/intent.ts'
 test('retired Unichain requests fail before a cached or model-produced chain-less swap can be served', async (t) => {
   const fetch = t.mock.method(globalThis, 'fetch', async () => { throw new Error('must not call model') })
   const cache = { get: t.mock.fn(async () => JSON.stringify({ ok: true, data: { intent: 'swap', entities: [] } })) }
-  for (const chain of ['Unichain', 'UNICHAIN', 'chain 130', 'chain ID: 130']) {
+  for (const destination of ['on Unichain', 'on UNICHAIN', 'on chain 130', 'on chain ID: 130', 'on 130', 'via 130', 'using 130']) {
     const request = new Request('https://swap.ophis.fi/api/intent', {
-      method: 'POST', body: JSON.stringify({ text: `swap 1 ETH for USDC on ${chain}` }),
+      method: 'POST', body: JSON.stringify({ text: `swap 1 ETH for USDC ${destination}` }),
     })
     const response = await intent.onRequestPost({
       request, env: { LIBERTAI_API_KEY: 'test-only', OPHIS_RATELIMIT: cache },
@@ -33,6 +33,24 @@ test('retired Unichain requests fail before a cached or model-produced chain-les
   }
   assert.equal(fetch.mock.callCount(), 0)
   assert.equal(cache.get.mock.callCount(), 0)
+})
+
+test('130 remains a valid swap amount on an active network', async (t) => {
+  const text = 'swap 130 USDC for ETH on Base'
+  const parsed = {
+    intent: 'swap',
+    entities: [ent('amount', '130', '130', text), ent('sellToken', 'USDC', 'USDC', text), ent('buyToken', 'ETH', 'ETH', text)],
+  }
+  t.mock.method(globalThis, 'fetch', async () => Response.json({
+    choices: [{ message: { content: JSON.stringify(parsed) } }],
+  }))
+  const request = new Request('https://swap.ophis.fi/api/intent', { method: 'POST', body: JSON.stringify({ text }) })
+  const response = await intent.onRequestPost({ request, env: { LIBERTAI_API_KEY: 'test-only' } } as Parameters<typeof intent.onRequestPost>[0])
+  assert.equal(response.status, 200)
+  const result = await response.json()
+  assert.equal(result.ok, true)
+  assert.equal(result.data.entities.find((entity: { type: string }) => entity.type === 'amount')?.value, '130')
+  assert.equal(result.data.entities.find((entity: { type: string }) => entity.type === 'chain')?.value, 'base')
 })
 
 test('intent timeout covers a stalled response body after successful headers', async (t) => {
