@@ -713,8 +713,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     return json({ ok: false, error: { code: 'BAD_INPUT', message: `text exceeds ${MAX_TEXT_LEN} chars` } }, 400)
   }
 
-  // Reject before cache/model lookup so retirement cannot silently change the requested chain.
-  if (/\bunichain\b|\b(?:chain(?:\s+id)?\s*[:=#]?|(?:on|via|using)\s+)\s*130\b/i.test(text)) {
+  // Reject before cache/model lookup so retirement cannot silently change the requested chain. Its id in decimal or hex
+  // (0x82), in a chain position only: an address that starts with 0x82 is no chain (CodeRabbit, PR #1680).
+  if (/\bunichain\b|\b(?:chain(?:\s+id)?\s*[:=#]?|(?:on|via|using)\s+)\s*(?:130|0x0*82)\b/i.test(text)) {
     return json({ ok: false, error: { code: 'BAD_INPUT', message: 'Unichain (130) is retired. Choose a supported network.' } }, 400)
   }
 
