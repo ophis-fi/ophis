@@ -11,9 +11,6 @@ type View =
   | { kind: 'handover'; why: string }
 
 const MAX = 500
-const PRIVACY = 'An outside provider, TypeSafe AI (USA), matches your question to our help texts. It receives your question without your name, organisation or wallet. Ophis does not store your question.'
-// The notice above is about what Ophis adds. What the member types is sent as typed, less what the cleaning removes.
-const CARE = 'Leave out names and anything secret.'
 // The email is the member's own: a subject and three empty lines, nothing else filled in.
 const MAILTO = `mailto:clement@ophis.fi?subject=${encodeURIComponent('Ophis Business support')}&body=${encodeURIComponent('What I was doing:\r\n\r\nWhat I expected:\r\n\r\nWhat happened:\r\n')}`
 const PAGE: Record<string, string> = { '/#/organisation': 'Organisation', '/#/compliance': 'Compliance', '/recover': 'the account recovery page' }
@@ -52,13 +49,12 @@ export function Support({ onSignedOut }: { onSignedOut: () => void }) {
 
       <form className="panel stack" onSubmit={ask}>
         <label className="field">Your question
-          <textarea className="input" rows={3} maxLength={MAX} value={question} aria-describedby="sp-count sp-privacy" onChange={(e) => setQuestion(e.target.value)} />
+          <textarea className="input" rows={3} maxLength={MAX} value={question} aria-describedby="sp-count" onChange={(e) => setQuestion(e.target.value)} />
         </label>
         <div className="acts">
           <button className="btn primary md" type="submit" disabled={view.kind === 'busy'}><Icon name="life-buoy" size={16} />Ask</button>
           <span className="fine" id="sp-count">{question.length} of {MAX} characters</span>
         </div>
-        <p className="fine" id="sp-privacy"><Icon name="info" size={16} /><span>{PRIVACY} {CARE}</span></p>
       </form>
 
       <div className="stack" aria-live="polite">

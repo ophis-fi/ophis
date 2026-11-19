@@ -20,7 +20,7 @@ const lower = (address: string) => address.toLowerCase()
 
 // The official Safe contracts, from the package @safe-global/safe-deployments 1.37.67 (dist/assets/v1.3.0, v1.4.1 and
 // v1.5.0: proxy factory, Safe and SafeL2 singletons, CompatibilityFallbackHandler). Each flavour is listed there on
-// chains 1, 10, 8453 and 42161. proxy: keccak256 of the runtime code of the proxy that the flavour's factory creates,
+// chains 1, 10, 8453 and 42161, and 4663 and 5042 (code byte-identical to Ethereum's on both endpoints, 2026-11-19). proxy: keccak256 of the runtime code of the proxy that the flavour's factory creates,
 // read on a fork. tests/chain.mjs creates a Safe through every factory here and proves each line of this table.
 export const SAFES = [
   { version: '1.3.0', factory: '0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2', singletons: ['0xd9Db270c1B5E3Bd161E8c8503c55cEABeE709552', '0x3E5c63644E683549055b9Be8653de26E0B4CD36E'], handler: '0xf48f2B2d2a534e402487b3ee7C18c33Aec0Fe5e4', proxy: '0xb89c1b3bdf2cf8827818646bce9a8f6e372885f8c55e5c07acbd307cb133b000' },

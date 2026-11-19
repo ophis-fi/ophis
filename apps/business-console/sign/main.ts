@@ -12,7 +12,7 @@ import '../src/app/kit.css'
 import '../src/app/app.css'
 import './sign.css'
 import { onPhone } from '../src/app/phone.ts'
-import { CHAIN_NAME, PROOF_ACTION, typedLink, typedProof, type ProofKind, type Typed } from '../src/server/typed.ts'
+import { CHAIN_NAME, PROOF_ACTION, switchTo, typedLink, typedProof, type ProofKind, type Typed } from '../src/server/typed.ts'
 
 interface Request { org: string; chainId: number; wallet: string; nonce: string; issuedAt: number; expiresAt: number; site: string; kind?: ProofKind; credentialHash?: string }
 interface Provider { request(call: { method: string; params?: unknown[] }): Promise<unknown> }
@@ -129,7 +129,7 @@ async function byWallet(ethereum = (window as { ethereum?: Provider }).ethereum,
   if (!named()) show({ wallet: account, chainId: Number(await ethereum.request({ method: 'eth_chainId' })) })
   else {
     if (!same(account, request.wallet)) return say(`${which} is ${account}. The request is for ${request.wallet}. Switch the account and try again.`, 'bad')
-    await ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: `0x${request.chainId.toString(16)}` }] })
+    await switchTo(ethereum, request.chainId)
   }
   await post((await ethereum.request({ method: 'eth_signTypedData_v4', params: [account, JSON.stringify(typed)] })) as string)
 }
@@ -236,15 +236,15 @@ async function readOrder(code: string) {
   for (const [id, text] of [['o-binding', w.binding], ['o-sell', w.sell], ['o-buy', w.buy], ['o-type', w.type], ['o-chain', w.chain], ['o-wallet', w.wallet], ['o-valid', w.valid], ['o-fee', w.fee], ['o-uid', order.uid]]) $(id).textContent = text
   $('o-binding').hidden = order.purpose !== 'sign'
   const presign = order.scheme === 'presign'
-  const approve: [string, string] = ['approve', `Approve exactly ${order.allowanceWords} for the CoW Protocol vault relayer, if the wallet has not yet`]
+  const approve: [string, string] = ['approve', `Approve exactly ${order.allowanceWords} for the vault relayer of the settlement contract, if the wallet has not yet`]
   steps(order.purpose === 'cancel'
     ? [[presign ? 'safe' : 'sign', presign ? 'The Safe transaction that revokes the presignature, signed and executed by the Safe owners' : 'Sign the cancellation in the wallet'], ['sent', presign ? 'Recorded: the cancel waits for the Safe transaction' : 'Sent to the orderbook']]
     : presign ? [['sent', 'Checked and sent to the orderbook, where it waits for the Safe transaction'], approve, ['safe', 'The Safe transaction: the approval if needed and the presignature of the order, signed and executed by the Safe owners']]
     : [approve, ['sign', 'Sign the order in the wallet'], ['sent', 'Sent to the orderbook']])
   const others = order.allowance === order.sellAmount ? '' : ' The approval covers this order and the other open orders of this wallet in this asset.'
   $('o-advice').textContent = order.purpose === 'cancel' ? (presign ? 'In the Safe interface you see one transaction: the revocation of this order\'s presignature on the settlement contract. Check it before the owners sign.' : 'Your wallet shows the cancellation of this order id to sign. Check that it matches.')
-    : presign ? `The order is checked and sent to the orderbook first. Then the Safe interface shows one transaction batch: an approval of exactly ${order.allowanceWords} to the CoW Protocol vault relayer if one is needed, and the signature of this order on the settlement contract. Check it before the owners sign.${others}`
-    : `Your wallet may first ask to approve exactly ${order.allowanceWords} to the CoW Protocol vault relayer, then it shows the order to sign. Check that it matches.${others}`
+    : presign ? `The order is checked and sent to the orderbook first. Then the Safe interface shows one transaction batch: an approval of exactly ${order.allowanceWords} to the vault relayer of the settlement contract if one is needed, and the signature of this order on the settlement contract. Check it before the owners sign.${others}`
+    : `Your wallet may first ask to approve exactly ${order.allowanceWords} to the vault relayer of the settlement contract, then it shows the order to sign. Check that it matches.${others}`
   $('o-by-wallet').hidden = Boolean(safe) || presign
   $('o-by-safe').hidden = !safe
   // A Safe's order is signed inside the Safe interface only: this page there, as a custom app.
@@ -280,7 +280,7 @@ async function orderByWallet() {
   if (!ethereum) return say('No wallet was found in this browser. Open this page in the browser that holds the wallet.', 'warn')
   const [account] = (await ethereum.request({ method: 'eth_requestAccounts' })) as string[]
   if (!same(account, order.wallet)) return say(`The wallet in this browser is ${account}. The order is for ${order.wallet}. Switch the account and try again.`, 'bad')
-  await ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: `0x${order.chainId.toString(16)}` }] })
+  await switchTo(ethereum, order.chainId)
   if (order.purpose === 'sign' && !(await reread())) return
   if (order.purpose === 'sign') step('approve', 'now')
   if (order.purpose === 'sign' && short(await ethereum.request({ method: 'eth_call', params: [{ to: order.sellToken, data: allowance() }, 'latest'] }))) {

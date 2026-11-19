@@ -62,7 +62,7 @@ table.t td small { display: block; color: var(--muted); font-size: 12.5px; line-
 
 /* Enrolment: the hand-over dialog, the waiting list, the alerts read at sign-in */
 .methods.wide { max-width: 560px; } dl.kv .site { font: 400 22px/1.2 var(--font-display); }
-.grow { flex: 1; min-width: 0; } select.input { appearance: auto; } .input.mono { font-family: var(--font-mono); font-size: 13px; }
+.grow { flex: 1; min-width: 0; } select.input { appearance: none; background-image: url('./chevron.svg'); background-repeat: no-repeat; background-position: right 14px center; background-size: 16px; padding-right: 42px; } .input.mono { font-family: var(--font-mono); font-size: 13px; }
 dialog { border: 1px solid var(--line); background: var(--paper); color: var(--ink); padding: 0; max-width: 100vw; box-shadow: var(--shadow-float); }
 dialog::backdrop { background: rgba(23, 25, 28, .3); } dialog[open] { display: flex; flex-direction: column; }
 .drawer { margin: 0 0 0 auto; width: min(480px, 100vw); height: 100dvh; max-height: none; border-width: 0 0 0 1px; border-radius: var(--r-panel) 0 0 var(--r-panel); }
@@ -187,3 +187,9 @@ button.link { border: 0; padding: 0; background: none; color: var(--ink); cursor
 /* The wallets on a sanctions list that traded: a red note with its table, above the partner wallets. */
 .note.flagged { flex-direction: column; margin-bottom: 12px; } .note.flagged > p { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-start; margin: 0; } .note.flagged > .btn { align-self: flex-start; }
 .note.flagged td { color: var(--ink); } .note.flagged td .mono { white-space: normal; overflow-wrap: anywhere; } .note.flagged td small { white-space: normal; } .fine.checked { margin-bottom: 20px; }
+/* The desk's logos (2026-11-19): a chain or an asset beside its name, and inside a select at its left. */
+.logo { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; flex: none; }
+.glyph { display: inline-block; background: var(--line); color: var(--ink); font: 600 11px/20px var(--font-body); text-align: center; }
+.with-logo { display: inline-flex; align-items: center; gap: 8px; }
+.pick { position: relative; display: block; } .pick > .logo { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; }
+.pick > select.input { width: 100%; padding-left: 42px; }

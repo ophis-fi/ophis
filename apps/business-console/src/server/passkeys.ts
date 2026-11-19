@@ -16,6 +16,9 @@ const CHAINS = {
   10: ['https://optimism-rpc.publicnode.com', 'https://mainnet.optimism.io'],
   8453: ['https://base-rpc.publicnode.com', 'https://mainnet.base.org'],
   42161: ['https://arbitrum-one-rpc.publicnode.com', 'https://arb1.arbitrum.io/rpc'],
+  // 2026-11-19: Robinhood Chain and Arc, the chain's own endpoint and PublicNode's (each answered its eth_chainId that day).
+  4663: ['https://rpc.mainnet.chain.robinhood.com', 'https://robinhood-rpc.publicnode.com'],
+  5042: ['https://rpc.mainnet.arc.io', 'https://arc-rpc.publicnode.com'],
 } as const
 const ENVIRONMENTS: Record<string, Config> = {
   local: { rpId: 'localhost', origin: 'http://localhost:8787', signOrigin: 'http://127.0.0.1:8787', chains: CHAINS },

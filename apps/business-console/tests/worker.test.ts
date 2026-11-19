@@ -13,7 +13,7 @@ import worker, { csvCell, daily as dailyRun, EVENTS, handle as handleRequest, ro
 import wranglerConfig from '../wrangler.jsonc?raw'
 import { challengeIsOurs, configFor, credentialHash, fromBase64Url, newChallenge, seal, SUPPORT_HOSTS, toBase64Url, userHandle } from '../src/server/passkeys.ts'
 import { checksum, colour, LIMITS, SAFES, type SafeState } from '../src/server/chain.ts'
-import { LINK_ACTION, PROOF_ACTION, typedLink, typedProof, type Typed } from '../src/server/typed.ts'
+import { LINK_ACTION, NETWORKS, PROOF_ACTION, switchTo, typedLink, typedProof, type Typed } from '../src/server/typed.ts'
 import * as orders from '../src/server/orders.ts'
 import realBook from './fixtures/orderbook.json'
 import golden from './fixtures/appdata-golden.json'
@@ -4174,8 +4174,31 @@ describe('y. wallets and the recovery wallet', () => {
     expect([await get('https://pro.ophis.fi/'), await get('https://sign.ophis.fi/sign/'), await get('https://sign.ophis.fi/'), await get('https://operator.ophis.fi/')]).toEqual([200, 200, 302, 200]) // the operator's review page: Access guards it at the edge, its API checks each call
     for (const url of ['https://sign.ophis.fi/index.html', 'https://pro.ophis.fi/sign/', 'http://pro.ophis.fi/', 'https://ophis.fi/', `${SITE.origin}/`, `${SIGN}/sign/`]) expect(await get(url), url).toBe(404)
     // Every table kept per environment has its entry, so no route of production meets a missing constant.
+    // The signing page switches only through switchTo, which adds a chain the wallet lacks (error 4902, or nested in data).
+    expect([Object.keys(NETWORKS), /wallet_switchEthereumChain/.test(signScript), signScript.match(/await switchTo\(ethereum, (request|order)\.chainId\)/g)?.length]).toEqual([['4663', '5042'], false, 2])
+    const wallet = (refusal: unknown) => {
+      const calls: string[] = []
+      return { calls, request: async ({ method, params }: { method: string; params?: unknown[] }) => {
+        calls.push(`${method} ${JSON.stringify(params)}`)
+        if (method === 'wallet_switchEthereumChain' && refusal && calls.length === 1) throw refusal // the first switch only: the chain is unknown until added
+      } }
+    }
+    // Added, then switched to again: adding need not switch (EIP-3085).
+    for (const refusal of [{ code: 4902 }, { code: -32603, data: { originalError: { code: 4902 } } }]) {
+      const w = wallet(refusal)
+      await switchTo(w, 5042)
+      expect(w.calls).toEqual(['wallet_switchEthereumChain [{"chainId":"0x13b2"}]', `wallet_addEthereumChain ${JSON.stringify([{ chainId: '0x13b2', ...NETWORKS[5042] }])}`, 'wallet_switchEthereumChain [{"chainId":"0x13b2"}]'])
+    }
+    // A known chain switches and adds nothing; a refusal of the person (4001), or 4902 for a chain not in NETWORKS, stays a refusal.
+    const known = wallet(null)
+    await switchTo(known, 1)
+    expect(known.calls).toEqual(['wallet_switchEthereumChain [{"chainId":"0x1"}]'])
+    await expect(switchTo(wallet({ code: 4001 }), 4663)).rejects.toEqual({ code: 4001 })
+    await expect(switchTo(wallet({ code: 4902 }), 8453)).rejects.toEqual({ code: 4902 })
     for (const environment of ['local', 'production']) {
-      expect(Object.keys(configFor(environment).chains), environment).toEqual(['1', '10', '8453', '42161'])
+      expect(Object.keys(configFor(environment).chains), environment).toEqual(['1', '10', '4663', '5042', '8453', '42161'])
+      // A wallet that lacks Robinhood Chain or Arc adds it (2026-11-19) with this environment's first endpoint.
+      for (const [id, n] of Object.entries(NETWORKS)) expect(n.rpcUrls[0], id).toBe(configFor(environment).chains[Number(id)][0])
       expect(SUPPORT_HOSTS[environment], environment).toBe('api.typesafe.ai')
       expect(onboarding.OPERATOR[environment], environment).toMatch(/^https?:\/\/operator\./)
     }
@@ -5585,7 +5608,7 @@ describe('D. Support: the model selects, the server decides', () => {
     expect(text('KB-19')).toContain('Sent: waiting for the Safe transaction')
     expect(text('KB-19')).not.toMatch(/demo|Not available/)
     expect(text('KB-01') + text('KB-19')).not.toMatch(/not built|shows no orders/)
-    expect(supportPage).toContain("'An outside provider, TypeSafe AI (USA), matches your question to our help texts. It receives your question without your name, organisation or wallet. Ophis does not store your question.'")
+    expect(supportPage).not.toMatch(/TypeSafe|outside provider|Leave out names/) // the provider notice was removed (owner, 2026-11-19)
     expect(supportPage).toContain('Did this answer your question?')
     expect(supportPage).toContain("mailto:clement@ophis.fi?subject=${encodeURIComponent('Ophis Business support')}&body=${encodeURIComponent('What I was doing:\\r\\n\\r\\nWhat I expected:\\r\\n\\r\\nWhat happened:\\r\\n')}")
     expect(supportPage).toContain('>Write to Ophis</a>')
@@ -5902,7 +5925,6 @@ describe('F. Support: attacks tried by the review of milestone 6', () => {
     expect([sent.length, await counted(m.seatId)]).toEqual([4, 4])
     expect(supportServer).not.toMatch(/checksum\(/)
     expect(supportPage).toContain('This looks like a wallet recovery phrase')
-    expect(supportPage).toContain('<span>{PRIVACY} {CARE}</span>')
   })
 
   it('the one request follows no redirect: the provider cannot send the question or the key to another host, and a redirect is a hand-over', async () => {
@@ -9364,9 +9386,9 @@ describe('H. the institution: overview from its wallets and orders, the desk and
     const safe = await demoWallet(o.orgId, 'Treasury Safe', 'linked', someAddress(), 'safe', 8453)
     const view = await get('/api/desk', o)
     expect(view.status).toBe(200)
-    expect(view.body).toMatchObject({ mayPrepare: true, maySign: true, maxOpen: 20, validity: [1800, 14400, 86400], slippage: { default: 50, max: 300 }, chains: [{ id: 1, name: 'Ethereum' }, { id: 10, name: 'OP Mainnet' }, { id: 8453, name: 'Base' }, { id: 42161, name: 'Arbitrum One' }] })
+    expect(view.body).toMatchObject({ mayPrepare: true, maySign: true, maxOpen: 20, validity: [1800, 14400, 86400], slippage: { default: 50, max: 300 }, chains: [{ id: 1, name: 'Ethereum' }, { id: 10, name: 'OP Mainnet' }, { id: 4663, name: 'Robinhood Chain' }, { id: 5042, name: 'Arc' }, { id: 8453, name: 'Base' }, { id: 42161, name: 'Arbitrum One' }] })
     expect(view.body.demo).toBeUndefined()
-    expect(view.body.assets.map((x: { chainId: number; symbol: string }) => `${x.chainId} ${x.symbol}`)).toEqual(['1 WETH', '1 USDC', '1 EURC', '1 EURe', '1 EURCV', '10 WETH', '10 USDC', '8453 WETH', '8453 USDC', '8453 EURC', '42161 WETH', '42161 USDC', '42161 EURe'])
+    expect(view.body.assets.map((x: { chainId: number; symbol: string }) => `${x.chainId} ${x.symbol}`)).toEqual(['1 WETH', '1 USDC', '1 EURC', '1 EURe', '1 EURCV', '10 WETH', '10 USDC', '4663 WETH', '4663 USDG', '5042 WETH', '5042 USDC', '5042 EURC', '8453 WETH', '8453 USDC', '8453 EURC', '42161 WETH', '42161 USDC', '42161 EURe'])
     expect(view.body.assets.find((x: { symbol: string }) => x.symbol === 'WETH').cap).toBe('2850')
     expect(view.body.wallets).toEqual([
       { id: walletId, label: 'Operations Safe', address: accounts[1].address, chainId: 10, chain: 'OP Mainnet', scheme: 'eip712' },
@@ -9499,7 +9521,7 @@ describe('H. the institution: overview from its wallets and orders, the desk and
     for (const banned of [/licen[cs]ed|regulated|authori[sz]ed|MiCA|compliant/i, /—/, /honest/i, /paid (weekly|monthly|daily|every)|payout (terms|schedule)|\bdue\b|guarantee|no (other|hidden) fee|never charge|price improvement/i]) expect(said).not.toMatch(banned)
     for (const sentence of [
       'Nothing is signed at this step.', 'Use a larger screen.', 'Sent for approval.', 'Only the assets of the desk are shown.', 'Hand over the signing link', '<Ways link={link} walletConnect={false} />',
-      'The Safe owners or your custodian sign on the signing page. Ophis cannot.', 'Sending asks for your passkey.', 'Each is listed on a chain where two independent sources agree on its address.',
+      'The Safe owners or your custodian sign on the signing page. Ophis cannot.', 'Sending asks for your passkey.', 'An order sells one of these for another on the same chain. Most per order: the largest amount one order can sell.',
     ]) expect(deskPage, sentence).toContain(sentence)
     expect(deskPage).not.toContain('The desk is for institutions.') // every organisation trades on the desk (owner, 2026-11-19)
     expect(deskPage).not.toMatch(/Demo data|not part of this demo|Execution: none/)
@@ -10175,6 +10197,8 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
       10: ['WETH 0x4200000000000000000000000000000000000006 18', 'USDC 0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85 6'],
       8453: ['WETH 0x4200000000000000000000000000000000000006 18', 'USDC 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913 6', 'EURC 0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42 6'],
       42161: ['WETH 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1 18', 'USDC 0xaf88d065e77c8cC2239327C5EDb3A432268e5831 6', 'EURe 0x0c06cCF38114ddfc35e07427B9424adcca9F44F8 18'],
+      4663: ['WETH 0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73 18', 'USDG 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168 6'],
+      5042: ['WETH 0x128cC466B61f542da60c70e3aA11c10e19B84EDB 18', 'USDC 0x3600000000000000000000000000000000000000 6', 'EURC 0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1 6'],
     })
   })
 
