@@ -3,11 +3,11 @@
 Agent-facing **MCP server** for the Ophis DEX, deployed as a Cloudflare Worker
 with the Streamable-HTTP transport at **`https://mcp.ophis.fi/mcp`**.
 
-Current server release: **v0.2.0**, with 13 tools across 15 configured EVM
+Current server release: **v0.2.2**, with 13 tools across 15 configured EVM
 chains (14 mainnets plus Sepolia).
 
 It exposes the Ophis trading surface to autonomous agents and MCP clients
-without making them re-derive the fork's non-obvious, easy-to-get-wrong details
+without making them re-derive chain-specific integration details
 (non-canonical settlement contracts on the Ophis-operated chains, the self
 -hosted Optimism, Unichain, Robinhood Chain, and Arc orderbook hosts, the CIP-75 partner-fee appData shape, and
 receiver pinning).
@@ -21,6 +21,8 @@ The tools operate on configured EVM orderbooks. `list_chains` reports configurat
 not a live availability probe. The standalone app's externally funded NEAR
 source flow is separate; these tools do not create or fund those deposits.
 See [network and funding coverage](https://docs.ophis.fi/networks-assets).
+Shielding, private swaps, gas-credit funding and refunds are separate app flows,
+not MCP tools. See [privacy pools](https://docs.ophis.fi/privacy-pools).
 
 ## Security model
 
@@ -29,7 +31,9 @@ The server holds **no private keys and never signs**. `build_order` returns a
 owner** (the #1 autonomous-agent drain vector); the agent signs with its own key
 and submits. This is the V1 "bounded capability" pattern, an off-chain misuse
 guard, not an on-chain authorization boundary. It is public and unauthenticated:
-every backing endpoint is already public, and the tools are read/build-only.
+every backing endpoint is already public. Read and build tools do not sign;
+`submit_order` relays an order already signed by the caller and registers its
+owner for indexing. It can therefore change orderbook and indexer state.
 
 ## Tools
 
@@ -40,9 +44,9 @@ every backing endpoint is already public, and the tools are read/build-only.
 | `list_chains` | Supported chains, orderbook hosts, settlement contracts, partner-fee config. |
 | `get_quote` | Best-execution quote from the chain's Ophis orderbook (`/api/v1/quote`). |
 | `expected_surplus` | Estimate price improvement versus a public aggregator (KyberSwap), in basis points. |
-| `build_order` | A bounded, ready-to-sign CoW order: correct per-chain settlement + orderbook, CIP-75 partner fee in appData, receiver pinned to owner. |
+| `build_order` | A bounded, ready-to-sign order: correct per-chain settlement + orderbook, CIP-75 partner fee in appData, receiver pinned to owner. |
 | `submit_order` | Relay a **pre-signed** order to the orderbook (`/api/v1/orders`). No keys held here. |
-| `get_integrator_earnings` | Routed volume, the Ophis base fee, and the integrator's own fee on CoW-hosted chains, by appCode (`rebates.ophis.fi/earnings/:appCode`). |
+| `get_integrator_earnings` | Routed volume, the Ophis base fee, and the integrator's own fee on externally hosted chains, by appCode (`rebates.ophis.fi/earnings/:appCode`). |
 | `get_balances` | Native + ERC-20 balances for an address on one chain. |
 | `get_portfolio` | Native + ERC-20 balances across multiple chains. |
 | `get_gas` | Current gas price for a chain (informational; offchain order signatures are gasless, approvals and other wallet transactions are not). |

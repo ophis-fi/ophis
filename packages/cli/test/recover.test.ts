@@ -71,7 +71,7 @@ const WETH: Token = { address: '0x4200000000000000000000000000000000000006', sym
 const ETH: Token = { address: NATIVE_TOKEN_SENTINEL as Address, symbol: 'ETH', decimals: 18, native: true, listed: true }
 const transfer = (to: Address, amount: bigint) => encodeFunctionData({ abi: erc20Abi, functionName: 'transfer', args: [to, amount] })
 
-describe('the CoW Shed address', () => {
+describe('the bridge account address', () => {
   test('shedOf is the SDK proxyOf for any owner, on any chain', async () => {
     const owners = [...Array(5)].map(() => privateKeyToAccount(generatePrivateKey()).address)
     await withAdapter(new ViemAdapter({ provider: createPublicClient({ transport: http('http://127.0.0.1:1') }) as never }), () => {
@@ -377,13 +377,13 @@ describe('the CoW Shed address', () => {
     }
     expect(existsSync(lock)).toBe(false)
   })
-  test('no bridge starts while your CoW Shed still holds a tenth of what the guard asks, but dust is no block', async () => {
+  test('no bridge starts while your bridge account still holds a tenth of what the guard asks, but dust is no block', async () => {
     const owner = privateKeyToAccount(generatePrivateKey()).address
     const base = network('base', 'http://127.0.0.1:9')
     const reads: { to?: string; data?: Hex }[] = []
     let held = 5_000_000n
     serve({ eth_call: ([call]) => (reads.push(call as never), pad(numberToHex(held))) }, { [`${getOphisOrderbookUrl(8453)}/api/v1/account/`]: [] })
-    const leftover = `Your CoW Shed, the small account bridges pay into, still holds 5 USDC from an earlier transfer. Return it to your wallet first: ophis recover ${USDC.address} on base`
+    const leftover = `Your bridge account, the small account bridges pay into, still holds 5 USDC from an earlier transfer. Return it to your wallet first: ophis recover ${USDC.address} on base`
     const GUARD = 25_000_000n // a 25 USDC bridge: a leftover of 2.5 USDC or more must be recovered first
     await expect(checkLeftover(base, owner, USDC, GUARD)).rejects.toThrow(leftover)
     expect([getAddress(reads[0]!.to!), decodeFunctionData({ abi: erc20Abi, data: reads[0]!.data! }).args]).toEqual([USDC.address, [shedOf(owner)]]) // the shed's, not yours
@@ -414,7 +414,7 @@ describe('recover: only payments of your own shed holdings to you reach the wall
     { token: USDC, balance: 25_000_000n },
     { token: ETH, balance: 10n ** 16n },
   ]
-  // The CoW Shed 1.0.1 signing types, written out here rather than imported from what is being checked.
+  // The bridge account 1.0.1 signing types, written out here rather than imported from what is being checked.
   const TYPES = {
     ExecuteHooks: [{ name: 'calls', type: 'Call[]' }, { name: 'nonce', type: 'bytes32' }, { name: 'deadline', type: 'uint256' }],
     Call: [{ name: 'target', type: 'address' }, { name: 'value', type: 'uint256' }, { name: 'callData', type: 'bytes' }, { name: 'allowFailure', type: 'bool' }, { name: 'isDelegateCall', type: 'bool' }],
@@ -603,11 +603,11 @@ describe('reading the chain before asking anything (RPC answered here)', () => {
       await expect(priceTx(network('base', RPC), OWNER, tx)).rejects.toThrow(message)
     }
   })
-  test('looks for a shed only on the chain asked for, and only where CoW Shed exists', async () => {
+  test('looks for a shed only on the chain asked for, and only where bridge account exists', async () => {
     serve(answers({ eth_chainId: chain(1) }))
     await expect(shedHoldings(network('base', RPC), OWNER)).rejects.toThrow('different chain')
     serve(answers({ eth_getCode: () => '0x' }))
-    await expect(shedHoldings(network('base', RPC), OWNER)).rejects.toThrow('CoW Shed is not deployed on Base')
+    await expect(shedHoldings(network('base', RPC), OWNER)).rejects.toThrow('bridge account is not deployed on Base')
   })
   test('a transaction your wallet cancels or replaces is not taken for the one sent; a sped-up one is', async () => {
     const [SENT, MINED] = [`0x${'aa'.repeat(32)}`, `0x${'bb'.repeat(32)}`] as Hex[]
@@ -853,8 +853,8 @@ describe('ophis recover, end to end (chain, orderbook and wallet answered here)'
   })
   test('a balance read that fails stops the recovery instead of reading as zero; a token that reverts is skipped', async () => {
     serve(chainOf({ failAt: 'latest' }), { [ORDERS]: [BRIDGE], ...LISTS })
-    await expect(shedHoldings(base, ME)).rejects.toThrow('Could not read your CoW Shed balances')
-    await expect(run(async () => true)).rejects.toThrow('Could not read your CoW Shed balances') // never "Nothing to recover"
+    await expect(shedHoldings(base, ME)).rejects.toThrow('Could not read your bridge account balances')
+    await expect(run(async () => true)).rejects.toThrow('Could not read your bridge account balances') // never "Nothing to recover"
     serve(chainOf({ held: (token) => (same(token, WETH.address) ? 'revert' : (HELD[getAddress(token)] ?? 0n)) }), { [ORDERS]: [BRIDGE], ...LISTS })
     const { holdings, notes } = await shedHoldings(base, ME)
     expect(holdings.map((h) => h.token.symbol)).toEqual(['USDC', 'ETH'])
@@ -871,7 +871,7 @@ describe('ophis recover, end to end (chain, orderbook and wallet answered here)'
     serve(chainOf({ stuck: USDC.address }), { [ORDERS]: [BRIDGE], ...LISTS })
     const stuck = await shedHoldings(base, ME)
     expect(stuck.holdings.map((h) => h.token.symbol)).toEqual(['ETH'])
-    expect(stuck.notes).toEqual([`USDC (${USDC.address}) would not transfer out of your CoW Shed right now, so it was left out. To try it alone: ophis recover ${USDC.address} on base`])
+    expect(stuck.notes).toEqual([`USDC (${USDC.address}) would not transfer out of your bridge account right now, so it was left out. To try it alone: ophis recover ${USDC.address} on base`])
     // Naming a token recovers only it: not the coin, not what the orders paid in.
     serve(chainOf(), { [ORDERS]: [BRIDGE], ...LISTS })
     expect((await shedHoldings(base, ME, 'WETH')).holdings).toEqual([])
@@ -989,8 +989,8 @@ describe('ophis recover, end to end (chain, orderbook and wallet answered here)'
     expect(none.outcome).toBe('left')
     expect(none.printed).toContain('Recovered   0 USDC')
     expect(none.printed).toContain('0.01 ETH  you now hold 1')
-    expect(none.printed).toContain(`25 USDC is still in your CoW Shed. To try again: ophis recover ${USDC.address} on base`)
-    expect(none.printed).toContain('0.01 ETH is still in your CoW Shed. To try again: ophis recover on base')
+    expect(none.printed).toContain(`25 USDC is still in your bridge account. To try again: ophis recover ${USDC.address} on base`)
+    expect(none.printed).toContain('0.01 ETH is still in your bridge account. To try again: ophis recover on base')
   })
   test('after sending, a balance that cannot be read back is never shown as zero', async () => {
     serve(chainOf({ failAt: numberToHex(MINED_IN), logs: [transferLog(USDC.address, 25_000_000n)] }), { [ORDERS]: [BRIDGE], ...LISTS })
@@ -1003,6 +1003,6 @@ describe('ophis recover, end to end (chain, orderbook and wallet answered here)'
     serve(chainOf({ held: gone, logs: [transferLog(USDC.address, 25_000_000n)] }), { [ORDERS]: [BRIDGE], ...LISTS })
     const one = await run(async () => true)
     expect(one.outcome).toBe('unknown')
-    expect(one.printed).toContain(`Could not read back how much USDC is still in your CoW Shed. To check: ophis recover ${USDC.address} on base`)
+    expect(one.printed).toContain(`Could not read back how much USDC is still in your bridge account. To check: ophis recover ${USDC.address} on base`)
   })
 })

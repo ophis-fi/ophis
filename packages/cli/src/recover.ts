@@ -1,4 +1,4 @@
-// Recovering what a bridge left in the user's own CoW Shed: an Across refund, or an order that filled without its
+// Recovering what a bridge left in the user's own bridge account: an Across refund, or an order that filled without its
 // deposit. The shed only runs calls its owner signed, so the user's wallet signs one list of calls, each paying the
 // owner one of the shed's holdings, and sends it through the shed factory. Nothing else gets past checkRecovery.
 import { isDeepStrictEqual } from 'node:util'
@@ -28,7 +28,7 @@ export interface ShedCall {
   isDelegateCall: boolean
 }
 
-/** The CoW Shed typed data the wallet is asked to sign. */
+/** The bridge account typed data the wallet is asked to sign. */
 export interface Recovery {
   domain: { name: string; version: string; chainId: number; verifyingContract: Address }
   types: Record<string, { name: string; type: string }[]>
@@ -49,7 +49,7 @@ async function balancesOf(net: Network, holder: Address, tokens: Pick<Token, 'ad
     client.getBalance({ address: holder, blockNumber }),
     client.readContract({ address: getChainContractAddress({ chain: net.chain, contract: 'multicall3' }), abi: multicall3Abi, functionName: 'aggregate3', args: [calls], blockNumber }),
   ]).catch(() => {
-    throw new UserError('Could not read your CoW Shed balances. Try again in a moment, or use --rpc with another RPC.')
+    throw new UserError('Could not read your bridge account balances. Try again in a moment, or use --rpc with another RPC.')
   })
   // A balance is exactly one word: anything else (a revert, no code, other data) is not an answer.
   const read = new Map(erc20.map((t, i) => [t.address, results[i]?.success && results[i].returnData.length === 66 ? BigInt(results[i].returnData) : null]))
@@ -66,7 +66,7 @@ export async function shedHoldings(net: Network, owner: Address, named?: string)
   // Every balance below is read through this RPC: first make sure it is the chain asked for.
   if ((await client.getChainId()) !== net.id) throw new UserError('The RPC answers for a different chain. Check --rpc.')
   if (((await client.getCode({ address: SHED_FACTORY_ADDRESS })) ?? '0x') === '0x') {
-    throw new UserError(`CoW Shed is not deployed on ${net.name}, so no bridge can have left anything there.`)
+    throw new UserError(`bridge account is not deployed on ${net.name}, so no bridge can have left anything there.`)
   }
   const shed = shedOf(owner)
   const notes: string[] = []
@@ -120,7 +120,7 @@ export async function shedHoldings(net: Network, owner: Address, named?: string)
     }),
   )
   for (const [i, h] of holdings.entries()) {
-    if (!moves[i]) notes.push(`${h.token.symbol} (${h.token.native ? 'native coin' : h.token.address}) would not transfer out of your CoW Shed right now, so it was left out. To try it alone: ophis recover ${h.token.native ? h.token.symbol : h.token.address} on ${net.alias}`)
+    if (!moves[i]) notes.push(`${h.token.symbol} (${h.token.native ? 'native coin' : h.token.address}) would not transfer out of your bridge account right now, so it was left out. To try it alone: ophis recover ${h.token.native ? h.token.symbol : h.token.address} on ${net.alias}`)
   }
   return { shed, holdings: holdings.filter((_, i) => moves[i]), notes }
 }
@@ -143,7 +143,7 @@ const refuse = (why: string) => new UserError(`Refusing to sign: ${why}. Nothing
 export function checkRecovery(td: Recovery, chainId: number, owner: Address, holdings: Holding[]): void {
   const domain = { name: 'COWShed', version: SHED_VERSION, chainId, verifyingContract: shedOf(owner) }
   if (td.primaryType !== 'ExecuteHooks' || !isDeepStrictEqual(td.domain, domain) || !isDeepStrictEqual(td.types, SHED_TYPES)) {
-    throw refuse('this is not for your own CoW Shed')
+    throw refuse('this is not for your own bridge account')
   }
   const left = new Map(holdings.map((h) => [h.token.native ? 'native' : getAddress(h.token.address), h.balance]))
   for (const c of td.message.calls) {
@@ -165,7 +165,7 @@ export function checkRecovery(td: Recovery, chainId: number, owner: Address, hol
       }
     }
     const have = left.get(paid)
-    if (have === undefined || value > have) throw refuse('a call does not pay you something your CoW Shed holds')
+    if (have === undefined || value > have) throw refuse('a call does not pay you something your bridge account holds')
     left.delete(paid) // each holding once
   }
 }
@@ -182,10 +182,10 @@ export async function signRecovery(wallet: Signer, chainId: number, td: Recovery
  */
 export async function recover(net: Network, wallet: Signer, named: string | undefined, ask?: (question: string) => Promise<boolean>): Promise<'empty' | 'done' | 'left' | 'unknown' | 'cancelled'> {
   const owner = getAddress(wallet.address)
-  const { shed, holdings, notes } = await step(`Looking in your CoW Shed on ${net.name}`, () => shedHoldings(net, owner, named))
+  const { shed, holdings, notes } = await step(`Looking in your bridge account on ${net.name}`, () => shedHoldings(net, owner, named))
   console.log()
   rows([
-    ['CoW Shed', `${shed}  ${dim('your own proxy, which bridges pay into')}`],
+    ['bridge account', `${shed}  ${dim('your own proxy, which bridges pay into')}`],
     ...holdings.map((h, i): [string, string] => [i ? '' : 'Holds', `${amount(h.balance, h.token.decimals)} ${h.token.symbol}  ${dim(h.token.native ? 'native coin' : h.token.address)}`]),
   ])
   for (const line of notes) note(line)
@@ -226,8 +226,8 @@ export async function recover(net: Network, wallet: Signer, named: string | unde
     const report = (left: (bigint | null)[], mine: (bigint | null)[]) => {
       for (const [i, h] of holdings.entries()) {
         const n = left[i]
-        if (n === null) note(`Could not read back how much ${h.token.symbol} is still in your CoW Shed. To check: ${again(h.token)}`)
-        else if (n > 0n) note(`${amount(n, h.token.decimals)} ${h.token.symbol} is still in your CoW Shed. To try again: ${again(h.token)}`)
+        if (n === null) note(`Could not read back how much ${h.token.symbol} is still in your bridge account. To check: ${again(h.token)}`)
+        else if (n > 0n) note(`${amount(n, h.token.decimals)} ${h.token.symbol} is still in your bridge account. To try again: ${again(h.token)}`)
       }
       if (left.some((n) => n !== null && n > 0n)) return 'left' as const
       return [...left, ...mine].includes(null) ? ('unknown' as const) : ('done' as const)

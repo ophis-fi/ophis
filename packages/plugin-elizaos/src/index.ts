@@ -2,11 +2,11 @@ import type { Plugin } from '@elizaos/core';
 import { ophisSwapAction } from './actions/swap.js';
 
 /**
- * elizaOS plugin: MEV-protected same-chain swaps via Ophis (CoW Protocol).
+ * elizaOS plugin: Intent-based same-chain swaps via Ophis.
  *
- * The agent signs CoW orders with its OWN EVM key (EIP-712), so there is no managed-
+ * The agent signs orders with its OWN EVM key (EIP-712), so there is no managed-
  * wallet dependency. Each order carries the Ophis partner fee in appData; set
- * OPHIS_REFERRAL_CODE to earn the 8-12% rebate. Reuses the audited `@ophis/agent-swap`
+ * OPHIS_REFERRAL_CODE for campaign-dependent attribution. Reuses the shared `@ophis/agent-swap`
  * core, so approve + sign + submit (and OP/Unichain non-canonical addresses) are
  * handled for you.
  *
@@ -16,7 +16,7 @@ import { ophisSwapAction } from './actions/swap.js';
 export const ophisPlugin: Plugin = {
   name: 'ophis',
   description:
-    'MEV-protected same-chain token swaps for elizaOS agents, routed through Ophis (CoW Protocol). The agent signs CoW orders with its own EVM key; the Ophis partner fee + your referral code accrue the rebate.',
+    'Intent-based same-chain token swaps for elizaOS agents, routed through Ophis. The agent signs orders with its own EVM key; orders carry the Ophis partner fee and optional referral attribution.',
   actions: [ophisSwapAction],
 };
 

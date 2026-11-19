@@ -103,7 +103,7 @@ describe('buildPresignTxBatch', () => {
   const CHAIN = 10;
   const ORDER_UID = ('0x' + '12'.repeat(56)) as `0x${string}`;
 
-  it('targets the OPHIS settlement, never canonical CoW', () => {
+  it('targets the OPHIS settlement, never external canonical', () => {
     const { txs, settlement } = buildPresignTxBatch({ chainId: CHAIN, orderUid: ORDER_UID, sellToken: SELL, pullAmount: 1_000_000n, currentAllowance: 1_000_000n });
     const presign = txs[txs.length - 1]!;
     expect(presign.to.toLowerCase()).toBe(OP_SETTLEMENT.toLowerCase());

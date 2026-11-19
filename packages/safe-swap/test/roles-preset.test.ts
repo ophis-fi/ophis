@@ -43,7 +43,7 @@ describe('ophisCuratorRolesPreset', () => {
     expect(json).not.toContain('dead00000000000000000000000000000000beef');
   });
 
-  it('allows setPreSignature on the Ophis settlement, never canonical CoW', () => {
+  it('allows setPreSignature on the Ophis settlement, never external canonical', () => {
     const sett = byAddress(OPHIS_SETTLEMENT)!;
     expect(sett.functions.some((f) => f.selector.toLowerCase() === SET_PRESIGNATURE.toLowerCase())).toBe(true);
     expect(byAddress(CANONICAL_COW_SETTLEMENT)).toBeUndefined();
@@ -67,10 +67,10 @@ describe('ophisCuratorRolesPreset', () => {
     expect(uniJson).not.toContain(RELAYER.slice(2)); // not the OP relayer
   });
 
-  it('scopes the CANONICAL settlement on Base (CoW-hosted), which is denied on OP/Unichain', () => {
-    // On Base the Ophis-resolved settlement IS the canonical CoW settlement, so the
+  it('scopes the CANONICAL settlement on Base (externally hosted), which is denied on OP/Unichain', () => {
+    // On Base the Ophis-resolved settlement IS the external canonical settlement, so the
     // preset correctly scopes setPreSignature there (invariant 4: use the SDK-resolved
-    // address, canonical on CoW-hosted chains). The same address is a DENIED target on OP.
+    // address, canonical on externally hosted chains). The same address is a DENIED target on OP.
     const base = ophisCuratorRolesPreset({ chainId: 8453, sellTokens: [USDC] });
     const { targets } = processPermissions([base]);
     expect(targets.some((t) => t.address.toLowerCase() === CANONICAL_COW_SETTLEMENT)).toBe(true);

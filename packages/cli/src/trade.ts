@@ -209,7 +209,7 @@ export async function findToken(net: Network, query: string): Promise<Token> {
   throw new UserError(`No token called "${clean(query)}" on ${net.name}. You can also use the token's address.${dollars.length ? ` Its dollar tokens: ${dollars.join(', ')}.` : ''}`)
 }
 
-// The CoW-hosted public lists swap.ophis.fi offers per chain (apps/frontend/libs/tokens/src/const/tokensList.json).
+// The externally hosted public lists swap.ophis.fi offers per chain (apps/frontend/libs/tokens/src/const/tokensList.json).
 const PUBLIC_LISTS: Readonly<Record<number, readonly string[]>> = {
   1: ['CoinGecko'],
   56: ['CoinGecko', 'Uniswap'],

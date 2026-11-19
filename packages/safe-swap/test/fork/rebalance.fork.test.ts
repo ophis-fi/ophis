@@ -3,13 +3,13 @@
  *
  * Proves that the batch buildOphisSafePresign produces, executed by the
  * @ophis/safe-swap executor via protocol-kit, has the correct EFFECTS against the
- * REAL deployed Ophis/CoW + Safe contracts on an OP mainnet fork:
+ * REAL deployed Ophis + Safe contracts on an OP mainnet fork:
  *   1. approve sets EXACTLY pullAmount to the real Ophis relayer (never MaxUint).
  *   2. setPreSignature records the order in the REAL GPv2Settlement (so a solver could settle).
  *   3. the relayer can pull EXACTLY pullAmount from the Safe and no more (allowance exhausted).
  *   4. the signed order's receiver is the Safe.
  *
- * NOTE ON SCOPE: a local fork has NO CoW solver network, so an end-to-end solver
+ * NOTE ON SCOPE: a local fork has NO solver network, so an end-to-end solver
  * settlement (and thus the exact partner-fee transfer to 0x858…CeF8) cannot be
  * reproduced here without hand-building a solver's settle() call. That end-to-end
  * behaviour is validated by M4's monitored real-chain rollout. This test proves
@@ -33,7 +33,7 @@ import {
   type Fork,
 } from './harness.js';
 
-// All CoW-hosted (canonical) chains share the deterministic GPv2 settlement + relayer;
+// All externally hosted (canonical) chains share the deterministic GPv2 settlement + relayer;
 // only the fundable sell token + fork RPC differ. `usdc` is just the sell token (WXDAI on
 // Gnosis). Each entry runs only when its fork RPC env is set.
 const CANON_SETTLEMENT = getAddress('0x9008d19f58aabd9ed0d60971565aa8510560ab41');
@@ -60,7 +60,7 @@ const CHAINS = [
     settlement: getAddress('0x108A678716e5E1776036eF044CAB7064226F714E'),
     relayer: getAddress('0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb'),
   },
-  // --- CoW-hosted (canonical settlement, fee via appData) ---
+  // --- externally hosted (canonical settlement, fee via appData) ---
   {
     name: 'Base',
     id: 8453,
@@ -188,7 +188,7 @@ describe.each(CHAINS)('rebalance fork integration ($name)', (c) => {
   afterAll(() => fork?.stop());
 
   it.runIf(rpc)('executes [approve, setPreSignature] with the correct on-chain effects', async () => {
-    // Build the order from a plausible CoW sell quote (net + fee split), then the batch.
+    // Build the order from a plausible orderbook sell quote (net + fee split), then the batch.
     const order = assembleVaultOrder({
       safe,
       quoteSellToken: USDC,

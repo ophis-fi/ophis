@@ -236,7 +236,7 @@ async function crossChain(amountText: string, from: string, to: string, flags: F
     return console.log(`\n  ${dim('Nothing was signed. To do it:')} ${again(amountText, from)}\n`)
   }
   const { open, hooks } = await openBridge(src, owner)
-  if (open) throw new UserError(`An earlier transfer between networks is still using your CoW Shed, the small account bridges pay into. Check its status and wait for it to finish: ophis status ${open} on ${src.alias}`)
+  if (open) throw new UserError(`An earlier transfer between networks is still using your bridge account, the small account bridges pay into. Check its status and wait for it to finish: ophis status ${open} on ${src.alias}`)
   await checkEarlierHooks(src, owner, false, hooks)
   await checkLeftover(src, owner, bridge.via, bridge.guard) // before any wrap or approval is paid for
   const funding = { net: src, sell, pay, atoms: request.atoms, owner }

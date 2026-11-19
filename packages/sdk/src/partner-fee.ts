@@ -1,7 +1,7 @@
 /**
  * Ophis's partner-fee configuration injected into every order routed through
  * Ophis.fi. Surfaced via cow-sdk's appData `metadata.partnerFee` using the
- * CIP-75 VOLUME policy (a flat fee on trade volume), paid out by CoW DAO weekly
+ * CIP-75 VOLUME policy (a flat fee on trade volume), paid out by the upstream operator weekly
  * in WETH. See:
  *   - https://docs.cow.fi/governance/fees/partner-fee
  *   - docs/development/specs/2026-05-03-ophis-design-amendment.md
@@ -77,20 +77,20 @@ export const ophisVolumeBpsForPair = (isStablePair: boolean): number =>
 /**
  * Chains where Ophis charges the CIP-75 partner fee — every chain its frontend
  * serves (restored all-chain model, 2026-05-27). Ophis-operated chains settle
- * on our own stack (100%, no CoW cut); CoW-hosted chains settle via api.cow.fi
- * + CoW's solver network (CoW disburses 75% weekly).
+ * on our own stack (100%, no upstream share); externally hosted chains settle via api.cow.fi
+ * + the upstream protocol's solver network (the upstream protocol disburses 75% weekly).
  *
  * Mirrors the frontend gate `shouldEmitOphisPartnerFee`, whose served set is
  * the keys of `DEFAULT_PARTNER_FEE_RECIPIENT_PER_NETWORK` = cow-sdk's
  * `SupportedChainId` enum (`@cowprotocol/sdk-config`) plus the Ophis-operated
  * chains. This SDK has no cow-sdk dependency, so the set is hand-maintained
- * here — update it when CoW adds a supported chain (the frontend picks new
+ * here — update it when the upstream protocol adds a supported chain (the frontend picks new
  * chains up automatically via the enum; this list does not).
  */
 const FEE_CHAIN_IDS = [
   // Ophis-operated (own stack — 100%; NOT cow-sdk SupportedChainId members)
   10, 130, 4663, 5042,
-  // CoW-hosted = cow-sdk SupportedChainId (settle via api.cow.fi, 75% weekly).
+  // externally hosted = cow-sdk SupportedChainId (settle via api.cow.fi, 75% weekly).
   // Sepolia (11155111) is the testnet member — kept so the fee path is testable.
   1, 56, 100, 137, 8453, 9745, 42161, 43114, 57073, 59144, 11155111,
 ] as const;
@@ -168,7 +168,7 @@ export const ophisDefaultPartnerFee = (
 };
 
 /**
- * Builds the exact value for a CoW order's `appData.metadata.partnerFee`, or
+ * Builds the exact value for an order's `appData.metadata.partnerFee`, or
  * `undefined` on chains where Ophis charges no fee. Use this instead of
  * hand-assembling it. Operated chains return the base Volume object because
  * their backend owns improvement capture. Hosted chains return an array

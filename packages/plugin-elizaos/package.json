@@ -1,7 +1,7 @@
 {
   "name": "@ophis/plugin-elizaos",
-  "version": "0.3.7",
-  "description": "elizaOS plugin: MEV-protected same-chain swaps via Ophis (CoW Protocol). The agent signs CoW orders with its own EVM key; the Ophis partner fee + your referral code accrue the 8-12% rebate.",
+  "version": "0.3.8",
+  "description": "elizaOS plugin for same-chain Ophis ERC-20 swaps signed by the agent wallet, with optional referral attribution.",
   "license": "GPL-3.0-or-later",
   "type": "module",
   "main": "./dist/index.js",
@@ -32,7 +32,6 @@
     "plugin",
     "ophis",
     "swap",
-    "cow-protocol",
     "mev-protection",
     "defi",
     "rebate",
@@ -63,13 +62,13 @@
     "pluginParameters": {
       "EVM_PRIVATE_KEY": {
         "type": "string",
-        "description": "0x hex private key (EOA) the agent signs CoW orders with. Keep it funded with the sell token + a little native gas for the one-time approval.",
+        "description": "0x hex private key (EOA) the agent signs orders with. Keep it funded with the sell token + a little native gas for the one-time approval.",
         "required": true,
         "sensitive": true
       },
       "OPHIS_REFERRAL_CODE": {
         "type": "string",
-        "description": "Ophis referral/partner code so your swaps earn the 8-12% rebate. Mint one at https://swap.ophis.fi/#/rewards. Optional — swaps work without it.",
+        "description": "Optional Ophis referral code for attribution on indexed chains. Register at https://swap.ophis.fi/#/affiliate; rewards depend on the active campaign.",
         "required": false,
         "sensitive": false
       },

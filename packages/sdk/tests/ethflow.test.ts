@@ -48,7 +48,7 @@ const baseParams = (over: Partial<OphisEthFlowParams> = {}): OphisEthFlowParams 
 });
 
 describe('OPHIS_ETHFLOW_ADDRESSES', () => {
-  it('uses the Ophis-operated override for OP + Unichain and canonical for CoW-hosted', () => {
+  it('uses the Ophis-operated override for OP + Unichain and canonical for externally hosted', () => {
     expect(OPHIS_ETHFLOW_ADDRESSES[10]).toBe(OP_ETHFLOW);
     expect(OPHIS_ETHFLOW_ADDRESSES[130]).toBe('0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7'); // Unichain EthFlow (verified on-chain)
     expect(OPHIS_ETHFLOW_ADDRESSES[4663]).toBe('0xC1Ee77e8a1B85D5EED702a9bB435f434408A4d29'); // Robinhood EthFlow (verified on-chain)

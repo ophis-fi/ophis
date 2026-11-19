@@ -74,13 +74,13 @@ export function buildOphisWallet(runtime: IAgentRuntime, chainName: string): Oph
 
       // Some tokens (e.g. Ethereum USDT) revert on a non-zero -> non-zero approve, so
       // reset an existing insufficient allowance to 0 first. Then set the max approval
-      // (the spender is the CoW vault relayer, fixed by the swap core), so repeat swaps
+      // (the spender is the vault relayer, fixed by the swap core), so repeat swaps
       // of the same token need no further approval.
       if (current > 0n) await approve(0n);
       await approve(maxUint256);
     },
     signTypedData: async (data: OphisTypedData) => {
-      // The EOA signs the CoW order directly (EIP-712). OphisTypedData is a loose
+      // The EOA signs the order directly (EIP-712). OphisTypedData is a loose
       // envelope by design (domain/types/message are Records), so cast it to viem's
       // strict typed-data parameter type at this single boundary.
       const signature = await account.signTypedData(

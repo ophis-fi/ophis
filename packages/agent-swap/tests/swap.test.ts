@@ -11,7 +11,7 @@ const hoisted = vi.hoisted(() => ({
   quoteRequest: {} as Record<string, unknown>,
 }));
 
-// Stub the cow-sdk / app-data modules so importing swap.ts doesn't pull the heavy CoW order stack
+// Stub the cow-sdk / app-data modules so importing swap.ts doesn't pull the heavy order stack
 // (and its ethers-v5 CJS shim) into Node. These input-guard tests throw BEFORE any of it is used.
 vi.mock('@cowprotocol/cow-sdk', () => ({
   OrderBookApi: class {

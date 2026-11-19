@@ -1,6 +1,6 @@
 ---
 name: ophis-swap
-description: Execute a token swap on Ophis end to end (quote, build, confirm with the user, exact approval, EIP-712 sign, submit). State-changing, requires a signer. Use when the user explicitly asks to swap, sell, buy, or trade tokens. ALWAYS confirm with the user before signing. The signed order is a bounded intent with a hard minimum, settled MEV-protected in a batch auction; solvers pay the settlement gas.
+description: Execute a token swap on Ophis end to end (quote, build, confirm with the user, exact approval, EIP-712 sign, submit). State-changing, requires a signer. Use when the user explicitly asks to swap, sell, buy, or trade tokens. ALWAYS confirm with the user before signing. The signed order is a bounded intent with a hard minimum, submitted for batch-auction settlement; solvers pay the settlement gas.
 license: MIT
 ---
 
@@ -144,7 +144,7 @@ signature=$(cast wallet sign --data --from-file /tmp/ophis-order-typed-data.json
 ```
 
 Sign exactly the struct you showed the user (SKILL.md rule 2). The domain's
-`verifyingContract` MUST be the pinned per-chain settlement; the CoW
+`verifyingContract` MUST be the pinned per-chain settlement; the upstream
 canonical address is wrong on these chains and the deployed contract rejects
 such signatures.
 

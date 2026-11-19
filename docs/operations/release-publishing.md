@@ -12,6 +12,7 @@ Ophis package and MCP releases use protected version tags. Repository ruleset
 restricts creation, update, and deletion of these tags to organization admins:
 
 - `sdk-v*`
+- `cli-v*`
 - `skills-v*`
 - `widget-v*`
 - `safe-swap-v*`
@@ -30,6 +31,10 @@ reviewed workspace sources, publish only prebuilt artifacts, and emit npm
 provenance. `NPM_TOKEN` remains the publishing credential until npm trusted
 publishing has been bootstrapped for every existing package; the protected tag
 ruleset removes the arbitrary-tag trigger identified in issue #908.
+
+The CLI follows the same controls under `cli-v*`. Its workflow builds the
+dependency-free npm bundle, runs the CLI tests, then publishes only
+`packages/cli/dist/npm`, including the bundled dependencies' license notices.
 
 Trusted publishing should be migrated package-by-package with npm CLI 11.15 or
 newer and an npm account with 2FA. For example:

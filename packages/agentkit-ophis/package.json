@@ -1,7 +1,7 @@
 {
   "name": "@ophis/agentkit-ophis",
-  "version": "0.3.7",
-  "description": "Coinbase AgentKit action provider: let an AI agent swap ERC-20s via Ophis (CoW Protocol), carrying the Ophis partner fee + your referral code so you earn the 8-12% rebate.",
+  "version": "0.3.8",
+  "description": "Coinbase AgentKit action provider for Ophis ERC-20 swaps, with partner fees and optional referral attribution.",
   "license": "GPL-3.0-or-later",
   "type": "module",
   "main": "./dist/index.js",
@@ -31,7 +31,6 @@
     "ai-agent",
     "agent",
     "swap",
-    "cow-protocol",
     "defi",
     "rebate"
   ],

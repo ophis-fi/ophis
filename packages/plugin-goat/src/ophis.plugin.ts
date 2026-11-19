@@ -8,9 +8,9 @@ import { toOphisWallet } from './wallet-adapter.js';
 
 export interface OphisPluginOptions {
   /**
-   * OPTIONAL integrator referral code that earns the 8-12% rebate (rides in the
-   * order's appData). Omit it and swaps still work (you just forgo the rebate);
-   * mint one in ~30s at https://swap.ophis.fi/#/rewards.
+   * OPTIONAL integrator referral code for campaign-dependent attribution (rides in the
+   * order's appData). Omit it and swaps still work without referral attribution.
+   * Register at https://swap.ophis.fi/#/affiliate.
    */
   referralCode?: string;
 }
@@ -25,9 +25,9 @@ class OphisService {
   @Tool({
     name: 'ophis_swap',
     description:
-      'Swap one ERC-20 for another via Ophis (a CoW Protocol fork): MEV-protected, gasless, intent-based. ' +
-      'The order carries Ophis appData so the integrator earns the rebate. sellAmount is in WHOLE units ' +
-      '(e.g. "1.5"). Native ETH is NOT supported — use WETH. Returns the CoW order UID and an explorer URL.',
+      'Swap one ERC-20 for another via Ophis: intent-based batch settlement. ' +
+      'The order carries Ophis appData for optional referral attribution. sellAmount is in WHOLE units ' +
+      '(e.g. "1.5"). Native ETH is NOT supported — use WETH. Returns the order UID and an explorer URL.',
   })
   async ophisSwap(walletClient: EVMWalletClient, parameters: OphisSwapParameters): Promise<OphisSwapResult> {
     const wallet = toOphisWallet(walletClient);
@@ -57,7 +57,7 @@ export class OphisPlugin extends PluginBase<EVMWalletClient> {
       // Do not block construction on a missing code (that was the top adoption
       // killer): warn once, keep working, let the builder add a code to earn.
       console.warn(
-        '[@ophis/plugin-goat] No referralCode set: swaps still work, but you are leaving the 8-12% rebate on the table. Mint a code at https://swap.ophis.fi/#/rewards and pass it as options.referralCode.',
+        '[@ophis/plugin-goat] No referralCode set: swaps still work without referral attribution. Rewards depend on the active campaign. Register a code at https://swap.ophis.fi/#/affiliate and pass it as options.referralCode.',
       );
     }
     super('ophis', [new OphisService(options)]);
