@@ -1,0 +1,8 @@
+/* The operator's review page: the brand kit and the app layer of the console, plus this. */
+[hidden] { display: none !important; }
+.op { max-width: 860px; margin: 0 auto; padding: 48px 24px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; } /* minmax: a long hash or address wraps, it never widens the page */
+.op .panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; } .op .lede { margin-top: 14px; }
+.op ul { list-style: none; margin: 0; padding: 0; font-size: 14px; line-height: 1.5; }
+.op .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.op form { border-top: 1px solid var(--line); padding-top: 20px; }
+@media (max-width: 600px) { .op { padding: 28px 16px; } .op .panel { padding: 20px; } .op .grid2 { grid-template-columns: 1fr; } dl.kv { grid-template-columns: 1fr; gap: 2px 0; } dl.kv dd { margin-bottom: 10px; } }

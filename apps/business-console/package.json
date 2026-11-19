@@ -8,21 +8,21 @@
     "node": ">=22.18.0"
   },
   "scripts": {
-    "build": "vite build && vite build --mode sign",
+    "build": "vite build && vite build --mode sign && vite build --mode operator",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.server.json",
     "migrate": "wrangler d1 migrations apply DB --local",
     "seed": "node scripts/dev.mjs seed",
     "activate": "node scripts/dev.mjs activate",
     "skip": "node scripts/dev.mjs skip",
-    "dev": "vite build && vite build --mode sign && node scripts/stubs.mjs wrangler dev",
-    "tour": "vite build && vite build --mode sign && node scripts/tour.mjs",
+    "dev": "vite build && vite build --mode sign && vite build --mode operator && node scripts/stubs.mjs wrangler dev",
+    "tour": "vite build && vite build --mode sign && vite build --mode operator && node scripts/tour.mjs",
     "operator": "node scripts/operator.mjs",
-    "test": "vite build && vite build --mode sign && vitest run",
+    "test": "vite build && vite build --mode sign && vite build --mode operator && vitest run",
     "test:chain": "node tests/chain.mjs",
     "test:jev": "node tests/jev.mjs",
     "test:age": "node tests/age.mjs",
     "test:cpu": "node tests/cpu.mjs",
-    "test:e2e": "vite build && vite build --mode sign && node tests/e2e.mjs"
+    "test:e2e": "vite build && vite build --mode sign && vite build --mode operator && node tests/e2e.mjs"
   },
   "dependencies": {
     "@safe-global/safe-apps-sdk": "9.1.0",
