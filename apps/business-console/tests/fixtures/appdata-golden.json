@@ -7,6 +7,36 @@
       "relayer": "0xC92E8bdf79f0507f65a392b0ab4667716BFE0110",
       "pairs": [
         {
+          "sell": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+          "buy": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+          "stable": false
+        },
+        {
+          "sell": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+          "buy": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          "stable": false
+        },
+        {
+          "sell": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+          "buy": "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c",
+          "stable": false
+        },
+        {
+          "sell": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+          "buy": "0x39b8B6385416f4cA36a20319F70D28621895279D",
+          "stable": false
+        },
+        {
+          "sell": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+          "buy": "0x5F7827FDeb7c20b443265Fc2F40845B715385Ff2",
+          "stable": false
+        },
+        {
+          "sell": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+          "buy": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+          "stable": false
+        },
+        {
           "sell": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
           "buy": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
           "stable": false
@@ -24,6 +54,11 @@
         {
           "sell": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
           "buy": "0x5F7827FDeb7c20b443265Fc2F40845B715385Ff2",
+          "stable": false
+        },
+        {
+          "sell": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          "buy": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
           "stable": false
         },
         {
@@ -48,6 +83,11 @@
         },
         {
           "sell": "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c",
+          "buy": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+          "stable": false
+        },
+        {
+          "sell": "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c",
           "buy": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
           "stable": false
         },
@@ -68,6 +108,11 @@
         },
         {
           "sell": "0x39b8B6385416f4cA36a20319F70D28621895279D",
+          "buy": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+          "stable": false
+        },
+        {
+          "sell": "0x39b8B6385416f4cA36a20319F70D28621895279D",
           "buy": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
           "stable": false
         },
@@ -84,6 +129,11 @@
         {
           "sell": "0x39b8B6385416f4cA36a20319F70D28621895279D",
           "buy": "0x5F7827FDeb7c20b443265Fc2F40845B715385Ff2",
+          "stable": false
+        },
+        {
+          "sell": "0x5F7827FDeb7c20b443265Fc2F40845B715385Ff2",
+          "buy": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
           "stable": false
         },
         {
@@ -164,8 +214,28 @@
       "relayer": "0x83847EaB41ad9ea43809ce71569eB2e9daF51830",
       "pairs": [
         {
+          "sell": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+          "buy": "0x4200000000000000000000000000000000000006",
+          "stable": false
+        },
+        {
+          "sell": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+          "buy": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+          "stable": false
+        },
+        {
+          "sell": "0x4200000000000000000000000000000000000006",
+          "buy": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+          "stable": false
+        },
+        {
           "sell": "0x4200000000000000000000000000000000000006",
           "buy": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+          "stable": false
+        },
+        {
+          "sell": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+          "buy": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
           "stable": false
         },
         {
@@ -231,8 +301,28 @@
       "relayer": "0xB52C38097c19cd38238c62DD36027a7918eFa890",
       "pairs": [
         {
+          "sell": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+          "buy": "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+          "stable": false
+        },
+        {
+          "sell": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+          "buy": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+          "stable": false
+        },
+        {
+          "sell": "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+          "buy": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+          "stable": false
+        },
+        {
           "sell": "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
           "buy": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+          "stable": false
+        },
+        {
+          "sell": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+          "buy": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
           "stable": false
         },
         {
@@ -385,6 +475,26 @@
       "relayer": "0xC92E8bdf79f0507f65a392b0ab4667716BFE0110",
       "pairs": [
         {
+          "sell": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+          "buy": "0x4200000000000000000000000000000000000006",
+          "stable": false
+        },
+        {
+          "sell": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+          "buy": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "stable": false
+        },
+        {
+          "sell": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+          "buy": "0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42",
+          "stable": false
+        },
+        {
+          "sell": "0x4200000000000000000000000000000000000006",
+          "buy": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+          "stable": false
+        },
+        {
           "sell": "0x4200000000000000000000000000000000000006",
           "buy": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
           "stable": false
@@ -396,6 +506,11 @@
         },
         {
           "sell": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "buy": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+          "stable": false
+        },
+        {
+          "sell": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
           "buy": "0x4200000000000000000000000000000000000006",
           "stable": false
         },
@@ -403,6 +518,11 @@
           "sell": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
           "buy": "0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42",
           "stable": true
+        },
+        {
+          "sell": "0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42",
+          "buy": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+          "stable": false
         },
         {
           "sell": "0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42",
@@ -472,6 +592,26 @@
       "relayer": "0xC92E8bdf79f0507f65a392b0ab4667716BFE0110",
       "pairs": [
         {
+          "sell": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+          "buy": "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
+          "stable": false
+        },
+        {
+          "sell": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+          "buy": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+          "stable": false
+        },
+        {
+          "sell": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+          "buy": "0x0c06cCF38114ddfc35e07427B9424adcca9F44F8",
+          "stable": false
+        },
+        {
+          "sell": "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
+          "buy": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+          "stable": false
+        },
+        {
           "sell": "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
           "buy": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
           "stable": false
@@ -483,6 +623,11 @@
         },
         {
           "sell": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+          "buy": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+          "stable": false
+        },
+        {
+          "sell": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
           "buy": "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
           "stable": false
         },
@@ -490,6 +635,11 @@
           "sell": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
           "buy": "0x0c06cCF38114ddfc35e07427B9424adcca9F44F8",
           "stable": true
+        },
+        {
+          "sell": "0x0c06cCF38114ddfc35e07427B9424adcca9F44F8",
+          "buy": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+          "stable": false
         },
         {
           "sell": "0x0c06cCF38114ddfc35e07427B9424adcca9F44F8",

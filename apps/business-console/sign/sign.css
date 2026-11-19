@@ -3,6 +3,8 @@
 .sign { max-width: 760px; margin: 0 auto; padding: 48px 24px; display: grid; gap: 24px; }
 .sign .panel { display: grid; gap: 20px; } .sign textarea.input { resize: vertical; }
 .sign .btn { white-space: normal; text-align: left; } .sign .lede { margin-top: 14px; }
+/* An ETH sale names its EthFlow contract in the text: a 42-character address wraps on a phone. */
+.sign .lede, #o-advice, #o-steps li { overflow-wrap: anywhere; }
 @media (max-width: 600px) { .sign { padding: 28px 16px; } .sign .panel { padding: 20px; } dl.kv { grid-template-columns: 1fr; gap: 2px 0; } dl.kv dd { margin-bottom: 10px; } }
 .sign:not(.recovery) .rec { display: none; }
 .o-steps { margin: 0; padding-left: 22px; display: grid; gap: 8px; font-size: 14px; line-height: 1.5; }

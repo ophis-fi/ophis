@@ -5,9 +5,9 @@
 // Every state change goes through commit(): the change and its audit row are one db.batch(), which D1
 // runs as one transaction. If the audit row cannot be written, the change is not made.
 
-import { checksum, colour, type SafeState } from './chain.ts'
+import { checksum, colour, NATIVE, type SafeState } from './chain.ts'
 import { LISTS } from './typed.ts'
-import { again, APPROVE_MS, MAX_OPEN_ORDERS, MIN_VALID_MS, PREPARERS, SIGN_MS, SIGNERS, type Terms } from './orders.ts'
+import { again, APPROVE_MS, MAX_OPEN_ORDERS, MIN_VALID_MS, PREPARERS, sellsEth, SIGN_MS, SIGNERS, type Terms } from './orders.ts'
 
 export type Role = 'owner' | 'admin' | 'trader' | 'approver' | 'compliance' | 'viewer'
 export const ROLES: Role[] = ['owner', 'admin', 'trader', 'approver', 'compliance', 'viewer']
@@ -964,10 +964,13 @@ type OrderRow = { orgId: string; id: string; approvedAt: number; purpose: 'sign'
  * Can this link be used now (?2: now; ?4: the purpose asked for, or null for the link's own)? A signing link: the order is
  * not sent (a sent, refused or withdrawn one has a status), its approval is younger than 1 hour (market) or 24 hours (limit), and the
  * expiry the page fixed, if it did, still leaves the orderbook's minute (orders.signBy says the same). A cancel link: the order is open. An order row exists from its approval on.
+ * An ETH sale's cancel link also after its expiry, unless it filled or was cancelled: the refunders return only orders priced
+ * well below their quote (190 bps by default), so its wallet takes the ETH back itself (anyone may, after the expiry).
  */
 const LINK_LIVE = `((COALESCE(?4, o.link_purpose) = 'sign' AND o.status IS NULL AND (o.valid_to IS NULL OR o.valid_to * 1000 - ${MIN_VALID_MS} > ?2)
                      AND o.approved_at + CASE json_extract(json_extract(a.payload, '$.value'), '$.type') WHEN 'limit' THEN ${SIGN_MS.limit} ELSE ${SIGN_MS.market} END > ?2)
-                    OR (COALESCE(?4, o.link_purpose) = 'cancel' AND o.status IN ('open', 'presignaturePending') AND o.valid_to * 1000 > ?2))`
+                    OR (COALESCE(?4, o.link_purpose) = 'cancel' AND o.status IN ('open', 'presignaturePending', 'expired')
+                        AND (o.valid_to * 1000 > ?2 OR json_extract(json_extract(a.payload, '$.value'), '$.sell.token') = '${NATIVE}')))`
 const termsOf = (row: { payload: string }) => JSON.parse((JSON.parse(row.payload) as { value: string }).value) as Terms
 
 /** A one-time link for the signing page, issued by a Trader or a key role after the approval: only its SHA-256 is stored, and a new one replaces the last. The record keeps who gave the last signing link, and when. */
@@ -1016,10 +1019,11 @@ type Opening = NonNullable<Awaited<ReturnType<typeof orderByLink>>>
 /** Inside a commit: the link is still this order's. */
 const linked = async (db: D1Database, r: Opening, tokenHash: string) => Boolean(await db.prepare('SELECT 1 FROM orders WHERE org_id = ? AND id = ? AND link_hash = ?').bind(r.orgId, r.id, tokenHash).first())
 // The wallet is the actor only where its signature was checked first (orderSend): a key wallet's send, its cancel, and its
-// refusal for a listed address. The page's read, and a Safe's send, cancel and refusal, need the link alone: the system's rows.
+// refusal for a listed address. The page's read, a Safe's send, cancel and refusal, and an ETH sale's (its own transaction,
+// no signature) need the link alone: the system's rows.
 // checked: the wallet's signature was verified in this request (false for a refusal at the page, before any signature).
 const walletEntry = (r: Opening, now: number, action: string, detail: string | null = null, checked = true): Entry => {
-  const signed = checked && r.terms.scheme === 'eip712' && action !== 'order.open'
+  const signed = checked && r.terms.scheme === 'eip712' && !sellsEth(r.terms) && action !== 'order.open'
   return { at: now, actorKind: signed ? 'anchor' : 'system', actorId: signed ? r.terms.walletId : null, sessionId: null, action, subjectId: r.id, detail }
 }
 /**
@@ -1054,9 +1058,10 @@ export async function orderSending(db: D1Database, r: Opening, tokenHash: string
   let outcome = 'link_invalid'
   await commit(db, r.orgId, async () => {
     const still = await db.prepare(`${ORDER_ROW} WHERE o.org_id = ?1 AND o.id = ?3 AND o.link_hash = ?5 AND ${LINK_LIVE}`).bind(r.orgId, now, r.id, null, tokenHash).first<OrderRow>()
-    outcome = !still ? 'link_invalid' : still.walletId !== r.walletId ? 'wallet_not_linked' : still.uid && (still.uid !== uid || still.sentAt! > now - HOLD_MS) ? 'already_sent' : 'ok'
+    outcome = !still ? 'link_invalid' : still.walletId !== r.walletId ? 'wallet_not_linked' : still.uid && (still.uid !== uid || still.sentAt! > now - HOLD_MS) ? 'already_sent'
+      : sellsEth(r.terms) && (await uidTaken(db, r, uid)) ? 'eth_order_exists' : 'ok'
     if (outcome !== 'ok') return null
-    return [walletEntry(r, now, 'order.send', r.terms.scheme), [
+    return [walletEntry(r, now, 'order.send', sellsEth(r.terms) ? 'eth' : r.terms.scheme), [
       db.prepare('UPDATE orders SET uid = ?, signature = ?, sent_at = ?, checked_at = ? WHERE org_id = ? AND id = ? AND status IS NULL').bind(uid, signature, now, now, r.orgId, r.id),
     ]]
   })
@@ -1096,6 +1101,10 @@ export async function reserved(db: D1Database, r: Opening, now: number) {
     .bind(r.orgId, r.id, now, r.terms.chainId, r.terms.wallet, r.terms.sell.token).all<{ amount: string }>()
   return results.reduce((sum, x) => sum + BigInt(x.amount), 0n)
 }
+/** An ETH sale's order id names no expiry (orders.gpv2): is it another order's, of any organisation (one wallet may be linked to two)? */
+// Read inside the send's commit, so two sends of one organisation do not both take it. ponytail: two organisations of one
+// wallet sending the same sale in the same moment still could; no index on uid (0017), a scan per ETH sale sent.
+const uidTaken = async (db: D1Database, r: Opening, uid: string) => Boolean(await db.prepare('SELECT 1 FROM orders WHERE uid = ? AND NOT (org_id = ? AND id = ?) LIMIT 1').bind(uid, r.orgId, r.id).first())
 /** The first address of these on a loaded sanctions list, or null. */
 export const listedOf = async (db: D1Database, addresses: string[]) =>
   (await db.prepare(`SELECT address FROM sanctioned_addresses WHERE address IN (${addresses.map(() => '?').join(', ')}) LIMIT 1`).bind(...addresses.map((a) => a.toLowerCase())).first<{ address: string }>())?.address ?? null
@@ -1104,18 +1113,22 @@ export const orderListed = (db: D1Database, r: Opening, tokenHash: string, which
   commit(db, r.orgId, async () => (await linked(db, r, tokenHash)) ? [walletEntry(r, now, 'order.sanctioned', which, checked), [
     db.prepare(`UPDATE orders SET status = 'refused', link_hash = NULL, link_purpose = NULL WHERE org_id = ? AND id = ? AND uid IS NULL`).bind(r.orgId, r.id),
   ]] : null)
-/** A cancel: the orderbook took a key wallet's cancellation (`cancelled`), or the Safe was asked to revoke its presignature. */
-export const orderCancelled = (db: D1Database, r: Opening, tokenHash: string, how: 'key' | 'safe', now: number) =>
+/** A cancel: the orderbook took a key wallet's cancellation (`cancelled`), or the Safe was asked to revoke its presignature, or the wallet sent an ETH sale's take-back. */
+export const orderCancelled = (db: D1Database, r: Opening, tokenHash: string, how: 'key' | 'safe' | 'eth', now: number) =>
   commit(db, r.orgId, async () => (await linked(db, r, tokenHash)) ? [walletEntry(r, now, 'order.cancel', how), [
     db.prepare(`UPDATE orders SET link_hash = NULL, link_purpose = NULL, status = CASE WHEN ? = 'key' THEN 'cancelled' ELSE status END WHERE org_id = ? AND id = ?`).bind(how, r.orgId, r.id),
   ]] : null)
 /** Sent orders whose state may still change, least recently read first: of one organisation, or of all (the daily run). */
 // With the holds of sends that stopped (an order id, no state): read until the orderbook says what became of them, expired or not.
 // And a filled order whose transaction was not read yet (the trades answer failed once), for 7 days after its expiry: its
-// fill is recorded, its transaction link follows (Codex, PR #1646).
+// fill is recorded, its transaction link follows (Codex, PR #1646). An order waiting for its transaction (a Safe's, an ETH
+// sale's) is read until 7 days after its expiry: an ETH sale never placed is never in the orderbook. So is an expired ETH
+// sale, whose wallet may take it back after its expiry: then the orderbook says cancelled (Codex, PR #1677). ponytail: a
+// take-back later than that is not read; its cancel page says the ETH went back.
 export async function openOrders(db: D1Database, orgId: string | null, limit: number, now: number) {
   const { results } = await db.prepare(`SELECT o.org_id AS orgId, o.id, o.uid, o.status, a.payload FROM orders o JOIN approvals a ON a.org_id = o.org_id AND a.id = o.id
-                                        WHERE (o.status IN ('open', 'presignaturePending') OR (o.status IS NULL AND o.uid IS NOT NULL) OR (o.status = 'fulfilled' AND o.tx_hash IS NULL AND o.valid_to * 1000 > ?3))
+                                        WHERE (o.status = 'open' OR (o.status IS NULL AND o.uid IS NOT NULL) OR (o.status IN ('presignaturePending', 'fulfilled', 'expired') AND (o.status <> 'fulfilled' OR o.tx_hash IS NULL)
+                                          AND (o.status <> 'expired' OR json_extract(json_extract(a.payload, '$.value'), '$.sell.token') = '${NATIVE}') AND o.valid_to * 1000 > ?3))
                                           AND (?1 IS NULL OR o.org_id = ?1)
                                         ORDER BY o.checked_at, o.rowid LIMIT ?2`)
     .bind(orgId, limit, now - 7 * 24 * 60 * 60 * 1000).all<{ orgId: string; id: string; uid: string; status: string | null; payload: string }>()
@@ -1129,7 +1142,7 @@ export async function openOrders(db: D1Database, orgId: string | null, limit: nu
 // same, so orders an orderbook cannot answer for never hold the refresh's window (Codex, PR #1646).
 export async function orderStates(db: D1Database, read: { orgId: string; id: string; status: string; sold: string; bought: string; tx: string | null; fee: string | null }[], now: number, tried: { orgId: string; id: string }[] = []) {
   if (read.length || tried.length) await db.batch([
-    ...read.map((x) => db.prepare(`UPDATE orders SET status = ?, executed_sell = ?, executed_buy = ?, executed_fee = ?, tx_hash = COALESCE(?, tx_hash), checked_at = ? WHERE org_id = ? AND id = ? AND (status IN ('open', 'presignaturePending') OR (status = 'fulfilled' AND tx_hash IS NULL))`)
+    ...read.map((x) => db.prepare(`UPDATE orders SET status = ?, executed_sell = ?, executed_buy = ?, executed_fee = ?, tx_hash = COALESCE(?, tx_hash), checked_at = ? WHERE org_id = ? AND id = ? AND (status IN ('open', 'presignaturePending', 'expired') OR (status = 'fulfilled' AND tx_hash IS NULL))`)
       .bind(x.status, x.sold, x.bought, x.fee, x.tx, now, x.orgId, x.id)),
     ...tried.map((x) => db.prepare('UPDATE orders SET checked_at = ? WHERE org_id = ? AND id = ?').bind(now, x.orgId, x.id)),
   ])

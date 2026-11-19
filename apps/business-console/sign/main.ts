@@ -178,7 +178,9 @@ async function bySafe() {
 
 // ---- the real desk: an approved order to sign, or an open one to cancel ----
 // allowance: what the vault relayer must be allowed, in atoms, and in words: this order and the wallet's other open orders of the asset (a signing link only).
-interface OrderPage { purpose: 'sign' | 'cancel'; scheme: 'eip712' | 'presign'; chainId: number; wallet: string; words: Record<string, string>; uid: string; settlement: string; relayer: string; sellToken: string; sellAmount: string; allowance: string | null; allowanceWords: string | null; typed: Typed | null }
+// eth: an ETH sale, placed and cancelled by the wallet's own transaction to the EthFlow contract (ethflow); cancelTx: that cancel.
+interface Tx { to: string; value: string; data: string }
+interface OrderPage { purpose: 'sign' | 'cancel'; scheme: 'eip712' | 'presign'; eth: boolean; ethflow: string | null; cancelTx: Tx | null; chainId: number; wallet: string; words: Record<string, string>; uid: string; settlement: string; relayer: string; sellToken: string; sellAmount: string; allowance: string | null; allowanceWords: string | null; typed: Typed | null }
 // The steps of the page, each with its state: what the wallet does, then the send.
 const STATE_WORD = { todo: 'To do', now: 'Now', done: 'Done', skipped: 'Not needed', proposed: 'Proposed: the owners execute it in the Safe interface' } as const
 function step(id: string, state: keyof typeof STATE_WORD) {
@@ -201,6 +203,12 @@ const ORDER_SAY: Record<string, string> = {
   presignaturePending: 'Sent. The order waits for the Safe owners to execute the transaction in the Safe interface. Once it is executed, the order is open.',
   cancelled: 'Signed and sent. The orderbook cancelled the order. You can close this page.',
   asked: 'The cancel waits for the Safe owners to execute the transaction in the Safe interface.',
+  taken_back: 'Done. The order is cancelled and its ETH is back in the wallet. The desk shows it within a minute. You can close this page.',
+  placed: 'Sent. The transaction placed the order and sent its ETH. The orderbook shows it within a minute, and it can fill until it expires. If it does not fill, a cancel link from the desk takes the ETH back, before or after the expiry. You can close this page.',
+  proposed: 'The transaction waits for the Safe owners in the Safe interface. Once they execute it, the order is placed and its ETH sent.',
+  not_placed: 'This order is not placed on the chain. If its transaction still waits (in the wallet, or in the queue of the Safe), it can still place the order until the expiry: reject it there. Otherwise there is nothing to cancel.',
+  gone: 'This order was already cancelled or refunded: its ETH went back to the wallet. Nothing was sent.',
+  eth_order_exists: 'An identical ETH sale of this wallet exists already, and the EthFlow contract takes each order once. Nothing was sent. Prepare the order again: a new quote, or another amount, makes it a new order.',
   link_invalid: 'This link is not valid any more: it was used, it expired, or a newer link replaced it. Ask for a new link in the console.',
   signature_rejected: 'The signature is not from the wallet of this order. Nothing was sent.',
   sanctioned_address: 'Refused: an address of this order is on a public sanctions list that Ophis loaded. Nothing was sent. The attempt is recorded.',
@@ -215,6 +223,7 @@ const ORDER_SAY: Record<string, string> = {
 }
 const ERC20 = parseAbi(['function allowance(address owner, address spender) view returns (uint256)', 'function approve(address spender, uint256 amount) returns (bool)'])
 const SETTLEMENT = parseAbi(['function setPreSignature(bytes orderUid, bool signed)'])
+const ETHFLOW = parseAbi(['function orders(bytes32 orderHash) view returns (address owner, uint32 validTo)'])
 let token = ''
 let order: OrderPage
 const call = async (path: string, body: object) => {
@@ -236,6 +245,7 @@ async function readOrder(code: string) {
   for (const [id, text] of [['o-binding', w.binding], ['o-sell', w.sell], ['o-buy', w.buy], ['o-type', w.type], ['o-chain', w.chain], ['o-wallet', w.wallet], ['o-valid', w.valid], ['o-fee', w.fee], ['o-uid', order.uid]]) $(id).textContent = text
   $('o-binding').hidden = order.purpose !== 'sign'
   const presign = order.scheme === 'presign'
+  if (order.eth) return ethSteps(presign)
   const approve: [string, string] = ['approve', `Approve exactly ${order.allowanceWords} for the vault relayer of the settlement contract, if the wallet has not yet`]
   steps(order.purpose === 'cancel'
     ? [[presign ? 'safe' : 'sign', presign ? 'The Safe transaction that revokes the presignature, signed and executed by the Safe owners' : 'Sign the cancellation in the wallet'], ['sent', presign ? 'Recorded: the cancel waits for the Safe transaction' : 'Sent to the orderbook']]
@@ -245,13 +255,84 @@ async function readOrder(code: string) {
   $('o-advice').textContent = order.purpose === 'cancel' ? (presign ? 'In the Safe interface you see one transaction: the revocation of this order\'s presignature on the settlement contract. Check it before the owners sign.' : 'Your wallet shows the cancellation of this order id to sign. Check that it matches.')
     : presign ? `The order is checked and sent to the orderbook first. Then the Safe interface shows one transaction batch: an approval of exactly ${order.allowanceWords} to the vault relayer of the settlement contract if one is needed, and the signature of this order on the settlement contract. Check it before the owners sign.${others}`
     : `Your wallet may first ask to approve exactly ${order.allowanceWords} to the vault relayer of the settlement contract, then it shows the order to sign. Check that it matches.${others}`
+  buttons(presign)
+}
+function buttons(presign: boolean) {
   $('o-by-wallet').hidden = Boolean(safe) || presign
   $('o-by-safe').hidden = !safe
   // A Safe's order is signed inside the Safe interface only: this page there, as a custom app.
   if (presign && !safe) say(`This wallet is a Safe. In the Safe interface open Apps, add ${location.origin}/sign/ as a custom app, open it and paste this link.`, 'warn')
-  $('o-by-wallet').textContent = $('o-by-safe').textContent = order.purpose === 'sign' ? (safe ? 'Sign with this Safe' : 'Sign with the wallet in this browser') : (safe ? 'Cancel with this Safe' : 'Cancel with the wallet in this browser')
+  const verb = order.eth && order.purpose === 'sign' ? 'Send' : order.purpose === 'sign' ? 'Sign' : 'Cancel'
+  $('o-by-wallet').textContent = $('o-by-safe').textContent = `${verb} with ${safe ? 'this Safe' : 'the wallet in this browser'}`
   $('order').hidden = false
 }
+// An ETH sale: no approval and no signature. Signing, the server checks the order and hands the one transaction that sends
+// the ETH to the EthFlow contract, which places the order; cancelling, the transaction that takes it back with its ETH.
+function ethSteps(presign: boolean) {
+  const flow = `the EthFlow contract of the chain (${order.ethflow})`
+  $('lede').textContent = order.purpose === 'sign'
+    ? `Two people in the organisation approved this order. If you send it, ${order.words.sell} goes from the wallet to ${flow}, which places the order on the public orderbook until it fills or expires. What is bought goes to the wallet itself. If it does not fill, a cancel link from the desk takes the ETH back. Ophis never holds the funds.`
+    : `This cancels the order below and sends its ETH back to the wallet, from ${flow}. It works before and after the expiry.`
+  const by = presign ? 'The Safe transaction' : 'The transaction in the wallet'
+  steps(order.purpose === 'sign'
+    ? [['checked', 'Checked by Ophis: the sanctions lists, the wallet still linked'], [presign ? 'safe' : 'send', `${by} that sends ${order.words.sell} and places the order${presign ? ', signed and executed by the Safe owners' : ''}`]]
+    : [[presign ? 'safe' : 'send', `${by} that cancels the order and returns its ETH${presign ? ', signed and executed by the Safe owners' : ''}`], ['sent', 'Recorded']])
+  $('o-advice').textContent = order.purpose === 'sign'
+    ? `The order is checked first. Then ${presign ? 'the Safe interface shows one transaction' : 'your wallet asks for one transaction'}: ${order.words.sell} to ${order.ethflow}. Check the address and the amount.`
+    : `${presign ? 'The Safe interface shows' : 'Your wallet asks for'} one transaction to ${order.ethflow}, which sends no ETH. Check the address.`
+  buttons(presign)
+}
+const txOf = (tx: Tx) => ({ to: tx.to, value: `0x${BigInt(tx.value).toString(16)}`, data: tx.data })
+/** Where the ETH sale stands on its EthFlow contract: never placed, placed, or cancelled or refunded (the largest address). */
+async function placement(read: (call: { to: string; data: string }) => Promise<unknown>) {
+  const data = encodeFunctionData({ abi: ETHFLOW, functionName: 'orders', args: [order.uid.slice(0, 66) as `0x${string}`] })
+  const [owner] = decodeFunctionResult({ abi: ETHFLOW, functionName: 'orders', data: (await read({ to: order.ethflow!, data })) as `0x${string}` })
+  return /^0x0{40}$/i.test(owner) ? 'none' : /^0xf{40}$/i.test(owner) ? 'gone' : 'placed'
+}
+/** The transaction's receipt, read until it is mined: did it succeed? */
+async function mined(ethereum: Provider, hash: unknown) {
+  for (;;) {
+    const receipt = (await ethereum.request({ method: 'eth_getTransactionReceipt', params: [hash] })) as { status?: string } | null
+    if (receipt) return receipt.status === '0x1'
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+  }
+}
+/** Signing: the server's checks, then the transaction it built, unless the order is already placed (a reload, a lost answer). */
+async function ethChecked() {
+  step('checked', 'now')
+  const { data } = await call('/api/order/send', {})
+  if (data.state !== 'transaction') {
+    step('checked', 'todo')
+    say(ORDER_SAY[data.error as string] ?? 'The order could not be checked. Try again in a minute.', 'bad')
+    return null
+  }
+  step('checked', 'done')
+  return data.tx as Tx
+}
+/**
+ * An ETH sale's transaction, by the wallet in this browser (sent, then its receipt) or by the Safe (proposed): read the
+ * contract, then send only what it still needs. Signing: placed already (a reload) or gone, nothing is sent.
+ */
+async function ethFlow(read: (call: { to: string; data: string }) => Promise<unknown>, send: (tx: Tx) => Promise<boolean>, presign: boolean) {
+  const tx = order.purpose === 'sign' ? await ethChecked() : order.cancelTx
+  if (!tx) return
+  const now = await placement(read)
+  if (order.purpose === 'sign' ? now !== 'none' : now !== 'placed') return say(ORDER_SAY[now === 'placed' ? 'placed' : now === 'gone' ? 'gone' : 'not_placed'], now === 'placed' ? 'ok' : 'warn')
+  const id = presign ? 'safe' : 'send'
+  step(id, 'now')
+  if (!presign) say('Send the transaction in the wallet. Then wait for it.')
+  if (!(await send(tx))) {
+    step(id, 'todo')
+    return say('The transaction failed onchain. Nothing changed.', 'bad')
+  }
+  step(id, presign ? 'proposed' : 'done')
+  if (order.purpose === 'sign') say(ORDER_SAY[presign ? 'proposed' : 'placed'], 'ok')
+  else await sent()
+}
+const ethByWallet = (ethereum: Provider, account: string) => ethFlow((c) => ethereum.request({ method: 'eth_call', params: [c, 'latest'] }),
+  async (tx) => mined(ethereum, await ethereum.request({ method: 'eth_sendTransaction', params: [{ from: account, ...txOf(tx) }] })), false)
+const ethBySafe = () => ethFlow((c) => safe!.eth.call([{ from: order.wallet, ...c }]),
+  async (tx) => (await safe!.txs.send({ txs: [{ to: tx.to, value: BigInt(tx.value).toString(), data: tx.data }] }), true), true)
 const sent = async (signature?: string) => {
   say('Sending.')
   step('sent', 'now')
@@ -281,16 +362,13 @@ async function orderByWallet() {
   const [account] = (await ethereum.request({ method: 'eth_requestAccounts' })) as string[]
   if (!same(account, order.wallet)) return say(`The wallet in this browser is ${account}. The order is for ${order.wallet}. Switch the account and try again.`, 'bad')
   await switchTo(ethereum, order.chainId)
+  if (order.eth) return ethByWallet(ethereum, account)
   if (order.purpose === 'sign' && !(await reread())) return
   if (order.purpose === 'sign') step('approve', 'now')
   if (order.purpose === 'sign' && short(await ethereum.request({ method: 'eth_call', params: [{ to: order.sellToken, data: allowance() }, 'latest'] }))) {
     say(`Approve exactly ${order.allowanceWords}, in the wallet. Then wait for the transaction.`)
     const hash = await ethereum.request({ method: 'eth_sendTransaction', params: [{ from: account, to: order.sellToken, data: approval() }] })
-    for (let receipt: { status?: string } | null = null; ; await new Promise((resolve) => setTimeout(resolve, 2000))) {
-      receipt = (await ethereum.request({ method: 'eth_getTransactionReceipt', params: [hash] })) as { status?: string } | null
-      if (receipt?.status === '0x1') break
-      if (receipt) return say('The approval failed onchain. Nothing was signed.', 'bad')
-    }
+    if (!(await mined(ethereum, hash))) return say('The approval failed onchain. Nothing was signed.', 'bad')
     step('approve', 'done')
   } else if (order.purpose === 'sign') step('approve', 'skipped')
   step('sign', 'now')
@@ -306,6 +384,7 @@ let posted = false // the orderbook took this Safe's order: only its Safe transa
 async function orderBySafe() {
   const info = await safe!.safe.getInfo()
   if (!same(info.safeAddress, order.wallet) || info.chainId !== order.chainId) return say(`This Safe is ${info.safeAddress} on chain ${info.chainId}. The order is for ${order.wallet} on chain ${order.chainId}. Open the right Safe and try again.`, 'bad')
+  if (order.eth) return ethBySafe()
   const signing = order.purpose === 'sign'
   if (signing && !posted) {
     posted = (await sent()) === 'presignaturePending'

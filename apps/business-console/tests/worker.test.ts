@@ -312,9 +312,11 @@ const word = (address: string) => `0x${address.slice(2).toLowerCase().padStart(6
 // A contract wallet on the fake chain. plain: it answers isValidSignature and nothing a Safe answers.
 // code, singleton (storage slot 0) and fallback (the handler slot): by default those of a genuine Safe 1.4.1. bigThreshold: what getThreshold really says.
 interface Contract extends Omit<SafeState, 'handler'> { accepts: (digest: string, signature: string) => boolean; plain?: boolean; code: string; singleton: string; fallback: string; bigThreshold?: bigint }
-// Multicall3 and ERC-20 balanceOf, written here from their public ABI (not imported from chain.ts).
-const MULTI_ABI = parseAbi(['struct Call3 { address target; bool allowFailure; bytes callData; }', 'struct Result { bool success; bytes returnData; }', 'function aggregate3(Call3[] calls) view returns (Result[] returnData)', 'function balanceOf(address owner) view returns (uint256)'])
+// Multicall3 (with its getEthBalance) and ERC-20 balanceOf, written here from their public ABI (not imported from chain.ts).
+const MULTI_ABI = parseAbi(['struct Call3 { address target; bool allowFailure; bytes callData; }', 'struct Result { bool success; bytes returnData; }', 'function aggregate3(Call3[] calls) view returns (Result[] returnData)', 'function balanceOf(address owner) view returns (uint256)', 'function getEthBalance(address addr) view returns (uint256)'])
 const MULTICALL3 = '0xca11bde05977b3631167028862be2a173976ca11'
+// ETH itself, as the settlement and the desk name it (GPv2 BUY_ETH_ADDRESS); its balance on the fake chain is held under this.
+const ETH = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'
 const chain = {
   contracts: new Map<string, Contract>(),
   // ERC-20 balances on the fake chain, by `${token}:${owner}` in lower case; none is 0. -1n: that balanceOf reverts, with 32 bytes of revert data.
@@ -350,8 +352,13 @@ function fakeRpc(input: RequestInfo | URL, init?: RequestInit) {
   } else if (method === 'eth_call' && params[0].to.toLowerCase() === MULTICALL3) {
     const { args } = decodeFunctionData({ abi: MULTI_ABI, data: params[0].data }) as unknown as { args: [{ target: string; callData: `0x${string}` }[]] }
     result = encodeFunctionResult({ abi: MULTI_ABI, functionName: 'aggregate3', result: args[0].map((c) => {
-      const owner = (decodeFunctionData({ abi: MULTI_ABI, data: c.callData }).args as [string])[0]
-      const balance = chain.balances.get(`${c.target}:${owner}`.toLowerCase()) ?? 0n
+      const asked = decodeFunctionData({ abi: MULTI_ABI, data: c.callData })
+      const owner = (asked.args as [string])[0]
+      // ETH: Multicall3's own getEthBalance, and only that function of it.
+      const token = c.target.toLowerCase() === MULTICALL3 ? (asked.functionName === 'getEthBalance' ? ETH : 'none') : c.target
+      // The ETH marker address holds no code: a call to it succeeds with nothing in return, as on a real chain.
+      if (c.target.toLowerCase() === ETH.toLowerCase()) return { success: true, returnData: '0x' as const }
+      const balance = chain.balances.get(`${token}:${owner}`.toLowerCase()) ?? 0n
       return balance < 0n ? { success: false, returnData: `0x${'7'.padStart(64, '0')}` as const } : { success: true, returnData: encodeFunctionResult({ abi: MULTI_ABI, functionName: 'balanceOf', result: balance }) }
     }) })
   } else if (method === 'eth_call') {
@@ -839,7 +846,7 @@ describe('d. request checks', () => {
   it('a state change is a JSON POST: no other method, no other content type', async () => {
     const m = await member()
     expect(routes.filter((route) => route.method !== 'GET').every((route) => route.method === 'POST')).toBe(true)
-    expect(routes.filter((route) => route.method === 'GET').map((route) => route.path).sort()).toEqual(['/api/audit', '/api/desk', '/api/export/:id', '/api/me', '/api/onboarding', '/api/org', '/api/overview', '/api/readiness', '/api/screening'])
+    expect(routes.filter((route) => route.method === 'GET').map((route) => route.path).sort()).toEqual(['/api/audit', '/api/desk', '/api/desk/routes/:id', '/api/export/:id', '/api/me', '/api/onboarding', '/api/org', '/api/overview', '/api/readiness', '/api/screening'])
     expect((await call('GET', '/api/signout', { cookie: m.cookie })).status).toBe(404)
     for (const type of ['text/plain', 'application/x-www-form-urlencoded', 'multipart/form-data', null]) {
       expect((await call('POST', '/api/signout', { cookie: m.cookie, headers: { 'content-type': type } })).status).toBe(415)
@@ -2627,7 +2634,7 @@ describe('r. the role table', () => {
       'POST /api/recover/intent': 'public', 'POST /api/recover/cancel-intent': 'public', 'POST /api/recover/continue/start': 'public', 'POST /api/recover/continue/finish': 'public',
       'POST /api/recovery/:id/cancel': 'owner fresh', 'POST /api/recovery/:id/object': 'admin,approver,compliance fresh',
       'POST /api/support/ask': any,
-      'GET /api/overview': any, 'GET /api/desk': any, 'POST /api/desk/orders': 'owner,admin,trader settled', 'GET /api/export/:id': any,
+      'GET /api/overview': any, 'GET /api/desk': any, 'GET /api/desk/routes/:id': any, 'POST /api/desk/orders': 'owner,admin,trader settled', 'GET /api/export/:id': any,
       'POST /api/desk/orders/:id/link': 'owner,admin,trader,approver,compliance fresh settled', 'POST /api/desk/orders/:id/withdraw': 'owner,admin,trader,approver,compliance fresh settled',
       'POST /api/order': 'public', 'POST /api/order/send': 'public',
       'POST /api/apply': 'public', 'POST /api/apply/check': 'public',
@@ -5596,7 +5603,7 @@ describe('D. Support: the model selects, the server decides', () => {
     expect(text('KB-13')).toMatch(/Overview shows a partner organisation its fee owed this cycle \(an estimate\), its payouts, the daily volume, the split by chain and fee token, and wallets whose orders carried its fee, flagging those on a sanctions list\. Figures are read for the fee recipient address you link\./)
     expect(text('KB-16')).toMatch(/A partner also: the partner-fee months, payouts, daily volume, the split by chain and by fee token, the wallets that traded, and those on a sanctions list\./)
     // Every organisation trades on the desk (owner, 2026-11-19): its two tables are every organisation's.
-    expect(text('KB-16')).toMatch(/Desk \(every organisation\): the orders with every term and what was executed, and the permitted assets\./)
+    expect(text('KB-16')).toMatch(/Desk \(every organisation\): the orders with every term and what was executed\. Support: the permitted assets\./)
     // The institution's exports are real since 2026-11-14: balances read on the chain, its orders, the statement of its filled orders.
     expect(text('KB-16')).toMatch(/Overview \(every organisation\): the monthly statement of its filled orders, volume and fees in the asset sold\. An institution also: the balances of its linked wallets and its orders\./)
     expect(text('KB-16')).not.toMatch(/Not available|example/i)
@@ -5606,6 +5613,8 @@ describe('D. Support: the model selects, the server decides', () => {
     expect(text('KB-01')).toMatch(/invitation code from Ophis, valid 48 hours/)
     expect(text('KB-19')).toMatch(/approves it with a passkey, within 1 hour\. Then a one-time link lets your wallet sign it, within 1 hour \(market\) or 24 hours \(limit\)\. A Safe signs in the Safe interface\./)
     expect(text('KB-19')).toContain('Sent: waiting for the Safe transaction')
+    expect(text('KB-19')).toContain('Selling ETH takes one wallet transaction.')
+    expect(text('KB-19')).toContain('Sent: waiting for the ETH transaction')
     expect(text('KB-19')).not.toMatch(/demo|Not available/)
     expect(text('KB-01') + text('KB-19')).not.toMatch(/not built|shows no orders/)
     expect(supportPage).not.toMatch(/TypeSafe|outside provider|Leave out names/) // the provider notice was removed (owner, 2026-11-19)
@@ -8985,6 +8994,16 @@ async function demoWallet(orgId: string, label = 'Operations Safe', state = 'lin
 }
 const keysOf = (value: unknown): string[] => (value && typeof value === 'object' ? Object.entries(value).flatMap(([k, v]) => [...(Array.isArray(value) ? [] : [k]), ...keysOf(v)]) : [])
 
+// The routes name no organisation and no wallet: one answer for every organisation, and nothing written.
+isolation['GET /api/desk/routes/:id'] = async (a, b) => {
+  book()
+  orders.ROUTES.clear()
+  const before = await snapshot()
+  const [mine, theirs] = [await get('/api/desk/routes/10.USDC', a), await get('/api/desk/routes/10.USDC', b)]
+  expect([mine.status, theirs.status, theirs.body]).toEqual([200, 200, mine.body])
+  expect(JSON.stringify(mine.body)).not.toMatch(new RegExp(`${a.orgId}|${b.orgId}`))
+  expect(await snapshot()).toBe(before)
+}
 isolation['GET /api/desk'] = async (a, b) => {
   book()
   for (const m of [a, b]) await setOrg(m.orgId, `kind = 'institution'`)
@@ -9033,7 +9052,7 @@ function book(o: { state?: string; buy?: string; twist?: (asked: Asked) => Respo
       // The real price of WETH in EURC: for a sale of WETH as it is, for a purchase of WETH the other way round.
       const [up, down] = WETHS.includes(b.buyToken.toLowerCase()) ? [real.sellAmount, real.buyAmount] : [real.buyAmount, real.sellAmount]
       const buyAmount = o.buy ?? String(((whole - fee) * BigInt(up)) / BigInt(down))
-      return Response.json({ ...realBook.quote.response, from: b.from.toLowerCase(), quote: { ...real, sellToken: b.sellToken.toLowerCase(), buyToken: b.buyToken.toLowerCase(), receiver: b.receiver.toLowerCase(), sellAmount: String(whole - fee), feeAmount: String(fee), buyAmount, appData: b.appData, appDataHash: b.appDataHash, signingScheme: b.signingScheme } })
+      return Response.json({ ...realBook.quote.response, from: b.from.toLowerCase(), quote: { ...real, sellToken: b.sellToken.toLowerCase(), buyToken: b.buyToken.toLowerCase(), receiver: b.receiver?.toLowerCase() ?? null, sellAmount: String(whole - fee), feeAmount: String(fee), buyAmount, appData: b.appData, appDataHash: b.appDataHash, signingScheme: b.signingScheme } })
     }
     if (call.method === 'POST' && url.endsWith('/api/v1/orders')) {
       const uid = uidOf(chainId, b)
@@ -9042,6 +9061,9 @@ function book(o: { state?: string; buy?: string; twist?: (asked: Asked) => Respo
       return Response.json(uid, { status: 201 })
     }
     if (call.method === 'DELETE') return Response.json('Cancelled')
+    // The full appData of an order whose chain commits only its hash (an ETH sale): stored, its hash answered.
+    const appHash = call.method === 'PUT' ? /\/api\/v1\/app_data\/(0x[0-9a-f]{64})$/.exec(url)?.[1] : undefined
+    if (appHash) return Response.json(appHash, { status: 201 })
     const uid = /\/api\/v1\/(?:orders\/|trades\?orderUid=)(0x[0-9a-f]{112})$/.exec(url)?.[1] ?? ''
     const order = sent.get(uid) as Record<string, string> | undefined
     if (!order) return Response.json({ errorType: 'NotFound' }, { status: 404 })
@@ -9056,7 +9078,7 @@ function book(o: { state?: string; buy?: string; twist?: (asked: Asked) => Respo
 }
 const TICKET = { type: 'market', sell: 'USDC', buy: 'WETH', amount: '250000', chainId: 10 }
 const USDC_OP = '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85'
-const WETHS = ['0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2', '0x4200000000000000000000000000000000000006', '0x82af49447d8a07e3bd95bd0d56f35241523fbab1']
+const WETHS = ['0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2', '0x4200000000000000000000000000000000000006', '0x82af49447d8a07e3bd95bd0d56f35241523fbab1', ETH.toLowerCase()] // ETH is bought at the price of WETH
 const WETH_OP = '0x4200000000000000000000000000000000000006'
 /** The review: the ticket in, a live quote of the stand-in, the terms and the sealed review out. Nothing is written. */
 const review = (m: Holder, walletId: string, more: Record<string, unknown> = {}) => post('/api/desk/orders', m, { ...TICKET, walletId, ...more })
@@ -9238,14 +9260,16 @@ describe('H. the institution: overview from its wallets and orders, the desk and
     await db.prepare(`INSERT INTO approvals (id, org_id, action, subject_id, payload, payload_hash, requester_seat_id, state, expires_at, created_at) VALUES (?, ?, 'wallet.link', ?, '{}', '', ?, 'pending', ?, ?)`)
       .bind(data.randomId(), o.orgId, pending, o.seatId, now + DAY, now).run() // its link waits for a second person: live, not linked
     await demoWallet(o.orgId, 'Unichain', 'linked', someAddress(), 'custodian', 130) // a chain the desk does not serve
+    held(ETH, accounts[1].address, 3n * 10n ** 18n) // ETH itself: Multicall3's getEthBalance
     held(WETH_OP, accounts[1].address, 12_345_000_000_000_000_000n)
     held(USDC_OP, accounts[1].address, 1_500_250_000n)
     held(BASE_USDC, await addressOf(base), -1n) // its balanceOf reverts
     const view = (await get('/api/overview', o)).body
     expect(view.balances).toEqual({ readAt: new Date(now).toISOString(), leftOut: 0, wallets: [
-      { wallet: 'Operations Safe', address: accounts[1].address, chain: 'OP Mainnet', read: true, rows: [{ asset: 'WETH', token: WETH_OP, balance: '12.345' }, { asset: 'USDC', token: USDC_OP, balance: '1500.25' }] },
+      { wallet: 'Operations Safe', address: accounts[1].address, chain: 'OP Mainnet', read: true, rows: [
+        { asset: 'ETH', token: ETH, balance: '3' }, { asset: 'USDC', token: USDC_OP, balance: '1500.25' }, { asset: 'WETH', token: WETH_OP, balance: '12.345' }] },
       { wallet: 'Base Safe', address: await addressOf(base), chain: 'Base', read: true, rows: [
-        { asset: 'WETH', token: WETH_OP, balance: '0' }, { asset: 'USDC', token: BASE_USDC, balance: null }, { asset: 'EURC', token: '0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42', balance: '0' }] },
+        { asset: 'ETH', token: ETH, balance: '0' }, { asset: 'USDC', token: BASE_USDC, balance: null }, { asset: 'EURC', token: '0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42', balance: '0' }, { asset: 'WETH', token: WETH_OP, balance: '0' }] },
     ] })
     expect(walletId).toBeTruthy()
     // One eth_call per chain on each of its two endpoints, each of which first said it is that chain.
@@ -9256,7 +9280,7 @@ describe('H. the institution: overview from its wallets and orders, the desk and
     now += 60_000
     chain.twist = (url, method, result) => (url === configFor('local').chains[8453][1] && method === 'eth_call' ? `0x${'0'.repeat(64)}` : result)
     const twisted = (await get('/api/overview', o)).body.balances.wallets
-    expect(twisted.map((w: { read: boolean; rows: { balance: string | null }[] }) => [w.read, w.rows[0].balance])).toEqual([[true, '12.345'], [false, null]])
+    expect(twisted.map((w: { read: boolean; rows: { balance: string | null }[] }) => [w.read, w.rows[0].balance])).toEqual([[true, '3'], [false, null]])
     // An endpoint that says it is another chain answers nothing.
     now += 60_000
     chain.twist = (url, method, result) => (url === configFor('local').chains[10][0] && method === 'eth_chainId' ? '0x1' : result)
@@ -9265,7 +9289,7 @@ describe('H. the institution: overview from its wallets and orders, the desk and
     now += 60_000
     const short = encodeFunctionResult({ abi: MULTI_ABI, functionName: 'aggregate3', result: [{ success: true, returnData: encodeFunctionResult({ abi: MULTI_ABI, functionName: 'balanceOf', result: 5n }) }] })
     chain.twist = (url, method, result) => (configFor('local').chains[10].includes(url) && method === 'eth_call' ? short : result)
-    expect((await get('/api/overview', o)).body.balances.wallets[0]).toMatchObject({ read: false, rows: [{ balance: null }, { balance: null }] })
+    expect((await get('/api/overview', o)).body.balances.wallets[0]).toMatchObject({ read: false, rows: [{ balance: null }, { balance: null }, { balance: null }] })
   })
 
   it('D1: locally only, RPC_URL names a stand-in on this machine for the balances; any other value is not read', async () => {
@@ -9278,14 +9302,14 @@ describe('H. the institution: overview from its wallets and orders, the desk and
     }
   })
 
-  it('D1: the balances are cached 60 seconds per organisation and its wallets; the 10 wallets linked first are read; the CSV says the same', async () => {
+  it('D1: the balances are cached 60 seconds per organisation and its wallets; the 8 wallets linked first are read; the CSV says the same', async () => {
     const { o } = await deskTeam()
-    held(WETH_OP, accounts[1].address, 10n ** 18n)
+    held(ETH, accounts[1].address, 10n ** 18n)
     await get('/api/overview', o)
     const asked = () => chain.calls.filter((x) => x.endsWith('eth_call')).length
     expect(asked()).toBe(2)
     now += 59_999
-    held(WETH_OP, accounts[1].address, 2n * 10n ** 18n)
+    held(ETH, accounts[1].address, 2n * 10n ** 18n)
     expect((await get('/api/overview', o)).body.balances.wallets[0].rows[0].balance).toBe('1')
     expect(asked()).toBe(2)
     now += 1
@@ -9295,13 +9319,13 @@ describe('H. the institution: overview from its wallets and orders, the desk and
     const more = await demoWallet(o.orgId, 'Wallet 1')
     expect((await get('/api/overview', o)).body.balances.wallets.map((w: { address: string }) => w.address)).toEqual([accounts[1].address, await addressOf(more)])
     expect(asked()).toBe(6)
-    for (let i = 2; i <= 10; i++) await demoWallet(o.orgId, `Wallet ${i}`)
+    for (let i = 2; i <= 8; i++) await demoWallet(o.orgId, `Wallet ${i}`)
     const view = (await get('/api/overview', o)).body.balances
-    expect([view.wallets.length, view.leftOut, view.wallets.at(-1).wallet]).toEqual([10, 1, 'Wallet 9'])
+    expect([view.wallets.length, view.leftOut, view.wallets.at(-1).wallet]).toEqual([8, 1, 'Wallet 7'])
     const file = await exported(o, 'balances')
     expect(file.rows[0]).toEqual(['Wallet', 'Address', 'Chain', 'Asset', 'Token', 'Balance', 'Read at', 'source'])
-    expect(file.rows[1]).toEqual(['Operations Safe', accounts[1].address, 'OP Mainnet', 'WETH', WETH_OP, '2', view.readAt, 'live'])
-    expect(file.rows).toHaveLength(1 + 10 * 2)
+    expect(file.rows[1]).toEqual(['Operations Safe', accounts[1].address, 'OP Mainnet', 'ETH', ETH, '2', view.readAt, 'live'])
+    expect(file.rows).toHaveLength(1 + 8 * 3)
   })
 
   it('D1: the monthly statement and the record come from the filled orders: by the month sent and the asset sold, in units; a fee is kept only in the asset sold; the record names who gave the signing link', async () => {
@@ -9388,8 +9412,10 @@ describe('H. the institution: overview from its wallets and orders, the desk and
     expect(view.status).toBe(200)
     expect(view.body).toMatchObject({ mayPrepare: true, maySign: true, maxOpen: 20, validity: [1800, 14400, 86400], slippage: { default: 50, max: 300 }, chains: [{ id: 1, name: 'Ethereum' }, { id: 10, name: 'OP Mainnet' }, { id: 4663, name: 'Robinhood Chain' }, { id: 5042, name: 'Arc' }, { id: 8453, name: 'Base' }, { id: 42161, name: 'Arbitrum One' }] })
     expect(view.body.demo).toBeUndefined()
-    expect(view.body.assets.map((x: { chainId: number; symbol: string }) => `${x.chainId} ${x.symbol}`)).toEqual(['1 WETH', '1 USDC', '1 EURC', '1 EURe', '1 EURCV', '10 WETH', '10 USDC', '4663 WETH', '4663 USDG', '5042 WETH', '5042 USDC', '5042 EURC', '8453 WETH', '8453 USDC', '8453 EURC', '42161 WETH', '42161 USDC', '42161 EURe'])
-    expect(view.body.assets.find((x: { symbol: string }) => x.symbol === 'WETH').cap).toBe('2850')
+    expect(view.body.assets.map((x: { chainId: number; symbol: string }) => `${x.chainId} ${x.symbol}`)).toEqual(['1 ETH', '1 USDC', '1 EURC', '1 EURe', '1 EURCV', '1 WETH', '10 ETH', '10 USDC', '10 WETH', '4663 ETH', '4663 USDG', '4663 WETH', '5042 WETH', '5042 USDC', '5042 EURC', '8453 ETH', '8453 USDC', '8453 EURC', '8453 WETH', '42161 ETH', '42161 USDC', '42161 EURe', '42161 WETH'])
+    // ETH first (the ticket opens on it), and the same most per order as WETH. Arc has no ETH of its own.
+    expect(view.body.assets.filter((x: { symbol: string }) => x.symbol === 'ETH' || x.symbol === 'WETH').map((x: { cap: string; token: string }) => x.cap)).toEqual(Array(11).fill('2850'))
+    expect(view.body.assets.filter((x: { token: string }) => x.token === ETH).map((x: { chainId: number }) => x.chainId)).toEqual([1, 10, 4663, 8453, 42161])
     expect(view.body.wallets).toEqual([
       { id: walletId, label: 'Operations Safe', address: accounts[1].address, chainId: 10, chain: 'OP Mainnet', scheme: 'eip712' },
       { id: safe, label: 'Treasury Safe', address: await addressOf(safe), chainId: 8453, chain: 'Base', scheme: 'presign' },
@@ -9521,8 +9547,13 @@ describe('H. the institution: overview from its wallets and orders, the desk and
     for (const banned of [/licen[cs]ed|regulated|authori[sz]ed|MiCA|compliant/i, /—/, /honest/i, /paid (weekly|monthly|daily|every)|payout (terms|schedule)|\bdue\b|guarantee|no (other|hidden) fee|never charge|price improvement/i]) expect(said).not.toMatch(banned)
     for (const sentence of [
       'Nothing is signed at this step.', 'Use a larger screen.', 'Sent for approval.', 'Only the assets of the desk are shown.', 'Hand over the signing link', '<Ways link={link} walletConnect={false} />',
-      'The Safe owners or your custodian sign on the signing page. Ophis cannot.', 'Sending asks for your passkey.', 'An order sells one of these for another on the same chain. Most per order: the largest amount one order can sell.',
+      'The Safe owners or your custodian sign on the signing page. Ophis cannot.', 'Sending asks for your passkey.', 'Routes and liquidity', 'how far the price moves with the size of the order',
+      'Deep: at most 0.5% at the largest size, the most one order sells. Medium: at most 0.5% at a tenth of it. Thin: more.', 'The wallet sends the ETH in one transaction, which places the order.',
     ]) expect(deskPage, sentence).toContain(sentence)
+    // The tokens of the desk moved to the FAQ of Support (owner, 2026-11-19).
+    expect(deskPage).not.toContain('Tokens you can trade')
+    expect(supportPage).toContain('Which tokens can I trade, and how much per order?')
+    expect(supportPage).toContain('ETH is ETH itself: bought, it is paid into the wallet; sold, the wallet sends it in one transaction.')
     expect(deskPage).not.toContain('The desk is for institutions.') // every organisation trades on the desk (owner, 2026-11-19)
     expect(deskPage).not.toMatch(/Demo data|not part of this demo|Execution: none/)
     expect(pagesSource).toContain('<dt>Settle from</dt><dd>{order.terms.label}, <span className="mono">{order.terms.wallet}</span></dd>')
@@ -10193,11 +10224,11 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     }
     // The assets of each chain, by the sources named in ARCHITECTURE.md (two independent sources, and symbol() and decimals() on a public RPC).
     expect(Object.fromEntries(Object.entries(orders.ASSETS).map(([id, a]) => [id, Object.entries(a).map(([symbol, x]) => `${symbol} ${x!.token} ${x!.decimals}`)]))).toEqual({
-      1: ['WETH 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2 18', 'USDC 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 6', 'EURC 0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c 6', 'EURe 0x39b8B6385416f4cA36a20319F70D28621895279D 18', 'EURCV 0x5F7827FDeb7c20b443265Fc2F40845B715385Ff2 18'],
-      10: ['WETH 0x4200000000000000000000000000000000000006 18', 'USDC 0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85 6'],
-      8453: ['WETH 0x4200000000000000000000000000000000000006 18', 'USDC 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913 6', 'EURC 0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42 6'],
-      42161: ['WETH 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1 18', 'USDC 0xaf88d065e77c8cC2239327C5EDb3A432268e5831 6', 'EURe 0x0c06cCF38114ddfc35e07427B9424adcca9F44F8 18'],
-      4663: ['WETH 0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73 18', 'USDG 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168 6'],
+      1: ['ETH 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE 18', 'USDC 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 6', 'EURC 0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c 6', 'EURe 0x39b8B6385416f4cA36a20319F70D28621895279D 18', 'EURCV 0x5F7827FDeb7c20b443265Fc2F40845B715385Ff2 18', 'WETH 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2 18'],
+      10: ['ETH 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE 18', 'USDC 0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85 6', 'WETH 0x4200000000000000000000000000000000000006 18'],
+      8453: ['ETH 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE 18', 'USDC 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913 6', 'EURC 0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42 6', 'WETH 0x4200000000000000000000000000000000000006 18'],
+      42161: ['ETH 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE 18', 'USDC 0xaf88d065e77c8cC2239327C5EDb3A432268e5831 6', 'EURe 0x0c06cCF38114ddfc35e07427B9424adcca9F44F8 18', 'WETH 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1 18'],
+      4663: ['ETH 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE 18', 'USDG 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168 6', 'WETH 0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73 18'],
       5042: ['WETH 0x128cC466B61f542da60c70e3aA11c10e19B84EDB 18', 'USDC 0x3600000000000000000000000000000000000000 6', 'EURC 0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1 6'],
     })
   })
@@ -10249,8 +10280,8 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     const refused: [Record<string, unknown>, string][] = [
       [{ type: 'stop' }, 'type_invalid'], [{ type: undefined }, 'type_invalid'],
       [{ chainId: 130 }, 'chain_not_allowed'], [{ chainId: '10' }, 'chain_not_allowed'], [{ chainId: undefined }, 'chain_not_allowed'],
-      [{ sell: 'EURC' }, 'asset_not_permitted'], [{ buy: 'ETH' }, 'asset_not_permitted'], [{ sell: 'usdc' }, 'asset_not_permitted'], [{ buy: 'constructor' }, 'asset_not_permitted'], [{ sell: '__proto__' }, 'asset_not_permitted'],
-      [{ buy: 'USDC' }, 'same_asset'], [{ walletId: undefined }, 'wallet_not_linked'],
+      [{ sell: 'EURC' }, 'asset_not_permitted'], [{ chainId: 5042, buy: 'ETH' }, 'asset_not_permitted'], [{ sell: 'usdc' }, 'asset_not_permitted'], [{ buy: 'constructor' }, 'asset_not_permitted'], [{ sell: '__proto__' }, 'asset_not_permitted'],
+      [{ buy: 'USDC' }, 'same_asset'], [{ sell: 'ETH', buy: 'WETH' }, 'same_asset'], [{ sell: 'WETH', buy: 'ETH' }, 'same_asset'], [{ walletId: undefined }, 'wallet_not_linked'],
       ...['1e9', '-1', '0', '0.0', ' 1', '1,5', '.5', '01', '0x10', 'NaN', '', '1'.repeat(40), '1.0000001'].map((amount) => [{ amount }, 'amount_invalid'] as [Record<string, unknown>, string]),
       [{ amount: 1 }, 'amount_invalid'], [{ sell: 'WETH', buy: 'USDC', amount: '0.' + '0'.repeat(18) + '1' }, 'amount_invalid'],
       [cap, 'over_limit'], [{ sell: 'WETH', buy: 'USDC', amount: '2850.000000000000000001' }, 'over_limit'],
@@ -11025,8 +11056,14 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     expect(daily2.filter((x) => /\/orders\/0x/.test(x.url)).length).toBeLessThanOrEqual(20)
     expect((await deskOrders(team.t)).filter((x) => x.state === 'Open')).toEqual([])
     // An order whose expiry passed reads Expired even before the orderbook is read again.
-    expect(orders.stateOf({ state: 'applied', open: false, type: 'market', approvedAt: 0, uid: '0x', status: 'open', validTo: 1_000 }, 1_000_000)).toBe('Expired')
-    expect(orders.stateOf({ state: 'applied', open: false, type: 'market', approvedAt: 0, uid: '0x', status: 'open', validTo: 1_000 }, 999_999)).toBe('Open')
+    expect(orders.stateOf({ state: 'applied', open: false, type: 'market', approvedAt: 0, uid: '0x', status: 'open', validTo: 1_000, eth: false }, 1_000_000)).toBe('Expired')
+    expect(orders.stateOf({ state: 'applied', open: false, type: 'market', approvedAt: 0, uid: '0x', status: 'open', validTo: 1_000, eth: false }, 999_999)).toBe('Open')
+    // An order waiting for its transaction (a Safe's, an ETH sale's) reads Expired once its expiry passed: an ETH sale never
+    // placed is never in the orderbook, so nothing else would ever say so.
+    for (const eth of [false, true]) {
+      const waiting = { state: 'applied', open: false, type: 'market' as const, approvedAt: 0, uid: '0x', status: 'presignaturePending', validTo: 1_000, eth }
+      expect([orders.stateOf(waiting, 999_999), orders.stateOf(waiting, 1_000_000)]).toEqual([eth ? 'Sent: waiting for the ETH transaction' : 'Sent: waiting for the Safe transaction', 'Expired'])
+    }
     // An answer the server cannot use changes nothing: another state, an amount that is no integer, a transaction that is no hash.
     const id = await approvedOrder(team, { amount: '7' })
     const { page } = await signed((await orderLink(team.t, id)).token)
@@ -11255,7 +11292,7 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     expect(rights.find((x: { can: string }) => x.can.startsWith('Give the wallet the link'))).toMatchObject({ roles: ['owner', 'admin', 'trader', 'approver', 'compliance'], fresh: true, second: false })
     expect(rights.find((x: { can: string }) => x.can.startsWith('See the desk'))).toMatchObject({ fresh: false, second: false })
     for (const code of ['limit_out_of_band', 'wallet_chain', 'wallet_contract', 'slippage_invalid', 'validity_invalid', 'quote_unavailable', 'quote_refused', 'review_expired', 'review_invalid', 'review_used', 'amount_too_small']) expect(uiSource, code).toContain(`${code}: '`)
-    for (const code of ['open', 'presignaturePending', 'cancelled', 'asked', 'link_invalid', 'signature_rejected', 'sanctioned_address', 'wallet_not_linked', 'asset_not_permitted', 'order_refused', 'orderbook_unavailable', 'already_sent', 'not_opened']) expect(signScript, code).toMatch(new RegExp(`\\b${code}: '`))
+    for (const code of ['open', 'presignaturePending', 'cancelled', 'asked', 'taken_back', 'placed', 'proposed', 'not_placed', 'gone', 'link_invalid', 'signature_rejected', 'sanctioned_address', 'wallet_not_linked', 'asset_not_permitted', 'order_refused', 'orderbook_unavailable', 'already_sent', 'not_opened']) expect(signScript, code).toMatch(new RegExp(`\\b${code}: '`))
     expect(deskPage).toContain("await (send ? sensitive : api)<OrderBody & { review: string; error?: string }>('/api/desk/orders'")
   })
 })
@@ -11266,6 +11303,254 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
 // list. Then it checks the largest count of every route and job against the Free limits per invocation. Run it with the
 // whole file: it fails when a row of a route table never answered 2xx (a refusal alone measures nothing). A new route is
 // in it by its row; a new job (a cron, a queue) is driven through meter() and named in JOBS, one line.
+// ---- ETH itself (owner, 2026-11-19). Bought: the order buys the settlement's marker address, which pays ETH out. Sold: the
+// wallet's one transaction to the chain's EthFlow contract places the order, which that contract owns. Written from the
+// contracts' public ABI and @ophis/sdk's EthFlow code, not from orders.ts. And the routes beside the ticket.
+const ETHFLOW_OP = '0x764fE4aa1FF493cf39931c7923C8ff5837596504'
+const ETHFLOW_ABI = parseAbi(['struct Data { address buyToken; address receiver; uint256 sellAmount; uint256 buyAmount; bytes32 appData; uint256 feeAmount; uint32 validTo; bool partiallyFillable; int64 quoteId; }', 'function createOrder(Data order) payable returns (bytes32)', 'function invalidateOrder(Data order)'])
+// Each test sells another amount: an ETH sale's order id names no expiry, so identical sales of one wallet are one order.
+const quotesOf = (asked: Asked[]) => asked.filter((x) => x.url.endsWith('/api/v1/quote'))
+
+describe('J2. ETH itself, and the routes beside the ticket', () => {
+  it('bought: the order buys the marker address, and the settlement pays ETH into the wallet', async () => {
+    const team = await deskTeam()
+    const asked = book()
+    const r = await review(team.t, team.walletId, { sell: 'USDC', buy: 'ETH' })
+    expect(r.body.terms.buy).toMatchObject({ symbol: 'ETH', token: ETH })
+    expect(quotesOf(asked).at(-1)!.body).toMatchObject({ sellToken: USDC_OP, buyToken: ETH, signingScheme: 'eip712', onchainOrder: false })
+    const { page, answer } = await signed((await orderLink(team.t, await approvedOrder(team, { sell: 'USDC', buy: 'ETH' }))).token)
+    expect([page.body.eth, page.body.typed.message.buyToken, answer.body.state]).toEqual([false, ETH, 'open'])
+    expect(asked.filter((x) => x.url.endsWith('/api/v1/orders')).at(-1)!.body).toMatchObject({ sellToken: USDC_OP, buyToken: ETH, receiver: accounts[1].address })
+  })
+
+  it('sold: checked first, then one transaction to the EthFlow contract places the order, which that contract owns; nothing to sign, no approval; its cancel takes the ETH back', async () => {
+    const team = await deskTeam()
+    const asked = book()
+    const ETH_SALE = { sell: 'ETH', buy: 'USDC', amount: '1' }
+    const r = await review(team.t, team.walletId, ETH_SALE)
+    expect(r.body.terms.sell).toMatchObject({ symbol: 'ETH', token: ETH, amount: String(10n ** 18n) })
+    // Quoted as @ophis/sdk quotes an ETH sale: WETH sold, an onchain EIP-1271 order whose verification is not charged.
+    expect(quotesOf(asked).at(-1)!.body).toMatchObject({ sellToken: WETH_OP, buyToken: USDC_OP, signingScheme: 'eip1271', onchainOrder: true, verificationGasLimit: 0 })
+    const id = await approvedOrder(team, ETH_SALE)
+    const { terms } = await orderOf(id)
+    const key = await orderLink(team.t, id)
+    const page = (await orderPage(key.token)).body
+    // The order the contract places: WETH sold, the largest expiry, owned by the contract. Its id, made here with viem.
+    const placed = { sellToken: WETH_OP, buyToken: USDC_OP, receiver: accounts[1].address, sellAmount: terms.sell.amount, buyAmount: terms.buy.minimum, validTo: 0xffffffff, appDataHash: terms.appDataHash,
+      feeAmount: '0', kind: 'sell', partiallyFillable: false, sellTokenBalance: 'erc20', buyTokenBalance: 'erc20', from: ETHFLOW_OP }
+    const uid = uidOf(10, placed).toLowerCase()
+    expect(page).toMatchObject({ eth: true, ethflow: ETHFLOW_OP, typed: null, allowance: null, cancelTx: null, uid })
+    // The send: the checks, then the one transaction, with a fresh quote's id. The order waits for it, its link live.
+    const quotes = quotesOf(asked).length
+    const sent1 = await orderSend(key.token)
+    expect(sent1.body).toMatchObject({ state: 'transaction', uid })
+    expect(quotesOf(asked)).toHaveLength(quotes + 1)
+    expect(asked.filter((x) => x.url.endsWith('/api/v1/orders'))).toEqual([]) // nothing is posted: the transaction places it
+    // Its full appData is stored first: the transaction commits only the hash, and without the document no partner fee is applied.
+    expect(asked.filter((x) => x.method === 'PUT').map((x) => [x.url, x.body])).toEqual([[`https://optimism-mainnet.ophis.fi/api/v1/app_data/${terms.appDataHash}`, { fullAppData: terms.appData }]])
+    const tx = sent1.body.tx
+    expect([tx.to, tx.value]).toEqual([ETHFLOW_OP, terms.sell.amount])
+    const call1 = decodeFunctionData({ abi: ETHFLOW_ABI, data: tx.data })
+    expect([call1.functionName, call1.args[0]]).toEqual(['createOrder', { buyToken: USDC_OP, receiver: accounts[1].address, sellAmount: BigInt(terms.sell.amount), buyAmount: BigInt(terms.buy.minimum),
+      appData: terms.appDataHash, feeAmount: 0n, validTo: page.validTo, partiallyFillable: false, quoteId: BigInt(realBook.quote.response.id) }])
+    expect(await lastAudit(team.o.orgId)).toMatchObject({ action: 'order.send', actor_id: null, detail: 'eth' }) // no signature: the system's row
+    expect((await deskOrders(team.t)).find((o) => o.id === id)).toMatchObject({ state: 'Sent: waiting for the ETH transaction', uid })
+    // Asked again (a reload, a lost answer): the same order and transaction; nothing more is held or written.
+    const held = await snapshot()
+    expect((await orderSend(key.token)).body).toMatchObject({ state: 'transaction', uid, tx: { to: ETHFLOW_OP, data: tx.data } })
+    expect(await snapshot()).toBe(held)
+    // Once the orderbook has it (its indexer read the transaction), the desk reads it as any order.
+    sent.set(uid, placed)
+    expect((await deskOrders(team.t)).find((o) => o.id === id)!.state).toBe('Open')
+    // Its cancel: the wallet's own transaction, which sends no ETH and takes the order back with its ETH.
+    const cancel = await orderLink(team.t, id, 'cancel')
+    const back = (await orderPage(cancel.token)).body.cancelTx
+    const call2 = decodeFunctionData({ abi: ETHFLOW_ABI, data: back.data })
+    expect([back.to, back.value, call2.functionName, call2.args[0]]).toEqual([ETHFLOW_OP, '0', 'invalidateOrder', { ...call1.args[0], quoteId: 0n }])
+    expect((await orderSend(cancel.token)).body).toEqual({ state: 'taken_back' })
+    expect(await lastAudit(team.o.orgId)).toMatchObject({ action: 'order.cancel', detail: 'eth' })
+    // Read again once the orderbook says it filled (the take-back came too late).
+    // It reports its fee in WETH, the token the order really sells: kept, as for any order.
+    book({ state: 'fulfilled' })
+    expect((await deskOrders(team.t)).find((o) => o.id === id)).toMatchObject({ state: 'Filled', executed: { sold: '1 ETH', fee: expect.stringMatching(/^0\.\d+ ETH$/) } })
+    expect((await exported(team.t, 'orders')).rows.find((r: string[]) => r.includes(uid))![7]).toBe('ethflow')
+  })
+
+  it('sold from a Safe: the same checks, then one Safe transaction; its cancel waits for the owners', async () => {
+    const team = await deskTeam()
+    book()
+    const safe = await demoWallet(team.o.orgId, 'Treasury Safe', 'linked', accounts[4].address.toLowerCase(), 'safe')
+    const id = await approvedOrder({ ...team, walletId: safe }, { sell: 'ETH', buy: 'USDC', amount: '1' })
+    const key = await orderLink(team.t, id)
+    expect((await orderPage(key.token)).body).toMatchObject({ scheme: 'presign', eth: true, typed: null, allowance: null })
+    expect((await orderSend(key.token)).body).toMatchObject({ state: 'transaction', tx: { to: ETHFLOW_OP, value: String(10n ** 18n) } })
+    expect(await lastAudit(team.o.orgId)).toMatchObject({ action: 'order.send', actor_id: null, detail: 'eth' })
+    const cancel = await orderLink(team.t, id, 'cancel')
+    await orderPage(cancel.token)
+    expect((await orderSend(cancel.token)).body).toEqual({ state: 'asked' })
+    expect(await lastAudit(team.o.orgId)).toMatchObject({ action: 'order.cancel', detail: 'safe' }) // only proposed: the owners execute it
+  })
+
+  it('sold, expired, then taken back: the desk keeps reading it after its expiry, so the cancel shows and no cancel link is left (Codex, PR #1677)', async () => {
+    const team = await deskTeam()
+    book()
+    const id = await approvedOrder(team, { sell: 'ETH', buy: 'USDC', amount: '1.6' })
+    const { token } = await orderLink(team.t, id)
+    const { uid } = (await orderPage(token)).body
+    expect((await orderSend(token)).body.state).toBe('transaction')
+    sent.set(uid, { sellToken: WETH_OP, sellAmount: '1', buyAmount: '1', from: ETHFLOW_OP })
+    book({ state: 'expired' })
+    expect((await deskOrders(team.t)).find((o) => o.id === id)!.state).toBe('Expired')
+    const back = await orderLink(team.t, id, 'cancel')
+    await orderPage(back.token)
+    expect((await orderSend(back.token)).body).toEqual({ state: 'taken_back' })
+    expect(await lastAudit(team.o.orgId)).toMatchObject({ action: 'order.cancel', detail: 'eth' })
+    book({ state: 'cancelled' })
+    expect((await deskOrders(team.t)).find((o) => o.id === id)!.state).toBe('Cancelled')
+    expect((await orderLink(team.t, id, 'cancel')).status).toBe(404)
+    // A WETH order the orderbook says expired is not read again: only an ETH sale can still change after its expiry.
+    const weth = await approvedOrder(team)
+    const { answer } = await signed((await orderLink(team.t, weth)).token)
+    const asked = book({ state: 'expired' })
+    await deskOrders(team.t)
+    const reads = () => asked.filter((x) => x.url.endsWith(`/orders/${answer.body.uid}`)).length
+    const once = reads()
+    await deskOrders(team.t)
+    expect([once, reads()]).toEqual([1, 1])
+  })
+
+  it('sold, never placed: the orderbook never has it; it reads Expired after its expiry, and the daily run reads it until 7 days after', async () => {
+    const team = await deskTeam()
+    const asked = book()
+    const id = await approvedOrder(team, { sell: 'ETH', buy: 'USDC', amount: '1.3' })
+    const { token } = await orderLink(team.t, id)
+    const { validTo, uid } = (await orderPage(token)).body
+    expect((await orderSend(token)).body.state).toBe('transaction')
+    now = validTo * 1000
+    const fresh = await again(team.t) // a new session: the old one idled out
+    expect((await deskOrders(fresh)).find((o) => o.id === id)!.state).toBe('Expired')
+    // After its expiry its cancel link still takes the ETH back (the refunders return only orders far below their quote).
+    const back = await orderLink(fresh, id, 'cancel')
+    expect([back.status, (await orderPage(back.token)).body.cancelTx?.to]).toEqual([200, ETHFLOW_OP])
+    // A WETH order past its expiry gets none: nothing of it is held anywhere.
+    const weth = await approvedOrder({ ...team, t: fresh, a: await again(team.a) })
+    const wethLink = await orderLink(fresh, weth)
+    await signed(wethLink.token)
+    now += DAY
+    const late = await again(fresh)
+    expect((await orderLink(late, weth, 'cancel')).status).toBe(404)
+    expect((await orderLink(late, id, 'cancel')).status).toBe(200)
+    const reads = () => asked.filter((x) => x.url.endsWith(`/orders/${uid}`)).length
+    now = validTo * 1000 + 7 * DAY - 1
+    await daily(testEnv, now)
+    const before = reads()
+    now += 1
+    await daily(testEnv, now)
+    expect([before > 1, reads()]).toEqual([true, before])
+  })
+
+  it('sold: an identical sale of the same wallet has the same order id, which the EthFlow contract takes once: refused at the send, nothing held', async () => {
+    const team = await deskTeam()
+    book()
+    const opened = async (amount: string) => {
+      const { token } = await orderLink(team.t, await approvedOrder(team, { sell: 'ETH', buy: 'USDC', amount }))
+      return { token, uid: (await orderPage(token)).body.uid as string }
+    }
+    const first = await opened('1.4')
+    expect((await orderSend(first.token)).body.state).toBe('transaction')
+    // A desk order holds that id already (sent, perhaps never placed).
+    const second = await opened('1.4')
+    expect(second.uid).toBe(first.uid)
+    const before = await snapshot()
+    expect((await orderSend(second.token)).body).toEqual({ error: 'eth_order_exists' })
+    expect(await snapshot()).toBe(before)
+    // The orderbook has it (placed elsewhere, from the swap or the SDK).
+    const third = await opened('1.5')
+    sent.set(third.uid, { sellToken: WETH_OP, sellAmount: '1', buyAmount: '1', from: ETHFLOW_OP })
+    expect((await orderSend(third.token)).body).toEqual({ error: 'eth_order_exists' })
+  })
+
+  it('sold: no transaction is handed without a fresh quote, or for an address on a sanctions list; nothing is held', async () => {
+    const team = await deskTeam()
+    let [quote, upload]: (Response | undefined)[] = []
+    const asked = book({ twist: (x) => (x.url.endsWith('/api/v1/quote') ? quote?.clone() : x.method === 'PUT' ? upload?.clone() : undefined) })
+    const id = await approvedOrder(team, { sell: 'ETH', buy: 'USDC', amount: '1.2' })
+    const { token } = await orderLink(team.t, id)
+    await orderPage(token)
+    const before = await snapshot()
+    for (const [answer, error] of [[new Response('', { status: 502 }), 'orderbook_unavailable'], [Response.json({ errorType: 'NoLiquidity' }, { status: 400 }), 'order_refused']] as const) {
+      quote = answer
+      expect((await orderSend(token)).body).toEqual({ error })
+      expect(await snapshot()).toBe(before)
+    }
+    quote = undefined
+    // Its appData not stored: no transaction either, nothing held.
+    upload = new Response('', { status: 502 })
+    expect((await orderSend(token)).body).toEqual({ error: 'orderbook_unavailable' })
+    expect(await snapshot()).toBe(before)
+    upload = undefined
+    await db.batch([db.prepare(`INSERT OR REPLACE INTO sanctions_lists (list, sha256, entries, loaded_at) VALUES ('ofac', ?, 1, ?)`).bind('ab'.repeat(32), now), db.prepare(`INSERT INTO sanctioned_addresses (list, address) VALUES ('ofac', ?)`).bind(accounts[1].address.toLowerCase())])
+    const quotes = quotesOf(asked).length
+    const listed = await orderSend(token)
+    await db.batch([db.prepare('DELETE FROM sanctioned_addresses'), db.prepare('DELETE FROM sanctions_lists')])
+    expect([listed.status, listed.body, quotesOf(asked).length]).toEqual([403, { error: 'sanctioned_address' }, quotes])
+    expect(await row('SELECT status, uid FROM orders WHERE id = ?', id)).toEqual({ status: 'refused', uid: null })
+  })
+
+  it('routes: what the asset sells for on its chain, how far the price moves at three sizes, and a score; ETH and WETH are one route; read once per 5 minutes', async () => {
+    const m = await member()
+    orders.ROUTES.clear()
+    const asked = book()
+    const view = await get('/api/desk/routes/10.USDC', m)
+    expect(view.body).toMatchObject({ chainId: 10, sell: 'USDC', sizes: ['55000', '550000', '5500000'], routes: [{ buy: ['ETH', 'WETH'], score: 'deep' }] })
+    expect(view.body.routes[0].moves.every((x: number) => x >= 0 && x <= 1)).toBe(true) // the stand-in's price is the same at every size
+    // Four quotes of the one route: the reference (a thousandth of the most per order) and the three sizes, from no wallet.
+    expect(quotesOf(asked).map((x) => [x.body!.sellToken, x.body!.buyToken, x.body!.sellAmountBeforeFee, x.body!.from])).toEqual(
+      [5_500n, 55_000n, 550_000n, 5_500_000n].map((n) => [USDC_OP, WETH_OP, String(n * 10n ** 6n), '0x000000000000000000000000000000000000dEaD']))
+    now += 5 * MIN - 1
+    expect((await get('/api/desk/routes/10.USDC', m)).body).toEqual(view.body)
+    expect(quotesOf(asked)).toHaveLength(4)
+    now += 1
+    await get('/api/desk/routes/10.USDC', m)
+    expect(quotesOf(asked)).toHaveLength(8)
+    // ETH sells as WETH: its one route is USDC. On Ethereum, USDC has four routes: 16 quotes, under the 50 calls of a Free Worker.
+    expect((await get('/api/desk/routes/10.ETH', m)).body.routes.map((x: { buy: string[] }) => x.buy)).toEqual([['USDC']])
+    expect(quotesOf(asked).slice(8).every((x) => x.body!.sellToken === WETH_OP)).toBe(true)
+    const main = book()
+    expect((await get('/api/desk/routes/1.USDC', m)).body.routes.map((x: { buy: string[] }) => x.buy)).toEqual([['ETH', 'WETH'], ['EURC'], ['EURe'], ['EURCV']])
+    expect(quotesOf(main)).toHaveLength(16)
+    for (const id of ['10.DOGE', '130.USDC', 'x.USDC', '10', '10.', '.USDC', '10.constructor', '10.__proto__', '5042.ETH']) expect((await get(`/api/desk/routes/${id}`, m)).status, id).toBe(404)
+  })
+
+  it('routes: deep, medium, thin, none and unavailable, as the orderbook answers each size', async () => {
+    const m = await member()
+    const sizes = [5_500n, 55_000n, 550_000n, 5_500_000n].map((n) => String(n * 10n ** 6n))
+    // How much worse each size's price is, in bps; or the orderbook's refusal, or no answer.
+    for (const [answers, score, moves] of [
+      [[0, 10, 30, 50], 'deep', [10, 30, 50]], [[0, 10, 30, 51], 'medium', [10, 30, 51]], [[0, 10, 51, 80], 'thin', [10, 51, 80]],
+      [[0, 10, 30, 'none'], 'medium', [10, 30, null]], [[0, -20, 0, 'none'], 'medium', [0, 0, null]], [[0, -20, 'down', 'none'], 'unavailable', [0, null, null]],
+      [['none', 0, 0, 0], 'none', [null, null, null]], [['down', 0, 0, 0], 'unavailable', [null, null, null]],
+      [['none', 0, 'down', 0], 'unavailable', [null, null, null]], [['zero', 0, 0, 0], 'unavailable', [null, null, null]],
+    ] as [(number | string)[], string, (number | null)[]][]) {
+      orders.ROUTES.clear()
+      const asked = book({ twist: (x) => {
+        if (!x.url.endsWith('/api/v1/quote')) return undefined
+        const whole = BigInt(x.body!.sellAmountBeforeFee as string)
+        const answer = answers[sizes.indexOf(String(whole))]
+        if (answer === 'none') return Response.json({ errorType: 'NoLiquidity' }, { status: 400 })
+        if (answer === 'down') return new Response('', { status: 502 })
+        if (answer === 'zero') return Response.json({ id: 1, quote: { sellAmount: String(whole), buyAmount: '0', feeAmount: '0' } }) // an answer it cannot use
+        return Response.json({ id: 1, quote: { sellAmount: String(whole), buyAmount: String((whole * BigInt(10_000 - (answer as number))) / 10_000n), feeAmount: '0' } })
+      } })
+      expect((await get('/api/desk/routes/10.USDC', m)).body.routes, JSON.stringify(answers)).toEqual([{ buy: ['ETH', 'WETH'], score, moves }])
+      // An answer with a size the orderbook did not answer for is not kept: the next read asks again.
+      const first = quotesOf(asked).length
+      await get('/api/desk/routes/10.USDC', m)
+      expect(quotesOf(asked).length - first, JSON.stringify(answers)).toBe(score === 'unavailable' ? 4 : 0)
+    }
+  })
+})
+
 describe('K. the Free plan of Cloudflare Workers', () => {
   const JOBS = ['daily run (cron)']
   it('no invocation passes the Free limits: 50 D1 queries, 50 subrequests, 1,000 to Cloudflare services, its share of the D1 rows of a day; listed organisations past the first 5 are frozen by the next runs', async () => {
@@ -11355,8 +11640,8 @@ describe('K. the Free plan of Cloudflare Workers', () => {
     expect((await call('GET', '/api/desk', { cookie: institution.cookie })).status).toBe(200)
     expect(desk.length).toBe(20)
 
-    // An institution's Overview with 11 linked wallets on Ethereum: the 10 linked first, whose 5 assets are one aggregate3
-    // of 50 calls, read on both endpoints (its answer must fit the 16 KB an RPC answer may have), then its three exports.
+    // An institution's Overview with 11 linked wallets on Ethereum: the 8 linked first, whose 6 assets are one aggregate3
+    // of 48 calls, read on both endpoints (its answer must fit the 16 KB an RPC answer may have), then its three exports.
     vi.stubGlobal('fetch', fakeRpc)
     const holder = await owner('Balances load')
     await setOrg(holder.orgId, `kind = 'institution'`)
@@ -11366,7 +11651,7 @@ describe('K. the Free plan of Cloudflare Workers', () => {
       for (const a of Object.values(orders.ASSETS[1])) held(a!.token, address, 2n ** 255n) // the longest number a balance can be
     }
     const big = (await call('GET', '/api/overview', { cookie: holder.cookie })).body.balances
-    expect([big.wallets.length, big.leftOut, big.wallets.every((w: { read: boolean }) => w.read)]).toEqual([10, 1, true])
+    expect([big.wallets.length, big.leftOut, big.wallets.every((w: { read: boolean }) => w.read)]).toEqual([8, 3, true])
     for (const table of ['balances', 'statement', 'orders']) expect((await call('GET', `/api/export/${table}`, { cookie: holder.cookie })).status, table).toBe(200)
     // One wallet on each of the 4 chains: 4 aggregate3, each on 2 endpoints after their eth_chainId (16 subrequests).
     const spread = await owner('Four chains')
