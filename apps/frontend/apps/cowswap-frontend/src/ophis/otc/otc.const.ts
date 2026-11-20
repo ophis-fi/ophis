@@ -34,9 +34,9 @@ export const OPHIS_ETHEREUM_OTC_MANIFEST: OtcManifest = {
   maxReturnBytes: 32_768,
   callGasLimit: 2_000_000n,
   readTimeoutMs: OTC_READ_TIMEOUT_MS,
-  // Upstream-operated public index. Discovery/enrichment hint only, never
+  // Ophis-operated public index. Discovery/enrichment hint only, never
   // settlement authority; the UI must degrade gracefully without it.
-  subgraphUrl: 'https://api.goldsky.com/api/public/project_cmmkvehnce9da01u17d657vdt/subgraphs/Swapboard/1.0.0/gn',
+  subgraphUrl: 'https://api.goldsky.com/api/public/project_cmp8sq4cilegn01ws0ldh325r/subgraphs/ophis-otc/1.0.0/gn',
   subgraphTimeoutMs: OTC_SUBGRAPH_TIMEOUT_MS,
   maxIndexLagBlocks: 60n,
   tokenPolicyProfile: 'otc-escrow',

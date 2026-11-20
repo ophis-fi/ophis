@@ -124,7 +124,7 @@ function parseIndexedBlock(data: Record<string, unknown>): bigint {
 }
 
 /**
- * Discovery/enrichment data from the upstream-operated public subgraph.
+ * Discovery/enrichment data from the Ophis-operated public subgraph.
  * NEVER settlement authority: rows only decorate on-chain state and every
  * displayed term must reconcile against the contract before being labeled
  * verified. Malformed rows are dropped (and counted); a malformed envelope
