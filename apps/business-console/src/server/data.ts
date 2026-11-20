@@ -1206,18 +1206,20 @@ export type WalletKind = 'safe' | 'custodian' | 'single_key'
 /** The live wallets of an organisation. recovery: 'in_force' (since recoveryAt), 'waiting' (in force from recoveryAt), or null. */
 export async function wallets(db: D1Database, orgId: string, now: number) {
   const { results } = await db
-    .prepare(`SELECT w.id, w.chain_id AS chainId, w.address, w.kind, w.label, w.state, w.linked_at AS linkedAt, w.anchor, w.anchor_effective_at AS at, w.snapshot, w.proof_by AS proofBy
+    .prepare(`SELECT w.id, w.chain_id AS chainId, w.address, w.kind, w.label, w.state, w.linked_at AS linkedAt, w.anchor, w.anchor_effective_at AS at, w.snapshot, w.proof_by AS proofBy,
+                NOT EXISTS (SELECT 1 FROM partner_reporting_exclusions e WHERE e.org_id = w.org_id AND e.address = w.address) AS reporting
               FROM wallets w WHERE w.org_id = ? AND ${LIVE} ORDER BY w.rowid`)
-    .bind(orgId, now).all<{ id: string; chainId: number; address: string; kind: WalletKind; label: string; state: 'pending' | 'linked'; linkedAt: number; anchor: string | null; at: number | null; snapshot: string | null; proofBy: 'key' | 'contract' | null }>()
+    .bind(orgId, now).all<{ id: string; chainId: number; address: string; kind: WalletKind; label: string; state: 'pending' | 'linked'; linkedAt: number; anchor: string | null; at: number | null; snapshot: string | null; proofBy: 'key' | 'contract' | null; reporting: number }>()
   const a = standing(results, now)
   return results.map(({ anchor: _, at, ...w }) => {
     const recovery = w.id === a.inForce ? ('in_force' as const) : w.id === a.waiting ? ('waiting' as const) : null
-    return { ...w, recovery, recoveryAt: recovery ? at : null }
+    return { ...w, reporting: w.reporting === 1, recovery, recoveryAt: recovery ? at : null }
   })
 }
-/** The linked wallets of an organisation with the proof of each link, oldest first: what the partner figures ask for (partner.ts). */
+/** Linked wallets included in partner reporting, with their proofs, oldest first. Exclusion never changes wallet authority. */
 export const linkedProofs = async (db: D1Database, orgId: string) =>
-  (await db.prepare(`SELECT chain_id AS chainId, address, label, proof_digest AS digest, proof_signature AS signature, proof_by AS proofBy FROM wallets WHERE org_id = ? AND state = 'linked' ORDER BY rowid`)
+  (await db.prepare(`SELECT chain_id AS chainId, address, label, proof_digest AS digest, proof_signature AS signature, proof_by AS proofBy FROM wallets w WHERE org_id = ? AND state = 'linked'
+                    AND NOT EXISTS (SELECT 1 FROM partner_reporting_exclusions e WHERE e.org_id = w.org_id AND e.address = w.address) ORDER BY rowid`)
     .bind(orgId).all<{ chainId: number; address: string; label: string; digest: string; signature: string; proofBy: 'key' | 'contract' | null }>()).results
 /** Is this address linked, or waiting for its second person, in this organisation? */
 export const walletLive = async (db: D1Database, orgId: string, chainId: number, address: string, now: number) =>

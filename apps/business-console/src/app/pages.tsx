@@ -295,7 +295,7 @@ interface Member { id: string; displayName: string; role: string; state: string;
 interface Passkey { id: string; seatId: string; label: string; state: string; deviceBound: boolean; createdAt: number; lastUsedAt: number | null; stopRightUntil: number | null }
 interface Ticket { id: string; kind: string; role: string; seatId: string; name: string; issuerSeatId: string | null; status: 'link' | 'issuer' | 'second' | 'wait'; myStep: 'issuer' | 'second' | null; until: number; storedAt: number | null; approved: number }
 interface Request { id: string; kind: string; subjectId: string; name: string | null; role: string | null; value: string | null; requester: string; requesterRole: string; createdAt: number; expiresAt: number; notBefore: number | null; mine: boolean; words?: OrderBody['words'] }
-interface Wallet { id: string; chainId: number; address: string; kind: string; label: string; state: 'pending' | 'linked'; recovery: 'in_force' | 'waiting' | null; recoveryAt: number | null; threshold?: number; owners?: number }
+interface Wallet { id: string; chainId: number; address: string; kind: string; label: string; state: 'pending' | 'linked'; recovery: 'in_force' | 'waiting' | null; recoveryAt: number | null; reporting: boolean; threshold?: number; owners?: number }
 interface View {
   wallets: Wallet[]
   chains: { id: number; name: string }[]
@@ -818,6 +818,7 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
                 <td>{chain(w.chainId)}</td>
                 <td className="kind">{kindOf(w)}</td>
                 <td className="wrap"><Status>{w.state === 'linked' ? 'Linked' : 'Pending'}</Status>{w.state === 'pending' && <small>Waits for a second person, under Approvals</small>}
+                  {me.organisation.kind === 'partner' && !w.reporting && <small>Excluded from partner reporting</small>}
                   {w.recovery && <><span className={`badge bi ${w.recovery === 'in_force' ? 'ok' : 'warn'}`}><Icon name={w.recovery === 'in_force' ? 'shield-check' : 'clock'} size={16} />Recovery wallet</span>
                     <small>{w.recovery === 'in_force' ? `In force since ${minute(w.recoveryAt!)}` : `In force from ${minute(w.recoveryAt!)}. Until then an Owner can cancel.`}</small></>}</td>
                 <td>{w.state === 'linked' && manages && <button className="btn ghost sm" type="button" aria-label={`Manage ${w.label}`} onClick={() => setWalletId(w.id)}><Icon name="settings" size={16} />Manage</button>}</td>

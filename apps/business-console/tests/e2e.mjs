@@ -233,7 +233,7 @@ try {
   }
   await page.getByRole('heading', { name: 'Your flow, in one view.' }).waitFor()
   check('after sign-in an active organisation lands on Overview: a partner with no linked wallet is told so, with no example and no demo banner, and the footer line',
-    await page.getByText('No wallet is linked.').isVisible() && !(await page.getByText('Demo data.').count()) && !(await page.locator('.stats').count()) && await page.locator(".foot-line", { hasText: FOOTER }).isVisible() && (await page.evaluate(() => location.hash)) !== '#/organisation')
+    await page.getByText('No wallet is included in partner reporting.').isVisible() && !(await page.getByText('Demo data.').count()) && !(await page.locator('.stats').count()) && await page.locator(".foot-line", { hasText: FOOTER }).isVisible() && (await page.evaluate(() => location.hash)) !== '#/organisation')
   await toOrganisation(page)
   await page.getByRole('button', { name: 'End session' }).waitFor()
   check('the Organisation page shows the member, the passkey and the session',
@@ -1644,6 +1644,22 @@ try {
   await pat.page.getByRole('heading', { name: 'Your flow, in one view.' }).waitFor()
   await pat.page.getByText('Figures from the Ophis rebate service, read at').waitFor()
   check('a partner\'s Overview has the monthly statement of its desk orders too (owner, 2026-11-19)', await pat.page.getByRole('heading', { name: 'Monthly statement' }).isVisible() && await pat.page.getByText('No filled order yet.').isVisible())
+  const reportingOrg = await pat.page.evaluate(() => fetch('/api/me').then((r) => r.json()).then((me) => me.organisation.id))
+  const reportingWallets = () => pat.page.evaluate(() => fetch('/api/org').then((r) => r.json()).then((org) => org.wallets))
+  const beforeReporting = await reportingWallets()
+  check('the operator command excludes a wallet from reporting', operator('reporting', reportingOrg, 'exclude', '--wallet', P.wallet).includes('excluded in partner reporting'))
+  await pat.page.reload()
+  await pat.page.getByText('No wallet is included in partner reporting.').waitFor()
+  check('an excluded wallet has no partner figures', (await pat.page.locator('.pw').count()) === 0)
+  await pat.page.goto(`${ORIGIN}/#/organisation`)
+  await pat.page.getByText('Excluded from partner reporting').waitFor()
+  const afterReporting = await reportingWallets()
+  check('reporting exclusion keeps the linked wallet and its recovery state visible',
+    JSON.stringify(afterReporting) === JSON.stringify(beforeReporting.map((w) => ({ ...w, reporting: false })))
+    && await pat.page.locator('#wallets').getByText('Linked', { exact: true }).isVisible())
+  check('the operator command restores reporting', operator('reporting', reportingOrg, 'include', '--wallet', P.wallet).includes('included in partner reporting'))
+  await pat.page.goto(`${ORIGIN}/#/`)
+  await pat.page.getByText('Figures from the Ophis rebate service, read at').waitFor()
   const partnerMain = pat.page.locator('main')
   const feeSection = pat.page.locator('.pw section', { has: pat.page.getByRole('heading', { name: 'Partner fee' }) })
   const tradedSection = pat.page.locator('.pw section', { has: pat.page.getByRole('heading', { name: 'Wallets that traded through your integration' }) })
@@ -1706,7 +1722,7 @@ try {
   // The line under the alert: the lists checked, then what they did not reach. The sales of no known wallet are the
   // trades the indexer could not check (it gives a trade one wallet in both answers).
   const checkedLine = () => pat.page.locator('.checked').innerText()
-  const CHECKED = `The wallets whose orders carried your fee are checked against: OFAC SDN list, published 2026-11-09, loaded ${today}; UN Security Council consolidated list, loaded ${today}.`
+  const CHECKED = `The wallets whose orders carried the reported fee are checked against: OFAC SDN list, published 2026-11-09, loaded ${today}; UN Security Council consolidated list, loaded ${today}.`
   const HIDDEN = ' Not checked: the orders of linked wallets whose figures are not shown.'
   check('a wallet of the contract file is on the loaded list "un": a red alert before the figures with the wallets, trades, USD and trades not priced yet, that it is information, and its table (wallet, list, trades, volume, first and last trade); a line names the list checked and the sales of native ETH of no known wallet, not checked; the wallet is tagged once in the wallets that traded',
     (await flagged.getAttribute('role')) === 'alert' && (await flagged.evaluate((box) => !!(box.compareDocumentPosition(document.querySelector('.pw')) & Node.DOCUMENT_POSITION_FOLLOWING)))
@@ -1843,7 +1859,7 @@ try {
     Object.assign(f, { leftOut: 2, wallets: [w, { ...w, wallet: `0x${'f'.repeat(40)}`, label: 'Second', traders: { ...w.traders, unknown: { trades: 1, volumeUsd: 0, unpriced: 1 } } }] })
   })
   check('wallets linked after the 10 read: the line says their orders were not checked; the sales of no known wallet added up over two partner wallets',
-    (await checkedLine()) === `${CHECKED} Not checked: ${P.traders.unknown.trades + 1} sales of native ETH with no known wallet.${HIDDEN}` && await pat.page.getByText('Figures are read for the 10 wallets linked first. 2 more linked wallets are not shown.').isVisible())
+    (await checkedLine()) === `${CHECKED} Not checked: ${P.traders.unknown.trades + 1} sales of native ETH with no known wallet.${HIDDEN}` && await pat.page.getByText('Figures are read for the 10 included wallets linked first. 2 more included wallets are not shown.').isVisible())
   await tradedWith({ wallets: [{ ...tradersList(2)[0], trades: 2, unpriced: 1 }, tradersList(2)[1]], unknown: none, totals: { walletCount: 2, trades: 3, volumeUsd: 3, unpriced: 1 } })
   check('every wallet listed: no line about the largest; one trade not priced: under its volume and in the line, in the singular',
     !(await tradedSection.getByText(/largest wallets/).count()) && await tradedSection.getByText('Volume is priced each night. 1 trade is not priced yet.').isVisible()
@@ -1889,8 +1905,8 @@ try {
   await nell.page.getByRole('heading', { name: 'Your flow, in one view.' }).waitFor()
   const noWallet = nell.page.locator('[data-state="no_wallet"]')
   await noWallet.waitFor()
-  check('a partner with no linked wallet: "No wallet is linked", a link to Organisation, and no figure',
-    await noWallet.getByText('No wallet is linked.').isVisible() && (await noWallet.getByRole('link', { name: 'Link a wallet under Organisation' }).getAttribute('href')) === '/#/organisation'
+  check('a partner with no reporting wallet: a link to Organisation, and no figure',
+    await noWallet.getByText('No wallet is included in partner reporting.').isVisible() && (await noWallet.getByRole('link', { name: 'Link a wallet under Organisation' }).getAttribute('href')) === '/#/organisation'
     && !(await nell.page.locator('.stats').count()) && !(await nell.page.getByText(BANNER).count()) && await both(nell.page, '55-overview-partner-no-wallet'))
   await nell.context.close()
 

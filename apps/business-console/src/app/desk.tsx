@@ -273,7 +273,7 @@ function PartnerWalletFigures({ w, asOf }: { w: PartnerWallet; asOf: string }) {
         </>
       )}
       {t && (
-        <Section icon="users" title="Wallets that traded through your integration" hint="The wallets whose orders carried your fee, since the first trade. Volume is an estimate.">
+        <Section icon="users" title="Wallets that traded through your integration" hint="The wallets whose orders carried the reported fee, since the first trade. Volume is an estimate.">
           {t.totals.trades ? (
             <>
               <div className="stats">
@@ -322,7 +322,7 @@ function PartnerOverview({ v, retry }: { v: Partner; retry: () => Promise<void> 
         )}
       </header>
       {f.state === 'not_connected' && <p className="note warn" role="status" data-state={f.state}><Icon name="info" /><span className="grow"><b>Your figures are not connected yet.</b> This console is not connected to the Ophis rebate service. Nothing is wrong on your side. <a className="link" href="/#/support">Ask Support</a> when your figures will be connected.</span></p>}
-      {f.state === 'no_wallet' && <p className="note warn" role="status" data-state={f.state}><Icon name="wallet" /><span className="grow"><b>No wallet is linked.</b> Figures are shown for the wallets your organisation has linked. <a className="link" href="/#/organisation">Link a wallet under Organisation</a>.</span></p>}
+      {f.state === 'no_wallet' && <p className="note warn" role="status" data-state={f.state}><Icon name="wallet" /><span className="grow"><b>No wallet is included in partner reporting.</b> <a className="link" href="/#/organisation">Link a wallet under Organisation</a>, or <a className="link" href="/#/support">ask Support to include an existing wallet</a>.</span></p>}
       {f.state === 'figures_rate' && <p className="note warn" role="status" data-state={f.state}><Icon name="info" /><span className="grow"><b>Too many reads.</b> Your organisation read its figures 120 times in this hour. They can be read again in the next hour.</span></p>}
       {f.state === 'figures_unavailable' && (
         <p className="note bad" role="alert" data-state={f.state}><Icon name="triangle-alert" /><span className="grow"><b>The figures are not available right now.</b> The rebate service did not give a usable answer. Nothing changed in your account. Try again in a minute.</span>
@@ -330,10 +330,10 @@ function PartnerOverview({ v, retry }: { v: Partner; retry: () => Promise<void> 
       )}
       {f.state === 'live' && (
         <>
-          {f.leftOut > 0 && <p className="note" role="note"><Icon name="info" /><span className="grow">Figures are read for the 10 wallets linked first. {f.leftOut} more linked {f.leftOut === 1 ? 'wallet is' : 'wallets are'} not shown.</span></p>}
+          {f.leftOut > 0 && <p className="note" role="note"><Icon name="info" /><span className="grow">Figures are read for the 10 included wallets linked first. {f.leftOut} more included {f.leftOut === 1 ? 'wallet is' : 'wallets are'} not shown.</span></p>}
           <Sanctioned wallets={f.wallets} />
-          <p className="fine checked"><Icon name="shield-check" size={16} />{f.lists.length ? `The wallets whose orders carried your fee are checked against: ${f.lists.map((l) => `${l.name}${l.published ? `, published ${l.published}` : ''}, loaded ${l.loaded}`).join('; ')}.${unchecked(f)}`
-            : 'No sanctions list is loaded. The wallets whose orders carried your fee are not checked.'}</p>
+          <p className="fine checked"><Icon name="shield-check" size={16} />{f.lists.length ? `The wallets whose orders carried the reported fee are checked against: ${f.lists.map((l) => `${l.name}${l.published ? `, published ${l.published}` : ''}, loaded ${l.loaded}`).join('; ')}.${unchecked(f)}`
+            : 'No sanctions list is loaded. The wallets whose orders carried the reported fee are not checked.'}</p>
           {f.wallets.map((w) => <PartnerWalletFigures key={w.wallet} w={w} asOf={f.asOf} />)}
         </>
       )}

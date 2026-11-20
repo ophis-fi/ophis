@@ -73,6 +73,7 @@ export const ONBOARDING_EVENTS: Record<string, string> = {
   'sealed.download': 'Ophis operator: downloaded the sealed declaration, still sealed',
   'organisation.freeze': 'Ophis operator: organisation frozen',
   'organisation.unfreeze': 'Ophis operator: organisation unfrozen',
+  'wallet.reporting': 'Ophis operator: partner reporting selection recorded',
   // The operator's load (actor operator) or the daily read of the list file (actor system): the words are true for both.
   'screening.wallet': 'A wallet of the organisation is on a loaded sanctions list, organisation frozen',
   // A wallet proved its control of an address that is on a loaded list. An active organisation is frozen by it (data.ts); one that is not yet verified is not.
@@ -1000,6 +1001,24 @@ const freeze = (frozen: boolean) => async (c: Ctx) => {
   return outcome === 'ok' ? json(200, { state: frozen ? 'frozen' : 'active' }) : refuse(outcome)
 }
 
+async function reporting(c: Ctx) {
+  const id = c.params.id ?? ''
+  const address = parseAddress(c.body.wallet)
+  const { included } = c.body
+  if (!ID.test(id) || !address || typeof included !== 'boolean') return fail(400, 'invalid')
+  const changed = await commit(c.env.DB, id, async () => {
+    const wallet = await c.env.DB.prepare(`SELECT w.id FROM wallets w JOIN organisations o ON o.id = w.org_id
+      WHERE w.org_id = ? AND w.address = ? AND w.state = 'linked' AND o.kind = 'partner' AND o.state = 'active' ORDER BY w.rowid LIMIT 1`)
+      .bind(id, address).first<{ id: string }>()
+    if (!wallet) return null
+    const query = included ? 'DELETE FROM partner_reporting_exclusions WHERE org_id = ? AND address = ?'
+      : 'INSERT INTO partner_reporting_exclusions (org_id, address) VALUES (?, ?) ON CONFLICT DO NOTHING'
+    return [{ at: c.now, actorKind: 'operator', actorId: null, sessionId: null, action: 'wallet.reporting', subjectId: wallet.id, detail: included ? 'included' : 'excluded' },
+      [c.env.DB.prepare(query).bind(id, address)]]
+  })
+  return changed ? json(200, { wallet: checksum(address), state: included ? 'included' : 'excluded' }) : fail(404, 'not_found')
+}
+
 // page: the routes the review page calls, the only ones a request with no token reaches (Trail of Bits, PR #1670: the
 // sign-in cloudflared keeps in a file must not stand in for the Keychain's token on the other routes).
 export const operatorRoutes: { method: 'GET' | 'POST'; path: string; handler: (c: Ctx) => Promise<Response>; page?: true }[] = [
@@ -1007,6 +1026,7 @@ export const operatorRoutes: { method: 'GET' | 'POST'; path: string; handler: (c
   { method: 'POST', path: '/api/operator/organisations/:id/decision', handler: decide, page: true },
   { method: 'POST', path: '/api/operator/organisations/:id/freeze', handler: freeze(true) },
   { method: 'POST', path: '/api/operator/organisations/:id/unfreeze', handler: freeze(false) },
+  { method: 'POST', path: '/api/operator/organisations/:id/reporting', handler: reporting },
   { method: 'POST', path: '/api/operator/invites', handler: invite, page: true },
   { method: 'GET', path: '/api/operator/organisations/:id/items', handler: items },
   { method: 'POST', path: '/api/operator/items/:id/download', handler: download },
