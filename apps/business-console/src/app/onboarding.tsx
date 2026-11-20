@@ -30,8 +30,7 @@ const SAY: Record<string, string> = {
   invite_used: 'This invitation code was already used. Ask Ophis for a new one.',
   not_stored: 'This application was already used. Sign in with the passkey you created for it.',
   owner_key: 'The first Owner needs an active passkey that meets the passkey rule (a hardware key where the organisation requires one). Add one under Organisation, My passkeys, or have the new one confirmed.',
-  proof_or_owner: 'One of two things is still missing: the signature of the recovery wallet, or a second Owner.',
-  single_key: 'A recovery wallet with a single key is accepted only while the organisation has one member and its application names nobody else. Name a Safe or a custodian wallet instead.',
+  proof_or_owner: 'One of two things is still missing: a wallet signature confirming the first Owner passkey, or a second Owner.',
   declaration: 'The signed declaration is still missing. Print it, have it signed, then seal and upload the scan.',
   not_sealed: 'This is not a file sealed by this page. Choose the scan again and use "Seal and upload".',
   too_large: 'The file is larger than 10 MB. Scan the page again at a lower resolution.',
@@ -264,7 +263,7 @@ interface View {
   company: { legalName: string; kind: string; businessType: string | null; country: string | null; registration: string | null; lei: string | null; address: string | null; domain: string | null; }
   first: { credentialHash: string; active: boolean; name: string; position: string | null } | null
   people: { name: string; email: string; role: string; position: string | null; phone: string | null; telegram: string | null }[]
-  wallet: { chainId: number; chain: string; address: string; kind: string; label: string; inForce: boolean; threshold?: number; owners?: number } | null
+  wallet: { chainId: number; chain: string; address: string; kind: string; label: string; inForce: boolean; recoveryEligible: boolean; threshold?: number; owners?: number } | null
   missing: string | null
   review: { status: 'not_submitted' | 'under_review' | 'more_information' | 'verified'; since: number | null; reason: string | null }
   record: KybRow | null
@@ -331,8 +330,9 @@ function Declaration({ view }: { view: View }) {
           <dt>First Owner</dt><dd>{first ? who(first) : 'none'}</dd>
           <dt>First Owner passkey (hash)</dt><dd className="mono">{first?.credentialHash ?? 'none'}</dd>
           <dt>Other people</dt><dd>{view.people.length ? view.people.map((p) => `${who(p)}, ${ROLE[p.role]}, ${p.email}`).join('; ') : 'none'}</dd>
-          <dt>Recovery wallet</dt><dd className="mono">{wallet ? wallet.address : 'none'}</dd>
+          <dt>Wallet that signed the activation</dt><dd className="mono">{wallet ? wallet.address : 'none'}</dd>
           <dt>Chain</dt><dd>{wallet?.chain ?? 'none'}</dd>
+          <dt>Recovery wallet after approval</dt><dd>{wallet?.recoveryEligible ? wallet.address : 'None configured. Recovery must be set up separately.'}</dd>
         </dl>
         <p>The undersigned declares that the details above are those of the company, that each person named above acts for the company in the Ophis Business console, in the role shown, and that the undersigned may bind the company.</p>
         <dl className="kv sign">
@@ -426,9 +426,11 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
             <p>{keys ? 'The first Owner enrolled a passkey.' : 'The first Owner needs an active passkey that meets the passkey rule (a hardware key where the organisation requires one). Add one under Organisation, My passkeys, or have the new one confirmed.'}</p>
             {!keys && <p><a className="btn ghost sm" href="/#/organisation">Open Organisation, My passkeys</a></p>}
           </Step>
-          <Step icon="wallet" title="Recovery wallet or second Owner" done={proved}>
-            {view.wallet ? <p>{view.wallet.label}: {kindOf(view.wallet)}, <span className="mono">{view.wallet.address}</span> on {view.wallet.chain}. {view.wallet.inForce ? 'It is the recovery wallet in force.' : 'It signed the activation. It becomes the recovery wallet when Ophis approves the organisation.'}</p>
-              : <p>{proved ? 'A second Owner is enrolled. No recovery wallet is named.' : 'Name the wallet that restores access if every Owner is locked out, and let it sign once. Or invite a second Owner.'}</p>}
+          <Step icon="wallet" title="Wallet verification or second Owner" done={proved}>
+            {view.wallet ? <>
+              <p>{view.wallet.label}: {kindOf(view.wallet)}, <span className="mono">{view.wallet.address}</span> on {view.wallet.chain}. {view.wallet.inForce ? 'It is the recovery wallet in force.' : 'Wallet verified: it signed the activation and confirmed the first Owner passkey.'}</p>
+              {!view.wallet.inForce && <p>{view.wallet.recoveryEligible ? 'It becomes the recovery wallet when Ophis approves the organisation.' : 'This single-key wallet cannot recover an organisation with other people. You can submit for review. After approval, set up a Safe or custodian recovery wallet under Organisation. Until then, losing every Owner passkey would leave no wallet recovery.'}</p>}
+            </> : <p>{verified ? 'No recovery wallet is configured. Set one under Organisation.' : proved ? 'A second Owner is enrolled. No recovery wallet is named.' : 'Name a wallet and let it sign once to confirm the first Owner passkey. Or invite a second Owner. Recovery eligibility is checked separately.'}</p>}
             {!verified && owner && keys && first?.active && !issued && (
               <form className="stack" onSubmit={name}>
                 <label className="field">Chain

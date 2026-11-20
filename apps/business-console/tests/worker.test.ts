@@ -6142,7 +6142,11 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
   const APPROVE = { decision: 'approve', tier: 'standard', source: 'registry', evidenceRef: 'LBR extract B123456', evidenceSha256: 'ab'.repeat(32), nextReview: '2027-11-11', screening: SCREENED }
   const MORE = { decision: 'more', reason: 'details_differ', tier: 'standard', source: 'registry' }
   // An approval names the submission the operator looked at (review): the helper takes it from the row, as the list would show it now.
-  const submissionOf = async (orgId: string) => (await data.sha256Hex((await row<{ print: string | null }>('SELECT review_print AS print FROM organisations WHERE id = ?', orgId))?.print ?? '')).slice(0, 16)
+  const submissionOf = async (orgId: string) => {
+    const print = (await row<{ print: string | null }>('SELECT review_print AS print FROM organisations WHERE id = ?', orgId))?.print ?? ''
+    const wallet = await row<{ eligible: number }>(`SELECT (kind <> 'single_key' OR ${data.SINGLE_KEY_RECOVERY('?1', '?2')}) AS eligible FROM wallets WHERE org_id = ?1 AND state = 'pending'`, orgId, now)
+    return (await data.sha256Hex(JSON.stringify([print, wallet?.eligible ?? null]))).slice(0, 16)
+  }
   const decideOn = async (orgId: string, body: Record<string, unknown> = APPROVE, options: Parameters<typeof op>[2] = {}) =>
     op('POST', `/api/operator/organisations/${orgId}/decision`, { ...options, body: body.decision === 'approve' && !('submission' in body) ? { ...body, submission: await submissionOf(orgId) } : body })
   // Milestone 5b: the operator takes a sealed item. The answer is bytes, not JSON.
@@ -6526,7 +6530,7 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
     expect(chain.calls).toEqual([]) // a key's signature asks no endpoint
     // The organisation's list of wallets does not show it: it is not linked. The onboarding page does.
     expect(await walletsOf(a)).toEqual([])
-    expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body.wallet).toEqual({ chainId: CHAIN, chain: 'OP Mainnet', address: accounts[0].address, kind: 'single_key', label: 'Treasury', inForce: false })
+    expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body.wallet).toEqual({ chainId: CHAIN, chain: 'OP Mainnet', address: accounts[0].address, kind: 'single_key', label: 'Treasury', inForce: false, recoveryEligible: true })
     const stored = await snapshot()
     expect((await prove(intent, signature)).body).toEqual({ error: 'proof_used' })
     expect(await snapshot()).toBe(stored)
@@ -6742,7 +6746,7 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
     expect((await row<{ address: string }>(`SELECT address FROM wallets WHERE org_id = ? AND anchor = 'current'`, a.orgId))!.address).toBe(accounts[1].address.toLowerCase())
   })
 
-  it('G5: "Submit for review" refuses a recovery wallet with a single key when the organisation has other members, as a recovery does; approve checks again', async () => {
+  it('G5: a single-key activation supports review with other members, but approval gives it no recovery authority; eligibility is read again', async () => {
     const a = await applicantWithTwoKeys()
     expect((await activation(a)).body).toEqual({ state: 'stored' }) // a single key, and one person: accepted
     expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body.missing).toBeNull()
@@ -6751,24 +6755,64 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
     expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body.missing).toBeNull()
     await enrolLink(link.body.link)
     expect((await confirm(a, link.body.ticketId, a.key)).body.state).toBe('active')
-    const rows = await snapshot()
-    const refused = await submit(a)
-    expect([refused.status, refused.body]).toEqual([409, { error: 'single_key' }])
-    expect(await snapshot()).toBe(rows)
-    expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body.missing).toBe('single_key')
+    expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body).toMatchObject({ missing: null, wallet: { recoveryEligible: false } })
+    expect((await submit(a)).body).toEqual({ state: 'under_review' })
     // A custodian wallet (a declaration) and a Safe are not single keys.
     expect((await activation(a, accounts[1], { custodian: true })).body).toEqual({ state: 'stored' })
+    expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body.wallet.recoveryEligible).toBe(true)
     expect((await submit(a)).body).toEqual({ state: 'under_review' })
+    expect((await decideOn(a.orgId)).body).toEqual({ state: 'active' })
+    expect(await row('SELECT kind, anchor FROM wallets WHERE org_id = ? AND state = ?', a.orgId, 'linked')).toEqual({ kind: 'custodian', anchor: 'current' })
     // Approve checks again: submitted alone with a single key, and a member joined since (not an Owner: the review stands).
     const b = await underReview()
-    const late = await ceremony(b, { displayName: 'Vera Viewer', role: 'viewer' })
+    const seenSubmission = await submissionOf(b.orgId)
+    await ceremony(b, { displayName: 'Vera Viewer', role: 'viewer' })
     expect((await orgRow(b.orgId))!.review_at).not.toBeNull()
-    const before = await snapshot()
-    expect((await decideOn(b.orgId)).body).toEqual({ error: 'not_ready' })
-    expect(await snapshot()).toBe(before)
-    expect((await op('GET', '/api/operator/organisations')).body.organisations.find((o: { id: string }) => o.id === b.orgId)).toMatchObject({ missing: 'single_key' })
-    await db.prepare(`UPDATE credentials SET state = 'revoked' WHERE seat_id = ?`).bind(late.seatId).run() // one person again
+    expect((await op('GET', '/api/operator/organisations')).body.organisations.find((o: { id: string }) => o.id === b.orgId)).toMatchObject({ missing: null, wallet: { recoveryEligible: false } })
+    expect((await decideOn(b.orgId, { ...APPROVE, submission: seenSubmission })).body).toEqual({ error: 'submission_changed' })
     expect((await decideOn(b.orgId)).body).toEqual({ state: 'active' })
+    expect(await row('SELECT state, anchor, anchor_effective_at FROM wallets WHERE org_id = ? AND state = ?', b.orgId, 'linked')).toEqual({ state: 'linked', anchor: null, anchor_effective_at: null })
+  })
+
+  it('G5: one Owner passkey, a named Admin and a personal wallet submit with their existing declaration; approval leaves recovery unconfigured', async () => {
+    const domain = 'single-key-company.example'
+    const a = await applied(domain, { people: [{ name: 'Named Admin', email: `admin@${domain}`, role: 'admin', position: 'CTO', phone: '+352621000001' }] })
+    expect((await call('GET', '/api/me', { cookie: a.cookie })).body.seat.keys).toBe(1)
+    expect((await activation(a)).body).toEqual({ state: 'stored' })
+    expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body.missing).toBe('declaration')
+    expect((await upload(a, await sealedFile())).status).toBe(200)
+    const declared = await itemsOf(a.orgId)
+    expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body).toMatchObject({ missing: null, wallet: { kind: 'single_key', recoveryEligible: false } })
+    expect((await submit(a)).body).toEqual({ state: 'under_review' })
+    expect((await decideOn(a.orgId)).body).toEqual({ state: 'active' })
+    expect(await itemsOf(a.orgId)).toEqual(declared)
+    expect(await row('SELECT state, anchor, anchor_effective_at FROM wallets WHERE org_id = ? AND state = ?', a.orgId, 'linked')).toEqual({ state: 'linked', anchor: null, anchor_effective_at: null })
+    expect(await data.recoverable(db, { orgId: a.orgId, nonce: `0x${'12'.repeat(32)}`, credential: { id: 'new-key', publicKey: 'unused', counter: 0, transports: [] } }, now)).toEqual({ error: 'no_recovery_wallet' })
+    // The named Admin is still invited: later assignment must not bypass the onboarding restriction.
+    const wallet = (await row<{ id: string }>('SELECT id FROM wallets WHERE org_id = ? AND state = ?', a.orgId, 'linked'))!
+    expect((await post(`/api/wallets/${wallet.id}/anchor`, a)).body).toEqual({ error: 'single_key' })
+  })
+
+  it('G5: enrolling a second Owner after a single-key proof still permits review without granting that wallet recovery', async () => {
+    const a = await applicantWithTwoKeys()
+    expect((await activation(a)).body).toEqual({ state: 'stored' })
+    const second = await ceremony(a, { displayName: 'Second Owner', role: 'owner' })
+    now += WAIT + MIN
+    await again(second)
+    await again(a)
+    expect((await submit(a)).body).toEqual({ state: 'under_review' })
+    expect((await decideOn(a.orgId)).body).toEqual({ state: 'active' })
+    expect(await row('SELECT anchor FROM wallets WHERE org_id = ? AND state = ?', a.orgId, 'linked')).toEqual({ anchor: null })
+  })
+
+  it('G5: a colleague enrolling during approval forces a fresh review of recovery eligibility before any authority is granted', async () => {
+    const a = await underReview()
+    const joined = racing(async () => { await ceremony(a, { displayName: 'Concurrent Viewer', role: 'viewer' }) })
+    expect((await decideOn(a.orgId, APPROVE, { env: { ...joined, OPERATOR_TOKEN: TOKEN } as unknown as Env })).body).toEqual({ error: 'submission_changed' })
+    expect((await orgRow(a.orgId))!.state).toBe('unverified')
+    expect(await row('SELECT anchor FROM wallets WHERE org_id = ? AND state = ?', a.orgId, 'pending')).toEqual({ anchor: null })
+    expect((await decideOn(a.orgId)).body).toEqual({ state: 'active' })
+    expect(await row('SELECT anchor FROM wallets WHERE org_id = ? AND state = ?', a.orgId, 'linked')).toEqual({ anchor: null })
   })
 
   // ---- A8: the operator ----
@@ -6969,7 +7013,7 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
       id: a.orgId, legalName: 'Alder Custody S.A.', kind: 'institution', businessType: 'fund', country: 'LU', registration: 'B123456', lei: null, address: '2 rue de la Gare, L-1611 Luxembourg', domain: 'alder-list.example', submittedAt: now, submission: await submissionOf(a.orgId),
       applicant: { name: 'Maren Okafor', email: 'ops@alder-list.example', position: 'Chief Operating Officer', phone: '+352621123456', telegram: null },
       credentialHash: view.first.credentialHash, people: [], missing: null, declaration: view.sealed, refused: [],
-      wallet: { chainId: CHAIN, chain: 'OP Mainnet', address: accounts[4].address, kind: 'safe', label: 'Treasury', inForce: false, threshold: 2, owners: 3, colour: { level: 'green', why: null } },
+      wallet: { chainId: CHAIN, chain: 'OP Mainnet', address: accounts[4].address, kind: 'safe', label: 'Treasury', inForce: false, recoveryEligible: true, threshold: 2, owners: 3, colour: { level: 'green', why: null } },
     }])
     // The colour is read on the chain now: a module added since the proof shows.
     safe.modules = [accounts[3].address.toLowerCase()]
@@ -7877,9 +7921,9 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
       await expect(add(`ben@${domain}`, 'admin')).rejects.toThrow(/UNIQUE/)
       await expect(add(`vic@${domain}`, 'viewer')).rejects.toThrow(/CHECK/)
       expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body.people).toEqual(contacts(domain))
-      // Review, G5: the approval makes them members, so a recovery wallet with a single key is refused now, as a recovery would refuse it then.
+      // A single-key proof supports review, but cannot become the recovery wallet for the people named.
       expect((await activation(a)).body).toEqual({ state: 'stored' })
-      expect([(await submit(a)).body, (await call('GET', '/api/onboarding', { cookie: a.cookie })).body.missing]).toEqual([{ error: 'single_key' }, 'single_key'])
+      expect([(await submit(a)).body, (await call('GET', '/api/onboarding', { cookie: a.cookie })).body.wallet.recoveryEligible]).toEqual([{ state: 'under_review' }, false])
       expect((await activation(a, accounts[1], { custodian: true })).body).toEqual({ state: 'stored' })
       expect((await submit(a)).body).toEqual({ state: 'under_review' })
       const listed = async () => ((await op('GET', '/api/operator/organisations')).body.organisations as { id: string; people: unknown }[]).find((o) => o.id === a.orgId)

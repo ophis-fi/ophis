@@ -263,7 +263,7 @@ else {
       `  submitted       ${new Date(o.submittedAt).toISOString()}   submission ${o.submission} (name it in "approve": a change and a new submit make another)`,
       `  first Owner     ${person(o.applicant)}, passkey hash ${o.credentialHash}`,
       ...(o.people.length ? o.people.map((p) => `  person          ${person(p)}, ${p.role}`) : ['  people          none besides the first Owner']),
-      `  recovery wallet ${o.wallet ? `${o.wallet.address} on ${o.wallet.chain}, ${o.wallet.kind}${o.wallet.threshold ? ` ${o.wallet.threshold} of ${o.wallet.owners}` : ''}, ${o.wallet.colour.level}${o.wallet.colour.why ? ` (${o.wallet.colour.why})` : ''}` : 'none: a second Owner with two passkeys'}`,
+      `  activation wallet ${o.wallet ? `${o.wallet.address} on ${o.wallet.chain}, ${o.wallet.kind}${o.wallet.threshold ? ` ${o.wallet.threshold} of ${o.wallet.owners}` : ''}, ${o.wallet.colour.level}${o.wallet.colour.why ? ` (${o.wallet.colour.why})` : ''}; ${o.wallet.recoveryEligible ? 'recovery on approval' : 'verification only: no wallet recovery on approval'}` : 'none: a second Owner'}`,
       `  declaration     ${o.declaration ? sealed(o.declaration) : 'none'}`,
       ...(o.refused.length ? [`  WARNING         listed wallet refused: ${o.refused.join(', ')}`] : []),
       `  ready           ${o.missing ? `no: ${o.missing}` : 'yes'}`,

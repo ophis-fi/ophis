@@ -12,7 +12,7 @@ interface Application {
   id: string; legalName: string; kind: string; businessType: string | null; country: string; registration: string | null; lei: string | null; address: string | null; domain: string
   submittedAt: number; submission: string; applicant: Person; credentialHash: string; people: Person[]; missing: string | null; refused: string[]
   declaration: { size: number; at: number; sha256: string } | null
-  wallet: { address: string; chain: string; kind: string; threshold?: number; owners?: number; colour: { level: string; why?: string } } | null
+  wallet: { address: string; chain: string; kind: string; recoveryEligible: boolean; threshold?: number; owners?: number; colour: { level: string; why?: string } } | null
 }
 interface Review { id: string; name: string; state: string; outcome: string | null; screenedAt: number | null; nextReview: number | null; lastAction?: string | null; lastDetail?: string | null }
 interface List { list: string; entries: number; published: string | null; loadedAt: number | null; stale?: boolean; held?: string | null }
@@ -68,7 +68,7 @@ function card(o: Application) {
   f('passkey').textContent = o.credentialHash
   f('people').textContent = o.people.length ? o.people.map((p) => `${person(p)}, ${p.role}`).join('; ') : 'None besides the first Owner'
   const w = o.wallet
-  f('wallet').textContent = w ? `${w.address} on ${w.chain}, ${w.kind}${w.threshold ? ` ${w.threshold} of ${w.owners}` : ''}, ${w.colour.level}${w.colour.why ? ` (${w.colour.why})` : ''}` : 'None named yet'
+  f('wallet').textContent = w ? `${w.address} on ${w.chain}, ${w.kind}${w.threshold ? ` ${w.threshold} of ${w.owners}` : ''}, ${w.colour.level}${w.colour.why ? ` (${w.colour.why})` : ''}. ${w.recoveryEligible ? 'Becomes the recovery wallet on approval.' : 'Activation verified only. Approval leaves wallet recovery unconfigured.'}` : 'None named yet'
   f('declaration').textContent = o.declaration ? `${o.declaration.size} bytes, uploaded ${day(o.declaration.at)}, SHA-256 ${o.declaration.sha256}` : 'None uploaded'
   f('ready').textContent = o.missing ? `No: ${o.missing}` : 'Yes'
   if (o.refused.length) {

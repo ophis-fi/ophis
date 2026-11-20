@@ -924,7 +924,7 @@ try {
   await on.getByLabel('Wallet address').fill(key.address)
   await on.getByLabel('Chain').selectOption({ label: 'OP Mainnet' })
   await on.getByLabel('A name for it').fill('Treasury')
-  await on.getByLabel(/A custodian holds this wallet/).check() // G5: the application names Ben, so a single key is refused
+  // Regression: a personal wallet and a named Admin can submit without declaring a custodian.
   const firstHash = await on.locator('article.sheet dt:has-text("First Owner passkey (hash)") + dd').innerText()
   await on.getByRole('button', { name: 'Create the signing link' }).click()
   const activationLink = await on.getByLabel(/Signing link/).inputValue()
@@ -985,6 +985,9 @@ try {
   check('once uploaded the step says Done, and that a new upload replaces the file and needs a new submit', /Declaration\s+Done/.test(stepText) && await on.getByText('A new upload replaces this file. If the organisation is under review, submit it again.').isVisible())
   await on.getByRole('button', { name: 'Submit for review' }).click()
   await on.getByText('Under review since').waitFor()
+  check('a verified personal wallet with a named Admin can submit, and recovery is explicitly separate',
+    await on.getByText('Wallet verified: it signed the activation', { exact: false }).isVisible()
+      && await on.getByText('This single-key wallet cannot recover an organisation with other people.', { exact: false }).isVisible())
   const listed = operator('list')
   const itemId = /^(\w{32}) {2}declaration/m.exec(operator('items', newOrg.id))?.[1] ?? ''
   check('the operator\'s list and "items" show the sealed declaration with its size and SHA-256', new RegExp(`declaration +${itemId}  declaration  ${stored[0].length} bytes .* sha256 ${shownSha}`).test(listed) && itemId.length === 32)
@@ -1030,6 +1033,7 @@ try {
   const opCard = opPage.locator('article', { hasText: newOrg.id })
   await opCard.waitFor()
   const opShown = await opCard.innerText()
+  check('the operator sees that approval will not configure wallet recovery', opShown.includes('Activation verified only. Approval leaves wallet recovery unconfigured.'))
   check('the review page lists the application with what to compare, under the strict policy, and fits a phone',
     opAnswer.status() === 200 && /require-trusted-types-for 'script'/.test(opAnswer.headers()['content-security-policy'] ?? '') && opAnswer.headers()['x-frame-options'] === 'DENY'
       && ['Alder Custody S.A.', domain, 'Ada Applicant', 'Ben Okoro, Head of Treasury', key.address, '2 rue de la Gare, L-1611 Luxembourg', 'Yes'].every((text) => opShown.includes(text))
@@ -1060,7 +1064,9 @@ try {
     afterApproval.includes('Nothing is under review.') && /Reviews due[^\n]*\n[0-9a-f]{32} {2}Northwind Vaults {2}active {2}last screening none {2}next review none/.test(afterApproval) && !afterApproval.includes(newOrg.id))
   await on.reload()
   await on.getByText('Verified on').waitFor()
-  check('the organisation is active and the Onboarding page says so, with the next review', await on.getByText('Next review 2030-01-01').isVisible() && await on.getByText('It is the recovery wallet in force.').isVisible() && (await status('/api/audit', on)) === 200)
+  check('the organisation is active with its next review, and no recovery wallet is claimed', await on.getByText('Next review 2030-01-01').isVisible() && await on.getByText('No recovery wallet is configured. Set one under Organisation.').isVisible() && (await status('/api/audit', on)) === 200)
+  const approvedWallets = await on.evaluate(() => fetch('/api/org').then((response) => response.json()).then((org) => org.wallets))
+  check('the personal wallet is linked without recovery authority after approval', approvedWallets.some((wallet) => wallet.address.toLowerCase() === key.address.toLowerCase() && wallet.state === 'linked' && wallet.recovery === null))
   check('once active the declaration stays: the step shows it and offers no upload', await on.getByText('Uploaded on').isVisible() && (await on.getByLabel(/Signed scan/).count()) === 0 && (await on.locator('article.sheet').count()) === 0)
   // The person the application named has a seat, approved by Ophis. The Owner gives a link (the console shows it; Ophis
   // sends no email), the person enrols, the Owner confirms with a passkey check: active at once, with no second person.
