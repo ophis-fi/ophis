@@ -5595,8 +5595,7 @@ describe('D. Support: the model selects, the server decides', () => {
       expect(a.title + a.text, a.id).not.toMatch(banned)
     }
     expect(new Set(ANSWERS.map((a) => a.title)).size).toBe(25)
-    // What is not built says so. Registration (KB-01) is live since 2026-11-17.
-    for (const id of ['KB-13']) expect(ANSWERS.find((a) => a.id === id)!.text, id).toMatch(/^Not available yet\./)
+    expect(ANSWERS.find((a) => a.id === 'KB-13')!.text).toContain('Fees and payout addresses cannot be set in the console.')
     // Review of P4: a partner's Overview shows its fee figures and exports one table, so the two texts say so. No text
     // speaks of a referral share, referred wallets, codes or earnings: the console's partners get none (2026-11-13).
     const text = (id: string) => ANSWERS.find((a) => a.id === id)!.text
