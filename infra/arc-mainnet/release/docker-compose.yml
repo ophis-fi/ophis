@@ -108,8 +108,7 @@ services:
     restart: unless-stopped
     volumes: ["./generated/nginx.conf:/etc/nginx/nginx.conf:ro"]
     ports: ["127.0.0.1:8442:8080"]
-    # nginx resolves orderbook once at start; restart it whenever Compose recreates orderbook.
-    depends_on: {orderbook: {condition: service_started, restart: true}}
+    depends_on: [orderbook]
 secrets:
   solver-key: {file: "${ARC_SOLVER_KEY_FILE:?set existing solver key file outside this repository}"}
 volumes:
