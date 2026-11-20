@@ -56,6 +56,7 @@ export default defineConfig(({ mode }) => {
           // your custom rules
           'apps/explorer/src',
           'libs',
+          path.resolve(__dirname, '../../../../functions/_shared'),
         ],
       },
     },

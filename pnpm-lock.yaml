@@ -398,6 +398,9 @@ importers:
       '@cowprotocol/sdk-viem-adapter':
         specifier: 0.3.18
         version: 0.3.18(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))
+      '@cowprotocol/sdk-weiroll':
+        specifier: 0.1.30
+        version: 0.1.30
       '@ophis/mcp-server':
         specifier: workspace:*
         version: link:../../apps/mcp-server

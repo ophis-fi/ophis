@@ -128,7 +128,12 @@ module.exports = [
         'error',
         {
           enforceBuildableLibDependency: true,
-          allow: ['../../tools/**'],
+          allow: [
+            '../../tools/**',
+            // Dependency-free wire validation shared with Pages Functions and the CLI.
+            '../../../../../../functions/_shared/acrossV5',
+            '../../../../../../functions/_shared/acrossV5Client',
+          ],
           checkDynamicDependenciesExceptions: ['@cowprotocol/analytics', '@cowprotocol/assets'],
           depConstraints: [
             {

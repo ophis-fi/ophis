@@ -337,10 +337,18 @@ jobs:
 
       - name: deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
+        env:
+          ACROSS_V5_API_KEY: ${{ secrets.ACROSS_V5_API_KEY }}
+          ACROSS_APP_FEE_BPS: ${{ vars.ACROSS_APP_FEE_BPS }}
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           packageManager: npm
+          # Pages runtime bindings stay outside both browser builds.
+          preCommands: |
+            test -n "$ACROSS_V5_API_KEY" && test -n "$ACROSS_APP_FEE_BPS"
+            printf '%s' "$ACROSS_V5_API_KEY" | npm exec -- wrangler pages secret put ACROSS_API_KEY --project-name=greg
+            printf '%s' "$ACROSS_APP_FEE_BPS" | npm exec -- wrangler pages secret put ACROSS_APP_FEE_BPS --project-name=greg
           # commit-message + commit-hash are passed explicitly so
           # wrangler does not auto-read git HEAD (which would re-
           # introduce non-ASCII bytes). The msg value comes from the

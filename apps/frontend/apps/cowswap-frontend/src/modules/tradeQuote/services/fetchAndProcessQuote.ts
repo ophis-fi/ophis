@@ -1,3 +1,4 @@
+import { readAcrossV5Order } from '@cowprotocol/common-const'
 import { onlyResolvesLast } from '@cowprotocol/common-utils'
 import { PriceQuality, SwapAdvancedSettings, QuoteAndPost } from '@cowprotocol/cow-sdk'
 import {
@@ -126,6 +127,10 @@ async function fetchBridgingQuote(
               const slippage = settings?.appData?.metadata?.quote?.slippageBips
               if (slippage !== undefined && slippage !== swap.tradeParameters.slippageBps) {
                 throw new Error('Slippage changed. Refresh the bridge quote before signing.')
+              }
+              const fixed = readAcrossV5Order(bridge.quoteBody)
+              if (fixed && BigInt(fixed.amount) > BigInt(swap.orderToSign.buyAmount)) {
+                throw new Error('The swap minimum does not cover the bridge deposit. Refresh the quote before signing.')
               }
               return postSwapOrderFromQuote(settings, ...args)
             },

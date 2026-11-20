@@ -1,6 +1,6 @@
 {
   "name": "@ophis/cli",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "private": true,
   "description": "Ophis in your terminal: quote and swap on Ophis without a browser.",
   "license": "GPL-3.0-or-later",
@@ -25,6 +25,7 @@
     "@cowprotocol/sdk-config": "2.0.0",
     "@cowprotocol/sdk-viem-adapter": "0.3.18",
     "@cowprotocol/sdk-cow-shed": "0.3.8",
+    "@cowprotocol/sdk-weiroll": "0.1.30",
     "multiformats": "9.9.0"
   },
   "devDependencies": {

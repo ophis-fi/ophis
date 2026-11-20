@@ -58,7 +58,7 @@ describe('useEstimatedBridgeBuyAmount', () => {
   })
 
   describe('Calculates correct bridge amounts', () => {
-    it('should calculate estimated bridge amounts correctly', () => {
+    it.each([false, true])('calculates estimated bridge amounts (fixed V5 deposit: %s)', (v5) => {
       const derivedState = {
         inputCurrency: USDT_BNB,
         outputCurrency: USDC_BASE,
@@ -70,6 +70,16 @@ describe('useEstimatedBridgeBuyAmount', () => {
 
       mockedUseTradeQuote.mockReturnValue({
         bridgeQuote: {
+          quoteBody: v5
+            ? JSON.stringify({
+                version: 5,
+                orderId: '0x' + '12'.repeat(32),
+                originValidUntil: 2_000_000_000,
+                amount: String(bridgeSellAmountRaw),
+                minimumOutput: '4500',
+                recipient: '0x' + '34'.repeat(20),
+              })
+            : undefined,
           amountsAndCosts: {
             beforeFee: {
               sellAmount: bridgeSellAmountRaw,
@@ -102,7 +112,7 @@ describe('useEstimatedBridgeBuyAmount', () => {
       // expectedToReceiveAmount = bridgePrice.quote(swapBuyAmount)
       // bridgePrice = bridgeBuyAmount / bridgeSellAmount
       // expectedToReceiveAmount = swapBuyAmount * bridgeBuyAmount / bridgeSellAmount
-      const expectedAmount = (swapBuyAmountRaw * bridgeBuyAmountRaw) / bridgeSellAmountRaw
+      const expectedAmount = v5 ? bridgeBuyAmountRaw : (swapBuyAmountRaw * bridgeBuyAmountRaw) / bridgeSellAmountRaw
       expect(result.current?.expectedToReceiveAmount.quotient.toString()).toBe(expectedAmount.toString())
       expect(result.current?.expectedToReceiveAmount.currency).toEqual(USDC_BASE)
 

@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 
+import { readAcrossV5Order } from '@cowprotocol/common-const'
 import { CurrencyAmount, Price } from '@cowprotocol/currency'
 import { useTryFindToken } from '@cowprotocol/tokens'
 
@@ -21,6 +22,7 @@ export function useEstimatedBridgeBuyAmount(): BridgeEstimatedAmounts | null {
   const swapBuyAmountRaw = quoteResults?.amountsAndCosts.afterPartnerFees.buyAmount
   const bridgeSellAmountRaw = bridgeQuote?.amountsAndCosts.beforeFee.sellAmount
   const bridgeBuyAmountRaw = bridgeQuote?.amountsAndCosts.beforeFee.buyAmount
+  const fixedBridge = !!readAcrossV5Order(bridgeQuote?.quoteBody)
   const feeAmountRaw = bridgeQuote?.amountsAndCosts.costs.bridgingFee.amountInSellCurrency
 
   return useMemo(() => {
@@ -42,7 +44,7 @@ export function useEstimatedBridgeBuyAmount(): BridgeEstimatedAmounts | null {
       quoteAmount: bridgeBuyAmount,
     })
 
-    const expectedToReceiveAmount = bridgePrice.quote(swapBuyAmount)
+    const expectedToReceiveAmount = fixedBridge ? bridgeBuyAmount : bridgePrice.quote(swapBuyAmount)
 
     const feeAmount = CurrencyAmount.fromRawAmount(expectedToReceiveAmount.currency, feeAmountRaw.toString())
     const minToReceiveAmount = expectedToReceiveAmount.subtract(feeAmount)
@@ -53,5 +55,13 @@ export function useEstimatedBridgeBuyAmount(): BridgeEstimatedAmounts | null {
       minToReceiveAmount,
       intermediateCurrency,
     }
-  }, [intermediateCurrency, outputCurrency, bridgeBuyAmountRaw, bridgeSellAmountRaw, swapBuyAmountRaw, feeAmountRaw])
+  }, [
+    intermediateCurrency,
+    outputCurrency,
+    bridgeBuyAmountRaw,
+    bridgeSellAmountRaw,
+    swapBuyAmountRaw,
+    feeAmountRaw,
+    fixedBridge,
+  ])
 }

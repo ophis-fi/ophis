@@ -1,7 +1,10 @@
 import { useEffect } from 'react'
 
 import {
+  acrossV5History,
   createDecodeOnlyBungeeBridgeProvider,
+  getAcrossV5BuyTokens,
+  getAcrossV5Status,
   getRpcProvider,
   ophisAcrossApiOptions,
   registerOphisNearIntentsNetworks,
@@ -31,7 +34,25 @@ registerOphisNearIntentsNetworks()
 // recovers the destination token from the chain's token list instead.
 export const bungeeBridgeProvider = createDecodeOnlyBungeeBridgeProvider()
 
-const acrossBridgeProvider = new AcrossBridgeProvider({ apiOptions: ophisAcrossApiOptions() })
+class ExplorerAcrossProvider extends AcrossBridgeProvider {
+  getBridgingParams(
+    ...args: Parameters<AcrossBridgeProvider['getBridgingParams']>
+  ): ReturnType<AcrossBridgeProvider['getBridgingParams']> {
+    return acrossV5History(super.getBridgingParams.bind(this), ...args)
+  }
+
+  getBuyTokens(
+    params: Parameters<AcrossBridgeProvider['getBuyTokens']>[0],
+  ): ReturnType<AcrossBridgeProvider['getBuyTokens']> {
+    return getAcrossV5BuyTokens(params)
+  }
+
+  getStatus(...args: Parameters<AcrossBridgeProvider['getStatus']>): ReturnType<AcrossBridgeProvider['getStatus']> {
+    return /^\d+$/.test(args[0]) ? super.getStatus(...args) : getAcrossV5Status(args[0])
+  }
+}
+
+const acrossBridgeProvider = new ExplorerAcrossProvider({ apiOptions: ophisAcrossApiOptions() })
 
 const nearIntentsBridgeProvider = new NearIntentsBridgeProvider({ apiKey: process.env.REACT_APP_NEAR_API_KEY })
 

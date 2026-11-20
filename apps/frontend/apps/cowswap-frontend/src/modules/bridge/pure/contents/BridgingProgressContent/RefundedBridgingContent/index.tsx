@@ -19,6 +19,7 @@ interface RefundedContentProps {
   account: string
   bridgeSendCurrencyAmount: CurrencyAmount<Currency>
   isRelay?: boolean
+  isAcrossV5?: boolean
   explorerUrl?: string
 }
 
@@ -26,10 +27,25 @@ export function RefundedBridgingContent({
   account,
   bridgeSendCurrencyAmount,
   isRelay = false,
+  isAcrossV5 = false,
   explorerUrl,
 }: RefundedContentProps): ReactNode {
   const sourceChainId = bridgeSendCurrencyAmount.currency.chainId as SupportedChainId
   const { i18n } = useLingui()
+
+  if (isAcrossV5)
+    return (
+      <ConfirmDetailsItem label={i18n._(RECEIVED_LABEL)} withTimelineDot>
+        <SuccessTextBold>
+          <Trans>Across refund completed.</Trans>
+        </SuccessTextBold>
+        {explorerUrl && (
+          <ExternalLink href={explorerUrl}>
+            <Trans>View Across transactions</Trans>
+          </ExternalLink>
+        )}
+      </ConfirmDetailsItem>
+    )
 
   if (isRelay)
     return (

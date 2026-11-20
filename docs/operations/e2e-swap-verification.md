@@ -198,3 +198,17 @@ References: [Relay contract deposits](https://docs.relay.link/references/api/api
 [status](https://docs.relay.link/references/api/get-intents-status-v3),
 [app fees](https://docs.relay.link/features/app-fees),
 [Pages Durable Object bindings](https://developers.cloudflare.com/pages/functions/bindings/#durable-objects).
+
+### Across V5
+
+The production Pages workflow reads `ACROSS_V5_API_KEY` from the GitHub
+Production environment and installs it as the swap project's `ACROSS_API_KEY`
+runtime secret. It also installs the environment variable `ACROSS_APP_FEE_BPS`.
+Set it to `10` for the verified 0.10% Ophis app fee. Across uses separate limiter
+buckets through the existing `OPHIS_RELAY_RATE_LIMITER` Pages binding.
+
+New quotes use V5. The fixed deposit comes out of the CoW Shed and the same
+hook returns any remainder to the order owner on the source chain. The explorer
+tracks the V5 order ID after matching its `PrefundingStored` event and token pull.
+V4 status reads remain available for pre-migration orders while the legacy
+endpoint serves them.

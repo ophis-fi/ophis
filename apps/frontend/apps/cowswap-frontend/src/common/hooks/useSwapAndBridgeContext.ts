@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-restricted-imports */ // TODO: Don't use 'modules' import
 import { useMemo } from 'react'
 
-import { getChainInfo, isRelayRecoveryRequired, TokenWithLogo } from '@cowprotocol/common-const'
+import { getChainInfo, isAcrossV5Status, isRelayRecoveryRequired, TokenWithLogo } from '@cowprotocol/common-const'
 import { getAddressKey, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { CurrencyAmount } from '@cowprotocol/currency'
 import { BridgeStatus } from '@cowprotocol/sdk-bridging'
@@ -126,7 +126,7 @@ export function useSwapAndBridgeContext(
     if (crossChainOrder && bridgeReceiveAmount) {
       return {
         sellAmount:
-          receivedAmount ??
+          (!isAcrossV5Status(crossChainOrder.statusResult) && receivedAmount) ||
           CurrencyAmount.fromRawAmount(intermediateToken, crossChainOrder.bridgingParams.inputAmount.toString()),
         buyAmount: bridgeReceiveAmount,
       }

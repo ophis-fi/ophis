@@ -507,7 +507,7 @@ export class OphisAcrossBridgeProvider extends AcrossBridgeProvider {
   // no relayer carries. Keep only tokens Ophis trusts that are the same asset as
   // the destination by trusted symbol and decimals (or the USDG corridor),
   // rebuilt from the trusted entry; fail closed when the list cannot be loaded.
-  private async keepTrustedSameAsset(
+  async keepTrustedSameAsset(
     request: QuoteBridgeRequest,
     candidates: Pick<TokenInfo, 'address'>[],
   ): Promise<TokenInfo[]> {

@@ -518,6 +518,10 @@ msgstr "This percentage only applies to dips; if prices are better than this per
 msgid "Winner"
 msgstr "Winner"
 
+#: apps/cowswap-frontend/src/modules/bridge/pure/contents/QuoteBridgeContent/index.tsx
+msgid "Bridge deposit"
+msgstr "Bridge deposit"
+
 #: apps/cowswap-frontend/src/ophis/components/CoinbaseStockContext/CoinbaseStockContext.container.tsx
 msgid " · transfers paused for {pausedSymbols}"
 msgstr " · transfers paused for {pausedSymbols}"
@@ -1184,6 +1188,10 @@ msgstr "Not enough price data for one or both assets to calculate the price impa
 #: apps/cowswap-frontend/src/modules/swap/containers/BottomBanners/BottomBanners.container.tsx
 msgid "Win 1 or 10 USDG on Robinhood Chain."
 msgstr "Win 1 or 10 USDG on Robinhood Chain."
+
+#: apps/cowswap-frontend/src/modules/bridge/pure/contents/QuoteBridgeContent/index.tsx
+msgid "Any swap proceeds above this deposit return to your wallet on the source network."
+msgstr "Any swap proceeds above this deposit return to your wallet on the source network."
 
 #: apps/cowswap-frontend/src/modules/orderProgressBar/constants.ts
 msgid "Ophis's robust solver competition protects your slippage from being exploited by MEV bots."
@@ -4989,6 +4997,10 @@ msgstr "When you swap (sell) <0/>, solvers handle the transaction by purchasing 
 msgid "You receive (net)"
 msgstr "You receive (net)"
 
+#: apps/cowswap-frontend/src/modules/bridge/pure/contents/BridgingProgressContent/RefundedBridgingContent/index.tsx
+msgid "View Across transactions"
+msgstr "View Across transactions"
+
 #: apps/cowswap-frontend/src/modules/swap/containers/WholeTokenRoute/WholeTokenWarnings.pure.tsx
 msgid "High slippage tolerance: {slippagePercent}%. The input spent can increase up to the quoted maximum."
 msgstr "High slippage tolerance: {slippagePercent}%. The input spent can increase up to the quoted maximum."
@@ -5439,6 +5451,10 @@ msgstr "Order filled"
 #: apps/cowswap-frontend/src/modules/trade/pure/TradeConfirmation/getPendingText.ts
 msgid "Confirm swap"
 msgstr "Confirm swap"
+
+#: apps/cowswap-frontend/src/modules/bridge/pure/contents/BridgingProgressContent/RefundedBridgingContent/index.tsx
+msgid "Across refund completed."
+msgstr "Across refund completed."
 
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/ReceiptModal/ReceiptModal.modal.tsx
 msgid "Part of a {twapOrderN}-part TWAP order split"
