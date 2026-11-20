@@ -15,12 +15,13 @@ import uuid
 
 
 def serve_mock():
-    from credit_gate import cost
+    from credit_gate import cost, validationcloud_cost
     counts = collections.Counter()
     mode = {"disagree": False, "fail": False, "trace_fail": False,
             "latest_skew": False, "header_disagree": False,
             "official_fail": False, "drpc_disagree": False, "zero": False,
-            "publicnode_fail": False, "publicnode_disagree": False}
+            "publicnode_fail": False, "publicnode_disagree": False,
+            "validationcloud_disagree": False, "drpc_fail": False}
     lock = threading.Lock()
 
     class Handler(BaseHTTPRequestHandler):
@@ -37,6 +38,8 @@ def serve_mock():
                     method = body["method"]
                     if self.path == "/drpc":
                         cost(body)  # Real metered method/parameter boundary, no metered endpoint.
+                    elif self.path == "/validationcloud":
+                        validationcloud_cost(body)
                     counts[self.path + ":" + method] += 1
                     value = "0x1"
                     if method == "eth_chainId":
@@ -63,12 +66,14 @@ def serve_mock():
                         value = "0x3"
                     elif method == "eth_call" and self.path == "/publicnode" and mode["publicnode_disagree"]:
                         value = "0x4"
+                    elif method == "eth_call" and self.path == "/validationcloud" and mode["validationcloud_disagree"]:
+                        value = "0x5"
                     if mode["zero"] and method in ("eth_getBalance", "eth_call"):
                         value = "0x0"
                     result = {"jsonrpc": "2.0", "id": body["id"], "result": value}
                     if (self.path == "/publicnode" and mode["publicnode_fail"]) or (self.path == "/blockdaemon" and mode["fail"]) or (self.path == "/official" and mode["official_fail"]) or (
                         self.path == "/drpc" and mode["trace_fail"] and method == "debug_traceTransaction"
-                    ):
+                    ) or (self.path == "/drpc" and mode["drpc_fail"]):
                         result = {"jsonrpc": "2.0", "id": body["id"],
                                   "error": {"code": -32000, "message": "mock unavailable"}}
             data = json.dumps(result).encode()
@@ -285,17 +290,72 @@ def check_free_reads(rpc_url, control):
     print("PASS: additional free voter, free-first failover, metered fallback, disagreement and single-voter rejection")
 
 
-def test_rpc(release=False, expanded=False):
+def check_keyed_reads(rpc_url, control):
+    def rpc(headers=None):
+        return post(rpc_url, {"jsonrpc": "2.0", "id": 1, "method": "eth_call",
+                             "params": [{"to": "0x" + "11" * 20, "data": "0x12345678"}, "latest"]}, headers)
+
+    def metered(counts):
+        return counts.get("/validationcloud:eth_call", 0), counts.get("/drpc:eth_call", 0)
+
+    deadline = time.monotonic() + 20
+    while True:
+        try:
+            if rpc().get("result") == "0x1":
+                break
+        except (URLError, OSError):
+            # Container startup is asynchronous; retry only until the deadline.
+            pass
+        assert time.monotonic() < deadline, "five-provider mock proxy did not boot"
+        time.sleep(.2)
+    assert metered(post(control, {})["counts"]) == (0, 0), "healthy free voters consumed Validation Cloud or dRPC CU"
+    before = post(control, {"official_fail": True})["counts"]
+    assert rpc().get("result") == "0x1", "two free providers did not restore quorum"
+    assert metered(post(control, {})["counts"]) == metered(before), "free pair consumed metered CU"
+
+    # Only one free voter left: Validation Cloud fills the second vote, before dRPC.
+    before = post(control, {"fail": True})["counts"]
+    response = rpc()
+    assert response.get("result") == "0x1", ("PublicNode plus Validation Cloud failed", response, post(control, {}))
+    vc, drpc = metered(post(control, {})["counts"])
+    assert (vc, drpc) == (metered(before)[0] + 1, metered(before)[1]), "Validation Cloud did not precede dRPC"
+    post(control, {"validationcloud_disagree": True})
+    assert "error" in rpc(), "disagreeing Validation Cloud answer accepted"
+
+    # Only Validation Cloud is healthy: one keyed provider is never two voters.
+    before = post(control, {"validationcloud_disagree": False, "publicnode_fail": True, "drpc_fail": True})["counts"]
+    assert "error" in rpc(), "Validation Cloud alone counted as two voters"
+    after = post(control, {})["counts"]
+    assert sum(after.get(source + ":eth_call", 0) - before.get(source + ":eth_call", 0)
+               for source in ("/official", "/blockdaemon", "/publicnode", "/validationcloud", "/drpc")) <= 6
+    assert metered(after)[0] <= metered(before)[0] + 1, "Validation Cloud reused as a second voter"
+    assert "error" in rpc({"X-ERPC-Skip-Consensus": "true", "X-ERPC-Use-Upstream": "arc-validationcloud"}), "client bypassed quorum"
+    post(control, {"official_fail": False, "fail": False, "publicnode_fail": False, "drpc_fail": False})
+    print("PASS: keyed lane only fills a missing free voter, precedes dRPC, never counts twice, disagreement rejected")
+
+
+def test_rpc(release=False, expanded=False, keyed=False):
     import yaml  # Existing infra-test dependency; mocks use only Python stdlib.
 
     root = Path(__file__).resolve().parent
     config = yaml.safe_load((root / ("release/generated/erpc.yaml" if release else "erpc.yaml")).read_text())
     project = config["projects"][0]
     upstreams = project["upstreams"]
-    assert [u["id"] for u in upstreams] == ["arc-official", "arc-blockdaemon", "arc-publicnode", "arc-drpc"]
+    assert [u["id"] for u in upstreams] == ["arc-official", "arc-blockdaemon", "arc-publicnode", "arc-validationcloud", "arc-drpc"]
     assert upstreams[2]["endpoint"] == "https://arc-rpc.publicnode.com"
     assert set(upstreams[2]["allowMethods"]) == {"eth_chainId", "eth_blockNumber", "eth_call", "eth_estimateGas", "eth_getBalance", "eth_getCode", "eth_getBlockByNumber", "eth_gasPrice"}
-    assert config["rateLimiters"]["budgets"][-1] == {"id": "arc-publicnode", "rules": [{"method": "*", "maxCount": 120, "period": "minute"}]}
+    budgets = {budget["id"]: budget for budget in config["rateLimiters"]["budgets"]}
+    assert budgets["arc-publicnode"] == {"id": "arc-publicnode", "rules": [{"method": "*", "maxCount": 120, "period": "minute"}]}
+    # The keyed URL lives only in the gate; eRPC sees a private hostname.
+    keyed_lane = upstreams[3]
+    assert keyed_lane["endpoint"] == "http://validationcloud-gate:8080"
+    assert keyed_lane["creditUnits"] == {"*": 40}
+    assert set(keyed_lane["allowMethods"]) == {"eth_call", "eth_estimateGas", "eth_getBalance", "eth_getCode", "eth_getBlockByNumber", "eth_gasPrice"}
+    assert keyed_lane["evm"]["statePollerInterval"] == keyed_lane["evm"]["statePollerDebounce"] == "1h"
+    assert budgets["arc-validationcloud"]["rules"] == [
+        {"method": "*", "maxCount": 20000, "period": "minute"},
+        {"method": "*", "maxCount": 1500000, "period": "day"},
+    ]
     assert all(u["rateLimitCountMode"] == "credit" for u in upstreams)
     assert set(upstreams[-1]["allowMethods"]) == {"eth_call", "eth_estimateGas", "eth_getBalance", "eth_getCode", "eth_getBlockByNumber", "eth_gasPrice", "debug_traceTransaction"}
     assert upstreams[-1]["creditUnits"] == {"*": 20}
@@ -309,10 +369,14 @@ def test_rpc(release=False, expanded=False):
         {"method": "*", "maxCount": 1000, "period": "minute"},
         {"method": "*", "maxCount": 40000, "period": "day"},
     ]
-    if not expanded:
-        # Also retain the existing metered-budget suite with the new free leg absent.
-        # Otherwise a healthy extra voter would hide the fallback/cap scenarios.
-        upstreams.pop(2)
+    if not keyed:
+        # The existing suites exercise free/dRPC routing; a healthy keyed voter
+        # would hide their fallback and cap scenarios.
+        upstreams.pop(3)
+        if not expanded:
+            # Also retain the existing metered-budget suite with the new free leg absent.
+            # Otherwise a healthy extra voter would hide the fallback/cap scenarios.
+            upstreams.pop(2)
 
     name = "arc-rpc-test-" + uuid.uuid4().hex[:10]
     mock, proxy = name + "-mock", name + "-proxy"
@@ -340,7 +404,7 @@ def test_rpc(release=False, expanded=False):
                    "urllib.request.urlopen(urllib.request.Request('http://localhost:8000/control', b'{}'))")
             docker("run", "-d", "--name", proxy, "--network", name,
                    "-v", f"{config_path}:/erpc.yaml:ro", image)
-            print(docker("exec", mock, "python", "/test_rpc.py", "--check-free" if expanded else "--check",
+            print(docker("exec", mock, "python", "/test_rpc.py", "--check-keyed" if keyed else "--check-free" if expanded else "--check",
                          f"http://{proxy}:4000/main/evm/5042", "http://localhost:8000/control", *(['--release'] if release else [])))
 
     except Exception:
@@ -361,6 +425,9 @@ if __name__ == "__main__":
         check_proxy(*sys.argv[2:4], release='--release' in sys.argv)
     elif sys.argv[1:2] == ["--check-free"]:
         check_free_reads(*sys.argv[2:4])
+    elif sys.argv[1:2] == ["--check-keyed"]:
+        check_keyed_reads(*sys.argv[2:4])
     else:
         test_rpc(release='--release' in sys.argv, expanded=True)
         test_rpc(release='--release' in sys.argv)
+        test_rpc(release='--release' in sys.argv, keyed=True)

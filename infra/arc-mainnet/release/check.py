@@ -41,6 +41,8 @@ def main():
     cfg = json.loads((OUT / 'plan.json').read_text())['config']
     allowed_origins = [cfg['frontendOrigin'], cfg['explorerOrigin']]
     assert erpc['projects'][0]['upstreams'][-1]['endpoint'] == 'http://credit-gate:8080'
+    keyed = [u for u in erpc['projects'][0]['upstreams'] if u['id'] == 'arc-validationcloud']
+    assert len(keyed) == 1 and keyed[0]['endpoint'] == 'http://validationcloud-gate:8080', 'Validation Cloud key must stay inside its gate'
     submit = [u for u in erpc['projects'][0]['upstreams'] if 'eth_sendRawTransaction' in u['allowMethods']]
     assert len(submit) == 1 and submit[0]['id'] == 'arc-official'
     assert submit[0]['rateLimitBudget'] == 'arc-official'
@@ -86,13 +88,19 @@ def main():
     pilot = yaml.safe_load((HERE.parent / 'docker-compose.yml').read_text())
     release = yaml.safe_load((HERE / 'docker-compose.yml').read_text())
     assert pilot['volumes']['credits']['name'] == release['volumes']['credits']['name'] == 'ophis-arc-drpc-cu'
+    # One ledger per provider quota, shared by the pilot and release stacks.
+    assert pilot['volumes']['validationcloud-credits']['name'] == release['volumes']['validationcloud-credits']['name'] == 'ophis-arc-validationcloud-cu'
     for compose in [pilot, release]:
         assert not compose['services']['rpc-proxy'].get('environment', {})
         assert set(compose['services']['credit-gate']['environment']) == {'ARC_DRPC_CU_ALLOWANCE'}
-        assert compose['services']['rpc-proxy']['depends_on']['credit-gate']['condition'] == 'service_healthy'
-        assert 'socket.create_connection' in compose['services']['credit-gate']['healthcheck']['test'][-1]
-        assert not compose['services']['credit-gate'].get('ports')
-    env = {**os.environ, 'ARC_RUNTIME_UID': str(os.getuid()), 'ARC_RUNTIME_GID': str(os.getgid()), 'ARC_RELEASE_TAG': '0' * 40, 'ARC_DRPC_CU_ALLOWANCE': '100', 'ARC_SOLVER_KEY_FILE': '/dev/null'}
+        assert compose['services']['validationcloud-gate']['environment']['ARC_GATE_LANE'] == 'validationcloud'
+        assert set(compose['services']['validationcloud-gate']['environment']) == {'ARC_GATE_LANE', 'ARC_VALIDATIONCLOUD_URL'}
+        for gate in ['credit-gate', 'validationcloud-gate']:
+            assert compose['services']['rpc-proxy']['depends_on'][gate]['condition'] == 'service_healthy'
+            assert 'socket.create_connection' in compose['services'][gate]['healthcheck']['test'][-1]
+            assert not compose['services'][gate].get('ports')
+    env = {**os.environ, 'ARC_RUNTIME_UID': str(os.getuid()), 'ARC_RUNTIME_GID': str(os.getgid()), 'ARC_RELEASE_TAG': '0' * 40, 'ARC_DRPC_CU_ALLOWANCE': '100',
+           'ARC_VALIDATIONCLOUD_URL': 'https://mainnet.arc.validationcloud.io/v1/' + 'k' * 43, 'ARC_SOLVER_KEY_FILE': '/dev/null'}
     assert release['services']['driver']['user'] == release['services']['rpc-proxy']['user']
     assert release['services']['postgres']['env_file'] == './generated/database.env'
     subprocess.run(['docker', 'compose', '-f', str(HERE / 'docker-compose.yml'), 'config', '--quiet'], env=env, check=True)
@@ -147,7 +155,7 @@ def quote(i):
  except urllib.error.HTTPError as e: response=e
  with response:
   if response.status==429:
-   assert response.headers['Retry-After']=='15'
+   assert response.headers['Retry-After']=='10'
    assert response.headers['Access-Control-Allow-Origin']==allowed[0]
    assert response.headers['Access-Control-Expose-Headers']=='Retry-After'
    assert json.load(response)['errorType']=='TooManyRequests'
@@ -156,7 +164,7 @@ with ThreadPoolExecutor(max_workers=4) as pool:
  results=list(pool.map(quote,range(4)))
 assert sorted(code for code,_ in results)==[404,404,404,429],results
 admitted=sorted(elapsed for code,elapsed in results if code==404)
-assert admitted[0]<3 and 13.5<=admitted[1]<23 and 28.5<=admitted[2]<36,results
+assert admitted[0]<3 and 8.5<=admitted[1]<18 and 18.5<=admitted[2]<26,results
 assert next(elapsed for code,elapsed in results if code==429)<3,results
 print('PASS live Nginx bounded quote pacing / busy response:',results)
 for origin in allowed+['https://untrusted.example']:

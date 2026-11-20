@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Private dRPC fallback/trace lane. Reserve CU BEFORE every attempt."""
+"""Private metered RPC lanes (dRPC, Validation Cloud). Reserve CU BEFORE every attempt."""
 import json
 import os
 import re
@@ -12,11 +12,20 @@ from contextlib import closing
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
+VALIDATIONCLOUD_URL = re.compile(r'https://mainnet\.arc\.validationcloud\.io/v1/[A-Za-z0-9_-]{20,}')
+# Validation Cloud's free team gets 50M CU per UTC month and is disabled when it
+# runs out. Its docs price eth_call, eth_estimateGas and eth_getBlockByNumber at
+# 40 CU; every allowed read is charged 40. 1.5M CU per UTC day bounds any month
+# to 46.5M CU without tracking the reset date; the minute cap is 500 reads.
+VALIDATIONCLOUD = {'credits': 40, 'minute': 20_000, 'day': 1_500_000}
+
+
 class Budget:
-    def __init__(self, path, allowance):
-        if not 0 < allowance <= 180_000_000:
+    def __init__(self, path, allowance, minute=1000, day=40000):
+        # allowance=None: no lifetime ledger; the daily cap alone bounds monthly use.
+        if allowance is not None and not 0 < allowance <= 180_000_000:
             raise ValueError('Reserve 1..180000000 CU; leave at least 30M of the 210M free pool unallocated')
-        self.path, self.allowance = path, allowance
+        self.path, self.allowance, self.minute, self.day = path, allowance, minute, day
         with closing(sqlite3.connect(path)) as db, db:
             db.execute('CREATE TABLE IF NOT EXISTS usage (id INTEGER PRIMARY KEY CHECK(id=1), total INTEGER NOT NULL, minute INTEGER NOT NULL, minute_used INTEGER NOT NULL, day INTEGER NOT NULL, day_used INTEGER NOT NULL)')
             db.execute('INSERT OR IGNORE INTO usage VALUES (1,0,0,0,0,0)')
@@ -30,7 +39,8 @@ class Budget:
             total, minute, minute_used, day, day_used = db.execute('SELECT total,minute,minute_used,day,day_used FROM usage WHERE id=1').fetchone()
             minute_used = minute_used if minute == now // 60 else 0
             day_used = day_used if day == now // 86400 else 0
-            if total + credits > self.allowance or minute_used + credits > 1000 or day_used + credits > 40000:
+            if (self.allowance is not None and total + credits > self.allowance) or \
+                    minute_used + credits > self.minute or day_used + credits > self.day:
                 return False
             db.execute('UPDATE usage SET total=?,minute=?,minute_used=?,day=?,day_used=? WHERE id=1',
                        (total + credits, now // 60, minute_used + credits, now // 86400, day_used + credits))
@@ -78,13 +88,33 @@ def cost(payload):
     raise ValueError('Method denied on the dRPC lane')
 
 
+def validationcloud_cost(payload):
+    # Same read-only boundary as dRPC; traces stay on dRPC.
+    cost(payload)
+    if payload['method'] == 'debug_traceTransaction':
+        raise ValueError('Method denied on the Validation Cloud lane')
+    return VALIDATIONCLOUD['credits']
+
+
 def serve():
-    endpoint = 'https://arc.drpc.org'
+    database = os.environ.get('ARC_CREDIT_DB', '/data/credits.sqlite')
+    lane = os.environ.get('ARC_GATE_LANE', 'drpc')
+    if lane == 'drpc':
+        name, endpoint, price = 'dRPC', 'https://arc.drpc.org', cost
+        budget = Budget(database, int(os.environ['ARC_DRPC_CU_ALLOWANCE']))
+    elif lane == 'validationcloud':
+        # The URL carries the API key: never log it or echo it in errors.
+        endpoint = os.environ['ARC_VALIDATIONCLOUD_URL']
+        if not VALIDATIONCLOUD_URL.fullmatch(endpoint):
+            raise ValueError('ARC_VALIDATIONCLOUD_URL must be a keyed Validation Cloud Arc mainnet URL')
+        name, price = 'Validation Cloud', validationcloud_cost
+        budget = Budget(database, None, VALIDATIONCLOUD['minute'], VALIDATIONCLOUD['day'])
+    else:
+        raise ValueError('ARC_GATE_LANE must be drpc or validationcloud')
     class NoRedirect(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, *_):
             raise ValueError('Redirect denied: each reservation permits one upstream attempt')
     opener = urllib.request.build_opener(NoRedirect)
-    budget = Budget(os.environ.get('ARC_CREDIT_DB', '/data/credits.sqlite'), int(os.environ['ARC_DRPC_CU_ALLOWANCE']))
     slots = threading.BoundedSemaphore(2)
 
     class Handler(BaseHTTPRequestHandler):
@@ -99,10 +129,10 @@ def serve():
                     raise ValueError('Invalid body size')
                 payload = json.loads(self.rfile.read(size))
                 request_id = payload.get('id') if isinstance(payload, dict) else None
-                credits = cost(payload)
+                credits = price(payload)
                 with slots:
                     if not budget.reserve(credits):
-                        raise ValueError('dRPC reserved CU budget exhausted')
+                        raise ValueError('reserved CU budget exhausted')
                     # dRPC rejects urllib's default user agent with HTTP 403.
                     request = urllib.request.Request(endpoint, data=json.dumps(payload).encode(), headers={'Content-Type': 'application/json', 'User-Agent': 'ophis-arc-rpc/1.0'})
                     with opener.open(request, timeout=10) as response:
@@ -112,7 +142,7 @@ def serve():
                 json.loads(body)
             except Exception:
                 # Failed/time-out calls remain charged; retries must reserve again.
-                body = json.dumps({'jsonrpc': '2.0', 'id': request_id, 'error': {'code': -32005, 'message': 'dRPC lane unavailable or CU budget exhausted'}}).encode()
+                body = json.dumps({'jsonrpc': '2.0', 'id': request_id, 'error': {'code': -32005, 'message': name + ' lane unavailable or CU budget exhausted'}}).encode()
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Content-Length', str(len(body)))

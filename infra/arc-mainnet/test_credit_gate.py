@@ -1,12 +1,17 @@
 import io
 import json
 import os
+import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from unittest.mock import Mock, patch
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from credit_gate import Budget, cost, serve
+from credit_gate import VALIDATIONCLOUD, Budget, cost, serve, validationcloud_cost
+
+# Fixture only: shaped like a real key, never a real one.
+VC_URL = 'https://mainnet.arc.validationcloud.io/v1/' + 'k' * 43
 
 
 class CreditGateTest(unittest.TestCase):
@@ -104,6 +109,63 @@ class CreditGateTest(unittest.TestCase):
                 self.assertEqual(opener.return_value.open.call_args.args[0].full_url, 'https://arc.drpc.org')
                 self.assertEqual(opener.return_value.open.call_args.args[0].get_header('User-agent'), 'ophis-arc-rpc/1.0')
                 self.assertFalse(Budget(path, 40).reserve(20, 86400))
+
+    def test_validationcloud_daily_cap_bounds_the_free_month(self):
+        self.assertLessEqual(31 * VALIDATIONCLOUD['day'], 50_000_000 * 0.95)
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(Path(directory) / 'credits.sqlite')
+            budget = Budget(path, None, VALIDATIONCLOUD['minute'], VALIDATIONCLOUD['day'])
+            minutes = VALIDATIONCLOUD['day'] // VALIDATIONCLOUD['minute']
+            for day in range(31):
+                for minute in range(minutes):
+                    self.assertTrue(budget.reserve(VALIDATIONCLOUD['minute'], day * 86400 + minute * 60))
+                # A restart cannot reset the day, and the minute cap holds too.
+                budget = Budget(path, None, VALIDATIONCLOUD['minute'], VALIDATIONCLOUD['day'])
+                self.assertFalse(budget.reserve(40, day * 86400 + minutes * 60))
+            self.assertFalse(budget.reserve(VALIDATIONCLOUD['minute'] + 40, 31 * 86400))
+
+    def test_validationcloud_method_boundary(self):
+        call = [{'to': '0x' + '11' * 20, 'data': '0x12345678'}, 'latest']
+        for method, params in [('eth_call', call), ('eth_estimateGas', call), ('eth_gasPrice', []),
+                               ('eth_getBlockByNumber', ['latest', False])]:
+            self.assertEqual(validationcloud_cost({'jsonrpc': '2.0', 'method': method, 'params': params}), 40)
+        for method, params in [('debug_traceTransaction', ['0x' + '11' * 32, {'tracer': 'callTracer'}]),
+                               ('eth_sendRawTransaction', ['0x00']), ('eth_getLogs', [{}])]:
+            with self.subTest(method=method), self.assertRaises(ValueError):
+                validationcloud_cost({'jsonrpc': '2.0', 'method': method, 'params': params})
+
+    def test_validationcloud_lane_url_cap_and_secrecy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(Path(directory) / 'credits.sqlite')
+            for bad in ('https://arc.drpc.org', 'http://mainnet.arc.validationcloud.io/v1/' + 'k' * 43,
+                        VC_URL + '/../x', 'https://mainnet.arc.validationcloud.io.evil/v1/' + 'k' * 43):
+                env = {'ARC_CREDIT_DB': path, 'ARC_GATE_LANE': 'validationcloud', 'ARC_VALIDATIONCLOUD_URL': bad}
+                with patch.dict(os.environ, env), patch('credit_gate.ThreadingHTTPServer') as server:
+                    with self.assertRaises(ValueError) as error:
+                        serve()
+                    self.assertNotIn('k' * 20, str(error.exception))
+                    server.assert_not_called()
+            env = {'ARC_CREDIT_DB': path, 'ARC_GATE_LANE': 'validationcloud', 'ARC_VALIDATIONCLOUD_URL': VC_URL}
+            with patch.dict(os.environ, env), patch('credit_gate.ThreadingHTTPServer') as server, patch('credit_gate.urllib.request.build_opener') as opener:
+                opener.return_value.open.side_effect = TimeoutError('fixture only; no network')
+                serve()
+                handler_class = server.call_args.args[1]
+                for method, params in [('debug_traceTransaction', ['0x' + 'ab' * 32, {'tracer': 'callTracer'}]),
+                                       ('eth_call', [{'to': '0x' + '11' * 20}, 'latest'])]:
+                    body = json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': method, 'params': params}).encode()
+                    handler = object.__new__(handler_class)
+                    handler.headers = {'Content-Length': str(len(body))}
+                    handler.rfile, handler.wfile = io.BytesIO(body), io.BytesIO()
+                    handler.send_response = handler.send_header = handler.end_headers = Mock()
+                    handler.do_POST()
+                    response = handler.wfile.getvalue().decode()
+                    self.assertIn('Validation Cloud lane unavailable', response)
+                    self.assertNotIn('k' * 20, response)
+                # The trace was refused before any reservation; the failed read stays charged.
+                self.assertEqual(opener.return_value.open.call_count, 1)
+                self.assertEqual(opener.return_value.open.call_args.args[0].full_url, VC_URL)
+                with closing(sqlite3.connect(path)) as db:
+                    self.assertEqual(db.execute('SELECT total FROM usage').fetchone(), (40,))
 
 
 if __name__ == '__main__':

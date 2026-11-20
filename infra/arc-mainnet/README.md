@@ -38,6 +38,11 @@ internet access; the backend lab uses loopback fixtures. Neither starts the live
   `debug_traceTransaction` after settlement.
   Protected reads still require two distinct agreeing providers. dRPC alone
   cannot restore a quorum when all other providers are unavailable.
+- Validation Cloud (keyed): extra quote capacity for `eth_call`, `eth_estimateGas`,
+  `eth_getBalance`, `eth_getCode`, `eth_getBlockByNumber` headers and `eth_gasPrice`.
+  It sorts after the free providers and before dRPC, so it only fills a voter that
+  a rate-limited or failing free provider left open. It never counts as two voters
+  and receives no logs, relay or traces. The API key stays in its private gate.
 - Each unmetered public upstream has a pooled 120 requests/minute limit. dRPC has a
   pooled 1,000 CU/minute and 40,000 CU/day limit. Auto-tuning, hedging
   and upstream retries are disabled. Each protected-read voter can make at most
@@ -72,9 +77,18 @@ This ledger cannot account for unrelated dRPC consumers: reserve
 only CU actually available, retain the volume, and monitor provider totals.
 Do not delete the ledger or run separate ledgers against the same reserved allowance.
 
+Validation Cloud's free team gets 50M CU per UTC month and is disabled when it
+runs out (seen on OP in August 2026). Its docs price `eth_call`, `eth_estimateGas`
+and `eth_getBlockByNumber` at 40 CU, so its gate charges 40 CU for every allowed
+read, before the attempt, failures included: 20,000 CU/minute and
+1,500,000 CU/day. Any month therefore stays under **46.5M CU** without tracking
+the reset date. Its ledger is the separate `ophis-arc-validationcloud-cu` volume.
+The quota counts every endpoint on the account: do not run other consumers on it.
+
 eRPC v0.2.0 treats a zero poll interval as its default, and its internal poller
 bypasses method filters. dRPC therefore polls only hourly (two standard
-header calls, approximately 960 CU/day, charged to the same budget).
+header calls, approximately 960 CU/day, charged to the same budget). Validation
+Cloud polls hourly too (approximately 1,920 CU/day instead of ~230k at 30 seconds).
 Initial bootstrap also checks the chain ID once (20 CU reserved).
 Public providers poll every 30 seconds. Account usage remains the source of truth.
 
