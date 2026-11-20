@@ -98,7 +98,7 @@ export const onRequest: PagesFunction<Env> = async ({ request, env, params }) =>
       appFeeBps: fee,
     }
     const response = await fetch('https://api.across.to' + path, {
-      method: request.method, redirect: 'error', signal: AbortSignal.timeout(7_000),
+      method: request.method, redirect: 'manual', signal: AbortSignal.timeout(7_000),
       headers: { authorization: `Bearer ${env.ACROSS_API_KEY}`, 'content-type': 'application/json' },
       ...(body ? { body: JSON.stringify(body) } : {}),
     })
