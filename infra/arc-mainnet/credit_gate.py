@@ -12,6 +12,10 @@ from contextlib import closing
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
+# Keyless dRPC: 20 CU per allowed method. 400k CU/day bounds any 31-day month to
+# 12.4M CU (under 6% of the 210M free pool). The minute cap (250 reads) lets dRPC
+# pair with Validation Cloud when every free voter is rate-limited.
+DRPC = {'credits': 20, 'minute': 5000, 'day': 400_000}
 VALIDATIONCLOUD_URL = re.compile(r'https://mainnet\.arc\.validationcloud\.io/v1/[A-Za-z0-9_-]{20,}')
 # Validation Cloud's free team gets 50M CU per UTC month and is disabled when it
 # runs out. Its docs price eth_call, eth_estimateGas and eth_getBlockByNumber at
@@ -21,7 +25,7 @@ VALIDATIONCLOUD = {'credits': 40, 'minute': 20_000, 'day': 1_500_000}
 
 
 class Budget:
-    def __init__(self, path, allowance, minute=1000, day=40000):
+    def __init__(self, path, allowance, minute=DRPC['minute'], day=DRPC['day']):
         # allowance=None: no lifetime ledger; the daily cap alone bounds monthly use.
         if allowance is not None and not 0 < allowance <= 180_000_000:
             raise ValueError('Reserve 1..180000000 CU; leave at least 30M of the 210M free pool unallocated')

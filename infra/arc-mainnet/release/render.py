@@ -70,10 +70,14 @@ def render(active=False):
     write('services.env', f'OPHIS_INTER_SERVICE_AUTH_TOKEN={token}\n')
     rpc = 'http://rpc-proxy:4000/main/evm/5042'
     lanes = ['uniswap-v3', 'kyberswap', 'archery', 'aero', 'uniswap-v4', 'sushiswap-v3']
-    price_drivers = ', '.join(f'{{name = "{name}", url = "http://driver:11088/{name}"}}' for name in lanes)
+    # SushiSwap v3's Arc USDC/EURC pools hold dust (2026-11-20: the 1 bp pool is out
+    # of range, the 1% pool ~$5) and its USDC->EURC simulation runs out of gas, so
+    # trade quotes skip it to save reads. It still bids in auctions and native prices.
+    quote_lanes = [name for name in lanes if name != 'sushiswap-v3']
+    price_drivers = ', '.join(f'{{name = "{name}", url = "http://driver:11088/{name}"}}' for name in quote_lanes)
     drivers = '\n'.join(f'[[drivers]]\nname = "{name}"\nurl = "http://driver:11088/{name}"\naddress = "{cfg["solver"]}"' for name in lanes)
     # Try two broad-coverage sources first; retain the other venues as fallback.
-    # Trade quotes and executable auctions still compete across all six lanes.
+    # Executable auctions still compete across all six lanes; trade quotes across five.
     native_estimators = ', '.join('[' + ', '.join(f'{{type = "Driver", name = "{name}", url = "http://driver:11088/{name}"}}' for name in stage) + ']' for stage in [lanes[:2], lanes[2:]])
     contracts = '\n'.join(f'{key} = "{c[value]}"' for key, value in [('settlement', 'settlement'), ('balances', 'Balances'), ('signatures', 'Signatures'), ('hooks', 'HooksTrampoline'), ('balancer-v2-vault', 'vault')]) + f'\nnative-token = "{USDC}"\n'
     common = f'''[partner-fee-registry]
@@ -221,10 +225,11 @@ http {
     "''' + cfg['frontendOrigin'] + '''" $http_origin;
     "''' + cfg['explorerOrigin'] + '''" $http_origin;
   }
-  # A warm EURC quote needs ~40 two-voter reads. Free voters (3 x 120/min) alone
-  # carried four quotes/min; Validation Cloud filling a missing voter adds ~70%.
-  # ponytail: six quotes/min globally; expand only after measured RPC headroom.
-  limit_req_zone arc-quotes zone=quotes:1m rate=6r/m;
+  # A warm EURC quote needs ~40 two-voter reads; every read needs one non-keyed
+  # voter. Free voters (3 x 120/min) plus dRPC (250/min) beside Validation Cloud
+  # carry ~12 quotes/min (2026-11-20: with dRPC at 50/min, ~10/min saturated).
+  # ponytail: twelve quotes/min globally; expand only after measured RPC headroom.
+  limit_req_zone arc-quotes zone=quotes:1m rate=12r/m;
   # Only the loopback-published tunnel can reach this port externally. Cloudflare
   # overwrites this header; a local operator already controls the whole service.
   map $http_cf_connecting_ip $client_ip {
@@ -245,7 +250,7 @@ http {
     add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
     if ($request_method = OPTIONS) { return 204; }
     location ~ ^/api/v1/quote(?:/draft)?$ {
-      # Smooth token/amount changes: two requests can wait, at most 20 seconds.
+      # Smooth token/amount changes: two requests can wait, at most 10 seconds.
       limit_req zone=quotes burst=2;
       error_page 429 = @quote_busy;
       proxy_hide_header Access-Control-Allow-Origin;
@@ -256,8 +261,8 @@ http {
       add_header Access-Control-Allow-Origin $allowed_origin always;
       add_header Access-Control-Expose-Headers "Retry-After" always;
       add_header Vary Origin always;
-      add_header Retry-After "10" always;
-      return 429 '{"errorType":"TooManyRequests","description":"Arc quote capacity is busy. Please retry in 10 seconds."}';
+      add_header Retry-After "5" always;
+      return 429 '{"errorType":"TooManyRequests","description":"Arc quote capacity is busy. Please retry in 5 seconds."}';
     }
     location /api/v1/ {
       limit_req zone=reads burst=6 nodelay;

@@ -8,7 +8,7 @@ from contextlib import closing
 from unittest.mock import Mock, patch
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from credit_gate import VALIDATIONCLOUD, Budget, cost, serve, validationcloud_cost
+from credit_gate import DRPC, VALIDATIONCLOUD, Budget, cost, serve, validationcloud_cost
 
 # Fixture only: shaped like a real key, never a real one.
 VC_URL = 'https://mainnet.arc.validationcloud.io/v1/' + 'k' * 43
@@ -26,26 +26,28 @@ class CreditGateTest(unittest.TestCase):
             self.assertFalse(Budget(path, 100).reserve(1, 200000))
 
     def test_minute_and_day(self):
+        minutes = DRPC['day'] // DRPC['minute']
         with tempfile.TemporaryDirectory() as directory:
-            budget = Budget(str(Path(directory) / 'credits.sqlite'), 100000)
-            self.assertTrue(budget.reserve(1000, 0))
+            budget = Budget(str(Path(directory) / 'credits.sqlite'), 100_000_000)
+            self.assertTrue(budget.reserve(DRPC['minute'], 0))
             self.assertFalse(budget.reserve(20, 1))
-            for minute in range(1, 40):
-                self.assertTrue(budget.reserve(1000, minute * 60))
-            self.assertFalse(budget.reserve(20, 2400))
+            for minute in range(1, minutes):
+                self.assertTrue(budget.reserve(DRPC['minute'], minute * 60))
+            self.assertFalse(budget.reserve(20, minutes * 60))
             self.assertTrue(budget.reserve(20, 86400))
 
     def test_free_pool_ceiling_and_pacing_survive_restarts(self):
+        minutes = DRPC['day'] // DRPC['minute']
         with tempfile.TemporaryDirectory() as directory:
             path = str(Path(directory) / 'credits.sqlite')
             budget = Budget(path, 180_000_000)
             for day in range(31):
-                for minute in range(40):
-                    self.assertTrue(budget.reserve(1000, day * 86400 + minute * 60))
+                for minute in range(minutes):
+                    self.assertTrue(budget.reserve(DRPC['minute'], day * 86400 + minute * 60))
                 budget = Budget(path, 180_000_000)
-                self.assertFalse(budget.reserve(20, day * 86400 + 2400))
-            # Even a fully exhausted daily budget uses under 0.6% of the free pool.
-            self.assertLessEqual(31 * 40000, 210_000_000 * 0.006)
+                self.assertFalse(budget.reserve(20, day * 86400 + minutes * 60))
+            # Even a fully exhausted daily budget uses under 6% of the free pool.
+            self.assertLessEqual(31 * DRPC['day'], 210_000_000 * 0.06)
             for allowance in (0, 180_000_001, 210_000_000):
                 with self.assertRaises(ValueError):
                     Budget(path, allowance)

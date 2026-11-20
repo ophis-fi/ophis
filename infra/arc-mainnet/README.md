@@ -16,13 +16,14 @@ internet access; the backend lab uses loopback fixtures. Neither starts the live
 
 ## Routing and budget
 
-- Public quote admission stays paced globally at four requests/minute across quote
-  and draft routes. Two excess requests may wait up to 30 seconds; further requests
-  receive JSON HTTP 429 with `Retry-After: 15`. The fastest pair can stay selected,
-  so a third free provider is fallback headroom, not pooled sustained capacity.
-  This leaves RPC headroom instead of
-  sending six quotes into all five lanes at once. It is bounded admission, not
-  additional provider capacity or a guarantee against upstream outages.
+- Public quote admission stays paced globally at twelve requests/minute across quote
+  and draft routes. Two excess requests may wait up to 10 seconds; further requests
+  receive JSON HTTP 429 with `Retry-After: 5`. Every protected read needs one
+  non-keyed voter (free providers or dRPC) beside Validation Cloud; that pool carries
+  about twelve warm quotes/minute. Trade quotes use five lanes: SushiSwap v3's Arc
+  USDC/EURC pools hold dust liquidity, so it bids only in auctions and native prices.
+  It is bounded admission, not additional provider capacity or a guarantee against
+  upstream outages.
 - Official Arc + Blockdaemon + PublicNode public RPC first: two agreeing responses for protected
   state, simulations, headers, logs and receipts; disagreement or missing quorum
   returns an error. This is a managed-provider trust model, not local validation.
@@ -44,7 +45,7 @@ internet access; the backend lab uses loopback fixtures. Neither starts the live
   a rate-limited or failing free provider left open. It never counts as two voters
   and receives no logs, relay or traces. The API key stays in its private gate.
 - Each unmetered public upstream has a pooled 120 requests/minute limit. dRPC has a
-  pooled 1,000 CU/minute and 40,000 CU/day limit. Auto-tuning, hedging
+  pooled 5,000 CU/minute and 400,000 CU/day limit. Auto-tuning, hedging
   and upstream retries are disabled. Each protected-read voter can make at most
   three network attempts (six total), so two failed free legs do not hide the
   fourth provider from a surviving voter; other methods have one network attempt.
@@ -54,9 +55,9 @@ internet access; the backend lab uses loopback fixtures. Neither starts the live
   `eth_call` reads at explicit finalized blocks for one minute. Calldata and caller
   remain part of the cache key. Live/pending state and state/block overrides are
   not cached. eRPC also coalesces simultaneous requests.
-- Native prices try Uniswap v3 and KyberSwap first, with Archery, Aero and Uniswap
-  v4 as fallback if fewer than two estimates succeed. Trade quotes and auctions
-  still compete across all five lanes. After five consecutive internal estimator
+- Native prices try Uniswap v3 and KyberSwap first, with Archery, Aero, Uniswap
+  v4 and SushiSwap v3 as fallback if fewer than two estimates succeed. Auctions
+  compete across all six lanes; trade quotes across five (no SushiSwap v3). After five consecutive internal estimator
   failures, the price cache permits another probe after ten seconds (or the
   configured price TTL, if shorter); successful prices retain their normal TTL.
 - The pilot denies transaction relay. The release permits signed transaction relay
@@ -66,7 +67,7 @@ internet access; the backend lab uses loopback fixtures. Neither starts the live
 [dRPC's method costs](https://drpc.org/docs/pricing/compute-units) are 20 CU per
 allowed read or transaction trace; the gate conservatively reserves 20 CU even
 for the zero-CU chain-ID bootstrap. At the daily ceiling this stack uses at most
-**1.24M CU in 31 days**, under **0.6% of the 210M free allowance**.
+**12.4M CU in 31 days**, under **6% of the 210M free allowance**.
 The private gate reserves CU in SQLite before each attempt, with a fixed
 operator-selected lifetime allowance (maximum 180M, leaving 30M unallocated).
 There is no automatic monthly refill: the daily cap bounds monthly use without

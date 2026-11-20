@@ -380,10 +380,11 @@ Only the official endpoint receives `eth_sendRawTransaction`, one attempt; it
 never reaches dRPC. Each unmetered public provider is capped at 120 requests/minute.
 When a free voter is rate-limited or failing, the keyed Validation Cloud lane fills
 it before dRPC; healthy free pairs spend no Validation Cloud CU.
-Public quote ingress stays paced globally at six/minute. Two requests may wait
-up to 20 seconds; excess receives JSON HTTP 429 with `Retry-After: 10`. The fastest
-pair can stay selected, so the third free provider is fallback headroom, not
-pooled sustained capacity. The
+Public quote ingress stays paced globally at twelve/minute. Two requests may wait
+up to 10 seconds; excess receives JSON HTTP 429 with `Retry-After: 5`. Each protected
+read needs one non-keyed voter (free providers or dRPC) beside Validation Cloud, which
+bounds sustained capacity at about twelve warm quotes/minute. Trade quotes skip
+SushiSwap v3 (dust Arc USDC/EURC liquidity); it still bids in auctions. The
 frontend requests only optimal Arc quotes, skips hidden/offline polling and
 does not immediately retry Arc HTTP 429 or quote HTTP 5xx responses. This
 is deliberately a low-volume launch configuration, not a high-traffic SLA.
@@ -403,8 +404,8 @@ proxy at port 8442. The existing OP tunnel and services were not restarted.
 
 dRPC receives the read fallbacks above, transaction traces and eRPC's bounded
 bootstrap/hourly header probes. SQLite reserves 20 CU **before** each upstream
-attempt: 1,000 CU/minute, 40,000 CU/day and the fixed lifetime allowance (at most
-180M CU). This bounds 31-day usage to 1.24M CU, under 0.6% of the 210M free pool.
+attempt: 5,000 CU/minute, 400,000 CU/day and the fixed lifetime allowance (at most
+180M CU). This bounds 31-day usage to 12.4M CU, under 6% of the 210M free pool.
 There is no automatic monthly refill. Failed requests and timeouts remain
 charged. Protected reads allow three attempts per voter (six total); upstream
 attempts and other network methods remain single-attempt, with no redirects.

@@ -366,8 +366,8 @@ def test_rpc(release=False, expanded=False, keyed=False):
     assert protected["consensus"]["maxParticipants"] == protected["consensus"]["agreementThreshold"] == 2
     assert project["upstreamDefaults"]["failsafe"][0]["retry"]["maxAttempts"] == 1
     assert config["rateLimiters"]["budgets"][0]["rules"] == [
-        {"method": "*", "maxCount": 1000, "period": "minute"},
-        {"method": "*", "maxCount": 40000, "period": "day"},
+        {"method": "*", "maxCount": 5000, "period": "minute"},
+        {"method": "*", "maxCount": 400000, "period": "day"},
     ]
     if not keyed:
         # The existing suites exercise free/dRPC routing; a healthy keyed voter
