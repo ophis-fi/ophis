@@ -29,7 +29,7 @@ const RUNTIME_CODE_HASH = '0x8d9ad2a9d3b3d47aaa832ecc21de8775509764409ab07cdf097
 const WETH = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2';
 const DEPLOYMENT_BLOCK = 24622661n;
 const SUBGRAPH_URL =
-  'https://api.goldsky.com/api/public/project_cmmkvehnce9da01u17d657vdt/subgraphs/Swapboard/1.0.0/gn';
+  'https://api.goldsky.com/api/public/project_cmp8sq4cilegn01ws0ldh325r/subgraphs/ophis-otc/1.0.0/gn';
 
 const SELECTORS = { weth: '0x3fc8cef3', nextOrderId: '0x2a58b330', getOrders: '0x03652027' };
 
