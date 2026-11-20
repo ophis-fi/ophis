@@ -6,7 +6,7 @@ import { erc20Abi } from 'viem'
 import {
   ACROSS_V5_ADAPTER, ACROSS_V5_DEADLINE_MARGIN, ACROSS_V5_DESTINATIONS, ACROSS_V5_STORE,
   acrossV5FixedAmount, checkAcrossV5Deposit,
-  type AcrossV5Quote, type AcrossV5Request,
+  type AcrossV5Quote, type AcrossV5Request, type AcrossV5Status,
 } from '../../../functions/_shared/acrossV5.ts'
 import { acrossV5Api, acrossV5BridgeQuote, acrossV5Tokens } from '../../../functions/_shared/acrossV5Client.ts'
 import { ACROSS_EXECUTABLE_SOURCE_IDS, OphisAcrossBridgeProvider } from './across.ts'
@@ -16,8 +16,10 @@ type Quote = ReturnType<typeof acrossV5BridgeQuote> & { v5: AcrossV5Quote; reque
 export type AcrossV5Program = Readonly<{ quote: AcrossV5Quote; request: AcrossV5Request }>
 type Provider = HookBridgeProvider<Quote>
 
-export async function cliAcrossV5Status(orderId: string): ReturnType<Provider['getStatus']> {
-  const data = (await acrossV5Api(API, 'status?orderId=' + encodeURIComponent(orderId))) as Awaited<ReturnType<Provider['getStatus']>>
+type CliAcrossV5Status = Awaited<ReturnType<Provider['getStatus']>> & Pick<AcrossV5Status, 'refund'>
+
+export async function cliAcrossV5Status(orderId: string): Promise<CliAcrossV5Status> {
+  const data = (await acrossV5Api(API, 'status?orderId=' + encodeURIComponent(orderId))) as CliAcrossV5Status
   return Object.values(BridgeStatus).includes(data?.status) ? data : { status: BridgeStatus.UNKNOWN }
 }
 

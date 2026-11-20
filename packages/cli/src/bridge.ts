@@ -924,7 +924,7 @@ export async function watchBridge(b: BridgeQuote, uid: string): Promise<'done' |
       return 'done'
     }
     if (status === 'expired' || status === 'refund' || status === 'not_deposited') {
-      spin.stop(`${red('✗')} ${saidStatus(status, b.src, leg!.shed, leg!.token, true, leg?.orderId)}`)
+      spin.stop(`${red('✗')} ${saidStatus(status, b.src, leg!.shed, leg!.token, true, leg?.v5)}`)
       return 'failed'
     }
     await new Promise((resolve) => setTimeout(resolve, 5000))
@@ -940,7 +940,9 @@ export async function watchBridge(b: BridgeQuote, uid: string): Promise<'done' |
  * when the batch settles other trades too, so the deposit is found here by its depositor: the order's receiver.
  * token is what the order bought and Across carries: what a refund, or a deposit that did not run, leaves in the shed.
  */
-export async function bridgeStatus(src: Network, uid: string): Promise<{ status: string; shed: Address; owner: Address; token: Address; orderId?: string } | undefined> {
+type V5StatusInfo = { orderId: string; refundToShed: boolean }
+
+export async function bridgeStatus(src: Network, uid: string): Promise<{ status: string; shed: Address; owner: Address; token: Address; v5?: V5StatusInfo } | undefined> {
   const across = ACROSS[src.id]
   if (!across || !/^0x[0-9a-fA-F]{112}$/.test(uid)) return undefined
   const order = await getOrder(src, uid)
@@ -989,8 +991,10 @@ export async function bridgeStatus(src: Network, uid: string): Promise<{ status:
       return pulled && !!stored && same(log.address, ACROSS_V5_ADAPTER) && same(stored.args.witness, v5.orderId) &&
         same(stored.args.token, token) && stored.args.amount === BigInt(v5.amount)
     })
-    const state = deposited ? (await cliAcrossV5Status(v5.orderId)).status : 'not_deposited'
-    return { status: state, shed, owner, token, orderId: v5.orderId }
+    const bridge = deposited ? await cliAcrossV5Status(v5.orderId) : undefined
+    const refund = bridge?.refund
+    const refundToShed = refund?.chainId === src.id && same(refund.token, token) && same(refund.recipient, shed)
+    return { status: bridge?.status ?? 'not_deposited', shed, owner, token, v5: { orderId: v5.orderId, refundToShed } }
   }
   let pull: { from: Address; value: bigint } | undefined
   const [own] = logs.slice(payout + 1).flatMap((log) => {
@@ -1017,11 +1021,11 @@ export async function bridgeStatus(src: Network, uid: string): Promise<{ status:
  * A bridge status in plain words. Across returns an unfilled deposit to its depositor: the owner's own bridge account. The
  * hint names the token the bridge carried, so recovering it never depends on finding the order again.
  */
-export function saidStatus(status: string, src: Network, shed: Address, token: Address, yours = true, v5OrderId?: string): string {
-  if (v5OrderId && status === 'refund') return `Refunded by Across. V5 order ${v5OrderId}`
-  if (v5OrderId && status === 'expired') return `Across reports the transfer failed. Check the Across transaction for funds recovery. V5 order ${v5OrderId}`
+export function saidStatus(status: string, src: Network, shed: Address, token: Address, yours = true, v5?: V5StatusInfo): string {
+  if (v5 && status === 'expired') return `Across reports the transfer failed. Check the Across transaction for funds recovery. V5 order ${v5.orderId}`
   const whose = yours ? 'your bridge account' : "the owner's bridge account"
   const hint = (how: string) => (yours ? `. ${how} with: ophis recover ${token} on ${src.alias}` : '')
+  if (v5 && status === 'refund' && !v5.refundToShed) return `Refunded by Across. V5 order ${v5.orderId}`
   const said: Record<string, string> = {
     executed: 'Bridged: Across reports it arrived on the destination chain',
     in_progress: 'Bridging: on its way',

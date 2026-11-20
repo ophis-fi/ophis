@@ -15,6 +15,7 @@ const ABI = new Interface([
   'function balanceOf(address) view returns (uint256)',
   'function transfer(address,uint256) returns (bool)',
   'function allowance(address,address) view returns (uint256)',
+  'function nonces(bytes32) view returns (bool)',
   'function storedFunding(bytes32,address) view returns (uint256)',
   'event PrefundingStored(bytes32 indexed witness,address token,uint256 amount)',
 ])
@@ -54,10 +55,11 @@ forkTest(
         witness,
         owner.address,
       )
+      const nonce = keccak256(toUtf8Bytes('Ophis Across V5 isolated fork nonce'))
       const { signedMulticall } = await sdk.signCalls({
         calls: [{ target: call.to, callData: call.data, value: call.value, allowFailure: false, isDelegateCall: true }],
         chainId: BASE,
-        nonce: keccak256(toUtf8Bytes('Ophis Across V5 isolated fork nonce')),
+        nonce,
         deadline: BigInt((await provider.getBlock('latest')).timestamp + 900),
         gasLimit: 800_000n,
       })
@@ -91,7 +93,23 @@ forkTest(
       expect(BigInt(await provider.call({ to: ACROSS_V5_ADAPTER, data: stored }))).toBe(amount)
       const log = receipt.logs.find((item) => item.address.toLowerCase() === ACROSS_V5_ADAPTER)
       expect(log && ABI.parseLog(log).args.witness).toBe(witness)
+      const used = await provider.call({ to: shed, data: ABI.encodeFunctionData('nonces', [nonce]) })
+      expect(BigInt(used)).toBe(1n)
+      // Replay with enough funds to execute again if the nonce were not enforced.
+      await (
+        await owner.sendTransaction({ to: TOKEN, data: '0xd0e30db0', value: String(amount), gasLimit: 120_000 })
+      ).wait()
+      await (
+        await owner.sendTransaction({
+          to: TOKEN,
+          data: ABI.encodeFunctionData('transfer', [shed, String(amount)]),
+          gasLimit: 120_000,
+        })
+      ).wait()
+      expect(await balanceOf(shed)).toBe(amount)
       await expect((await owner.sendTransaction(tx)).wait()).rejects.toThrow()
+      expect(await balanceOf(shed)).toBe(amount)
+      expect(BigInt(await provider.call({ to: ACROSS_V5_ADAPTER, data: stored }))).toBe(amount)
     } finally {
       await provider.send('evm_revert', [snapshot])
     }

@@ -20,12 +20,15 @@ import {
   GetProviderBuyTokens,
   QuoteBridgeRequest,
 } from '@cowprotocol/sdk-bridging'
-import { fetchTokenList, OPHIS_TOKENS_LIST_SOURCE } from '@cowprotocol/tokens'
 
 import { FEE_ROOM_PCT, GuardedHookTerms, GUARD_GAS, OrdersOf, PCT_100 } from './ophisAcrossConstants'
 import { getSignedHook, guardedHookTerms } from './ophisAcrossHooks'
 import { getBridgingParams } from './ophisAcrossLogs'
-import { getIntermediateTokensFromRoutes, keepTrustedSameAsset } from './ophisAcrossTokenTrust'
+import {
+  createAcrossTrustedTokenLoader,
+  getIntermediateTokensFromRoutes,
+  keepTrustedSameAsset,
+} from './ophisAcrossTokenTrust'
 import { ARC_BRIDGE_CHAIN, ROBINHOOD_BRIDGE_CHAIN } from './ophisBridgeChains'
 
 export { placeConfirmed } from './ophisAcrossPlacement'
@@ -67,7 +70,7 @@ export const ACROSS_EXECUTABLE_SOURCE_IDS: ReadonlySet<number> = new Set<number>
 
 export class OphisAcrossBridgeProvider extends AcrossBridgeProvider {
   private readonly guardedHooks = new WeakMap<EvmCall, GuardedHookTerms>()
-  private trustedList?: Promise<TokenInfo[]>
+  private readonly loadTrustedTokens = createAcrossTrustedTokenLoader()
   private readonly ordersOf: OrdersOf | undefined
 
   constructor({
@@ -118,7 +121,8 @@ export class OphisAcrossBridgeProvider extends AcrossBridgeProvider {
     // the route fallback would surface. Returning [] here (not just in
     // getBuyTokens) keeps the direct getQuote path from advancing past this to a
     // later getUnsignedBridgeCall throw.
-    if ((request.buyTokenChainId as number) === 130 || !ACROSS_EXECUTABLE_SOURCE_IDS.has(request.sellTokenChainId)) return []
+    if ((request.buyTokenChainId as number) === 130 || !ACROSS_EXECUTABLE_SOURCE_IDS.has(request.sellTokenChainId))
+      return []
 
     const bySymbol = await super.getIntermediateTokens(request)
     const candidates = bySymbol.length > 0 ? bySymbol : await getIntermediateTokensFromRoutes(this.api, request)
@@ -194,13 +198,6 @@ export class OphisAcrossBridgeProvider extends AcrossBridgeProvider {
 
   /** The Ophis token list, loaded once per provider; a failed load is dropped so the next quote retries. */
   protected trustedTokens(): Promise<TokenInfo[]> {
-    this.trustedList ??= fetchTokenList({ source: OPHIS_TOKENS_LIST_SOURCE }).then(
-      (state) => state.list.tokens,
-      (error) => {
-        this.trustedList = undefined
-        throw error
-      },
-    )
-    return this.trustedList
+    return this.loadTrustedTokens()
   }
 }

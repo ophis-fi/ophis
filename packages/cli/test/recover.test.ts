@@ -127,6 +127,11 @@ describe('the bridge account address', () => {
     }
     expect(saidStatus('expired', base, X, USDC.address)).toContain('Once the refund arrives, recover it with')
     expect(saidStatus('executed', base, X, USDC.address)).not.toContain('recover')
+    const orderId = `0x${'ab'.repeat(32)}`
+    expect(saidStatus('refund', base, X, USDC.address, true, { orderId, refundToShed: true }))
+      .toContain(`with: ophis recover ${USDC.address} on base`)
+    expect(saidStatus('refund', base, X, USDC.address, true, { orderId, refundToShed: false }))
+      .toBe(`Refunded by Across. V5 order ${orderId}`)
   })
   test('ophis status names the token the bridge carried, so recovering it never depends on finding the order again', async () => {
     const owner = privateKeyToAccount(generatePrivateKey()).address

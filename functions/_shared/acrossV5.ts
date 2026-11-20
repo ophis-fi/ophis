@@ -91,7 +91,7 @@ export function parseAcrossV5Quote(value: unknown, request: AcrossV5Request, app
     !matchesAddress(destination.recipient?.address, request.recipient) ||
     !acrossAmount(destination.amount) || !acrossAmount(destination.minAmount) || !acrossAmount(destination.grossAmount) ||
     BigInt(destination.minAmount) <= 0n || BigInt(destination.minAmount) > BigInt(destination.amount) ||
-    BigInt(destination.amount) > BigInt(destination.grossAmount) ||
+    BigInt(destination.grossAmount) <= 0n ||
     !acrossAmount(appFee) || (appFeeBps > 0 ? appFee === '0' : appFee !== '0') ||
     !Array.isArray(q.refundTo) || q.refundTo.some((r) => {
       const chain = r?.token?.chainId
@@ -136,7 +136,7 @@ export function checkAcrossV5Deposit(quote: AcrossV5Quote, request: AcrossV5Requ
     (now > 0 && !(quote.expiresAt > now && quote.originValidUntil > quote.expiresAt)) ||
     ![quote.expectedOutput, quote.minimumOutput, quote.grossOutput, quote.appFee].every(acrossAmount) ||
     BigInt(quote.minimumOutput) <= 0n || BigInt(quote.minimumOutput) > BigInt(quote.expectedOutput) ||
-    BigInt(quote.expectedOutput) > BigInt(quote.grossOutput) ||
+    BigInt(quote.grossOutput) <= 0n ||
     quote.depositData !== acrossStoreData(quote.orderId, request.inputToken, request.amount)
   ) throw new Error('Invalid or expired Across bridge quote')
 }
@@ -147,6 +147,7 @@ export interface AcrossV5Status {
   fillTxHash?: string
   fillTimeInSeconds?: number
   destination?: { chainId: number; token: string; recipient: string; amount: string }
+  refund?: { chainId: number; token: string; recipient: string }
 }
 
 export function parseAcrossV5Status(value: unknown, orderId: string): AcrossV5Status {
@@ -155,6 +156,7 @@ export function parseAcrossV5Status(value: unknown, orderId: string): AcrossV5St
     status?: { state?: string; isTerminal?: boolean }
     fillTimeMs?: number
     destination?: { output?: { token?: TokenRef; amount?: unknown }; recipient?: { address?: unknown } }
+    refund?: { chain?: { chainId?: unknown }; output?: { token?: TokenRef }; recipient?: { address?: unknown } }
     transactions?: { type?: string; transaction?: { txnRef?: unknown } }[]
   } | null
   if (transfer?.orderId?.toLowerCase() !== orderId.toLowerCase()) return { status: 'unknown' }
@@ -173,8 +175,15 @@ export function parseAcrossV5Status(value: unknown, orderId: string): AcrossV5St
     acrossAddress(recipient) && acrossAmount(output.amount)
     ? { chainId: output.token.chainId, token: output.token.address, recipient, amount: output.amount }
     : undefined
+  const refundChain = transfer.refund?.chain?.chainId
+  const refundToken = transfer.refund?.output?.token?.address
+  const refundRecipient = transfer.refund?.recipient?.address
+  const refund = status === 'refund' && typeof refundChain === 'number' && Number.isSafeInteger(refundChain) &&
+    acrossAddress(refundToken) && acrossAddress(refundRecipient)
+    ? { chainId: refundChain, token: refundToken, recipient: refundRecipient }
+    : undefined
   return {
-    destination,
+    destination, refund,
     status, depositTxHash: tx('deposit'), fillTxHash: tx(state === 'refunded' ? 'refund' : 'fill'),
     fillTimeInSeconds: Number.isSafeInteger(transfer.fillTimeMs) ? Number(transfer.fillTimeMs) / 1000 : undefined,
   }

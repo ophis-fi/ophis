@@ -32,7 +32,6 @@ import {
   QuoteBridgeRequest,
 } from '@cowprotocol/sdk-bridging'
 import { CowShedSdk } from '@cowprotocol/sdk-cow-shed'
-import { fetchTokenList, OPHIS_TOKENS_LIST_SOURCE } from '@cowprotocol/tokens'
 
 import { BRIDGE_QUOTE_ACCOUNT } from 'common/constants/bridgeQuoteAccount'
 
@@ -40,7 +39,7 @@ import { NOT_OWNER, OrdersOf, QUOTE_CHANGED } from './ophisAcrossConstants'
 import { rememberHook } from './ophisAcrossPlacedHooks'
 import { assertAcrossV5Placeable } from './ophisAcrossPlacement'
 import { signedByOwner } from './ophisAcrossSignature'
-import { keepTrustedSameAsset } from './ophisAcrossTokenTrust'
+import { createAcrossTrustedTokenLoader, keepTrustedSameAsset } from './ophisAcrossTokenTrust'
 import { ACROSS_EXECUTABLE_SOURCE_IDS, OphisAcrossBridgeProvider } from './ophisBridgeProviders'
 
 type Quote = ReturnType<typeof acrossV5BridgeQuote> & { v5: AcrossV5Quote; request: AcrossV5Request }
@@ -56,7 +55,7 @@ export class OphisAcrossV5Provider implements Provider {
   }
   private readonly quotes = new WeakSet<Quote>()
   private readonly programs = new WeakMap<EvmCall, Program>()
-  private trustedList?: Promise<TokenInfo[]>
+  private readonly trustedTokens = createAcrossTrustedTokenLoader()
 
   constructor(
     private readonly legacy: OphisAcrossBridgeProvider,
@@ -74,17 +73,6 @@ export class OphisAcrossV5Provider implements Provider {
     }
     // CoW can acquire the bridge token from a different sell asset on the source chain.
     return getAcrossV5BuyTokens({ ...params, sellTokenAddress: undefined })
-  }
-
-  private trustedTokens(): Promise<TokenInfo[]> {
-    this.trustedList ??= fetchTokenList({ source: OPHIS_TOKENS_LIST_SOURCE }).then(
-      (state) => state.list.tokens,
-      (error: unknown) => {
-        this.trustedList = undefined
-        throw error
-      },
-    )
-    return this.trustedList
   }
 
   private trustedIntermediates(

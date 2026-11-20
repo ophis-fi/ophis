@@ -43,6 +43,14 @@ test('prices the fixed debit and keeps the V5 floor and order ID', () => {
   expect(readAcrossV5Order(result.quoteBody)).toMatchObject({ orderId, amount, recipient })
 })
 
+test('accepts a subsidized bridge with a negative transfer fee', () => {
+  const subsidized = response()
+  subsidized.destination.amount = '100100000'
+  const quote = parseAcrossV5Quote(subsidized, request, 0)
+  expect(() => checkAcrossV5Deposit(quote, request)).not.toThrow()
+  expect(acrossV5BridgeQuote(quote, 100_000_000n, recipient).fees.bridgeFee).toBe(-200_000n)
+})
+
 test('refuses a substituted witness, redirect, permissive approval, expiry, or undisclosed app fee', () => {
   const updates: ((q: ReturnType<typeof response>) => void)[] = [
     (q) => { q.nextActions[1].data = acrossStoreData('0x' + 'ee'.repeat(32), inputToken, amount) },
@@ -66,8 +74,12 @@ test('refuses a substituted witness, redirect, permissive approval, expiry, or u
 test('only a matching terminal transfer is mapped to completion or refund', () => {
   const txnRef = '0x' + 'cd'.repeat(32)
   const tx = { type: 'refund', transaction: { txnRef } }
-  const refunded = { orderId, status: { state: 'refunded', isTerminal: true }, transactions: [tx] }
-  expect(parseAcrossV5Status(refunded, orderId)).toMatchObject({ status: 'refund', fillTxHash: txnRef })
+  const refund = { chain: { chainId: originChainId }, output: { token: { address: inputToken } }, recipient: { address: depositor } }
+  const refunded = { orderId, status: { state: 'refunded', isTerminal: true }, transactions: [tx], refund }
+  expect(parseAcrossV5Status(refunded, orderId)).toMatchObject({
+    status: 'refund', fillTxHash: txnRef, refund: { chainId: originChainId, token: inputToken, recipient: depositor },
+  })
+  expect(parseAcrossV5Status({ ...refunded, refund: undefined }, orderId).refund).toBeUndefined()
   expect(parseAcrossV5Status(refunded, txnRef).status).toBe('unknown')
   expect(parseAcrossV5Status({ ...refunded, status: { state: 'pending', isTerminal: false } }, orderId).status)
     .toBe('in_progress')
