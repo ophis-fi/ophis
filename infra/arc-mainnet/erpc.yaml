@@ -33,15 +33,17 @@ rateLimiters:
   store:
     driver: memory
   budgets:
-    # At 40k CU/day, at most 1.24M of the 210M free pool is used in 31 days.
+    # At 400k CU/day, at most 12.4M of the 210M free pool is used in 31 days.
+    # 5k CU/minute (250 reads) lets dRPC be the second voter beside Validation
+    # Cloud once every free voter is rate-limited.
     # The private gate enforces the same caps durably across proxy restarts.
     - id: arc-drpc
       rules:
         - method: "*"
-          maxCount: 1000
+          maxCount: 5000
           period: minute
         - method: "*"
-          maxCount: 40000
+          maxCount: 400000
           period: day
     - id: arc-official
       rules:

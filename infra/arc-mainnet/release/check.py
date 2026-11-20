@@ -68,6 +68,11 @@ def main():
     assert driver['gas-estimator'] == {'estimator': 'web3'}
     assert int(driver['submission']['gas-price-cap']) == int(cfg['maxFeePerGas'])
     assert all(pool['additional-tip-percentage'] == 0 for pool in driver['submission']['mempool'])
+    # Dust-liquidity SushiSwap v3 is skipped for quotes only; auctions keep all six lanes.
+    for config in [autopilot, orderbook]:
+        assert [driver['name'] for driver in config['order-quoting']['price-estimation-drivers']] == [
+            'uniswap-v3', 'kyberswap', 'archery', 'aero', 'uniswap-v4']
+    assert 'sushiswap-v3' in {lane['name'] for lane in autopilot['drivers']}
     assert all(lane['address'] == cfg['solver'] for lane in autopilot['drivers'])
     assert all(lane['account'] == cfg['solver'] for lane in driver['solver'])
     lanes = {'uniswap-v3', 'kyberswap', 'archery', 'aero', 'uniswap-v4', 'sushiswap-v3'}
@@ -155,7 +160,7 @@ def quote(i):
  except urllib.error.HTTPError as e: response=e
  with response:
   if response.status==429:
-   assert response.headers['Retry-After']=='10'
+   assert response.headers['Retry-After']=='5'
    assert response.headers['Access-Control-Allow-Origin']==allowed[0]
    assert response.headers['Access-Control-Expose-Headers']=='Retry-After'
    assert json.load(response)['errorType']=='TooManyRequests'
@@ -164,7 +169,8 @@ with ThreadPoolExecutor(max_workers=4) as pool:
  results=list(pool.map(quote,range(4)))
 assert sorted(code for code,_ in results)==[404,404,404,429],results
 admitted=sorted(elapsed for code,elapsed in results if code==404)
-assert admitted[0]<3 and 8.5<=admitted[1]<18 and 18.5<=admitted[2]<26,results
+# Five-second spacing only: 11/min (5.45 s) and 13/min (4.62 s) already fail.
+assert admitted[0]<3 and 4.7<=admitted[1]<5.4 and 9.7<=admitted[2]<10.8,results
 assert next(elapsed for code,elapsed in results if code==429)<3,results
 print('PASS live Nginx bounded quote pacing / busy response:',results)
 for origin in allowed+['https://untrusted.example']:
