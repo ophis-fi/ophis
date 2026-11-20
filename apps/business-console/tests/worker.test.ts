@@ -6805,6 +6805,31 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
     expect(await row('SELECT anchor FROM wallets WHERE org_id = ? AND state = ?', a.orgId, 'linked')).toEqual({ anchor: null })
   })
 
+  it('G5: a named colleague who enrols and leaves does not permanently block single-key assignment or recovery', async () => {
+    const domain = 'departed-colleague.example'
+    const a = await underReview(domain, { people: [{ name: 'Departing Admin', email: `admin@${domain}`, role: 'admin', position: 'CTO', phone: '+352621000001' }] })
+    expect((await decideOn(a.orgId)).body).toEqual({ state: 'active' })
+    const wallet = (await row<{ id: string }>('SELECT id FROM wallets WHERE org_id = ? AND state = ?', a.orgId, 'linked'))!
+    const seat = (await row<{ id: string }>('SELECT id FROM seats WHERE org_id = ? AND email = ?', a.orgId, `admin@${domain}`))!
+    const ticket = await issue(a, { seatId: seat.id })
+    const joined = await enrolLink(ticket.body.link)
+    expect(joined.status).toBe(200)
+    // Storing an unconfirmed passkey does not count as enrolment.
+    expect((await post(`/api/wallets/${wallet.id}/anchor`, a)).body).toEqual({ error: 'single_key' })
+    expect((await confirm(a, ticket.body.ticketId, a.key)).body.state).toBe('active')
+    const admin = await again({ key: joined.key, cookie: '' })
+    expect((await post(`/api/wallets/${wallet.id}/anchor`, a)).body).toEqual({ error: 'single_key' })
+    const leave = await act(a, seat.id, 'remove')
+    expect((await decide(admin, leave.body.id, 'approve')).body).toEqual({ state: 'applied' })
+    // The existing 30-day rule still protects recently departed key-role members.
+    expect((await post(`/api/wallets/${wallet.id}/anchor`, a)).body).toEqual({ error: 'single_key' })
+    now += 31 * DAY
+    await again(a)
+    expect((await post(`/api/wallets/${wallet.id}/anchor`, a)).body).toEqual({ state: 'applied' })
+    now += WAIT + MIN
+    expect(await data.recoverable(db, { orgId: a.orgId, nonce: `0x${'34'.repeat(32)}`, credential: { id: 'returning-owner', publicKey: 'unused', counter: 0, transports: [] } }, now)).toMatchObject({ wallet: { id: wallet.id } })
+  })
+
   it('G5: a colleague enrolling during approval forces a fresh review of recovery eligibility before any authority is granted', async () => {
     const a = await underReview()
     const joined = racing(async () => { await ceremony(a, { displayName: 'Concurrent Viewer', role: 'viewer' }) })
