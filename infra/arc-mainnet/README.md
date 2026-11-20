@@ -9,9 +9,9 @@ The Arc mainnet stack is live; see the release runbook for deployment records.
 Run instructions and validation: [local/README.md](local/README.md).
 Read-only pool/quote/router verification: [LIQUIDITY.md](LIQUIDITY.md).
 Automatic local settlement, unsigned bridge and measured RPC usage: [VALIDATION.md](VALIDATION.md).
-No production node, paid plan, or dRPC traffic is required. The private
-QuickNode URL belongs only in the gitignored `.env` (mode 0600), never frontend
-chain configuration. RPC proxy tests start disposable containers on a network without
+No production node, paid plan, API key, or live dRPC traffic is required for tests.
+The dRPC gate uses the keyless public endpoint; its reserved CU allowance belongs
+in the gitignored `.env` (mode 0600). RPC proxy tests start disposable containers on a network without
 internet access; the backend lab uses loopback fixtures. Neither starts the live proxy.
 
 ## Routing and budget
@@ -33,17 +33,17 @@ internet access; the backend lab uses loopback fixtures. Neither starts the live
   [Allnodes lists free Arc RPC access](https://www.allnodes.com/).
   September 28 probes matched Blockdaemon's block hash, USDC balance and EIP-1898
   code-override simulation. This is not an uptime or unlimited-capacity guarantee.
-- QuickNode: bounded fallback for `eth_call`, `eth_estimateGas`, `eth_getBalance`,
+- dRPC (`https://arc.drpc.org`): bounded fallback for `eth_call`, `eth_estimateGas`, `eth_getBalance`,
   `eth_getCode`, `eth_getBlockByNumber` headers and `eth_gasPrice`, plus
   `debug_traceTransaction` after settlement.
-  Protected reads still require two distinct agreeing providers. Paid reads alone
-  cannot restore a quorum when all free providers are unavailable. No dRPC calls.
-- Each public upstream has a pooled 120 requests/minute limit. QuickNode has a
-  pooled 1,000 credits/minute and 40,000 credits/day limit. Auto-tuning, hedging
+  Protected reads still require two distinct agreeing providers. dRPC alone
+  cannot restore a quorum when all other providers are unavailable.
+- Each unmetered public upstream has a pooled 120 requests/minute limit. dRPC has a
+  pooled 1,000 CU/minute and 40,000 CU/day limit. Auto-tuning, hedging
   and upstream retries are disabled. Each protected-read voter can make at most
   three network attempts (six total), so two failed free legs do not hide the
   fourth provider from a surviving voter; other methods have one network attempt.
-  Free providers sort before QuickNode, so healthy free quorums use no paid state
+  Unmetered providers sort before dRPC, so healthy quorums use no dRPC state
   reads. Quota exhaustion fails closed; failed attempts remain charged.
 - Fixed-number finalized headers are cached for one hour; successful quorum-verified
   `eth_call` reads at explicit finalized blocks for one minute. Calldata and caller
@@ -58,21 +58,24 @@ internet access; the backend lab uses loopback fixtures. Neither starts the live
   through one free official upstream; nonce/state reads still require two voters.
   Full-block tracing, replay, unrestricted debug and client provider overrides are denied.
 
-[QuickNode's Arc pricing](https://www.quicknode.com/api-credits/arc) is 20 credits
-per standard method, 40 per transaction trace. 10M credits is **not** 10M requests.
-At the daily ceiling this pilot uses about **1.24M credits in 31 days**, leaving
-most of the allowance reserved. No renewal of the supplied 10M is assumed.
-The private credit gate also reserves credits in SQLite before each attempt, with
-a fixed operator-selected remaining allowance (maximum 10M). The pilot and release
-share the same named volume, so restarts and switching stacks do not reset it.
-This ledger cannot account for unrelated consumers of the provider key: reserve
-only the credits actually available, retain the volume, and monitor provider totals.
+[dRPC's method costs](https://drpc.org/docs/pricing/compute-units) are 20 CU per
+allowed read or transaction trace; the gate conservatively reserves 20 CU even
+for the zero-CU chain-ID bootstrap. At the daily ceiling this stack uses at most
+**1.24M CU in 31 days**, under **0.6% of the 210M free allowance**.
+The private gate reserves CU in SQLite before each attempt, with a fixed
+operator-selected lifetime allowance (maximum 180M, leaving 30M unallocated).
+There is no automatic monthly refill: the daily cap bounds monthly use without
+depending on the account reset date. The pilot and release share the named
+`ophis-arc-drpc-cu` volume, so restarts and switching stacks do not reset usage.
+The old `ophis-arc-quicknode-credits` volume is retained and never reused for dRPC.
+This ledger cannot account for unrelated dRPC consumers: reserve
+only CU actually available, retain the volume, and monitor provider totals.
 Do not delete the ledger or run separate ledgers against the same reserved allowance.
 
 eRPC v0.2.0 treats a zero poll interval as its default, and its internal poller
-bypasses method filters. QuickNode therefore polls only hourly (two standard
-header calls, approximately 960 credits/day, charged to the same budget).
-Initial bootstrap also checks the chain ID once (20 credits).
+bypasses method filters. dRPC therefore polls only hourly (two standard
+header calls, approximately 960 CU/day, charged to the same budget).
+Initial bootstrap also checks the chain ID once (20 CU reserved).
 Public providers poll every 30 seconds. Account usage remains the source of truth.
 
 ## RPC validation
@@ -83,7 +86,7 @@ python3 infra/arc-mainnet/test_rpc.py
 
 These tests do not start the live proxy. The backend lab uses Arc Anvil on
 loopback, not the production RPC proxy. This separation
-keeps simulation, compilation and regression tests outside the 10M allowance.
+keeps simulation, compilation and regression tests outside the dRPC allowance.
 The release tooling prepares unsigned deployments, validates governance and
 contract wiring, renders services, and gates frontend/signing activation on real
 deployment evidence. Never substitute local fixture addresses for mainnet records.

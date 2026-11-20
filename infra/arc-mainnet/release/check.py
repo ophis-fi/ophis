@@ -85,11 +85,14 @@ def main():
     assert subprocess.run([sys.executable, str(HERE / 'render.py'), '--activate'], capture_output=True).returncode != 0, 'Unverified plan activated'
     pilot = yaml.safe_load((HERE.parent / 'docker-compose.yml').read_text())
     release = yaml.safe_load((HERE / 'docker-compose.yml').read_text())
-    assert pilot['volumes']['credits']['name'] == release['volumes']['credits']['name'] == 'ophis-arc-quicknode-credits'
+    assert pilot['volumes']['credits']['name'] == release['volumes']['credits']['name'] == 'ophis-arc-drpc-cu'
     for compose in [pilot, release]:
-        assert 'ARC_QUICKNODE_RPC_URL' not in compose['services']['rpc-proxy'].get('environment', {})
+        assert not compose['services']['rpc-proxy'].get('environment', {})
+        assert set(compose['services']['credit-gate']['environment']) == {'ARC_DRPC_CU_ALLOWANCE'}
+        assert compose['services']['rpc-proxy']['depends_on']['credit-gate']['condition'] == 'service_healthy'
+        assert 'socket.create_connection' in compose['services']['credit-gate']['healthcheck']['test'][-1]
         assert not compose['services']['credit-gate'].get('ports')
-    env = {**os.environ, 'ARC_RUNTIME_UID': str(os.getuid()), 'ARC_RUNTIME_GID': str(os.getgid()), 'ARC_RELEASE_TAG': '0' * 40, 'ARC_QUICKNODE_RPC_URL': 'https://placeholder.arc-mainnet.quiknode.pro/placeholder', 'ARC_QUICKNODE_CREDIT_ALLOWANCE': '100', 'ARC_SOLVER_KEY_FILE': '/dev/null'}
+    env = {**os.environ, 'ARC_RUNTIME_UID': str(os.getuid()), 'ARC_RUNTIME_GID': str(os.getgid()), 'ARC_RELEASE_TAG': '0' * 40, 'ARC_DRPC_CU_ALLOWANCE': '100', 'ARC_SOLVER_KEY_FILE': '/dev/null'}
     assert release['services']['driver']['user'] == release['services']['rpc-proxy']['user']
     assert release['services']['postgres']['env_file'] == './generated/database.env'
     subprocess.run(['docker', 'compose', '-f', str(HERE / 'docker-compose.yml'), 'config', '--quiet'], env=env, check=True)

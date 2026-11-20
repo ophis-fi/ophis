@@ -30,9 +30,24 @@ class CreditGateTest(unittest.TestCase):
             self.assertFalse(budget.reserve(20, 2400))
             self.assertTrue(budget.reserve(20, 86400))
 
+    def test_free_pool_ceiling_and_pacing_survive_restarts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(Path(directory) / 'credits.sqlite')
+            budget = Budget(path, 180_000_000)
+            for day in range(31):
+                for minute in range(40):
+                    self.assertTrue(budget.reserve(1000, day * 86400 + minute * 60))
+                budget = Budget(path, 180_000_000)
+                self.assertFalse(budget.reserve(20, day * 86400 + 2400))
+            # Even a fully exhausted daily budget uses under 0.6% of the free pool.
+            self.assertLessEqual(31 * 40000, 210_000_000 * 0.006)
+            for allowance in (0, 180_000_001, 210_000_000):
+                with self.assertRaises(ValueError):
+                    Budget(path, allowance)
+
     def test_method_boundary(self):
         trace = {'jsonrpc': '2.0', 'method': 'debug_traceTransaction', 'params': ['0x' + '11' * 32, {'tracer': 'callTracer'}]}
-        self.assertEqual(cost(trace), 40)
+        self.assertEqual(cost(trace), 20)
         self.assertEqual(cost({'jsonrpc': '2.0', 'method': 'eth_chainId'}), 20)
         for payload in ([trace], {**trace, 'method': 'debug_traceBlockByNumber'}, {**trace, 'params': ['0x1', {}]},
                         {'jsonrpc': '2.0', 'method': 'eth_sendRawTransaction', 'params': ['0x00']}):
@@ -69,8 +84,7 @@ class CreditGateTest(unittest.TestCase):
     def test_http_failures_charge_shared_read_trace_allowance(self):
         with tempfile.TemporaryDirectory() as directory:
             path = str(Path(directory) / 'credits.sqlite')
-            env = {'ARC_QUICKNODE_RPC_URL': 'https://fixture.arc-mainnet.quiknode.pro/redacted',
-                   'ARC_CREDIT_DB': path, 'ARC_QUICKNODE_CREDIT_ALLOWANCE': '60'}
+            env = {'ARC_CREDIT_DB': path, 'ARC_DRPC_CU_ALLOWANCE': '40'}
             with patch.dict(os.environ, env), patch('credit_gate.ThreadingHTTPServer') as server, patch('credit_gate.urllib.request.build_opener') as opener:
                 opener.return_value.open.side_effect = TimeoutError('fixture only; no network')
                 serve()
@@ -87,7 +101,9 @@ class CreditGateTest(unittest.TestCase):
                     handler.do_POST()
                     self.assertIn('error', json.loads(handler.wfile.getvalue()))
                 self.assertEqual(opener.return_value.open.call_count, 2)
-                self.assertFalse(Budget(path, 60).reserve(20, 86400))
+                self.assertEqual(opener.return_value.open.call_args.args[0].full_url, 'https://arc.drpc.org')
+                self.assertEqual(opener.return_value.open.call_args.args[0].get_header('User-agent'), 'ophis-arc-rpc/1.0')
+                self.assertFalse(Budget(path, 40).reserve(20, 86400))
 
 
 if __name__ == '__main__':
