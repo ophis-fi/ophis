@@ -772,7 +772,7 @@ async function judge(db: D1Database, orgId: string, role: Role, kind: Kind | Dir
     // One person is enough only where the 72 hour wait stands for the second person (the 30 day rule). A single key
     // is a recovery wallet only there: with colleagues, one key would outrank them all.
     const direct = await alone(db, orgId, by, now)
-    if (w.kind === 'single_key' && !direct) return 'single_key'
+    if (w.kind === 'single_key' && (!direct || !(await db.prepare(`SELECT ${SINGLE_KEY_RECOVERY('?1', '?2')} AS allowed`).bind(orgId, now).first<{ allowed: number }>())!.allowed)) return 'single_key'
     if (w.kind === 'safe' && !snapshot) return 'wallet_unreadable'
     // In force 72 hours from now. Until then the one in force stays, and any Owner can cancel.
     return { direct, detail: direct ? 'alone' : null, apply: [
@@ -1334,9 +1334,12 @@ const closeRecovery = (db: D1Database, orgId: string, r: { id: string; seat_id: 
   db.prepare(`UPDATE seats SET state = 'removed' WHERE org_id = ? AND id = ?`).bind(orgId, r.seat_id),
 ]
 
-/** The people of an organisation: its seats that hold a passkey which signs in or can still stop something. A recovery wallet with a single key stands only for one (here, and at "Submit for review": G5). */
+/** The people of an organisation: its seats that hold a passkey which signs in or can still stop something. A recovery wallet with a single key stands only for one (here, and when approval configures recovery: G5). */
 export const PEOPLE = (org: string, now: string) => `(SELECT count(*) FROM seats s WHERE s.org_id = ${org} AND s.state IN ('active', 'frozen') AND EXISTS (SELECT 1 FROM credentials k WHERE k.org_id = s.org_id AND k.seat_id = s.id
   AND (k.state = 'active' OR (k.state = 'suspended' AND (k.stop_right_until IS NULL OR k.stop_right_until > ${now})))))`
+// Confirmed enrolment tickets survive departure; historical application rows must not block a solo organisation forever.
+export const SINGLE_KEY_RECOVERY = (org: string, now: string) => `(${PEOPLE(org, now)} <= 1 AND NOT EXISTS (SELECT 1 FROM application_people p WHERE p.org_id = ${org}
+  AND NOT EXISTS (SELECT 1 FROM seats s JOIN enrolment_tickets t ON t.org_id = s.org_id AND t.seat_id = s.id AND t.state = 'confirmed' WHERE s.org_id = p.org_id AND s.email = p.email)))`
 export interface RecoveryAsk { orgId: string; override: boolean; seatId: string; credential: { id: string; publicKey: string; counter: number; transports: string[]; deviceBound?: boolean }; credentialHash: string; nonce: string }
 export interface Anchor { id: string; chainId: number; address: string; kind: WalletKind; snapshot: string | null }
 /**
@@ -1360,13 +1363,13 @@ export async function recoverable(db: D1Database, ask: Pick<RecoveryAsk, 'orgId'
                                          (SELECT max(closed_at) FROM recovery_requests WHERE org_id = ? AND state = 'cancelled') AS cancelled,
                                          (SELECT count(*) FROM credentials k JOIN recovery_requests r ON r.org_id = k.org_id AND r.state = 'completed' AND r.closed_at + ${STOP_MS} = k.stop_right_until
                                           WHERE k.org_id = ? AND k.state = 'suspended' AND k.stop_right_until > ?) AS stoppable,
-                                         ${PEOPLE('?', '?')} AS people`)
-    .bind(ask.nonce, ask.credential.id, ask.orgId, ask.orgId, now, ask.orgId, now).first<{ used: number; cancelled: number | null; stoppable: number; people: number }>())!
+                                         ${SINGLE_KEY_RECOVERY('?', '?')} AS singleAllowed`)
+    .bind(ask.nonce, ask.credential.id, ask.orgId, ask.orgId, now, ask.orgId, now, ask.orgId).first<{ used: number; cancelled: number | null; stoppable: number; singleAllowed: number }>())!
   if (seen.used) return { error: 'proof_used' }
   if ((seen.cancelled ?? -DAY) + DAY > now) return { error: 'wait_after_cancel' }
   // A second request would complete on top of the first: the Owner it makes is not removed by a stop of the first.
   if (seen.stoppable) return { error: 'stop_open' }
-  if (wallet.kind === 'single_key' && seen.people > 1) return { error: 'single_key' }
+  if (wallet.kind === 'single_key' && !seen.singleAllowed) return { error: 'single_key' }
   return { wallet }
 }
 

@@ -5,7 +5,7 @@
 // This file holds its own handlers and, in its first half, its own rows: every statement is prepared with bound
 // parameters, and every change goes through commit() of the data module, with what decides it read inside the plan.
 import { checksum, colour, parseAddress, readCapped, safeState, verify, verifyDigest, type SafeState } from './chain.ts'
-import { commit, DOMAIN, emailAt, freezing, gone, LISTED, listed, listedWallet, PEOPLE, randomId, REVIEWED, sha256Hex, type Actor, type WalletKind } from './data.ts'
+import { commit, DOMAIN, emailAt, freezing, gone, LISTED, listed, listedWallet, SINGLE_KEY_RECOVERY, randomId, REVIEWED, sha256Hex, type Actor, type WalletKind } from './data.ts'
 import { challengeIsOurs, creationOptions, credentialHash, fromBase64Url, newChallenge, seal, unseal, verifyRegistration, type Config } from './passkeys.ts'
 import { indexerBase } from './partner.ts'
 import { standIn } from './orders.ts'
@@ -149,22 +149,20 @@ const peopleOf = async (db: D1Database, orgId: string) =>
 /**
  * A7: what a review needs, from the rows as they are now. An active passkey on the first Owner's seat (one is enough,
  * owner 2026-11-18; device-bound where the organisation requires hardware keys), and either the activation proof (a
- * wallet stored as pending, while the passkey it confirmed is still active) or a second Owner with one. G5: a named wallet with a single key is refused when the organisation has
- * other members, by the rule of a recovery (PEOPLE), or when its application names other people: the approval makes
- * them members. Milestone 5b: and the signed declaration, sealed. Null: it holds.
+ * wallet stored as pending, while the passkey it confirmed is still active) or a second Owner with one. Recovery
+ * eligibility is separate: a valid activation proof can support review without becoming a recovery wallet.
+ * Milestone 5b: and the signed declaration, sealed. Null: it holds.
  * Read when the Owner submits and again when the operator approves.
  */
-async function missing(db: D1Database, orgId: string, now: number): Promise<null | 'not_found' | 'owner_key' | 'proof_or_owner' | 'single_key' | 'declaration'> {
+async function missing(db: D1Database, orgId: string): Promise<null | 'not_found' | 'owner_key' | 'proof_or_owner' | 'declaration'> {
   const first = await firstOf(db, orgId)
   if (!first) return 'not_found'
   const owner = `s.org_id = ?1 AND s.role = 'owner' AND s.state = 'active' AND (SELECT count(*) FROM credentials k WHERE k.org_id = s.org_id AND k.seat_id = s.id AND k.state = 'active' AND (k.device_bound = 1 OR (SELECT synced_keys_allowed FROM organisations WHERE id = s.org_id) = 1)) >= 1`
   const seen = (await db.prepare(`SELECT (SELECT count(*) FROM seats s WHERE ${owner} AND s.id = ?2) AS own, (SELECT count(*) FROM seats s WHERE ${owner} AND s.id <> ?2) AS others,
                                          (SELECT count(*) FROM wallets w WHERE w.org_id = ?1 AND w.state = 'pending') AS proof,
-                                         (SELECT count(*) FROM wallets w WHERE w.org_id = ?1 AND w.state = 'pending' AND w.kind = 'single_key') AS single, ${PEOPLE('?1', '?3')} AS people,
-                                         (SELECT count(*) FROM application_people p WHERE p.org_id = ?1) AS named,
                                          (SELECT count(*) FROM sealed_items i WHERE i.org_id = ?1 AND i.kind = 'declaration') AS declared`)
-    .bind(orgId, first.seatId, now).first<{ own: number; others: number; proof: number; single: number; people: number; named: number; declared: number }>())!
-  return !seen.own ? 'owner_key' : !((seen.proof && first.active) || seen.others) ? 'proof_or_owner' : seen.single && (seen.people > 1 || seen.named) ? 'single_key' : !seen.declared ? 'declaration' : null
+    .bind(orgId, first.seatId).first<{ own: number; others: number; proof: number; declared: number }>())!
+  return !seen.own ? 'owner_key' : !((seen.proof && first.active) || seen.others) ? 'proof_or_owner' : !seen.declared ? 'declaration' : null
 }
 
 interface Proved { orgId: string; seatId: string; chainId: number; address: string; kind: WalletKind; label: string; snapshot: string | null; credentialHash: string; nonce: string; digest: string; signature: string; by: 'key' | 'contract' }
@@ -207,7 +205,7 @@ async function submitForReview(db: D1Database, actor: Actor, now: number) {
   let outcome = 'forbidden'
   await commit(db, actor.orgId, async () => {
     const who = await ownerNow(db, actor)
-    outcome = !who ? 'forbidden' : who.state !== 'unverified' ? 'not_unverified' : who.reviewAt !== null ? 'already_submitted' : (await missing(db, actor.orgId, now)) ?? 'ok'
+    outcome = !who ? 'forbidden' : who.state !== 'unverified' ? 'not_unverified' : who.reviewAt !== null ? 'already_submitted' : (await missing(db, actor.orgId)) ?? 'ok'
     if (outcome !== 'ok') return null
     return [{ at: now, actorKind: 'seat', actorId: actor.seatId, sessionId: actor.sessionId, action: 'review.submit', subjectId: actor.orgId, country: actor.country, asn: actor.asn },
       [db.prepare(`UPDATE organisations SET review_at = ?2, review_print = ${REVIEWED} WHERE id = ?1`).bind(actor.orgId, now)]]
@@ -215,12 +213,13 @@ async function submitForReview(db: D1Database, actor: Actor, now: number) {
   return outcome
 }
 
-interface WalletRow { id: string; chainId: number; address: string; kind: WalletKind; label: string; snapshot: string | null; digest: string; signature: string; inForce: number }
+interface WalletRow { id: string; chainId: number; address: string; kind: WalletKind; label: string; snapshot: string | null; digest: string; signature: string; inForce: number; recoveryEligible: number }
 // The wallet of the onboarding: the proved one that waits for the review, or, once the organisation is active, its recovery wallet.
-const walletOf = (db: D1Database, orgId: string) =>
-  db.prepare(`SELECT w.id, w.chain_id AS chainId, w.address, w.kind, w.label, w.snapshot, w.proof_digest AS digest, w.proof_signature AS signature, w.anchor IS NOT NULL AS inForce
-              FROM wallets w JOIN organisations o ON o.id = w.org_id WHERE w.org_id = ? AND ((o.state = 'unverified' AND w.state = 'pending') OR (o.state <> 'unverified' AND w.anchor IS NOT NULL))
-              ORDER BY w.rowid DESC LIMIT 1`).bind(orgId).first<WalletRow>()
+const walletOf = (db: D1Database, orgId: string, now: number) =>
+  db.prepare(`SELECT w.id, w.chain_id AS chainId, w.address, w.kind, w.label, w.snapshot, w.proof_digest AS digest, w.proof_signature AS signature, w.anchor IS NOT NULL AS inForce,
+                     (w.kind <> 'single_key' OR ${SINGLE_KEY_RECOVERY('?1', '?2')}) AS recoveryEligible
+              FROM wallets w JOIN organisations o ON o.id = w.org_id WHERE w.org_id = ?1 AND ((o.state = 'unverified' AND w.state = 'pending') OR (o.state <> 'unverified' AND w.anchor IS NOT NULL))
+              ORDER BY w.rowid DESC LIMIT 1`).bind(orgId, now).first<WalletRow>()
 
 interface Company { id: string; legalName: string; kind: string; businessType: string | null; state: string; country: string | null; registration: string | null; lei: string | null; address: string | null; domain: string | null; reviewAt: number | null; print: string | null }
 const COMPANY = `id, name AS legalName, kind, business_type AS businessType, state, country, registration_number AS registration, lei, registered_address AS address, email_domain AS domain, review_at AS reviewAt, review_print AS print FROM organisations`
@@ -264,9 +263,8 @@ const everyOrganisation = async (db: D1Database, now: number) =>
 const underReview = async (db: D1Database) =>
   (await db.prepare(`SELECT ${COMPANY} WHERE state = 'unverified' AND review_at IS NOT NULL ORDER BY review_at, id`).all<Company>()).results
 
-// The name of a submission, for the operator: 16 hex characters of the SHA-256 of what was submitted (review_print).
-// An approval carries the one the operator looked at; after a change and a new "Submit" it is another (review).
-const submissionOf = async (print: string | null) => (await sha256Hex(print ?? '')).slice(0, 16)
+// An approval names the submitted facts and current recovery eligibility the operator saw; a change needs a fresh review.
+const submissionOf = async (print: string | null, wallet: WalletRow | null) => (await sha256Hex(JSON.stringify([print ?? '', wallet?.recoveryEligible ?? null]))).slice(0, 16)
 /** A screening as it is stored: the outcome, the lists as one JSON text (code to SHA-256 of the file searched, sorted keys) and the SHA-256 of that exact text. */
 interface Screening { outcome: string; lists: string; hash: string }
 interface Kyb { decision: Decision; submission: string | null; reason: string | null; tier: string; source: string; evidenceRef: string | null; evidenceSha256: string | null; nextReview: number | null; screening: Screening | null }
@@ -292,16 +290,18 @@ async function decideKyb(db: D1Database, orgId: string, d: Kyb, checked: { id: s
   await commit(db, orgId, async () => {
     const o = await db.prepare('SELECT name, country, registration_number AS registration, state, review_at AS reviewAt, review_print AS print FROM organisations WHERE id = ?')
       .bind(orgId).first<{ name: string; country: string; registration: string | null; state: string; reviewAt: number | null; print: string | null }>()
+    const wallet = d.decision === 'approve' ? await walletOf(db, orgId, now) : null
     outcome = !o ? 'not_found' : o.state !== 'unverified' || o.reviewAt === null ? 'not_under_review'
-      : d.decision !== 'approve' ? 'ok' : (await missing(db, orgId, now)) ? 'not_ready' : ((await walletOf(db, orgId))?.id ?? null) !== (checked?.id ?? null) ? 'try_again'
-      : (await submissionOf(o.print)) !== d.submission ? 'submission_changed' : (await listedWallet(db, orgId, now)) ? 'wallet_listed' : 'ok'
+      : d.decision !== 'approve' ? 'ok' : (await missing(db, orgId)) ? 'not_ready' : (wallet?.id ?? null) !== (checked?.id ?? null) ? 'try_again'
+      : (await submissionOf(o.print, wallet)) !== d.submission ? 'submission_changed' : (await listedWallet(db, orgId, now)) ? 'wallet_listed' : 'ok'
     if (outcome !== 'ok' || !o) return null
     const people = d.decision === 'approve' ? await peopleOf(db, orgId) : []
     return [{ at: now, actorKind: 'operator', actorId: null, sessionId: null, action: KYB_ACTION[d.decision], subjectId: id, detail: d.decision === 'approve' ? d.evidenceSha256 : d.reason }, [
       kybRow(db, id, orgId, { ...d, name: o.name, registration: o.registration, country: o.country, decision: { approve: 'approved', refuse: 'rejected', more: 'pending' }[d.decision], decidedAt: now }, now),
       db.prepare('UPDATE organisations SET state = ?, review_at = NULL WHERE id = ?').bind({ approve: 'active', refuse: 'archived', more: 'unverified' }[d.decision], orgId),
-      ...(d.decision === 'approve' && checked ? [db.prepare(`UPDATE wallets SET state = 'linked', linked_at = ?, anchor = 'current', anchor_effective_at = ?, snapshot = ? WHERE org_id = ? AND id = ? AND state = 'pending'`)
-        .bind(now, now, checked.snapshot, orgId, checked.id)] : []),
+      // A verified personal wallet may link without gaining recovery authority over colleagues.
+      ...(d.decision === 'approve' && checked ? [db.prepare(`UPDATE wallets SET state = 'linked', linked_at = ?, anchor = ?, anchor_effective_at = ?, snapshot = ? WHERE org_id = ? AND id = ? AND state = 'pending'`)
+        .bind(now, wallet!.recoveryEligible ? 'current' : null, wallet!.recoveryEligible ? now : null, checked.snapshot, orgId, checked.id)] : []),
       ...people.map((p) => db.prepare(`INSERT INTO seats (id, org_id, display_name, email, role, state, ophis_approved, position, phone, telegram, created_at) VALUES (?, ?, ?, ?, ?, 'invited', 1, ?, ?, ?, ?)`)
         .bind(randomId(), orgId, p.name, p.email, p.role, p.position, p.phone, p.telegram, now)),
     ]]
@@ -617,7 +617,7 @@ export async function applyCheck(c: Ctx) {
 
 const walletView = (w: WalletRow) => {
   const seen = w.snapshot ? (JSON.parse(w.snapshot) as SafeState) : null
-  return { chainId: w.chainId, chain: CHAIN_NAME[w.chainId] ?? `Chain ${w.chainId}`, address: checksum(w.address), kind: w.kind, label: w.label, inForce: w.inForce === 1, ...(seen && { threshold: seen.threshold, owners: seen.owners.length }) }
+  return { chainId: w.chainId, chain: CHAIN_NAME[w.chainId] ?? `Chain ${w.chainId}`, address: checksum(w.address), kind: w.kind, label: w.label, inForce: w.inForce === 1, recoveryEligible: w.recoveryEligible === 1, ...(seen && { threshold: seen.threshold, owners: seen.owners.length }) }
 }
 
 // GET /api/onboarding (Owner, Compliance officer): the steps with their state, the review status and the KYB record.
@@ -625,7 +625,7 @@ export async function onboarding(c: Member) {
   const orgId = c.actor.orgId
   const { company, record } = await reviewOf(c.env.DB, orgId)
   const first = await firstOf(c.env.DB, orgId)
-  const wallet = await walletOf(c.env.DB, orgId)
+  const wallet = await walletOf(c.env.DB, orgId, c.now)
   const sealed = await sealedOf(c.env.DB, orgId)
   const status = company.state !== 'unverified' ? 'verified' : company.reviewAt !== null ? 'under_review' : record?.decision === 'pending' ? 'more_information' : 'not_submitted'
   return json(200, {
@@ -639,7 +639,7 @@ export async function onboarding(c: Member) {
     downloads: await downloadsOf(c.env.DB, orgId),
     wallet: wallet && walletView(wallet),
     // What "Submit for review" would answer now: null when everything is there.
-    missing: company.state === 'unverified' ? await missing(c.env.DB, orgId, c.now) : null,
+    missing: company.state === 'unverified' ? await missing(c.env.DB, orgId) : null,
     review: { status, since: company.reviewAt, reason: status === 'more_information' ? record!.reason : null },
     record: record && { ...record, reason: record.decision === 'approved' ? null : record.reason },
     chains: Object.keys(c.config.chains).map((id) => ({ id: Number(id), name: CHAIN_NAME[Number(id)] ?? `Chain ${id}` })),
@@ -872,13 +872,13 @@ async function list(c: Ctx) {
   const waiting = await underReview(c.env.DB)
   for (const o of waiting.slice(0, UNDER_REVIEW)) {
     const first = (await firstOf(c.env.DB, o.id))!
-    const wallet = await walletOf(c.env.DB, o.id)
+    const wallet = await walletOf(c.env.DB, o.id, c.now)
     const endpoints = wallet?.kind === 'safe' ? c.config.chains[wallet.chainId] : undefined
     const live = endpoints ? await safeState(endpoints, wallet!.chainId, wallet!.address) : null
     organisations.push({
-      id: o.id, legalName: o.legalName, kind: o.kind, businessType: o.businessType, country: o.country, registration: o.registration, lei: o.lei, address: o.address, domain: o.domain, submittedAt: o.reviewAt, submission: await submissionOf(o.print),
+      id: o.id, legalName: o.legalName, kind: o.kind, businessType: o.businessType, country: o.country, registration: o.registration, lei: o.lei, address: o.address, domain: o.domain, submittedAt: o.reviewAt, submission: await submissionOf(o.print, wallet),
       applicant: { name: first.name, email: first.email, position: first.position, phone: first.phone, telegram: first.telegram },
-      credentialHash: first.hash, people: await peopleOf(c.env.DB, o.id), missing: await missing(c.env.DB, o.id, c.now),
+      credentialHash: first.hash, people: await peopleOf(c.env.DB, o.id), missing: await missing(c.env.DB, o.id),
       // Milestone 5b: that the sealed declaration exists, and what the server knows of it. "items" and "get" are the way to the file.
       declaration: (await sealedOf(c.env.DB, o.id)).find((item) => item.kind === 'declaration') ?? null,
       refused: await refusedOf(c.env.DB, o.id), // sanctions screening: a wallet this application named was on a loaded list
@@ -928,7 +928,7 @@ async function decide(c: Ctx) {
   if (approve && !screened) return fail(400, 'screening_required')
   if (approve && screened!.outcome !== 'clear') return fail(409, 'screening_not_clear')
   let checked: { id: string; snapshot: string | null } | null = null
-  const wallet = approve ? await walletOf(c.env.DB, id) : null
+  const wallet = approve ? await walletOf(c.env.DB, id, c.now) : null
   if (wallet) {
     const endpoints = c.config.chains[wallet.chainId]
     const proved = endpoints && (await verifyDigest(endpoints, wallet.chainId, wallet.digest as `0x${string}`, wallet.address, wallet.signature as `0x${string}`))
