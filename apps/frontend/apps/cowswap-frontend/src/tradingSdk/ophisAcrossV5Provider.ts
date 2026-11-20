@@ -13,8 +13,17 @@ import {
   checkAcrossV5Deposit,
   getAcrossV5BuyTokens,
   getAcrossV5Status,
+  WRAPPED_NATIVE_CURRENCIES,
 } from '@cowprotocol/common-const'
-import { areAddressesEqual, EvmCall, getGlobalAdapter, OrderKind, TokenInfo } from '@cowprotocol/cow-sdk'
+import {
+  areAddressesEqual,
+  EvmCall,
+  getGlobalAdapter,
+  OrderKind,
+  SupportedChainId,
+  TokenInfo,
+  ZERO_ADDRESS,
+} from '@cowprotocol/cow-sdk'
 import {
   BridgeProviderQuoteError,
   BridgeQuoteErrors,
@@ -78,6 +87,18 @@ export class OphisAcrossV5Provider implements Provider {
     return this.trustedList
   }
 
+  private trustedIntermediates(
+    request: QuoteBridgeRequest,
+    candidates: Pick<TokenInfo, 'address'>[],
+  ): Promise<TokenInfo[]> {
+    const wrapped = WRAPPED_NATIVE_CURRENCIES[request.buyTokenChainId as SupportedChainId]
+    const buyTokenAddress =
+      acrossV5Currency(request.buyTokenAddress) === ZERO_ADDRESS
+        ? (wrapped?.address ?? request.buyTokenAddress)
+        : request.buyTokenAddress
+    return keepTrustedSameAsset(() => this.trustedTokens(), { ...request, buyTokenAddress }, candidates)
+  }
+
   async getIntermediateTokens(request: QuoteBridgeRequest): Promise<TokenInfo[]> {
     if (
       request.kind !== OrderKind.SELL ||
@@ -91,8 +112,7 @@ export class OphisAcrossV5Provider implements Provider {
       destinationToken: acrossV5Currency(request.buyTokenAddress),
     })
     const candidates = await acrossV5Tokens(ACROSS_V5_API, query, 'origin')
-    return keepTrustedSameAsset(
-      () => this.trustedTokens(),
+    return this.trustedIntermediates(
       request,
       candidates.filter((token) => token.chainId === request.sellTokenChainId && BigInt(token.address) !== 0n),
     )
@@ -117,7 +137,7 @@ export class OphisAcrossV5Provider implements Provider {
       !ACROSS_EXECUTABLE_SOURCE_IDS.has(request.sellTokenChainId) ||
       !ACROSS_V5_DESTINATIONS.includes(request.buyTokenChainId) ||
       request.sellTokenDecimals !== request.buyTokenDecimals ||
-      !(await keepTrustedSameAsset(() => this.trustedTokens(), request, [{ address: request.sellTokenAddress }])).length
+      !(await this.trustedIntermediates(request, [{ address: request.sellTokenAddress }])).length
     ) {
       throw unavailable()
     }

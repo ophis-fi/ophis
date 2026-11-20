@@ -14,6 +14,7 @@ import viteTsConfigPaths from 'vite-tsconfig-paths'
 import { execSync } from 'child_process'
 import * as path from 'path'
 
+import { acrossV5Proxy } from '../../tools/acrossV5Proxy'
 import { formatChunkFileName } from '../../tools/formatChunkFileName'
 import { getReactProcessEnv } from '../../tools/getReactProcessEnv'
 import { robotsPlugin } from '../../tools/vite-plugins/robotsPlugin'
@@ -163,6 +164,7 @@ export default defineConfig(({ mode }) => {
         ],
       },
       proxy: {
+        '/api/across': acrossV5Proxy,
         '^/private(?:/|$)': {
           target: 'http://127.0.0.1:4341',
           changeOrigin: true,

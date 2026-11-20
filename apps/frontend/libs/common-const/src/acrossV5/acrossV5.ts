@@ -52,7 +52,8 @@ export type { AcrossV5Quote, AcrossV5Request } from '../../../../../../functions
 
 export const ACROSS_V5_API =
   typeof location !== 'undefined' &&
-  (location.hostname === 'swap.ophis.fi' || /(^|\.)greg-etm\.pages\.dev$/.test(location.hostname))
+  (['swap.ophis.fi', 'localhost', '127.0.0.1'].includes(location.hostname) ||
+    /(^|\.)greg-etm\.pages\.dev$/.test(location.hostname))
     ? '/api/across'
     : 'https://swap.ophis.fi/api/across'
 
