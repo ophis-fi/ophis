@@ -41,6 +41,7 @@ export function QuoteBridgeContent(props: QuoteBridgeContentProps): ReactNode {
       bridgeFee,
       estimatedTime,
       buyAmount,
+      returnsSourceSurplus,
       bridgeMinDepositAmount,
       bridgeMinDepositAmountUsd,
       expectedToReceive,
@@ -80,8 +81,12 @@ export function QuoteBridgeContent(props: QuoteBridgeContentProps): ReactNode {
       {isQuoteDisplay && (
         <ConfirmDetailsItem
           withTimelineDot
-          label={t`Min. to deposit`}
-          tooltip={t`The minimum possible outcome after swap, including costs and slippage.`}
+          label={returnsSourceSurplus ? t`Bridge deposit` : t`Min. to deposit`}
+          tooltip={
+            returnsSourceSurplus
+              ? t`Any swap proceeds above this deposit return to your wallet on the source network.`
+              : t`The minimum possible outcome after swap, including costs and slippage.`
+          }
         >
           <TokenAmountDisplay
             displaySymbol

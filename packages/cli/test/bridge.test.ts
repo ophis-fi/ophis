@@ -29,7 +29,7 @@ test('a quote to Arc shows its ERC-20 payout without asking for a wrapped gas to
     expect(printed).not.toContain('native coin')
     log.mockClear()
     showBridge({ ...quote, dst: base, buy: wrappedNative(base) } as never)
-    expect(log.mock.calls.flat().join('\n')).toContain('native coin on Base')
+    expect(log.mock.calls.flat().join('\n')).toContain('WETH')
   } finally {
     log.mockRestore()
   }

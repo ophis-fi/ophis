@@ -431,7 +431,7 @@ async function main(argv: string[]) {
       const leg = await bridgeStatus(net, uid).catch((err: unknown) => void (unread = clean(String((err as Error)?.message ?? err)).slice(0, 120)))
       const yours = !!leg && savedWallet()?.address?.toLowerCase() === leg.owner.toLowerCase()
       const bridgeRow: [string, string][] = leg
-        ? [['Bridge', saidStatus(leg.status, net, leg.shed, leg.token, yours)]]
+        ? [['Bridge', saidStatus(leg.status, net, leg.shed, leg.token, yours, leg.v5)]]
         : unread ? [['Bridge', `could not be checked (${unread}). Try again, or use --rpc.`]] : []
       console.log()
       await status(net, uid, bridgeRow)

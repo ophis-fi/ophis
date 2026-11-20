@@ -1,4 +1,14 @@
-import { getRpcProvider, RELAY_DAPP_ID } from '@cowprotocol/common-const'
+import {
+  ACROSS_V5_DEADLINE_MARGIN,
+  AcrossV5Quote,
+  AcrossV5Request,
+  acrossV5Currency,
+  acrossV5FixedAmount,
+  checkAcrossV5Deposit,
+  getRpcProvider,
+  readAcrossV5Order,
+  RELAY_DAPP_ID,
+} from '@cowprotocol/common-const'
 import { areAddressesEqual, getAddressKey, getGlobalAdapter, SignerLike, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { Erc20__factory } from '@cowprotocol/cowswap-abis'
 import { BridgeQuoteResults } from '@cowprotocol/sdk-bridging'
@@ -14,6 +24,7 @@ import {
   FEE_ROOM_PCT,
   FILL_DEADLINE_BUFFER,
   FILL_MARGIN,
+  ERC20,
   GuardedHookTerms,
   LEFTOVER_SHARE,
   MAX_EXCLUSIVITY,
@@ -28,12 +39,19 @@ import { assertNoOpenBridge } from './ophisAcrossOpenBridge'
 // The relay fee of the Across quote the user confirmed, set by placeConfirmed just
 // before its order is placed and used once by the hook that placement signs:
 // placing quotes Across again, and that fee is held to this one.
-const confirmed = new Map<string, { fee?: bigint; relay?: BridgeQuoteResults }>()
+const confirmed = new Map<string, { fee?: bigint; relay?: BridgeQuoteResults; acrossV5?: BridgeQuoteResults }>()
 
 export function takeConfirmedRelay(owner: string): BridgeQuoteResults | undefined {
   const slot = confirmed.get(getAddressKey(owner))
   const quote = slot?.relay
   if (slot) slot.relay = undefined
+  return quote
+}
+
+function takeConfirmedAcrossV5(owner: string): BridgeQuoteResults | undefined {
+  const slot = confirmed.get(getAddressKey(owner))
+  const quote = slot?.acrossV5
+  if (slot) slot.acrossV5 = undefined
   return quote
 }
 
@@ -71,7 +89,11 @@ export async function placeConfirmed<T>(
   const fee = quotedFee(bridgeQuote)
   const wallet = getAddressKey(owner)
   const run = async (): Promise<T> => {
-    confirmed.set(wallet, { fee, relay: bridgeQuote.providerInfo.dappId === RELAY_DAPP_ID ? bridgeQuote : undefined })
+    confirmed.set(wallet, {
+      fee,
+      relay: bridgeQuote.providerInfo.dappId === RELAY_DAPP_ID ? bridgeQuote : undefined,
+      acrossV5: readAcrossV5Order(bridgeQuote.quoteBody) ? bridgeQuote : undefined,
+    })
     try {
       return await place()
     } finally {
@@ -143,4 +165,48 @@ export async function assertPlaceable(
   const toOwner = areAddressesEqual(terms.receiver, terms.owner)
   if (toOwner ? balance * LEFTOVER_SHARE >= terms.minIn : balance > 0n) throw new Error(SHED_NOT_EMPTY)
   return true
+}
+
+export async function assertAcrossV5Placeable(
+  {
+    owner,
+    shed,
+    quote,
+  }: {
+    owner: string
+    shed: string
+    quote: { request: AcrossV5Request; v5: AcrossV5Quote }
+  },
+  chainId: SupportedChainId,
+  deadline: bigint,
+  ordersOf: OrdersOf,
+): Promise<void> {
+  const confirmed = takeConfirmedAcrossV5(owner)
+  if (!confirmed) throw new Error(QUOTE_CHANGED)
+  const previous = confirmed.tradeParameters
+  const matches = [
+    previous.sellTokenChainId === quote.request.originChainId,
+    previous.buyTokenChainId === quote.request.destinationChainId,
+    areAddressesEqual(previous.sellTokenAddress, quote.request.inputToken),
+    areAddressesEqual(acrossV5Currency(previous.buyTokenAddress), quote.request.outputToken),
+    areAddressesEqual(previous.receiver || owner, quote.request.recipient),
+    acrossV5FixedAmount(previous.amount).toString() === quote.v5.amount,
+    BigInt(quote.v5.minimumOutput) >= confirmed.amountsAndCosts.afterSlippage.buyAmount,
+  ]
+  if (matches.includes(false)) throw new Error(QUOTE_CHANGED)
+
+  const provider = getRpcProvider(chainId)
+  const now = BigInt((await provider.getBlock('latest')).timestamp)
+  if (deadline <= now || deadline > BigInt(quote.v5.originValidUntil - ACROSS_V5_DEADLINE_MARGIN)) {
+    throw new Error(QUOTE_CHANGED)
+  }
+  await assertNoOpenBridge(chainId, { owner, shed }, ordersOf, now)
+  const amount = BigInt(
+    await provider.call({
+      to: quote.request.inputToken,
+      data: ERC20.encodeFunctionData('balanceOf', [shed]),
+    }),
+  )
+  if (amount * LEFTOVER_SHARE >= BigInt(quote.v5.amount)) throw new Error(SHED_NOT_EMPTY)
+  checkAcrossV5Deposit(quote.v5, quote.request)
 }

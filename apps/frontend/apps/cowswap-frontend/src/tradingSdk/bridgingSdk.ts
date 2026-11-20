@@ -11,6 +11,7 @@ import { fetchTokenList, OPHIS_TOKENS_LIST_SOURCE } from '@cowprotocol/tokens'
 
 import { orderBookApi } from 'cowSdk'
 
+import { OphisAcrossV5Provider } from './ophisAcrossV5Provider'
 import { ACROSS_EXECUTABLE_SOURCE_IDS, OphisAcrossBridgeProvider } from './ophisBridgeProviders'
 import { OphisNearIntentsBridgeProvider } from './ophisNearIntentsProvider.service'
 import { signRelayHook } from './ophisRelayHooks.service'
@@ -25,11 +26,10 @@ registerOphisNearIntentsNetworks()
 // only lets the SDK resolve historical Bungee orders by their appData hook dappId.
 export const bungeeBridgeProvider = createDecodeOnlyBungeeBridgeProvider()
 
-export const acrossBridgeProvider = new OphisAcrossBridgeProvider({
-  apiOptions: ophisAcrossApiOptions(),
-  // Placement refuses while another bridge of the wallet is open (see assertNoOpenBridge).
-  ordersOf: (chainId, owner) => newestOrders(chainId, owner),
-})
+export const acrossBridgeProvider = new OphisAcrossV5Provider(
+  new OphisAcrossBridgeProvider({ apiOptions: ophisAcrossApiOptions() }),
+  newestOrders,
+)
 
 // The wallet's newest 5,000 orders on a chain, 1,000 (the orderbook's maximum) per request.
 async function newestOrders(chainId: SupportedChainId, owner: string, offset = 0): Promise<EnrichedOrder[]> {

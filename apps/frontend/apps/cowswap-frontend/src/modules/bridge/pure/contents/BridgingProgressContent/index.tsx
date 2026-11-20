@@ -1,6 +1,6 @@
 import { ReactNode } from 'react'
 
-import { isRelayRecoveryRequired, isRelayStatus } from '@cowprotocol/common-const'
+import { isAcrossV5Status, isRelayRecoveryRequired, isRelayStatus } from '@cowprotocol/common-const'
 import { isFractionFalsy } from '@cowprotocol/common-utils'
 import { BridgeStatusResult } from '@cowprotocol/sdk-bridging'
 
@@ -50,6 +50,7 @@ export function BridgingProgressContent(props: BridgingContentProps): ReactNode 
           account={account}
           bridgeSendCurrencyAmount={quoteContext.sellAmount}
           isRelay={isRelayStatus(statusResult)}
+          isAcrossV5={isAcrossV5Status(statusResult)}
           explorerUrl={explorerUrl}
         />
       ) : isFailed ? (

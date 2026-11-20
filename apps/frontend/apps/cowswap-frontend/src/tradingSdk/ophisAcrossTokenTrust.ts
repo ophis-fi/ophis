@@ -2,6 +2,7 @@ import { USDG_ROBINHOOD, WRAPPED_NATIVE_CURRENCIES } from '@cowprotocol/common-c
 import { getTimeoutAbortController } from '@cowprotocol/common-utils'
 import { areAddressesEqual, getAddressKey, SupportedChainId, TokenInfo } from '@cowprotocol/cow-sdk'
 import { AcrossBridgeProvider, QuoteBridgeRequest } from '@cowprotocol/sdk-bridging'
+import { fetchTokenList, OPHIS_TOKENS_LIST_SOURCE } from '@cowprotocol/tokens'
 
 import { AVAILABLE_ROUTES_TIMEOUT_MS } from './ophisAcrossConstants'
 
@@ -38,6 +39,20 @@ function findTrusted(listed: TokenInfo[], chainId: number, address: string): Tok
   const wrapped: TokenInfo | undefined = WRAPPED_NATIVE_CURRENCIES[chainId as SupportedChainId]
   if (wrapped && areAddressesEqual(wrapped.address, address)) return wrapped
   return listed.find((token) => token.chainId === chainId && areAddressesEqual(token.address, address))
+}
+
+export function createAcrossTrustedTokenLoader(): () => Promise<TokenInfo[]> {
+  let list: Promise<TokenInfo[]> | undefined
+  return () => {
+    list ??= fetchTokenList({ source: OPHIS_TOKENS_LIST_SOURCE }).then(
+      (state) => state.list.tokens,
+      (error: unknown) => {
+        list = undefined
+        throw error
+      },
+    )
+    return list
+  }
 }
 
 export async function getIntermediateTokensFromRoutes(

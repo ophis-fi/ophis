@@ -1,4 +1,4 @@
-import { RELAY_DAPP_ID } from '@cowprotocol/common-const'
+import { ACROSS_V5_DEADLINE_MARGIN, readAcrossV5Order, RELAY_DAPP_ID } from '@cowprotocol/common-const'
 import { BridgeQuoteResults } from '@cowprotocol/sdk-bridging'
 
 import {
@@ -18,6 +18,9 @@ import {
  */
 export function acrossValidToLimit(bridgeQuote: BridgeQuoteResults | null): number {
   if (bridgeQuote?.providerInfo.dappId !== ACROSS_DAPP_ID) return Infinity
+
+  const v5 = readAcrossV5Order(bridgeQuote.quoteBody)
+  if (v5) return v5.originValidUntil - ACROSS_V5_DEADLINE_MARGIN
 
   return Math.min(
     bridgeQuote.quoteTimestamp + Number(ACROSS_QUOTE_TIME_BUFFER - QUOTE_TIME_MARGIN),

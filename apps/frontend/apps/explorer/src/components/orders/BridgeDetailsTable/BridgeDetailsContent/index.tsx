@@ -1,6 +1,11 @@
 import React, { ReactNode } from 'react'
 
-import { isRelayRecoveryRequired, isRelayStatus, RECEIVED_LABEL_EXPLORER } from '@cowprotocol/common-const'
+import {
+  isAcrossV5Status,
+  isRelayRecoveryRequired,
+  isRelayStatus,
+  RECEIVED_LABEL_EXPLORER,
+} from '@cowprotocol/common-const'
 import { BridgeStatus, CrossChainOrder, isHookBridgeProvider } from '@cowprotocol/sdk-bridging'
 
 import { AddressLink } from 'components/common/AddressLink'
@@ -23,8 +28,8 @@ interface BridgeDetailsContentProps {
 
 export function BridgeDetailsContent({ crossChainOrder }: BridgeDetailsContentProps): ReactNode {
   const {
-    statusResult: { status: bridgeStatus, fillTxHash, depositTxHash, fillTimeInSeconds },
-    bridgingParams: { inputAmount, outputAmount, owner, sourceChainId, destinationChainId, recipient },
+    statusResult: { status: bridgeStatus, fillTimeInSeconds },
+    bridgingParams: { outputAmount, owner, sourceChainId, destinationChainId, recipient },
     provider,
   } = crossChainOrder
   const { sourceToken, destinationToken } = useCrossChainTokens(crossChainOrder)
@@ -36,9 +41,6 @@ export function BridgeDetailsContent({ crossChainOrder }: BridgeDetailsContentPr
   const RecipientAddress = recipient ? (
     <AddressLink address={recipient} chainId={destinationChainId} bridgeProvider={provider} showNetworkName />
   ) : null
-
-  const depositAmount =
-    bridgeStatus === BridgeStatus.EXECUTED ? crossChainOrder.order.executedBuyAmount : inputAmount.toString()
 
   return (
     <>
@@ -72,7 +74,11 @@ export function BridgeDetailsContent({ crossChainOrder }: BridgeDetailsContentPr
 
       <DetailRow label="Amounts" tooltipText={BridgeDetailsTooltips.amounts}>
         <AmountSectionWrapper>
-          <BridgeAmountDisplay labelPrefix="From:" bridgeToken={sourceToken} amount={depositAmount} />
+          <BridgeAmountDisplay
+            labelPrefix="From:"
+            bridgeToken={sourceToken}
+            amount={getDepositAmount(crossChainOrder)}
+          />
           <BridgeAmountDisplay
             labelPrefix={isRelay ? 'To (minimum):' : 'To:'}
             bridgeToken={destinationToken}
@@ -97,18 +103,7 @@ export function BridgeDetailsContent({ crossChainOrder }: BridgeDetailsContentPr
         )}
       </DetailRow>
 
-      {isRelay && bridgeStatus === BridgeStatus.REFUND ? (
-        <DetailRow label="Refund Status" tooltipText="Refund details are available on Relay.">
-          <span>Relay refund completed. View the Relay transaction for the refunded amount, token and network.</span>
-          {crossChainOrder.explorerUrl && (
-            <a href={crossChainOrder.explorerUrl} target="_blank" rel="noopener noreferrer">
-              View Relay transaction ↗
-            </a>
-          )}
-        </DetailRow>
-      ) : (
-        <RefundStatusItem bridgeStatus={bridgeStatus} hash={depositTxHash || fillTxHash} />
-      )}
+      <RefundStatusItem crossChainOrder={crossChainOrder} />
 
       {/*TODO: uncomment once we know bridge fee*/}
       {/*<DetailRow label="Bridge fee" tooltipText="The fee charged by the bridge provider">*/}
@@ -129,4 +124,10 @@ export function BridgeDetailsContent({ crossChainOrder }: BridgeDetailsContentPr
       {/*</DetailRow>*/}
     </>
   )
+}
+
+function getDepositAmount(order: CrossChainOrder): string {
+  return order.statusResult.status === BridgeStatus.EXECUTED && !isAcrossV5Status(order.statusResult)
+    ? order.order.executedBuyAmount
+    : order.bridgingParams.inputAmount.toString()
 }

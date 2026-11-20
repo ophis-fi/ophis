@@ -19,12 +19,15 @@ import { concat, decodeFunctionData, encodeAbiParameters, encodeFunctionData, er
 import { toAccount } from 'viem/accounts'
 import { findListedToken } from '@ophis/mcp-server/src/ophis.ts'
 import { ACROSS_EXECUTABLE_SOURCE_IDS, ACROSS_INTEGRATOR_ID, OphisAcrossBridgeProvider } from './across.ts'
+import { cliAcrossV5Deadline, cliAcrossV5Provider, cliAcrossV5Status, type AcrossV5Program } from './acrossV5.ts'
+import { ACROSS_V5_ADAPTER, ACROSS_V5_DEADLINE_MARGIN, ACROSS_V5_STORE, ACROSS_V5_STORED, acrossV5FixedAmount, checkAcrossV5Deposit } from '../../../functions/_shared/acrossV5.ts'
+import { readAcrossV5Order } from '../../../functions/_shared/acrossV5Client.ts'
 import { OPHIS_HOME } from './home.ts'
 import type { Network } from './network.ts'
 import { reader, tag } from './network.ts'
 import type { Signer, TypedDataJson } from './phone.ts'
 import { amount, bold, clean, dim, green, note, red, rows, saffron, spinner, UserError } from './ui.ts'
-import { afterFee, explain, feeText, getOrder, ORDER_TTL, patient, someAddress, volumeBps, WRAPPED, wrappedNative, type Token } from './trade.ts'
+import { explain, feeText, getOrder, ORDER_TTL, patient, someAddress, WRAPPED, wrappedNative, type Token } from './trade.ts'
 
 // Pinned from the installed @cowprotocol/sdk-bridging 4.0.2 (ACROSS_SPOOK_CONTRACT_ADDRESSES,
 // ACROSS_MATH_CONTRACT_ADDRESSES) and sdk-weiroll 0.1.30 (WEIROLL_ADDRESS), for the source chains Ophis
@@ -37,6 +40,9 @@ export const ACROSS: Readonly<Record<number, { spokePool: Address; math: Address
 }
 const EXECUTE = parseAbi(['function execute(bytes32[] commands, bytes[] state)'])
 const BALANCE_OF = toFunctionSelector('balanceOf(address)')
+const STORE_V5 = toFunctionSelector(ACROSS_V5_STORE)
+const TRANSFER = toFunctionSelector('transfer(address,uint256)')
+const STORED_V5 = parseAbi([ACROSS_V5_STORED])
 const APPROVE = toFunctionSelector('approve(address,uint256)')
 const MULTIPLY_AND_SUBTRACT = toFunctionSelector('multiplyAndSubtract(uint256,uint256)')
 const ERC20_TRANSFER = parseAbi(['function transfer(address to, uint256 amount) returns (bool)'])
@@ -68,9 +74,6 @@ const GUARD_SLACK_BPS = 20n
 // plus GUARD_GAS for the guard call (OphisAcrossBridgeProvider in across.ts). Measured: 137k with an existing shed and 364k creating it
 // on Base, about 505k creating it on Ethereum. The settlement forwards exactly this gas to the hook and ignores a hook
 // that fails, so less would leave the tokens in the shed.
-const GUARD_GAS = 50_000n
-const HOOK_GAS = 240_000n + GUARD_GAS
-const SHED_CREATION_GAS = 360_000n
 // The bridge account's EIP-712 signing domain and types, as the deployed shed (factory below) verifies them; read from
 // sdk-cow-shed 0.3.8 and proven by executing a signed hook on a Base fork. Anything else would not verify on-chain.
 export const SHED_VERSION = '1.0.1'
@@ -87,7 +90,6 @@ const TRADE = parseAbi(['event Trade(address indexed owner, address sellToken, a
 const FUNDS_DEPOSITED = parseAbi([
   'event FundsDeposited(bytes32 inputToken, bytes32 outputToken, uint256 inputAmount, uint256 outputAmount, uint256 indexed destinationChainId, uint256 indexed depositId, uint32 quoteTimestamp, uint32 fillDeadline, uint32 exclusivityDeadline, bytes32 indexed depositor, bytes32 recipient, bytes32 exclusiveRelayer, bytes message)',
 ])
-const FEE_ROOM_BPS = 10n // how far the Across fee may rise between your confirmation and signing (see bridgeQuote)
 const HOOK_DEADLINE_SLACK = 300n // seconds of clock skew allowed on the hook's deadline
 const FEE_ROSE = new UserError('The bridge fee rose after you confirmed, so nothing was signed or sent. Run the command again to see the new price.')
 // A placeholder signature for quotes: the SDK only needs a well-formed one and uses a fixed gas estimate
@@ -187,6 +189,32 @@ function acrossHook(callData: Hex, srcChainId: number, want: BridgeWant, now: bi
   return ok ? { token, pct, fillDeadline, quoteTime } : undefined
 }
 
+function checkV5Program(data: Hex, srcChainId: number, want: BridgeWant, program: AcrossV5Program, now: bigint): bigint {
+  const { quote, request } = program
+  checkAcrossV5Deposit(quote, request, Number(now))
+  const amount = acrossV5FixedAmount(want.viaMin)
+  if (
+    request.originChainId !== srcChainId || request.destinationChainId !== want.dstChainId ||
+    !same(request.depositor, want.shed) || !same(request.recipient, want.owner) ||
+    !same(request.inputToken, want.via) || !same(request.outputToken, want.dstToken) ||
+    BigInt(quote.amount) !== amount || BigInt(quote.minimumOutput) < want.minOut
+  ) throw FEE_ROSE
+  const [reset, approve, store, balance, transfer, ...extra] = weirollCalls(data)
+  const call = (c: typeof approve, target: Address, selector: string, args: number) =>
+    c?.callType === CALL && same(c.target, target) && c.selector === selector && c.args.length === args && c.out === END
+  const allowance = (c: typeof approve, value: bigint) =>
+    call(c, want.via, APPROVE, 2) && word(c.args[0]) === BigInt(ACROSS_V5_ADAPTER) && word(c.args[1]) === value
+  if (
+    extra.length || !allowance(reset, 0n) || !allowance(approve, amount) ||
+    !call(store, ACROSS_V5_ADAPTER, STORE_V5, 3) || word(store.args[0]) !== BigInt(quote.orderId) ||
+    word(store.args[1]) !== BigInt(want.via) || word(store.args[2]) !== amount ||
+    balance?.callType !== STATICCALL || !same(balance.target, want.via) || balance.selector !== BALANCE_OF ||
+    balance.args.length !== 1 || word(balance.args[0]) !== BigInt(want.shed) ||
+    !call(transfer, want.via, TRANSFER, 2) || word(transfer.args[0]) !== BigInt(want.owner) || !fromCall(transfer.args[1], 3)
+  ) throw new Error('Invalid Across V5 signing program')
+  return amount
+}
+
 /** What the user confirmed: the only things bridgeAccount lets the wallet sign. */
 interface BridgeWant {
   owner: Address
@@ -242,7 +270,7 @@ export async function signedBy(wallet: Signer, chainId: number, td: Parameters<t
  * now() reads the source chain's clock; onOrderSigned gets the order id as soon as the order is signed, before it is sent.
  */
 export interface BridgeSigned {
-  hook?: { callData: Hex } // the shed factory call that runs the signed hook, as it must appear in the order's appData
+  hook?: { callData: Hex; v5?: boolean } // the shed factory call that runs the signed hook, as it must appear in the order's appData
   order?: { appData: Hex; uid: Hex; signature: Hex }
 }
 
@@ -250,9 +278,9 @@ export function bridgeAccount(
   wallet: Signer,
   srcChainId: number,
   want: BridgeWant,
-  opts: { now: () => Promise<bigint>; onOrderSigned?: (uid: Hex) => void; onHookSigned?: (callData: Hex) => void },
+  opts: { now: () => Promise<bigint>; onOrderSigned?: (uid: Hex) => void; onHookSigned?: (callData: Hex) => void; acrossV5?: () => AcrossV5Program | undefined },
 ) {
-  let hook: { token: bigint; pct: bigint; deadline: bigint; quoteTime: bigint; fillDeadline: bigint; minIn: bigint; calls: readonly unknown[]; nonce: Hex; hookDeadline: bigint } | undefined
+  let hook: { v5Amount?: bigint; token: bigint; pct: bigint; deadline: bigint; quoteTime: bigint; fillDeadline: bigint; minIn: bigint; calls: readonly unknown[]; nonce: Hex; hookDeadline: bigint } | undefined
   const signed: BridgeSigned = {}
   let signedOrder = false
   let busy = false // one request at a time, so no check can be raced by a second request
@@ -283,46 +311,63 @@ export function bridgeAccount(
         ) {
           type ShedCall = { target: string; value: bigint | string; callData: Hex; allowFailure: unknown; isDelegateCall: unknown }
           const [guard, call, ...extra] = m.calls as ShedCall[]
-          // The guard: the shed transfers the order's minimum output to itself, which reverts while the shed is empty.
-          const sent = guard ? (() => { try { return decodeFunctionData({ abi: ERC20_TRANSFER, data: guard.callData }) } catch { return undefined } })() : undefined
-          const minIn = sent ? BigInt(sent.args[1]) : 0n
-          if (
-            !guard || !call || extra.length || guard.isDelegateCall !== false || guard.allowFailure !== false || n(guard.value) !== 0n ||
-            !same(guard.target, want.via) || !sent || !same(sent.args[0], want.shed) || minIn <= 0n ||
-            call.isDelegateCall !== true || call.allowFailure !== false || n(call.value) !== 0n || !same(call.target, WEIROLL)
-          ) {
-            throw refuse('the bridge step is not a guarded Across program')
+          const v5 = opts.acrossV5?.()
+          if (v5) {
+            const now = await opts.now()
+            const deadline = n(m.deadline)
+            if (
+              !guard || call || extra.length || guard.isDelegateCall !== true || guard.allowFailure !== false ||
+              n(guard.value) !== 0n || !same(guard.target, WEIROLL) ||
+              deadline <= now || deadline > BigInt(cliAcrossV5Deadline(v5))
+            ) throw refuse('the Across V5 deposit has invalid calls or an invalid deadline')
+            const v5Amount = checkV5Program(guard.callData, srcChainId, want, v5, now)
+            const calls = [{ target: getAddress(guard.target), value: 0n, callData: guard.callData, allowFailure: false, isDelegateCall: true }]
+            next = {
+              v5Amount, token: BigInt(want.via), pct: 0n, deadline, quoteTime: now,
+              fillDeadline: BigInt(v5.quote.originValidUntil), minIn: v5Amount, calls, nonce: m.nonce as Hex, hookDeadline: deadline,
+            }
+          } else {
+            // The guard: the shed transfers the order's minimum output to itself, which reverts while the shed is empty.
+            const sent = guard ? (() => { try { return decodeFunctionData({ abi: ERC20_TRANSFER, data: guard.callData }) } catch { return undefined } })() : undefined
+            const minIn = sent ? BigInt(sent.args[1]) : 0n
+            if (
+              !guard || !call || extra.length || guard.isDelegateCall !== false || guard.allowFailure !== false || n(guard.value) !== 0n ||
+              !same(guard.target, want.via) || !sent || !same(sent.args[0], want.shed) || minIn <= 0n ||
+              call.isDelegateCall !== true || call.allowFailure !== false || n(call.value) !== 0n || !same(call.target, WEIROLL)
+            ) {
+              throw refuse('the bridge step is not a guarded Across program')
+            }
+            const now = await opts.now()
+            let checked: ReturnType<typeof acrossHook>
+            try {
+              checked = acrossHook(call.callData, srcChainId, want, now)
+            } catch {
+              checked = undefined
+            }
+            if (!checked) throw refuse('the bridge step is not exactly one Across deposit paying you the confirmed token on the confirmed chain')
+            // The shed checks the hook's own deadline: one far ahead (a skewed local clock) would stay usable, and recorded,
+            // long after its deposit could run (never past its quote time's buffer).
+            if (n(m.deadline) > now + DEPOSIT_QUOTE_BUFFER + HOOK_DEADLINE_SLACK) throw refuse('the bridge step would stay valid long after this order')
+            // Checked again on the order's real buyAmount below; here so a fee that already breaks the floor is never signed.
+            if ((want.viaMin * (PCT_100 - checked.pct)) / PCT_100 < want.minOut) throw FEE_ROSE
+            const deadline = n(m.deadline) < checked.fillDeadline ? n(m.deadline) : checked.fillDeadline
+            const calls = [
+              { target: getAddress(guard.target), value: 0n, callData: guard.callData, allowFailure: false, isDelegateCall: false },
+              { target: getAddress(call.target), value: 0n, callData: call.callData, allowFailure: false, isDelegateCall: true },
+            ]
+            next = { token: checked.token, pct: checked.pct, deadline, quoteTime: checked.quoteTime, fillDeadline: checked.fillDeadline, minIn, calls, nonce: m.nonce as Hex, hookDeadline: n(m.deadline) }
           }
-          const now = await opts.now()
-          let checked: ReturnType<typeof acrossHook>
-          try {
-            checked = acrossHook(call.callData, srcChainId, want, now)
-          } catch {
-            checked = undefined
-          }
-          if (!checked) throw refuse('the bridge step is not exactly one Across deposit paying you the confirmed token on the confirmed chain')
-          // The shed checks the hook's own deadline: one far ahead (a skewed local clock) would stay usable, and recorded,
-          // long after its deposit could run (never past its quote time's buffer).
-          if (n(m.deadline) > now + DEPOSIT_QUOTE_BUFFER + HOOK_DEADLINE_SLACK) throw refuse('the bridge step would stay valid long after this order')
-          // Checked again on the order's real buyAmount below; here so a fee that already breaks the floor is never signed.
-          if ((want.viaMin * (PCT_100 - checked.pct)) / PCT_100 < want.minOut) throw FEE_ROSE
-          const deadline = n(m.deadline) < checked.fillDeadline ? n(m.deadline) : checked.fillDeadline
-          const calls = [
-            { target: getAddress(guard.target), value: 0n, callData: guard.callData, allowFailure: false, isDelegateCall: false },
-            { target: getAddress(call.target), value: 0n, callData: call.callData, allowFailure: false, isDelegateCall: true },
-          ]
-          next = { token: checked.token, pct: checked.pct, deadline, quoteTime: checked.quoteTime, fillDeadline: checked.fillDeadline, minIn, calls, nonce: m.nonce as Hex, hookDeadline: n(m.deadline) }
         } else if (
           hook && td.primaryType === 'Order' && plainDomain(d) && d.name === order.name && d.version === order.version && Number(d.chainId) === order.chainId &&
           same(d.verifyingContract, order.verifyingContract) && same(m.receiver, want.shed) && m.kind === 'sell' && same(m.sellToken, want.sellToken) &&
           n(m.sellAmount) <= want.amount && n(m.buyToken) === hook.token && n(m.feeAmount) === 0n && m.partiallyFillable === false &&
-          m.sellTokenBalance === 'erc20' && m.buyTokenBalance === 'erc20' && n(m.validTo) <= hook.deadline && n(m.validTo) - hook.quoteTime <= DEPOSIT_QUOTE_BUFFER &&
-          n(m.validTo) + FILL_MARGIN <= hook.fillDeadline &&
+          m.sellTokenBalance === 'erc20' && m.buyTokenBalance === 'erc20' && n(m.validTo) <= hook.deadline &&
+          (hook.v5Amount !== undefined || (n(m.validTo) - hook.quoteTime <= DEPOSIT_QUOTE_BUFFER && n(m.validTo) + FILL_MARGIN <= hook.fillDeadline)) &&
           // the guard passes once the order fills, and not before for anything much less than the order's output
           hook.minIn <= n(m.buyAmount) && hook.minIn * 10_000n >= n(m.buyAmount) * (10_000n - GUARD_SLACK_BPS)
         ) {
           // The deposit sends the shed balance (at least buyAmount) minus the relay fee the SDK just re-quoted.
-          if ((n(m.buyAmount) * (PCT_100 - hook.pct)) / PCT_100 < want.minOut) throw FEE_ROSE
+          if (hook.v5Amount === undefined && (n(m.buyAmount) * (PCT_100 - hook.pct)) / PCT_100 < want.minOut) throw FEE_ROSE
         } else {
           throw refuse(`unexpected ${String(td.primaryType)} for ${String(d.verifyingContract)}`)
         }
@@ -330,7 +375,7 @@ export function bridgeAccount(
         const signature = await signedBy(wallet, srcChainId, td as never, want.owner)
         if (next) {
           hook = next
-          signed.hook = { callData: encodeFunctionData({ abi: SHED_FACTORY, functionName: 'executeHooks', args: [next.calls as never, next.nonce, next.hookDeadline, want.owner, signature] }) }
+          signed.hook = { v5: next.v5Amount !== undefined, callData: encodeFunctionData({ abi: SHED_FACTORY, functionName: 'executeHooks', args: [next.calls as never, next.nonce, next.hookDeadline, want.owner, signature] }) }
           // Public from here: the SDK uploads it with the order's appData before the order is even signed. If it cannot
           // be remembered, the SDK never gets it.
           opts.onHookSigned?.(signed.hook.callData)
@@ -396,8 +441,10 @@ export function guardSendOrder(
     const post = meta?.hooks?.post ?? []
     // The provider appends the Across integrator tag (zero padding, then 1dc0de0311); nothing else may differ.
     const call = String(post[0]?.callData ?? '').toLowerCase()
-    const tagged = call.startsWith(s.hook.callData.toLowerCase()) && /^(00)*1dc0de0311$/.test(call.slice(s.hook.callData.length))
-    if (meta?.hooks?.pre?.length || post.length !== 1 || !same(post[0]?.target, SHED_FACTORY_ADDRESS) || !tagged) {
+    const matches = s.hook.v5
+      ? same(call, s.hook.callData)
+      : call.startsWith(s.hook.callData.toLowerCase()) && /^(00)*1dc0de0311$/.test(call.slice(s.hook.callData.length))
+    if (meta?.hooks?.pre?.length || post.length !== 1 || !same(post[0]?.target, SHED_FACTORY_ADDRESS) || !matches) {
       throw new UserError('The bridge order does not carry the bridge step you signed; refusing to post it.')
     }
     const gas = String(post[0]?.gasLimit ?? '')
@@ -425,12 +472,12 @@ export class BridgeAdapter extends ViemAdapter {
   }
 }
 
-function sdks(src: Network, signer: ReturnType<typeof toAccount>) {
+function sdks(src: Network, signer: ReturnType<typeof toAccount>, onProgram: (program: AcrossV5Program) => void) {
   setGlobalAdapter(new BridgeAdapter({ provider: reader(src) as never, signer: signer as never }) as never)
   const orderBookApi = new OrderBookApi({ chainId: src.id, baseUrls: { [src.id]: getOphisOrderbookUrl(src.id) } } as never)
   const tradingSdk = new TradingSdk({ chainId: src.id, appCode: 'ophis' } as never, { orderBookApi } as never)
-  // The shared provider (across.ts) guards the shed hook, bounds its deadline and keeps only trusted intermediates.
-  const provider = new OphisAcrossBridgeProvider({ apiOptions: { integratorId: ACROSS_INTEGRATOR_ID } })
+  const legacy = new OphisAcrossBridgeProvider({ apiOptions: { integratorId: ACROSS_INTEGRATOR_ID } })
+  const provider = cliAcrossV5Provider(legacy, onProgram)
   const bridgingSdk = new BridgingSdk({ providers: [provider], tradingSdk, orderBookApi } as never)
   return { orderBookApi, bridgingSdk, provider }
 }
@@ -454,6 +501,7 @@ export interface BridgeQuote extends BridgeRequest {
   acrossFee: bigint // Across relay fee on the minimum, in the destination token
   seconds?: number
   via: Token // what the order buys and Across carries
+  originValidUntil: number
   guard: bigint // what the shed hook's guard asks the shed to hold: the order's minimum output of `via`, less 0.1%
   arm: (wallet: Signer, opts: Parameters<typeof bridgeAccount>[3]) => ReturnType<typeof bridgeAccount> // once: see bridgeQuote
 }
@@ -484,10 +532,11 @@ export async function bridgeQuote(r: BridgeRequest): Promise<BridgeQuote> {
     signMessage: no,
     signTransaction: no,
   })
-  const { bridgingSdk, orderBookApi } = sdks(r.src, gate)
+  let program: AcrossV5Program | undefined
+  const { bridgingSdk, orderBookApi } = sdks(r.src, gate, (next) => { program = next })
   // The SDK later posts through this same client.
   const shed = shedOf(r.owner)
-  const hookGas = async () => ((await reader(r.src).getCode({ address: shed })) ?? '0x').length > 2 ? HOOK_GAS : HOOK_GAS + SHED_CREATION_GAS
+  const hookGas = async () => 800_000n
   guardSendOrder(orderBookApi, r.src.id, r.owner, () => armed?.signed, hookGas)
   const request = {
     kind: 'sell',
@@ -515,24 +564,23 @@ export async function bridgeQuote(r: BridgeRequest): Promise<BridgeQuote> {
     swap: { amountsAndCosts: { afterPartnerFees: { buyAmount: bigint }; afterSlippage: { buyAmount: bigint } } }
     bridge: { amountsAndCosts: { beforeFee: { buyAmount: bigint }; afterFee: { buyAmount: bigint }; afterSlippage: { buyAmount: bigint } }; expectedFillTimeSeconds?: number }
   }
-  // The bridge leg is quoted on the swap's MINIMUM output. Across re-quotes its fee when the order is signed and
-  // the fee moves with gas, so the floor leaves it FEE_ROOM_BPS to rise; bridgeAccount refuses anything below.
+  // V5 quotes the fixed deposit. The signer requires the refreshed quote to meet this floor.
   const across = legs.bridge.amountsAndCosts
   const [before, after] = [BigInt(across.beforeFee.buyAmount), BigInt(across.afterFee.buyAmount)]
-  const minOut = BigInt(across.afterSlippage.buyAmount) - (before * FEE_ROOM_BPS) / 10_000n
+  const minOut = BigInt(across.afterSlippage.buyAmount)
   if (minOut <= 0n) throw new UserError('The amount is too small to bridge after fees. Try a larger amount.')
-  // Likely: the swap's expected output less the same Across fee rate and the Ophis volume fee (same decimals: across.ts).
-  const likely = afterFee((BigInt(legs.swap.amountsAndCosts.afterPartnerFees.buyAmount) * after) / before, volumeBps(buildOphisAppDataPartnerFee(r.src.id, false)))
   const via = await bridgeVia(r.src, String((quote as unknown as { swap: { tradeParameters: { buyToken: string } } }).swap.tradeParameters.buyToken), r.dst, r.buy)
+  if (!program) throw new UserError('Across did not build a deposit for this bridge.')
   return {
-    ...r, quote, expected: likely > minOut ? likely : minOut, minOut, acrossFee: before - after, seconds: legs.bridge.expectedFillTimeSeconds, via,
+    originValidUntil: program.quote.originValidUntil,
+    ...r, quote, expected: after, minOut, acrossFee: before - after, seconds: legs.bridge.expectedFillTimeSeconds, via,
     guard: (BigInt(legs.swap.amountsAndCosts.afterSlippage.buyAmount) * 9_990n) / 10_000n,
     // Once, with the checks built from this quote alone: what was shown is all the wallet can be asked to sign.
     arm: (wallet, opts) => {
       if (armed) throw new UserError('This bridge price was already used. Run the command again for a fresh one.')
       const viaMin = BigInt(legs.swap.amountsAndCosts.afterSlippage.buyAmount)
       const want = { owner: r.owner, shed, sellToken: r.pay.address, via: via.address, viaMin, amount: r.atoms, dstChainId: r.dst.id, dstToken: r.buy.address, minOut }
-      armed = bridgeAccount(wallet, r.src.id, want, opts)
+      armed = bridgeAccount(wallet, r.src.id, want, { ...opts, acrossV5: () => program })
       return armed
     },
   }
@@ -782,9 +830,7 @@ function shedHooks(fullAppData: string | null | undefined): ShedHook[] {
 /** The bridge, in plain words, with the exact token contracts on both chains. */
 export function showBridge(b: BridgeQuote, extra: [string, string][] = [], ownerKnown = true): void {
   const minutes = b.seconds ? `about ${Math.max(1, Math.round(b.seconds / 60))} min` : 'a few minutes'
-  // Across pays its wrapped gas token out as the native coin to a regular wallet (still wrapped to a smart account).
-  const native = same(b.buy.address, WRAPPED[b.dst.id]?.[0])
-  const out = native ? b.dst.native : b.buy.symbol
+  const out = b.buy.symbol
   const notes = [b.sell.note, b.buy.note].filter((n): n is string => !!n)
   if (notes.length) {
     for (const n of notes) note(n)
@@ -793,14 +839,15 @@ export function showBridge(b: BridgeQuote, extra: [string, string][] = [], owner
   rows([
     ['From', `${amount(b.atoms, b.sell.decimals)} ${b.sell.symbol} on ${tag(b.src)}`],
     ['To', `${bold(saffron(`about ${amount(b.expected, b.buy.decimals)} ${out}`))} on ${tag(b.dst)}`],
-    ['At least', `${amount(b.minOut, b.buy.decimals)} ${out}  ${dim(`(${b.slippage / 100}% slippage, and the Across fee may move ${Number(FEE_ROOM_BPS) / 100}%)`)}`],
+    ['At least', `${amount(b.minOut, b.buy.decimals)} ${out} `],
     ['Bridge', `Across, ${minutes} after the order fills`],
+    ['Surplus', `Extra swap proceeds return to your wallet on ${b.src.name}`],
     ['Fees', `Across about ${amount(b.acrossFee, b.buy.decimals)} ${out}, in the amounts above`],
     ['', feeText(b.src, buildOphisAppDataPartnerFee(b.src.id, false), false)],
     ['Recipient', ownerKnown ? `you, ${dim(b.owner)} on ${b.dst.name}` : `your connected wallet, on ${b.dst.name}`],
     ['Tokens', `${b.sell.symbol}  ${dim(b.sell.native ? `native coin, wrapped first into ${b.pay.symbol} ${b.pay.address}` : b.sell.address)}`],
     ...(same(b.via.address, b.pay.address) ? [] : ([['', `${b.via.symbol}  ${dim(`${b.via.address} on ${b.src.name}, bought first and carried by Across`)}`]] as [string, string][])),
-    ['', native ? `${out}  ${dim(`native coin on ${b.dst.name} (${b.buy.symbol} ${b.buy.address} if your wallet is a smart account)`)}` : `${b.buy.symbol}  ${dim(`${b.buy.address} on ${b.dst.name}`)}`],
+    ['', `${b.buy.symbol}  ${dim(`${b.buy.address} on ${b.dst.name}`)}`],
     ...extra,
   ])
 }
@@ -840,7 +887,7 @@ async function placeLocked(b: BridgeQuote, wallet: Signer, onSigned?: (uid: stri
     // from now, so an order filled in its last moments would land in the shed after the hook expired.
     const posted = await (b.quote as unknown as { postSwapOrderFromQuote: (s: unknown) => Promise<{ orderId: string }> }).postSwapOrderFromQuote({
       appData: appDataDoc(b.src.id, b.ref),
-      quoteRequest: { validTo: Math.floor(Date.now() / 1000) + ORDER_TTL },
+      quoteRequest: { validTo: Math.min(Math.floor(Date.now() / 1000) + ORDER_TTL, b.originValidUntil - ACROSS_V5_DEADLINE_MARGIN) },
     })
     // The id is computed here from what was signed; an orderbook answering with another one is not trusted.
     if (signed && same(posted.orderId, signed)) return sent(signed)
@@ -877,7 +924,7 @@ export async function watchBridge(b: BridgeQuote, uid: string): Promise<'done' |
       return 'done'
     }
     if (status === 'expired' || status === 'refund' || status === 'not_deposited') {
-      spin.stop(`${red('✗')} ${saidStatus(status, b.src, leg!.shed, leg!.token)}`)
+      spin.stop(`${red('✗')} ${saidStatus(status, b.src, leg!.shed, leg!.token, true, leg?.v5)}`)
       return 'failed'
     }
     await new Promise((resolve) => setTimeout(resolve, 5000))
@@ -893,13 +940,15 @@ export async function watchBridge(b: BridgeQuote, uid: string): Promise<'done' |
  * when the batch settles other trades too, so the deposit is found here by its depositor: the order's receiver.
  * token is what the order bought and Across carries: what a refund, or a deposit that did not run, leaves in the shed.
  */
-export async function bridgeStatus(src: Network, uid: string): Promise<{ status: string; shed: Address; owner: Address; token: Address } | undefined> {
+type V5StatusInfo = { orderId: string; refundToShed: boolean }
+
+export async function bridgeStatus(src: Network, uid: string): Promise<{ status: string; shed: Address; owner: Address; token: Address; v5?: V5StatusInfo } | undefined> {
   const across = ACROSS[src.id]
   if (!across || !/^0x[0-9a-fA-F]{112}$/.test(uid)) return undefined
   const order = await getOrder(src, uid)
   if (!order?.receiver || !order.owner || !order.fullAppData || !same(order.receiver, shedOf(order.owner as Address))) return undefined
-  const { provider } = sdks(src, toAccount({ address: order.receiver as Address, signTypedData: no, signMessage: no, signTransaction: no }))
-  let bridging: { providerId?: unknown; destinationChainId?: unknown; destinationTokenAddress?: unknown } | undefined
+  const provider = new OphisAcrossBridgeProvider({ apiOptions: { integratorId: ACROSS_INTEGRATOR_ID } })
+  let bridging: { providerId?: unknown; destinationChainId?: unknown; destinationTokenAddress?: unknown; quoteBody?: string } | undefined
   try {
     bridging = (JSON.parse(order.fullAppData) as { metadata?: { bridging?: typeof bridging } }).metadata?.bridging
   } catch {
@@ -929,6 +978,24 @@ export async function bridgeStatus(src: Network, uid: string): Promise<{ status:
       parseEventLogs({ abi: erc20Abi, eventName: 'Transfer', logs: [log] }).some((t) => same(t.address, token) && same(t.args.from, settlement) && same(t.args.to, shed) && t.args.value > 0n),
   )
   if (payout < 0) return undefined
+  const v5 = readAcrossV5Order(bridging.quoteBody)
+  if (v5) {
+    if (!same(v5.recipient, owner)) return undefined
+    let pulled = false
+    const deposited = logs.slice(payout + 1).some((log) => {
+      const [moved] = parseEventLogs({ abi: erc20Abi, eventName: 'Transfer', logs: [log] })
+      if (moved && same(log.address, token) && same(moved.args.to, ACROSS_V5_ADAPTER)) {
+        pulled = same(moved.args.from, shed) && moved.args.value === BigInt(v5.amount)
+      }
+      const [stored] = parseEventLogs({ abi: STORED_V5, logs: [log] })
+      return pulled && !!stored && same(log.address, ACROSS_V5_ADAPTER) && same(stored.args.witness, v5.orderId) &&
+        same(stored.args.token, token) && stored.args.amount === BigInt(v5.amount)
+    })
+    const bridge = deposited ? await cliAcrossV5Status(v5.orderId) : undefined
+    const refund = bridge?.refund
+    const refundToShed = refund?.chainId === src.id && same(refund.token, token) && same(refund.recipient, shed)
+    return { status: bridge?.status ?? 'not_deposited', shed, owner, token, v5: { orderId: v5.orderId, refundToShed } }
+  }
   let pull: { from: Address; value: bigint } | undefined
   const [own] = logs.slice(payout + 1).flatMap((log) => {
     const [moved] = parseEventLogs({ abi: erc20Abi, eventName: 'Transfer', logs: [log] })
@@ -954,9 +1021,11 @@ export async function bridgeStatus(src: Network, uid: string): Promise<{ status:
  * A bridge status in plain words. Across returns an unfilled deposit to its depositor: the owner's own bridge account. The
  * hint names the token the bridge carried, so recovering it never depends on finding the order again.
  */
-export function saidStatus(status: string, src: Network, shed: Address, token: Address, yours = true): string {
+export function saidStatus(status: string, src: Network, shed: Address, token: Address, yours = true, v5?: V5StatusInfo): string {
+  if (v5 && status === 'expired') return `Across reports the transfer failed. Check the Across transaction for funds recovery. V5 order ${v5.orderId}`
   const whose = yours ? 'your bridge account' : "the owner's bridge account"
   const hint = (how: string) => (yours ? `. ${how} with: ophis recover ${token} on ${src.alias}` : '')
+  if (v5 && status === 'refund' && !v5.refundToShed) return `Refunded by Across. V5 order ${v5.orderId}`
   const said: Record<string, string> = {
     executed: 'Bridged: Across reports it arrived on the destination chain',
     in_progress: 'Bridging: on its way',

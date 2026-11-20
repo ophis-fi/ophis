@@ -14,6 +14,7 @@ import * as path from 'path'
 import { loadConfig } from './loadConfig'
 import { version as APP_VERSION } from './package.json'
 
+import { acrossV5Proxy } from '../../tools/acrossV5Proxy'
 import { getReactProcessEnv } from '../../tools/getReactProcessEnv'
 import { OPHIS_BUILD_TARGET } from '../../tools/viteBuildTarget'
 
@@ -49,6 +50,7 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 4200,
       host: 'localhost',
+      proxy: { '/api/across': acrossV5Proxy },
       fs: {
         allow: [
           // search up for workspace root
@@ -56,6 +58,7 @@ export default defineConfig(({ mode }) => {
           // your custom rules
           'apps/explorer/src',
           'libs',
+          path.resolve(__dirname, '../../../../functions/_shared'),
         ],
       },
     },
