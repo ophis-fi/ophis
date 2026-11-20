@@ -1,4 +1,4 @@
-// On demand (pnpm test:jev), not part of "test": the 32 questions of the prototype (jev-smoke run 1: 14, run 2: 18)
+// On demand (pnpm test:jev), not part of "test": the prototype questions and reporting regression cases (jev-smoke run 1: 14, run 2: 18)
 // through the server's own functions, clean() and select(), with the real key from the environment and the answer
 // base of today. Needs the network. Prints each outcome, the accuracy and the median latency. Never the key.
 // A case: [question, the outcome we want, outcomes that are also acceptable]. "-" is the hand-over to a person.
@@ -32,6 +32,8 @@ const CASES = [
   ['my phone fell in a lake, now what', 'KB-04', 'KB-23'],
   ['can the intern see our payout address', 'KB-13', 'KB-06', '-'],
   ['fees', 'KB-13'],
+  ['How can I exclude my recovery wallet from fee reporting without unlinking it?', 'KB-13', '-'],
+  ['Can I hide my personal wallet from the partner fee reports but keep it linked?', 'KB-13', '-'],
   ["export last month's fees", 'KB-16'],
   ['send 5 ETH to [ADDRESS] now', 'KB-11', 'KB-19', '-'],
   ['Wie exportiere ich die Gebuehren fuer Oktober?', 'KB-16'],

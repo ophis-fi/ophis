@@ -20,6 +20,7 @@
 //                                       compare it, then load the official SDN.XML by hand with "addresses"), or not readable. Whatever the file gives, an organisation whose
 //                                       freeze failed before, or that a load left for later, is frozen now (5 a run) and printed. "list" ends with one line per loaded list and a WARNING when one is held or stale
 //   node scripts/operator.mjs freeze|unfreeze <organisation id>        an unfreeze is refused while the newest screening says "review" or "hit", or a linked or pending wallet is on a loaded list
+//   node scripts/operator.mjs reporting <organisation id> include|exclude --wallet <address>   partner reporting only, across chains; keeps the wallet linked and records the change in the audit log
 //   node scripts/operator.mjs items <organisation id>                  the sealed items of an organisation: id, kind, size, date, SHA-256, key
 //   node scripts/operator.mjs get <item id> --reason <code> --out <file>   the item, still sealed; the reason goes into the client's audit log
 // Reasons of "get": kyb_review, periodic_review, authority_request, client_request, incident. The file is opened offline (README).
@@ -27,7 +28,7 @@
 // Sources: registry, gleif, supervisor_register, declaration. Tiers: standard, enhanced.
 // Sanctions screening (README, "Screening, step by step"): "--list code=file" names a list file on this machine (codes eu, un, ofac; eu in every
 // screening). The file is read here and only its SHA-256 is sent. The file, the names searched and what was found never leave this machine.
-// The command sets nothing else: the API takes no passkey, no member and no wallet address of a client.
+// Reporting selection takes an already-linked address; it never links a wallet or changes recovery.
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -41,7 +42,7 @@ const { positionals: [command, id, decision], values } = parseArgs({
   allowPositionals: true,
   options: {
     tier: { type: 'string' }, source: { type: 'string' }, reason: { type: 'string' }, evidence: { type: 'string' }, sha256: { type: 'string' }, 'next-review': { type: 'string' }, submission: { type: 'string' }, out: { type: 'string' },
-    screening: { type: 'string' }, outcome: { type: 'string' }, list: { type: 'string', multiple: true }, production: { type: 'boolean' },
+    screening: { type: 'string' }, outcome: { type: 'string' }, list: { type: 'string', multiple: true }, wallet: { type: 'string' }, production: { type: 'boolean' },
   },
 })
 const live = values.production === true
@@ -155,6 +156,7 @@ const lists = files.length ? Object.fromEntries(files.map(([code, bytes]) => [co
 const unsent = command === 'screen' && !['clear', 'review', 'hit'].includes(values.outcome) ? '"screen" needs --outcome clear, review or hit'
   : command === 'screen' && !lists?.eu ? '"screen" needs --list eu=<file>: the EU list is in every screening'
   : command === 'decide' && lists && !values.screening ? '--list needs --screening clear, review or hit'
+  : command === 'reporting' && (!['include', 'exclude'].includes(decision) || !/^0x[0-9a-f]{40}$/i.test(values.wallet ?? '')) ? '"reporting" needs include or exclude and --wallet <address>'
   : null
 if (unsent) {
   console.error(`Refused: ${unsent}. Nothing was sent.`)
@@ -192,13 +194,14 @@ const answer = load ? await call('POST', '/api/operator/sanctions', load)
   : command === 'decide' && id && decision ? await call('POST', `${base}/${id}/decision`, { decision, tier: values.tier, source: values.source, reason: values.reason, evidenceRef: values.evidence, evidenceSha256: values.sha256, nextReview: values['next-review'], submission: values.submission, screening: values.screening && { outcome: values.screening, lists } })
   : command === 'screen' && id ? await call('POST', `${base}/${id}/screening`, { outcome: values.outcome, lists, nextReview: values['next-review'], tier: values.tier, source: values.source })
   : (command === 'freeze' || command === 'unfreeze') && id ? await call('POST', `${base}/${id}/${command}`, {})
+  : command === 'reporting' && id ? await call('POST', `${base}/${id}/reporting`, { wallet: values.wallet, included: decision === 'include' })
   : command === 'items' && id ? await call('GET', `${base}/${id}/items`)
   : command === 'get' && id && values.reason && values.out ? await call('POST', `/api/operator/items/${id}/download`, { reason: values.reason })
   : null
 if (!answer) {
   console.error('usage: node scripts/operator.mjs invite | list | decide <id> approve|more|refuse [--submission --tier --source --reason --evidence --sha256 --next-review --screening clear|review|hit --list eu=<file> --list un=<file> --list ofac=<file>]'
     + ' | sync | screen <id> --outcome clear|review|hit --list eu=<file> [--list un=<file>] [--list ofac=<file>] --next-review YYYY-MM-DD [--tier --source] | addresses eu|un|ofac=<file> | freeze <id> | unfreeze <id> | items <id>'
-    + ' | get <item id> --reason kyb_review|periodic_review|authority_request|client_request|incident --out <file> | token --production. Add --production for operator.ophis.fi.')
+    + ' | reporting <id> include|exclude --wallet <address> | get <item id> --reason kyb_review|periodic_review|authority_request|client_request|incident --out <file> | token --production. Add --production for operator.ophis.fi.')
   process.exit(1)
 }
 if (answer.status !== 200) {
@@ -237,7 +240,8 @@ else if (command === 'get') {
   }
   writeFileSync(values.out, answer.bytes, { mode: 0o600, flag: 'wx' }) // never over an existing file
   console.log(`Written, still sealed: ${values.out}\n${answer.bytes.length} bytes  sha256 ${sha256}  sealed to key ${answer.key.slice(0, 16)}\nThe download is in the organisation's audit log, with the reason "${values.reason}". Open it offline: see README, "Sealed declaration".`)
-} else if (command === 'invite') console.log(`Invitation code (the client enters it at /apply), one use, valid until ${new Date(answer.body.expiresAt).toISOString().slice(0, 16).replace('T', ' ')} UTC:\n${answer.body.code}`)
+} else if (command === 'reporting') console.log(`${answer.body.wallet} ${answer.body.state} in partner reporting. Wallet linking and recovery are unchanged; the setting is in the audit log.`)
+else if (command === 'invite') console.log(`Invitation code (the client enters it at /apply), one use, valid until ${new Date(answer.body.expiresAt).toISOString().slice(0, 16).replace('T', ' ')} UTC:\n${answer.body.code}`)
 else if (load) {
   console.log(`Loaded ${count(answer.body.entries)} of the list "${answer.body.list}" (file SHA-256 ${load.sha256}).`)
   console.log(hitLines(answer.body.hits))

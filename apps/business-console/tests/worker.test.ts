@@ -34,7 +34,7 @@ import * as age from 'age-encryption'
 const SITE = { origin: 'http://localhost:8787', rpId: 'localhost' }
 const MIN = 60_000
 const START = Date.UTC(2026, 10, 10, 9)
-const TABLES = ['application_people', 'approvals', 'audit_log', 'credentials', 'enrolment_tickets', 'kyb_records', 'orders', 'organisations', 'recovery_requests', 'sealed_items', 'seats', 'sessions', 'wallets']
+const TABLES = ['application_people', 'approvals', 'audit_log', 'credentials', 'enrolment_tickets', 'kyb_records', 'orders', 'organisations', 'partner_reporting_exclusions', 'recovery_requests', 'sealed_items', 'seats', 'sessions', 'wallets']
 // Sanctions screening: the two global tables, with no org_id: what a public list says, nothing of a client.
 const GLOBAL = ['sanctioned_addresses', 'sanctions_lists']
 // The one table outside the snapshots: the hourly counter of proof checks, which a proof writes before its commit (section B).
@@ -433,7 +433,7 @@ async function recovery(o: Holder, second: Holder, walletId: string) {
   expect(asked.body).toMatchObject({ state: 'requested' })
   expect((await decide(second, asked.body.id, 'approve')).body).toEqual({ state: 'applied' })
 }
-const walletsOf = async (m: Holder) => (await call('GET', '/api/org', { cookie: m.cookie })).body.wallets as { id: string; state: string; kind: string; address: string; recovery: string | null; recoveryAt: number | null; threshold?: number; owners?: number }[]
+const walletsOf = async (m: Holder) => (await call('GET', '/api/org', { cookie: m.cookie })).body.wallets as { id: string; state: string; kind: string; address: string; recovery: string | null; recoveryAt: number | null; reporting: boolean; threshold?: number; owners?: number }[]
 // A wallet of organisation B, asked about from organisation A: not found, and no row changes anywhere.
 async function crossWallet(a: Member, b: Member, what: 'unlink' | 'anchor' | 'anchor/cancel') {
   await addKey(a)
@@ -5595,12 +5595,12 @@ describe('D. Support: the model selects, the server decides', () => {
       expect(a.title + a.text, a.id).not.toMatch(banned)
     }
     expect(new Set(ANSWERS.map((a) => a.title)).size).toBe(25)
-    // What is not built says so. Registration (KB-01) is live since 2026-11-17.
-    for (const id of ['KB-13']) expect(ANSWERS.find((a) => a.id === id)!.text, id).toMatch(/^Not available yet\./)
+    expect(ANSWERS.find((a) => a.id === 'KB-13')!.text).toContain('Fees and payout addresses cannot be set in the console.')
     // Review of P4: a partner's Overview shows its fee figures and exports one table, so the two texts say so. No text
     // speaks of a referral share, referred wallets, codes or earnings: the console's partners get none (2026-11-13).
     const text = (id: string) => ANSWERS.find((a) => a.id === id)!.text
-    expect(text('KB-13')).toMatch(/Overview shows a partner organisation its fee owed this cycle \(an estimate\), its payouts, the daily volume, the split by chain and fee token, and wallets whose orders carried its fee, flagging those on a sanctions list\. Figures are read for the fee recipient address you link\./)
+    expect(text('KB-13')).toContain('Overview shows partner fees owed (an estimate), payouts, volume by day, chain and token, and trading wallets, flagging those on a sanctions list.')
+    expect(text('KB-13')).toContain('These reports cover linked fee recipient addresses included in reporting. Ask Support to exclude a recovery or personal wallet from reporting while keeping it linked')
     expect(text('KB-16')).toMatch(/A partner also: the partner-fee months, payouts, daily volume, the split by chain and by fee token, the wallets that traded, and those on a sanctions list\./)
     // Every organisation trades on the desk (owner, 2026-11-19): its two tables are every organisation's.
     expect(text('KB-16')).toMatch(/Desk \(every organisation\): the orders with every term and what was executed\. Support: the permitted assets\./)
@@ -6845,7 +6845,7 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
   it('A8: the operator\'s routes answer on their own hostname only, locally to the token only, in production behind Cloudflare Access, and nowhere else', async () => {
     const a = await underReview()
     expect(onboarding.operatorRoutes.map((r) => `${r.method} ${r.path}`)).toEqual([
-      'GET /api/operator/organisations', 'POST /api/operator/organisations/:id/decision', 'POST /api/operator/organisations/:id/freeze', 'POST /api/operator/organisations/:id/unfreeze', 'POST /api/operator/invites',
+      'GET /api/operator/organisations', 'POST /api/operator/organisations/:id/decision', 'POST /api/operator/organisations/:id/freeze', 'POST /api/operator/organisations/:id/unfreeze', 'POST /api/operator/organisations/:id/reporting', 'POST /api/operator/invites',
       'GET /api/operator/organisations/:id/items', 'POST /api/operator/items/:id/download', // milestone 5b
       'POST /api/operator/organisations/:id/screening', 'POST /api/operator/sanctions', 'POST /api/operator/sanctions/sync', // sanctions screening; M10: the read of the list file
     ])
@@ -7282,6 +7282,7 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
       ['organisation.apply', () => create(a.intent)], ['activation.proof', () => prove(asked.body.intent, signature)], ['review.submit', () => submit(c)], ['declaration.upload', () => upload(b, file)],
       ['kyb.approve', () => decideOn(d.orgId)], ['kyb.more', () => decideOn(d.orgId, MORE)], ['kyb.refuse', () => decideOn(d.orgId, { ...MORE, decision: 'refuse' })],
       ['organisation.freeze', () => op('POST', `/api/operator/organisations/${e.orgId}/freeze`)],
+      ['wallet.reporting', () => op('POST', `/api/operator/organisations/${f.orgId}/reporting`, { body: { wallet: onList[0], included: false } })],
       ['sealed.download', async () => take((await itemsOf(d.orgId))[0].id)],
       ['kyb.screen', () => op('POST', `/api/operator/organisations/${e.orgId}/screening`, { body: { ...SCREENED, nextReview: '2027-11-11' } })],
       ['screening.wallet', reload], ['screening.attempt', () => prove(askedG.body.intent, proofG)], ['screening.refused', () => prove(askedH.body.intent, proofH)],
@@ -9737,6 +9738,80 @@ isolation['GET /api/overview'] = async (a, b) => {
 }
 
 describe('I. partner figures: live', () => {
+  const REPORTING_TOKEN = `operator-${crypto.randomUUID()}${crypto.randomUUID()}`
+  const reporting = (orgId: string, wallet: unknown, included: unknown) => handle(new Request(`${onboarding.OPERATOR.local}/api/operator/organisations/${orgId}/reporting`, {
+    method: 'POST', body: JSON.stringify({ wallet, included }),
+    headers: { 'sec-fetch-site': 'same-origin', origin: onboarding.OPERATOR.local, 'content-type': 'application/json', authorization: `Bearer ${REPORTING_TOKEN}` },
+  }), { ...testEnv, OPERATOR_TOKEN: REPORTING_TOKEN } as Env, () => now)
+
+  it('reporting excludes a recovery address across chains and exports, preserving its proofs, recovery and another organisation', async () => {
+    const o = await partnerOrg(), other = await owner()
+    const recovery = await walletRow(o.orgId, Z.wallet, { label: 'Recovery' })
+    await walletRow(o.orgId, Z.wallet, { chainId: 8453 })
+    await walletRow(other.orgId, Z.wallet)
+    await db.prepare(`UPDATE wallets SET anchor = 'current', anchor_effective_at = ? WHERE id = ?`).bind(now, recovery).run()
+    const before = (await db.prepare('SELECT * FROM wallets WHERE org_id = ? ORDER BY rowid').bind(o.orgId).all()).results
+    expect((await reporting(o.orgId, checksum(Z.wallet), false)).status).toBe(200)
+    expect((await db.prepare('SELECT * FROM wallets WHERE org_id = ? ORDER BY rowid').bind(o.orgId).all()).results).toEqual(before)
+    expect((await walletsOf(o)).find((w) => w.id === recovery)).toMatchObject({ state: 'linked', recovery: 'in_force', reporting: false })
+    expect(await data.walletLive(db, o.orgId, 10, Z.wallet, now)).toBe(true)
+    const asked = indexer()
+    expect((await overviewOf(o)).body.figures.wallets).toEqual([shownPartner])
+    for (const table of ['months', 'traders', 'sanctioned', 'daily', 'chains', 'tokens', 'payouts']) {
+      const exported = await exportOf(o, table)
+      expect(exported.status).toBe(200)
+      expect(exported.body.csv.toLowerCase()).not.toContain(Z.wallet.toLowerCase())
+    }
+    expect(asked.every((request) => JSON.stringify(request.wallets) === JSON.stringify([P.wallet]))).toBe(true)
+    expect((await overviewOf(other)).body.figures.wallets.map((w: { wallet: string }) => w.wallet)).toEqual([checksum(Z.wallet)])
+    const entry = await db.prepare(`SELECT actor_kind, action, subject_id, detail FROM audit_log WHERE org_id = ? ORDER BY seq DESC LIMIT 1`).bind(o.orgId).first()
+    expect(entry).toEqual({ actor_kind: 'operator', action: 'wallet.reporting', subject_id: recovery, detail: 'excluded' })
+    expect((await reporting(o.orgId, Z.wallet, true)).status).toBe(200)
+    expect((await overviewOf(o)).body.figures.wallets.map((w: { wallet: string }) => w.wallet)).toEqual([checksum(P.wallet), checksum(Z.wallet)])
+    expect((await walletsOf(o)).find((w) => w.id === recovery)).toMatchObject({ recovery: 'in_force', reporting: true })
+  })
+
+  it('a reporting exclusion survives another chain link and relinking, and all excluded means no indexer request', async () => {
+    const o = await partnerOrg()
+    expect((await reporting(o.orgId, P.wallet, false)).status).toBe(200)
+    expect((await reporting(o.orgId, P.wallet, false)).status).toBe(200)
+    await db.prepare(`UPDATE wallets SET state = 'unlinked' WHERE id = ?`).bind(o.walletId).run()
+    await walletRow(o.orgId, P.wallet)
+    await walletRow(o.orgId, P.wallet, { chainId: 8453 })
+    const asked = indexer()
+    expect((await overviewOf(o)).body.figures).toEqual({ state: 'no_wallet' })
+    expect(asked).toEqual([])
+    expect((await walletsOf(o)).every((w) => w.state === 'linked' && !w.reporting)).toBe(true)
+    expect(await count('partner_reporting_exclusions', o.orgId)).toBe(1)
+  })
+
+  it('reporting refuses invalid inputs and addresses not linked to an active partner without writing', async () => {
+    const o = await partnerOrg(), other = await owner()
+    const pending = someAddress(), gone = someAddress()
+    await walletRow(o.orgId, pending, { state: 'pending' })
+    await walletRow(o.orgId, gone, { state: 'unlinked' })
+    const before = await snapshot()
+    for (const included of [undefined, null, 'false', 0]) expect((await reporting(o.orgId, P.wallet, included)).status).toBe(400)
+    for (const wallet of [undefined, null, '0x123', 'not-an-address']) expect((await reporting(o.orgId, wallet, false)).status).toBe(400)
+    for (const [orgId, wallet] of [[other.orgId, P.wallet], [o.orgId, pending], [o.orgId, gone], [data.randomId(), P.wallet]]) expect((await reporting(orgId, wallet, false)).status).toBe(404)
+    expect(await snapshot()).toBe(before)
+    for (const change of ["kind = 'institution'", "kind = 'partner', state = 'frozen'", "state = 'unverified'"]) {
+      await db.prepare(`UPDATE organisations SET ${change} WHERE id = ?`).bind(o.orgId).run()
+      const frozen = await snapshot()
+      expect((await reporting(o.orgId, P.wallet, false)).status).toBe(404)
+      expect(await snapshot()).toBe(frozen)
+    }
+  })
+
+  it('reporting is not changed if the audit transaction fails', async () => {
+    const o = await partnerOrg()
+    const before = await snapshot()
+    await withTrigger('INSERT ON audit_log', async () => {
+      expect((await reporting(o.orgId, P.wallet, false)).ok).toBe(false)
+    })
+    expect(await snapshot()).toBe(before)
+  })
+
   beforeEach(() => db.batch([db.prepare('DELETE FROM sanctioned_addresses'), db.prepare('DELETE FROM sanctions_lists')])) // the tests share one database
   it('GET /api/overview: the isolation case', async () => isolation['GET /api/overview'](await member('Alder Asset Management'), await member('Birchfield Capital')))
 
@@ -10204,10 +10279,10 @@ describe('I. partner figures: live', () => {
     const part = deskPage.slice(from, deskPage.indexOf('// ---- the desk ----'))
     expect(from).toBeGreaterThan(0)
     for (const sentence of [
-      'Figures from the Ophis rebate service, read at {stamp(Date.parse(f.asOf))}. Amounts in USD.', "const ESTIMATE = 'Estimate. The amount is fixed when a payout is made.'", '<b>Your figures are not connected yet.</b>', '<b>No wallet is linked.</b>',
+      'Figures from the Ophis rebate service, read at {stamp(Date.parse(f.asOf))}. Amounts in USD.', "const ESTIMATE = 'Estimate. The amount is fixed when a payout is made.'", '<b>Your figures are not connected yet.</b>', '<b>No wallet is included in partner reporting.</b>',
       '<a className="link" href="/#/organisation">Link a wallet under Organisation</a>', '<b>The figures are not available right now.</b>', '<Icon name="history" size={16} />Retry</button>',
       'title="Partner fee" hint="The fee you set on the orders of your integration."', 'Owed this cycle', 'Your share ${usd(w.fees.shareUsd)} plus ${usd(w.fees.carriedUsd)} carried.', 'Trades waiting for a price', 'Paid to date (WETH)', "['Month', 'Status', 'Owed (USD)', 'Owed (WETH)', 'Carried (USD)']", '<Export table="months" size="md" label="Fee months CSV" />',
-      'title="Wallets that traded through your integration" hint="The wallets whose orders carried your fee, since the first trade. Volume is an estimate."', "['Wallet', 'Trades', 'Volume (USD)']", 'The table shows the {t.wallets.length} largest wallets by volume.',
+      'title="Wallets that traded through your integration" hint="The wallets whose orders carried the reported fee, since the first trade. Volume is an estimate."', "['Wallet', 'Trades', 'Volume (USD)']", 'The table shows the {t.wallets.length} largest wallets by volume.',
       "Volume is priced each night. {count(t.totals.unpriced)} {t.totals.unpriced === 1 ? 'trade is' : 'trades are'} not priced yet.", 'No wallet has traded through your integration yet.', '<Export table="traders" size="md" label="Trading wallets CSV" />',
       '[<span className="muted">Not known (native ETH sales)</span>, count(t.unknown.trades), volume(t.unknown)]', "<small>{count(x.unpriced)} {x.unpriced === 1 ? 'trade' : 'trades'} not priced yet</small>",
       // The breakdown: the payouts, the daily volume with its table, by chain and by fee token, and their four CSV.
@@ -10221,7 +10296,7 @@ describe('I. partner figures: live', () => {
       "<div className=\"note bad flagged\" role=\"alert\">", "{count(rows.length)} {rows.length === 1 ? 'wallet' : 'wallets'} on a sanctions list traded through your integration: {count(n)} {n === 1 ? 'trade' : 'trades'}, ${usd(rows.reduce((sum, s) => sum + s.volumeUsd, 0))}{u > 0 && `, ${count(u)} ${u === 1 ? 'trade' : 'trades'} not priced yet`}.",
       'This is for your information. Nothing in your account changes.', '<Export table="sanctioned" label="Sanctioned wallets CSV" />', "['Wallet', 'Volume (USD)', 'First trade']", '<small>Last {s.lastAt.slice(0, 10)}</small>', "'Not known yet'",
       '{listed.has(x.wallet) && <Status>Sanctions list</Status>}', "' The wallets on a sanctions list are added at the end.'",
-      '`The wallets whose orders carried your fee are checked against: ${f.lists.map((l) => `${l.name}${l.published ? `, published ${l.published}` : \'\'}, loaded ${l.loaded}`).join(\'; \')}.${unchecked(f)}`', "'No sanctions list is loaded. The wallets whose orders carried your fee are not checked.'",
+      '`The wallets whose orders carried the reported fee are checked against: ${f.lists.map((l) => `${l.name}${l.published ? `, published ${l.published}` : \'\'}, loaded ${l.loaded}`).join(\'; \')}.${unchecked(f)}`', "'No sanctions list is loaded. The wallets whose orders carried the reported fee are not checked.'",
       "` Not checked: ${count(n)} ${n === 1 ? 'sale' : 'sales'} of native ETH with no known wallet.`", "' Not checked: the orders of linked wallets whose figures are not shown.'",
     ]) expect(part, sentence).toContain(sentence)
     expect(part.match(/\{ESTIMATE\}/g)).toHaveLength(1) // under the estimate

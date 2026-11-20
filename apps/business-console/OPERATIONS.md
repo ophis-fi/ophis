@@ -56,6 +56,8 @@ The first command of a day opens a Cloudflare Access sign-in (cloudflared, valid
 - `operator invite --production`: an invitation code for a new client, 12 characters like `7K3M-Q9TX-4BDA`, one use, valid 48 hours. Make it just before you send it.
 - `operator decide <id> approve|more|refuse ... --production`, `operator freeze|unfreeze <id> --production`, `operator items <id> --production`, `operator get <item id> --reason kyb_review --out item.age --production`: README, "Onboarding" and "Sealed declaration".
 
+`operator reporting <organisation id> exclude --wallet <address> --production` removes a linked address from partner reporting across chains; `include` restores it. This records an audit entry and preserves wallet linking, recovery, trading, linked-wallet sanctions checks and fee settlement. Apply migration 0029 before deploying this command.
+
 ## OFAC list: by hand, once a month
 
 Download https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN.XML (about 30 MB, it ends with `</sdnList>`), then `operator addresses ofac=<path to SDN.XML> --production`. It refuses a cut file and prints the number of addresses loaded. `operator list --production` warns from 35 days after a load, and while it warns the desk sends no order. Loads: 2026-11-17 (127 addresses, OFAC publication of 2026-11-13). Next: by 2026-12-17.

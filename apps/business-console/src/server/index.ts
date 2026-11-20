@@ -659,6 +659,8 @@ export const EVENTS: Record<string, string> = {
   'wallet.link/alone': 'Wallet linked by the only key-role member',
   'wallet.link/demo': 'Demo wallet linked by the local seed command, with no signature',
   'wallet.unlink': 'Wallet unlinked',
+  'wallet.reporting/included': 'Wallet included in partner reporting on every chain',
+  'wallet.reporting/excluded': 'Wallet excluded from partner reporting on every chain',
   'anchor.set': 'Recovery wallet set, in force after 72 hours',
   'anchor.set/alone': 'Recovery wallet set by the only key-role member, in force after 72 hours',
   'anchor.cancel': 'Change of recovery wallet cancelled',
