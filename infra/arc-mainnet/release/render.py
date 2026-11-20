@@ -233,6 +233,9 @@ http {
   limit_req_zone $client_ip zone=reads:1m rate=3r/s;
   server {
     listen 8080;
+    # Docker DNS, re-resolved per request: a recreated orderbook gets a new address.
+    resolver 127.0.0.11 valid=10s ipv6=off;
+    set $orderbook http://orderbook:8080;
     client_max_body_size 256k;
     limit_req_status 429;
     add_header Access-Control-Allow-Origin $allowed_origin always;
@@ -245,7 +248,7 @@ http {
       limit_req zone=quotes burst=2;
       error_page 429 = @quote_busy;
       proxy_hide_header Access-Control-Allow-Origin;
-      proxy_pass http://orderbook:8080;
+      proxy_pass $orderbook;
     }
     location @quote_busy {
       default_type application/json;
@@ -258,12 +261,12 @@ http {
     location /api/v1/ {
       limit_req zone=reads burst=6 nodelay;
       proxy_hide_header Access-Control-Allow-Origin;
-      proxy_pass http://orderbook:8080;
+      proxy_pass $orderbook;
     }
     location = /api/v2/trades {
       limit_req zone=reads burst=6 nodelay;
       proxy_hide_header Access-Control-Allow-Origin;
-      proxy_pass http://orderbook:8080;
+      proxy_pass $orderbook;
     }
     location / { return 404; }
   }
