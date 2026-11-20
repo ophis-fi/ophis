@@ -19,7 +19,7 @@ def serve_mock():
     counts = collections.Counter()
     mode = {"disagree": False, "fail": False, "trace_fail": False,
             "latest_skew": False, "header_disagree": False,
-            "official_fail": False, "paid_disagree": False, "zero": False,
+            "official_fail": False, "drpc_disagree": False, "zero": False,
             "publicnode_fail": False, "publicnode_disagree": False}
     lock = threading.Lock()
 
@@ -35,8 +35,8 @@ def serve_mock():
                     result = {"counts": dict(counts)}
                 else:
                     method = body["method"]
-                    if self.path == "/quicknode":
-                        cost(body)  # Real paid method/parameter boundary, no paid endpoint.
+                    if self.path == "/drpc":
+                        cost(body)  # Real metered method/parameter boundary, no metered endpoint.
                     counts[self.path + ":" + method] += 1
                     value = "0x1"
                     if method == "eth_chainId":
@@ -59,7 +59,7 @@ def serve_mock():
                         value = {"type": "CALL", "gasUsed": "0x5208", "calls": []}
                     elif method == "eth_call" and self.path == "/blockdaemon" and mode["disagree"]:
                         value = "0x2"
-                    elif method == "eth_call" and self.path == "/quicknode" and mode["paid_disagree"]:
+                    elif method == "eth_call" and self.path == "/drpc" and mode["drpc_disagree"]:
                         value = "0x3"
                     elif method == "eth_call" and self.path == "/publicnode" and mode["publicnode_disagree"]:
                         value = "0x4"
@@ -67,7 +67,7 @@ def serve_mock():
                         value = "0x0"
                     result = {"jsonrpc": "2.0", "id": body["id"], "result": value}
                     if (self.path == "/publicnode" and mode["publicnode_fail"]) or (self.path == "/blockdaemon" and mode["fail"]) or (self.path == "/official" and mode["official_fail"]) or (
-                        self.path == "/quicknode" and mode["trace_fail"] and method == "debug_traceTransaction"
+                        self.path == "/drpc" and mode["trace_fail"] and method == "debug_traceTransaction"
                     ):
                         result = {"jsonrpc": "2.0", "id": body["id"],
                                   "error": {"code": -32000, "message": "mock unavailable"}}
@@ -118,44 +118,44 @@ def check_proxy(rpc_url, control, release=False):
 
     call = [{"to": "0x" + "11" * 20, "data": "0x12345678"}, "latest"]
     assert rpc("eth_call", call).get("result") == "0x1"
-    assert post(control, {"zero": True})["counts"].get("/quicknode:eth_call", 0) == 0, "paid read despite healthy free quorum"
+    assert post(control, {"zero": True})["counts"].get("/drpc:eth_call", 0) == 0, "metered read despite healthy free quorum"
     assert rpc("eth_getBalance", [call[0]["to"], "0x80"]).get("result") == "0x0"
-    assert post(control, {"zero": False})["counts"].get("/quicknode:eth_getBalance", 0) == 0, "zero balance triggered paid fallback"
+    assert post(control, {"zero": False})["counts"].get("/drpc:eth_getBalance", 0) == 0, "zero balance triggered metered fallback"
     # Test-only per-method budget exhausts one free provider locally (no HTTP error).
     for _ in range(2):
         assert rpc("eth_getCode", [call[0]["to"], "0x80"]).get("result") == "0x1"
-    assert post(control, {})["counts"].get("/quicknode:eth_getCode", 0) == 1, "local free limit did not fall back"
+    assert post(control, {})["counts"].get("/drpc:eth_getCode", 0) == 1, "local free limit did not fall back"
     post(control, {"disagree": True})
     assert "error" in rpc("eth_call", call), "disagreement accepted or live state cached"
     assert "error" in rpc("eth_call", call, {
         "X-ERPC-Skip-Consensus": "true", "X-ERPC-Use-Upstream": "arc-official"
     }), "client bypassed quorum"
     post(control, {"disagree": False, "fail": True})
-    assert rpc("eth_call", call).get("result") == "0x1", "paid fallback did not restore quorum"
-    assert post(control, {})["counts"].get("/quicknode:eth_call", 0) == 1
+    assert rpc("eth_call", call).get("result") == "0x1", "metered fallback did not restore quorum"
+    assert post(control, {})["counts"].get("/drpc:eth_call", 0) == 1
     # Quote simulation overrides must survive fallback unchanged.
     assert rpc("eth_call", [*call, {call[0]["to"]: {"code": "0x00", "balance": "0x100"}}]).get("result") == "0x1"
     for method, params in [("eth_getBalance", [call[0]["to"], "0x80"]),
                            ("eth_getCode", [call[0]["to"], "0x80"]), ("eth_estimateGas", call)]:
-        previous = post(control, {})["counts"].get("/quicknode:" + method, 0)
+        previous = post(control, {})["counts"].get("/drpc:" + method, 0)
         assert rpc(method, params).get("result") == "0x1", method
-        assert post(control, {})["counts"].get("/quicknode:" + method, 0) == previous + 1
+        assert post(control, {})["counts"].get("/drpc:" + method, 0) == previous + 1
     assert rpc("eth_getBlockByNumber", ["0x82", False]).get("result", {}).get("number") == "0x82", "quote block fallback failed"
-    post(control, {"paid_disagree": True})
-    assert "error" in rpc("eth_call", call), "conflicting paid response accepted"
-    before = post(control, {"paid_disagree": False, "official_fail": True})["counts"]
-    assert "error" in rpc("eth_call", call), "paid provider counted as two voters"
+    post(control, {"drpc_disagree": True})
+    assert "error" in rpc("eth_call", call), "conflicting metered response accepted"
+    before = post(control, {"drpc_disagree": False, "official_fail": True})["counts"]
+    assert "error" in rpc("eth_call", call), "metered provider counted as two voters"
     after = post(control, {})["counts"]
     assert sum(after.get(source + ":eth_call", 0) - before.get(source + ":eth_call", 0)
-               for source in ("/official", "/blockdaemon", "/quicknode")) <= 6, "fallback amplified beyond six attempts"
+               for source in ("/official", "/blockdaemon", "/drpc")) <= 6, "fallback amplified beyond six attempts"
     assert "error" in rpc("eth_call", call, {
-        "X-ERPC-Skip-Consensus": "true", "X-ERPC-Use-Upstream": "arc-quicknode"
+        "X-ERPC-Skip-Consensus": "true", "X-ERPC-Use-Upstream": "arc-drpc"
     }), "client bypassed fallback quorum"
     # Gas price is an existing single-provider hint, not a simulation quorum.
     before = post(control, {})["counts"]
     assert rpc("eth_gasPrice", []).get("result") == "0x1", "HTTP 503 gas-price fallback failed"
     after = post(control, {})["counts"]
-    for source in ("/official", "/blockdaemon", "/quicknode"):
+    for source in ("/official", "/blockdaemon", "/drpc"):
         assert after.get(source + ":eth_gasPrice", 0) == before.get(source + ":eth_gasPrice", 0) + 1, "gas-price sweep skipped or duplicated a provider"
     post(control, {"fail": False, "official_fail": False})
 
@@ -207,36 +207,36 @@ def check_proxy(rpc_url, control, release=False):
 
     # Read fallback and tracing share one weighted budget, including failed calls.
     before = post(control, {})["counts"]
-    assert before.get("/quicknode:eth_getBlockByNumber", 0) == 3  # Two bootstrap polls, one fallback.
-    assert before.get("/quicknode:eth_syncing", 0) == 0
+    assert before.get("/drpc:eth_getBlockByNumber", 0) == 3  # Two bootstrap polls, one fallback.
+    assert before.get("/drpc:eth_syncing", 0) == 0
     post(control, {"trace_fail": True})
     assert "error" in rpc("debug_traceTransaction", ["0x" + "33" * 32, {"tracer": "callTracer"}])
     post(control, {"trace_fail": False})
-    spent = sum(count * (40 if key.endswith(":debug_traceTransaction") else 20)
+    spent = sum(count * 20
                 for key, count in post(control, {})["counts"].items()
-                if key.startswith("/quicknode:") and key.count(":") == 1)
-    successes = (500 - spent) // 40
+                if key.startswith("/drpc:") and key.count(":") == 1)
+    successes = (500 - spent) // 20
     for i in range(successes):
         response = rpc("debug_traceTransaction", ["0x" + f"{i+1:064x}", {"tracer": "callTracer"}])
         assert "result" in response, (response, post(control, {}))
     assert "error" in rpc("debug_traceTransaction", ["0x" + "44" * 32, {"tracer": "callTracer"}]), "credit cap bypassed"
     after = post(control, {})["counts"]
-    assert after.get("/quicknode:debug_traceTransaction", 0) == successes + 1, ("retry amplified paid calls", after)
-    assert not any(k.endswith(":debug_traceTransaction") and not k.startswith("/quicknode:") for k in after)
+    assert after.get("/drpc:debug_traceTransaction", 0) == successes + 1, ("retry amplified metered calls", after)
+    assert not any(k.endswith(":debug_traceTransaction") and not k.startswith("/drpc:") for k in after)
     assert "error" in rpc("debug_traceBlockByNumber", ["latest", {}])
-    assert rpc("eth_call", call).get("result") == "0x1", "paid exhaustion broke free quorum"
+    assert rpc("eth_call", call).get("result") == "0x1", "metered exhaustion broke free quorum"
     # Consume any last 20-credit read permit; both free nodes stay unavailable.
     post(control, {"fail": True, "official_fail": True})
     assert "error" in rpc("eth_call", call)
     before = post(control, {})["counts"]
     assert "error" in rpc("eth_call", call)
     after = post(control, {"fail": False, "official_fail": False})["counts"]
-    assert after.get("/quicknode:eth_call", 0) == before.get("/quicknode:eth_call", 0), "read credit cap bypassed"
+    assert after.get("/drpc:eth_call", 0) == before.get("/drpc:eth_call", 0), "read credit cap bypassed"
     if release:
         assert 'result' in rpc('eth_sendRawTransaction', ['0xdead'])
         expected = dict(after)
         expected['/official:eth_sendRawTransaction'] = 1
-        assert post(control, {})['counts'] == expected, 'Relay retried, duplicated or reached paid upstream'
+        assert post(control, {})['counts'] == expected, 'Relay retried, duplicated or reached metered upstream'
     else:
         assert "error" in rpc("eth_sendRawTransaction", ["0xdead"])
         assert post(control, {})["counts"] == after, "disallowed method reached upstream"
@@ -262,27 +262,27 @@ def check_free_reads(rpc_url, control):
     assert rpc().get("result") == "0x1", "two independent free providers did not restore quorum"
     counts = post(control, {})["counts"]
     assert counts.get("/publicnode:eth_call", 0) > 0
-    assert counts.get("/quicknode:eth_call", 0) == 0, "healthy free pair consumed paid credits"
+    assert counts.get("/drpc:eth_call", 0) == 0, "healthy free pair consumed metered credits"
 
     before = post(control, {"fail": True})["counts"]
     response = rpc()
-    assert response.get("result") == "0x1", ("PublicNode plus paid fallback failed", response, post(control, {}))
+    assert response.get("result") == "0x1", ("PublicNode plus metered fallback failed", response, post(control, {}))
     after = post(control, {})["counts"]
-    assert after.get("/quicknode:eth_call", 0) == before.get("/quicknode:eth_call", 0) + 1
-    post(control, {"paid_disagree": True})
+    assert after.get("/drpc:eth_call", 0) == before.get("/drpc:eth_call", 0) + 1
+    post(control, {"drpc_disagree": True})
     assert "error" in rpc(), "disagreement with the new read voter accepted"
-    post(control, {"publicnode_fail": True, "paid_disagree": False})
+    post(control, {"publicnode_fail": True, "drpc_disagree": False})
     before = post(control, {})["counts"]
     assert "error" in rpc(), "one surviving provider counted as two voters"
     after = post(control, {})["counts"]
     assert sum(after.get(source + ":eth_call", 0) - before.get(source + ":eth_call", 0)
-               for source in ("/official", "/blockdaemon", "/publicnode", "/quicknode")) <= 6
-    assert after.get("/quicknode:eth_call", 0) <= before.get("/quicknode:eth_call", 0) + 1
+               for source in ("/official", "/blockdaemon", "/publicnode", "/drpc")) <= 6
+    assert after.get("/drpc:eth_call", 0) <= before.get("/drpc:eth_call", 0) + 1
     assert "error" in rpc({"X-ERPC-Skip-Consensus": "true", "X-ERPC-Use-Upstream": "arc-publicnode"})
     post(control, {"publicnode_fail": False, "official_fail": False, "fail": False,
-                   "disagree": True, "publicnode_disagree": True, "paid_disagree": True})
+                   "disagree": True, "publicnode_disagree": True, "drpc_disagree": True})
     assert "error" in rpc(), "conflicting free providers accepted"
-    print("PASS: additional free voter, free-first failover, paid fallback, disagreement and single-voter rejection")
+    print("PASS: additional free voter, free-first failover, metered fallback, disagreement and single-voter rejection")
 
 
 def test_rpc(release=False, expanded=False):
@@ -292,13 +292,13 @@ def test_rpc(release=False, expanded=False):
     config = yaml.safe_load((root / ("release/generated/erpc.yaml" if release else "erpc.yaml")).read_text())
     project = config["projects"][0]
     upstreams = project["upstreams"]
-    assert [u["id"] for u in upstreams] == ["arc-official", "arc-blockdaemon", "arc-publicnode", "arc-quicknode"]
+    assert [u["id"] for u in upstreams] == ["arc-official", "arc-blockdaemon", "arc-publicnode", "arc-drpc"]
     assert upstreams[2]["endpoint"] == "https://arc-rpc.publicnode.com"
     assert set(upstreams[2]["allowMethods"]) == {"eth_chainId", "eth_blockNumber", "eth_call", "eth_estimateGas", "eth_getBalance", "eth_getCode", "eth_getBlockByNumber", "eth_gasPrice"}
     assert config["rateLimiters"]["budgets"][-1] == {"id": "arc-publicnode", "rules": [{"method": "*", "maxCount": 120, "period": "minute"}]}
     assert all(u["rateLimitCountMode"] == "credit" for u in upstreams)
     assert set(upstreams[-1]["allowMethods"]) == {"eth_call", "eth_estimateGas", "eth_getBalance", "eth_getCode", "eth_getBlockByNumber", "eth_gasPrice", "debug_traceTransaction"}
-    assert upstreams[-1]["creditUnits"] == {"*": 20, "debug_traceTransaction": 40}
+    assert upstreams[-1]["creditUnits"] == {"*": 20}
     assert project["allowClientDirectives"] == ""
     assert project["upstreamDefaults"]["rateLimitAutoTune"]["enabled"] is False
     protected, other = project["networks"][0]["failsafe"]
@@ -310,7 +310,7 @@ def test_rpc(release=False, expanded=False):
         {"method": "*", "maxCount": 40000, "period": "day"},
     ]
     if not expanded:
-        # Also retain the existing paid-budget suite with the new free leg absent.
+        # Also retain the existing metered-budget suite with the new free leg absent.
         # Otherwise a healthy extra voter would hide the fallback/cap scenarios.
         upstreams.pop(2)
 

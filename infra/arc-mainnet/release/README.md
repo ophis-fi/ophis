@@ -53,6 +53,19 @@ isolated checkout with no deployed release state.
 
 ## Existing identities
 
+### dRPC migration — October 21
+
+Docker labels confirm the active checkout is `/Users/scep/ophis-release-20261011`.
+The RPC gate and proxy now use keyless dRPC for fallback reads and transaction
+traces, with persistent 1,000 CU/minute and 40,000 CU/day caps. Live chain-ID,
+code/balance override and `callTracer` checks passed; 220 CU were reserved through
+rollout verification, including failed attempts. Other container IDs were unchanged.
+The gate sends an explicit user agent (dRPC rejects urllib's default with 403),
+and the proxy waits for its local socket health check before bootstrapping.
+The private pre-migration file backup is
+`/Users/scep/.local/state/ophis/arc-before-drpc-yr8dxy4v`.
+Keep both provider ledgers; monthly refill and ledger deletion are not part of a restart.
+
 ### Prepared Mac mini launch — September 24
 
 The selected runtime host is the existing Mac mini. Its isolated
@@ -309,8 +322,8 @@ application development. Use the reviewed revision and actual `config.json`:
    above and run Compose/startup as the Colima operator. On Linux, use the isolated
    signing account and its canonical key directly. Supply `ARC_SOLVER_KEY_FILE`
    pointing to the corresponding dedicated Arc file outside the repo, mode 0600.
-   Set `ARC_QUICKNODE_RPC_URL` privately and reserve only the
-   actually available credits in `ARC_QUICKNODE_CREDIT_ALLOWANCE` (1..10,000,000).
+   Set `ARC_DRPC_CU_ALLOWANCE` to CU available for this ledger (1..180,000,000).
+   The gate uses keyless `https://arc.drpc.org`; no provider token is needed.
    Use the environment or an ignored release `.env`; never put these in frontend
    variables. `start.cjs` expects these variables exported in its environment.
 6. Run `node infra/arc-mainnet/release/start.cjs --start`. It checks the release
@@ -355,14 +368,14 @@ remains pending until an actual fill status arrives.
 
 Free official, Blockdaemon and PublicNode RPCs are preferred for quote/balance reads.
 PublicNode is read-only and does not receive indexing logs or traces. A failed
-voter can fall back to QuickNode for calls, gas estimation, balance, code and numbered/tagged header reads;
-two distinct providers must still agree. A healthy free quorum makes no paid
-state reads. PublicNode plus QuickNode can restore quote/balance quorum when the
-other two free providers are unavailable; QuickNode alone cannot replace all
+voter can fall back to dRPC for calls, gas estimation, balance, code and numbered/tagged header reads;
+two distinct providers must still agree. A healthy free quorum makes no dRPC
+state reads. PublicNode plus dRPC can restore quote/balance quorum when the
+other two free providers are unavailable; dRPC alone cannot replace all
 three unavailable free providers. Archive access through PublicNode is not assumed.
-Gas-price hints also have paid fallback; they retain their existing single-provider policy.
+Gas-price hints also have dRPC fallback; they retain their existing single-provider policy.
 Only the official endpoint receives `eth_sendRawTransaction`, one attempt; it
-never reaches QuickNode. Each public provider is capped at 120 requests/minute.
+never reaches dRPC. Each unmetered public provider is capped at 120 requests/minute.
 Public quote ingress stays paced globally at four/minute. Two requests may wait
 up to 30 seconds; excess receives JSON HTTP 429 with `Retry-After: 15`. The fastest
 pair can stay selected, so the third free provider is fallback headroom, not
@@ -384,14 +397,17 @@ Its local configuration is `~/.cloudflared/config-ophis-arc-mainnet.yml`; launch
 label is `com.ophis.cloudflared.arc-mainnet`. It exposes only the localhost API
 proxy at port 8442. The existing OP tunnel and services were not restarted.
 
-QuickNode receives the read fallbacks above, transaction traces and eRPC's bounded
-bootstrap/hourly header probes. SQLite reserves credits **before** an upstream
-attempt: 1,000/minute, 40,000/day and the fixed total allowance. Timeouts remain
+dRPC receives the read fallbacks above, transaction traces and eRPC's bounded
+bootstrap/hourly header probes. SQLite reserves 20 CU **before** each upstream
+attempt: 1,000 CU/minute, 40,000 CU/day and the fixed lifetime allowance (at most
+180M CU). This bounds 31-day usage to 1.24M CU, under 0.6% of the 210M free pool.
+There is no automatic monthly refill. Failed requests and timeouts remain
 charged. Protected reads allow three attempts per voter (six total); upstream
 attempts and other network methods remain single-attempt, with no redirects.
-Both compose projects share `ophis-arc-quicknode-credits`; retain and
-back up this volume. Other consumers of the provider account remain outside this
-ledger, so compare against provider totals. Exhaustion stops the paid lane.
+Both compose projects share `ophis-arc-drpc-cu`; retain and
+back up this volume. Keep the separate old QuickNode ledger for its history.
+Other dRPC consumers remain outside this
+ledger, so compare against provider totals. Exhaustion stops the dRPC lane.
 
 The production event indexer starts at the verified settlement deployment block,
 then resumes its database cursor. `skip-event-sync=false` is deliberate: enabling

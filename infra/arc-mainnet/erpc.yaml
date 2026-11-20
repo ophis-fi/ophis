@@ -33,8 +33,9 @@ rateLimiters:
   store:
     driver: memory
   budgets:
-    # eRPC paces requests; the private credit gate also enforces a durable allowance.
-    - id: arc-quicknode
+    # At 40k CU/day, at most 1.24M of the 210M free pool is used in 31 days.
+    # The private gate enforces the same caps durably across proxy restarts.
+    - id: arc-drpc
       rules:
         - method: "*"
           maxCount: 1000
@@ -88,7 +89,7 @@ projects:
           evalFunc: |
             (upstreams, ctx) => upstreams
               .sortByScore(PREFER_FASTEST)
-              .sort((a, b) => Number(a.id === 'arc-quicknode') - Number(b.id === 'arc-quicknode'))
+              .sort((a, b) => Number(a.id === 'arc-drpc') - Number(b.id === 'arc-drpc'))
         failsafe:
           - matchMethod: "eth_call|eth_estimateGas|eth_getBalance|eth_getCode|eth_getStorageAt|eth_getLogs|eth_getTransactionCount|eth_getTransactionByHash|eth_getTransactionReceipt|eth_getBlockByHash|eth_getBlockByNumber|eth_feeHistory"
             timeout:
@@ -169,20 +170,19 @@ projects:
         creditUnits: {"*": 1}
         ignoreMethods: ["*"]
         allowMethods: [eth_chainId, eth_blockNumber, eth_call, eth_estimateGas, eth_getBalance, eth_getCode, eth_getBlockByNumber, eth_gasPrice]
-      - id: arc-quicknode
+      - id: arc-drpc
         endpoint: http://credit-gate:8080
-        rateLimitBudget: arc-quicknode
+        rateLimitBudget: arc-drpc
         rateLimitCountMode: credit
         creditUnits:
           "*": 20
-          debug_traceTransaction: 40
         ignoreMethods: ["*"]
         # Read-only quote/balance fallback. No indexing, signing or transaction relay.
         allowMethods: [eth_call, eth_estimateGas, eth_getBalance, eth_getCode, eth_getBlockByNumber, eth_gasPrice, debug_traceTransaction]
         evm:
           chainId: 5042
           # eRPC v0.2.0 replaces 0s with 30s and its poller bypasses allowMethods.
-          # Two header reads/hour cost ~960 credits/day; included in the budget.
+          # Two header reads/hour cost ~960 CU/day; included in the budget.
           statePollerInterval: 1h
           statePollerDebounce: 1h
           skipSyncingCheck: true

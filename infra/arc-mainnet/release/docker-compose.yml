@@ -48,9 +48,13 @@ services:
     image: python:3.13-alpine@sha256:79e7a9b9ff1cbceff819f856fb374477792a5967759d94df266de7b7b4120e6f
     restart: unless-stopped
     mem_limit: 64m
+    healthcheck:
+      test: [CMD, python, -c, "import socket; socket.create_connection(('127.0.0.1', 8080), 1).close()"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
     environment:
-      ARC_QUICKNODE_RPC_URL: ${ARC_QUICKNODE_RPC_URL:?set private endpoint in ignored .env}
-      ARC_QUICKNODE_CREDIT_ALLOWANCE: ${ARC_QUICKNODE_CREDIT_ALLOWANCE:?reserve remaining credits explicitly}
+      ARC_DRPC_CU_ALLOWANCE: ${ARC_DRPC_CU_ALLOWANCE:?reserve available free CU in .env}
     command: [python, /app/credit_gate.py]
     volumes: ["../credit_gate.py:/app/credit_gate.py:ro", "credits:/data"]
   rpc-proxy:
@@ -59,7 +63,7 @@ services:
     user: "${ARC_RUNTIME_UID:?use start.cjs}:${ARC_RUNTIME_GID:?use start.cjs}"
     mem_limit: 256m
     volumes: ["./generated/erpc.yaml:/erpc.yaml:ro"]
-    depends_on: [credit-gate]
+    depends_on: {credit-gate: {condition: service_healthy}}
   uniswap-v3:
     <<: *backend
     command: [solvers, --addr, "0.0.0.0:7877", directv3, --config, /config/uniswap-v3.toml]
@@ -111,4 +115,4 @@ volumes:
   sanctions:
   database:
   credits:
-    name: ophis-arc-quicknode-credits
+    name: ophis-arc-drpc-cu

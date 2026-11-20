@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Private QuickNode read/trace lane. Reserve credits BEFORE every attempt."""
+"""Private dRPC fallback/trace lane. Reserve CU BEFORE every attempt."""
 import json
 import os
 import re
@@ -8,16 +8,16 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from urllib.parse import urlsplit
+from contextlib import closing
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 class Budget:
     def __init__(self, path, allowance):
-        if not 0 < allowance <= 10_000_000:
-            raise ValueError('Set a reserved remaining credit allowance between 1 and 10000000')
+        if not 0 < allowance <= 180_000_000:
+            raise ValueError('Reserve 1..180000000 CU; leave at least 30M of the 210M free pool unallocated')
         self.path, self.allowance = path, allowance
-        with sqlite3.connect(path) as db:
+        with closing(sqlite3.connect(path)) as db, db:
             db.execute('CREATE TABLE IF NOT EXISTS usage (id INTEGER PRIMARY KEY CHECK(id=1), total INTEGER NOT NULL, minute INTEGER NOT NULL, minute_used INTEGER NOT NULL, day INTEGER NOT NULL, day_used INTEGER NOT NULL)')
             db.execute('INSERT OR IGNORE INTO usage VALUES (1,0,0,0,0,0)')
 
@@ -25,7 +25,7 @@ class Budget:
         if not isinstance(credits, int) or credits <= 0:
             raise ValueError('Positive integer credit cost required')
         now = int(time.time() if now is None else now)
-        with sqlite3.connect(self.path, timeout=5) as db:
+        with closing(sqlite3.connect(self.path, timeout=5)) as db, db:
             db.execute('BEGIN IMMEDIATE')
             total, minute, minute_used, day, day_used = db.execute('SELECT total,minute,minute_used,day,day_used FROM usage WHERE id=1').fetchone()
             minute_used = minute_used if minute == now // 60 else 0
@@ -60,7 +60,7 @@ def cost(payload):
             raise ValueError('Expected transaction hash and callTracer options')
         if not isinstance(params[1], dict) or params[1].get('tracer') != 'callTracer' or set(params[1]) - {'tracer', 'timeout', 'tracerConfig'}:
             raise ValueError('Only callTracer is enabled')
-        return 40
+        return 20
     if method in ('eth_chainId', 'net_version', 'eth_blockNumber', 'eth_gasPrice') and params == []:
         return 20
     if method == 'eth_getBlockByNumber' and isinstance(params, list) and len(params) == 2 and params[1] is False and re.fullmatch(r'latest|finalized|safe|0x[0-9a-fA-F]+', str(params[0])):
@@ -75,19 +75,16 @@ def cost(payload):
         # The node validates transaction/override fields; never relay or sign here.
         if isinstance(params[0], dict) and read_block(params[1]) and (len(params) == 2 or isinstance(params[2], dict)):
             return 20
-    raise ValueError('Method denied on the paid lane')
+    raise ValueError('Method denied on the dRPC lane')
 
 
 def serve():
-    endpoint = os.environ['ARC_QUICKNODE_RPC_URL']
-    url = urlsplit(endpoint)
-    if url.scheme != 'https' or not (url.hostname or '').endswith('.arc-mainnet.quiknode.pro') or url.username or url.password or url.query or url.fragment or url.port not in (None, 443):
-        raise ValueError('Expected a private Arc QuickNode HTTPS endpoint')
+    endpoint = 'https://arc.drpc.org'
     class NoRedirect(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, *_):
             raise ValueError('Redirect denied: each reservation permits one upstream attempt')
     opener = urllib.request.build_opener(NoRedirect)
-    budget = Budget(os.environ.get('ARC_CREDIT_DB', '/data/credits.sqlite'), int(os.environ['ARC_QUICKNODE_CREDIT_ALLOWANCE']))
+    budget = Budget(os.environ.get('ARC_CREDIT_DB', '/data/credits.sqlite'), int(os.environ['ARC_DRPC_CU_ALLOWANCE']))
     slots = threading.BoundedSemaphore(2)
 
     class Handler(BaseHTTPRequestHandler):
@@ -105,8 +102,9 @@ def serve():
                 credits = cost(payload)
                 with slots:
                     if not budget.reserve(credits):
-                        raise ValueError('QuickNode reserved budget exhausted')
-                    request = urllib.request.Request(endpoint, data=json.dumps(payload).encode(), headers={'Content-Type': 'application/json'})
+                        raise ValueError('dRPC reserved CU budget exhausted')
+                    # dRPC rejects urllib's default user agent with HTTP 403.
+                    request = urllib.request.Request(endpoint, data=json.dumps(payload).encode(), headers={'Content-Type': 'application/json', 'User-Agent': 'ophis-arc-rpc/1.0'})
                     with opener.open(request, timeout=10) as response:
                         body = response.read(8 * 1024 * 1024 + 1)
                     if len(body) > 8 * 1024 * 1024:
@@ -114,7 +112,7 @@ def serve():
                 json.loads(body)
             except Exception:
                 # Failed/time-out calls remain charged; retries must reserve again.
-                body = json.dumps({'jsonrpc': '2.0', 'id': request_id, 'error': {'code': -32005, 'message': 'Paid RPC lane unavailable or budget exhausted'}}).encode()
+                body = json.dumps({'jsonrpc': '2.0', 'id': request_id, 'error': {'code': -32005, 'message': 'dRPC lane unavailable or CU budget exhausted'}}).encode()
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Content-Length', str(len(body)))

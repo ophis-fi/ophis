@@ -43,8 +43,8 @@ class Provenance(unittest.TestCase):
             for name in re.findall(r"\$\{([A-Z_][A-Z_0-9]*):?\?", document):
                 env[name] = "test-only"
             env.update(OPHIS_GIT_SHA=SHA, ARC_RELEASE_TAG=SHA, ARC_RUNTIME_UID="10001", ARC_RUNTIME_GID="10001",
-                       ARC_QUICKNODE_CREDIT_ALLOWANCE="1", ARC_SOLVER_KEY_FILE="/test-only/solver.key",
-                       ARC_QUICKNODE_RPC_URL="https://example.invalid", ERPC_IMAGE="example.invalid/erpc:test")
+                       ARC_DRPC_CU_ALLOWANCE="1", ARC_SOLVER_KEY_FILE="/test-only/solver.key",
+                       ERPC_IMAGE="example.invalid/erpc:test")
             with patch.dict(os.environ, env, clear=True):
                 try:
                     config = revision.compose_config("--env-file", os.devnull, "-f", str(compose))
