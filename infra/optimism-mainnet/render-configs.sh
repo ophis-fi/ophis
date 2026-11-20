@@ -205,9 +205,9 @@ if [[ "${ERPC_IMAGE:-}" != "$EXPECTED_ERPC_IMAGE" ]]; then
   exit 14
 fi
 
-# Alchemy replaces the exhausted ZAN account; an empty key removes a voter.
-if [[ -z "${ALCHEMY_API_KEY:-}" ]]; then
-  echo "ERROR: ALCHEMY_API_KEY is unset/empty (required for OP consensus)." >&2
+# ZAN replaces exhausted Alchemy; an empty key removes a voter.
+if [[ -z "${ZAN_API_KEY:-}" ]]; then
+  echo "ERROR: ZAN_API_KEY is unset/empty (required for OP consensus)." >&2
   exit 15
 fi
 
@@ -548,7 +548,7 @@ for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   #
   # envsubst only substitutes the explicit list we pass — keeps unknown
   # ${VARS} in eRPC's YAML syntax, defensive against future config additions.
-  envsubst '${OP_MAINNET_RPC} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE} ${ENSO_API_KEY} ${OPHIS_DRIVER_SUBMITTER_KEY} ${ALCHEMY_API_KEY} ${DRPC_API_KEY}' \
+  envsubst '${OP_MAINNET_RPC} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE} ${ENSO_API_KEY} ${OPHIS_DRIVER_SUBMITTER_KEY} ${ZAN_API_KEY} ${DRPC_API_KEY}' \
     < "$tmpl" > "$out_tmp"
   # Redundant under `umask 077` set at script top, but kept as defense-
   # in-depth against a future edit that hoists or removes the umask.
@@ -558,7 +558,7 @@ for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   # envsubst turns any unset variable into an empty string, so a renamed or
   # forgotten key silently yields a credential-less URL that still parses and
   # still starts. For erpc.yaml that means quietly demoting a keyed upstream to
-  # its anonymous tier (see the ALCHEMY_API_KEY check above). Catch the shape rather
+  # its anonymous tier (see the ZAN_API_KEY check above). Catch the shape rather
   # than enumerating every key, so the next renamed variable is caught too.
   if [[ "$name" == "erpc.yaml" ]]; then
     if ! validate_rendered_erpc "$out_tmp"; then

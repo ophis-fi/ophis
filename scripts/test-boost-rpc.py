@@ -26,26 +26,26 @@ for hosts in (None, [], ["mainnet.optimism.io=127.0.0.1"],
     bad = copy.deepcopy(compose)
     bad["services"]["rpc-proxy"]["extra_hosts"] = hosts
     assert guard["validate_compose"](bad), "Shared DNS must not redirect two read voters"
-for value in (None, {}, {"headers": {}}, {"headers": {"Origin": "https://example.org"}},
+for value in ({}, {"headers": {}}, {"headers": {"Origin": "https://example.org"}},
               {"headers": {"Origin": "https://swap.ophis.fi"}, "supportsBatch": True}):
     bad = copy.deepcopy(config)
     bad["projects"][0]["upstreams"][1]["jsonRpc"] = value
-    assert validate(bad), "Alchemy must retain exactly its allowed Ophis Origin"
+    assert validate(bad), "ZAN must not add JSON-RPC header overrides"
 for field, value in (("evm", {"getLogsAutoSplittingRangeThreshold": 11}),
                      ("rateLimitCountMode", "request"), ("rateLimitBudget", "drpc-op-budget"),
                      ("rateLimitAutoTune", {"enabled": True}), ("creditUnits", {"*": 0})):
     bad = copy.deepcopy(config)
     bad["projects"][0]["upstreams"][1][field] = value
-    assert validate(bad), "Alchemy must retain supported log pages and its own shared budget"
-for endpoint in ("https://opt-mainnet.g.alchemy.com/v2/", "http://opt-mainnet.g.alchemy.com/v2/key",
-                 "https://opt-mainnet.g.alchemy.com/v2/key/extra"):
+    assert validate(bad), "ZAN must retain supported log pages and its own shared budget"
+for endpoint in ("https://api.zan.top/node/v1/opt/mainnet/", "http://api.zan.top/node/v1/opt/mainnet/key",
+                 "https://api.zan.top/node/v1/opt/mainnet/key/extra"):
     bad = copy.deepcopy(config)
     bad["projects"][0]["upstreams"][1]["endpoint"] = endpoint
-    assert validate(bad), "Alchemy must retain the keyed Optimism HTTPS endpoint"
+    assert validate(bad), "ZAN must retain the keyed Optimism HTTPS endpoint"
 bad = copy.deepcopy(config)
 bad["projects"][0]["upstreams"][1]["failsafe"][0]["retry"]["maxAttempts"] = 2
-assert validate(bad), "Alchemy upstream retries would bypass its request budget"
-for method in guard["ALCHEMY_REQUEST_UNITS"]:
+assert validate(bad), "ZAN upstream retries would bypass its request budget"
+for method in config["projects"][0]["upstreams"][1]["creditUnits"]:
     bad = copy.deepcopy(config)
     del bad["projects"][0]["upstreams"][1]["creditUnits"][method]
     assert validate(bad), "Vendor method prices must not silently replace request-count units"
@@ -145,15 +145,15 @@ for stack in (OP,):
         (sandbox / "render-configs.sh").write_text((stack / "render-configs.sh").read_text())
         (sandbox / ".env.example").write_text((stack / ".env.example").read_text())
         (sandbox / ".env").write_text("POSTGRES_USER=test\n")
-        env = {k: v for k, v in os.environ.items() if k not in {"GOLDSKY_BOOST_KEY", "ALCHEMY_API_KEY", "DRPC_API_KEY"}}
+        env = {k: v for k, v in os.environ.items() if k not in {"GOLDSKY_BOOST_KEY", "ZAN_API_KEY", "DRPC_API_KEY"}}
         for line in (stack / ".env.example").read_text().splitlines():
             if line.startswith("ERPC_IMAGE="):
                 env["ERPC_IMAGE"] = line.split("=", 1)[1]
         result = subprocess.run(["bash", str(sandbox / "render-configs.sh")], env=env,
                                 capture_output=True, text=True)
         assert result.returncode == 15, (stack.name, result.stderr)
-        assert "ALCHEMY_API_KEY is unset/empty" in result.stderr
-        (sandbox / ".env").write_text("POSTGRES_USER=test\nALCHEMY_API_KEY=test\n")
+        assert "ZAN_API_KEY is unset/empty" in result.stderr
+        (sandbox / ".env").write_text("POSTGRES_USER=test\nZAN_API_KEY=test\n")
         result = subprocess.run(["bash", str(sandbox / "render-configs.sh")], env=env,
                                 capture_output=True, text=True)
         assert result.returncode == 15 and "DRPC_API_KEY is unset/empty" in result.stderr

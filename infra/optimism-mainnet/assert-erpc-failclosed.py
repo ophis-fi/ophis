@@ -70,7 +70,7 @@ EXPECTED_UPSTREAMS = 3
 # (mainnet.optimism.io): non-CF, archive-capable, no quota to exhaust.
 EXPECTED_UPSTREAM_HOSTS = frozenset({
     "mainnet.optimism.io",
-    "opt-mainnet.g.alchemy.com",
+    "api.zan.top",
     "lb.drpc.org",
 })
 # Settlement-relevant reads that MUST keep a fail-closed-consensus first-match —
@@ -86,11 +86,6 @@ BLOCK_B = ("eth_getLogs", "eth_getTransactionByHash",
            "eth_estimateGas", "eth_feeHistory", "eth_getTransactionCount")
 RECEIPT = ("eth_getTransactionReceipt",)
 PROTECTED_METHODS = BLOCK_A + BLOCK_B + RECEIPT
-# The wildcard is only a fallback, not an override of Alchemy's method table.
-ALCHEMY_REQUEST_UNITS = dict.fromkeys(("*",) + PROTECTED_METHODS + (
-    "eth_blockNumber", "eth_getBlockByNumber", "eth_getBlockByHash", "eth_chainId",
-    "net_version", "eth_syncing", "eth_gasPrice", "eth_maxPriorityFeePerGas"), 1)
-
 # Allowed keys per structural level of the chain-10 consensus/upstream surface.
 # Any key outside these sets fails closed (the whole point — see module docstring).
 ALLOWED = {
@@ -119,7 +114,7 @@ EXPECTED_SELECTION_POLICY = {
     .whenEmpty(() => upstreams)
     .sortByScore(PREFER_FASTEST);
   if (["eth_blockNumber", "eth_getBlockByNumber"].includes(ctx.method)) {
-    const order = {"official-op": 0, "alchemy-op": 1, "drpc-op": 2};
+    const order = {"official-op": 0, "zan-op": 1, "drpc-op": 2};
     return ranked.sort((a, b) => order[a.id] - order[b.id]);
   }
   return ranked;
@@ -355,8 +350,8 @@ def validate(cfg):
         errs.append("database must contain only bounded explicit-header caches")
     if cfg.get("rateLimiters") != {"store": {"driver": "memory"}, "budgets": [{
             "id": name + "-op-budget", "rules": [{"method": "*", "maxCount": 180, "period": "minute"}]}
-            for name in ("drpc", "alchemy")]}:
-        errs.append("dRPC and Alchemy require separate shared 180/minute budgets")
+            for name in ("drpc", "zan")]}:
+        errs.append("dRPC and ZAN require separate shared 180/minute budgets")
     networks_checked = 0
     for proj in cfg.get("projects") or []:
         _check_keys(proj, "project", "project", errs)
@@ -369,12 +364,12 @@ def validate(cfg):
         for u in ups:
             _check_keys(u, "upstream", f"upstream[{u.get('id')}]", errs)
             host = _hostname(u.get("endpoint"))
-            budget_id = {"lb.drpc.org": "drpc-op-budget", "opt-mainnet.g.alchemy.com": "alchemy-op-budget"}.get(host)
+            budget_id = {"lb.drpc.org": "drpc-op-budget", "api.zan.top": "zan-op-budget"}.get(host)
             metered = budget_id is not None
             budget_keys = {"rateLimitBudget", "rateLimitCountMode", "creditUnits", "rateLimitAutoTune"}
             budget = {k: u[k] for k in budget_keys if k in u}
             expected_budget = ({"rateLimitBudget": budget_id, "rateLimitCountMode": "credit",
-                                "creditUnits": ALCHEMY_REQUEST_UNITS if host == "opt-mainnet.g.alchemy.com" else {"*": 1},
+                                "creditUnits": {"*": 1},
                                 "rateLimitAutoTune": {"enabled": False}}
                                if metered else {})
             if budget != expected_budget:
@@ -382,17 +377,17 @@ def validate(cfg):
             if expected_budget and (len(u.get("failsafe", [])) != 1
                     or u["failsafe"][0].get("retry", {}).get("maxAttempts") != 1):
                 errs.append("Metered providers must use one upstream attempt so retries cannot bypass their budget")
-            log_range = {"lb.drpc.org": 100, "opt-mainnet.g.alchemy.com": 10}.get(host)
+            log_range = {"lb.drpc.org": 100, "api.zan.top": 100}.get(host)
             expected_evm = {"getLogsAutoSplittingRangeThreshold": log_range} if metered else None
-            expected_jsonrpc = {"headers": {"Origin": "https://swap.ophis.fi"}} if host == "opt-mainnet.g.alchemy.com" else None
+            expected_jsonrpc = None
             if u.get("jsonRpc") != expected_jsonrpc:
-                errs.append("Only Alchemy may set jsonRpc, with exactly the allowed Ophis Origin")
-            if host == "opt-mainnet.g.alchemy.com":
+                errs.append("Active providers must not override JSON-RPC headers")
+            if host == "api.zan.top":
                 url = urlsplit(u["endpoint"])
-                if (url.scheme != "https" or not url.path.startswith("/v2/")
-                        or not url.path[4:].strip() or "/" in url.path[4:]
+                if (url.scheme != "https" or not url.path.startswith("/node/v1/opt/mainnet/")
+                        or not url.path[len("/node/v1/opt/mainnet/"):].strip() or "/" in url.path[len("/node/v1/opt/mainnet/"):]
                         or url.query or url.fragment or url.netloc != host):
-                    errs.append("Alchemy must use the keyed Optimism v2 endpoint")
+                    errs.append("ZAN must use the keyed Optimism mainnet endpoint")
             if _hostname(u.get("endpoint")) == "lb.drpc.org":
                 url = urlsplit(u["endpoint"])
                 query = parse_qs(url.query, keep_blank_values=True)
@@ -402,7 +397,7 @@ def validate(cfg):
                         or len(key) != 1 or not key[0].strip()):
                     errs.append("dRPC must use the private Optimism endpoint with a nonempty API key")
             if u.get("evm") != expected_evm:
-                errs.append("upstream evm config must split Alchemy/dRPC logs at 10/100 blocks only")
+                errs.append("upstream evm config must split ZAN/dRPC logs at 100 blocks only")
             for j, r in enumerate(u.get("failsafe") or []):
                 if isinstance(r, dict):
                     _check_rule_subtree(r, f"upstream[{u.get('id')}].failsafe[{j}]", errs, level="upstream_rule")
@@ -411,7 +406,7 @@ def validate(cfg):
         if len({u.get('id') for u in ups}) != len(ups):
             errs.append(f"upstream ids are not distinct: {[u.get('id') for u in ups]}")
         if {u.get("id"): _hostname(u.get("endpoint")) for u in ups} != {
-                "official-op": "mainnet.optimism.io", "alchemy-op": "opt-mainnet.g.alchemy.com",
+                "official-op": "mainnet.optimism.io", "zan-op": "api.zan.top",
                 "drpc-op": "lb.drpc.org"}:
             errs.append("upstream IDs must match provider hosts so cost ordering cannot drift")
         for u in ups:
