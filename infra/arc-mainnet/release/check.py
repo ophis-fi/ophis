@@ -169,7 +169,8 @@ with ThreadPoolExecutor(max_workers=4) as pool:
  results=list(pool.map(quote,range(4)))
 assert sorted(code for code,_ in results)==[404,404,404,429],results
 admitted=sorted(elapsed for code,elapsed in results if code==404)
-assert admitted[0]<3 and 3.5<=admitted[1]<13 and 8.5<=admitted[2]<16,results
+# Five-second spacing only: 10/min (6 s, 12 s), 8/min and 15/min (4 s, 8 s) all fail.
+assert admitted[0]<3 and 4<=admitted[1]<6 and 9<=admitted[2]<11.5,results
 assert next(elapsed for code,elapsed in results if code==429)<3,results
 print('PASS live Nginx bounded quote pacing / busy response:',results)
 for origin in allowed+['https://untrusted.example']:
