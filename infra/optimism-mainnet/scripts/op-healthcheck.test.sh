@@ -234,7 +234,8 @@ if [[ -f "$R/render-configs.sh" ]]; then
   # render-configs.sh cd's to its own directory, so the sandbox copy reads the
   # sandbox .env. The ZAN guard sits after `source .env` and BEFORE the sudo PK
   # read, so these invocations are real and need no privileges.
-  runrender(){ ( cd "$SB" && ERPC_IMAGE="$(sed -n 's/^ERPC_IMAGE=//p' .env.example | head -1)" bash ./render-configs.sh >"$SB/out.log" 2>&1 ); echo $?; }
+  # Each fixture's .env is the only key source: keys exported by the caller must not leak in.
+  runrender(){ ( cd "$SB" && env -u ZAN_API_KEY -u DRPC_API_KEY ERPC_IMAGE="$(sed -n 's/^ERPC_IMAGE=//p' .env.example | head -1)" bash ./render-configs.sh >"$SB/out.log" 2>&1 ); echo $?; }
 
   printf 'POSTGRES_USER=x\nBLOCKDAEMON_OP_KEY=bd\nDRPC_API_KEY=dr\nTENDERLY_OP_KEY=td\n' > "$SB/.env"   # no ZAN key
   rc="$(runrender)"
