@@ -263,8 +263,7 @@ const everyOrganisation = async (db: D1Database, now: number) =>
 const underReview = async (db: D1Database) =>
   (await db.prepare(`SELECT ${COMPANY} WHERE state = 'unverified' AND review_at IS NOT NULL ORDER BY review_at, id`).all<Company>()).results
 
-// The name of a submission, for the operator: 16 hex characters of the SHA-256 of what was submitted (review_print).
-// An approval carries the one the operator looked at; after a change and a new "Submit" it is another (review).
+// An approval names the submitted facts and current recovery eligibility the operator saw; a change needs a fresh review.
 const submissionOf = async (print: string | null, wallet: WalletRow | null) => (await sha256Hex(JSON.stringify([print ?? '', wallet?.recoveryEligible ?? null]))).slice(0, 16)
 /** A screening as it is stored: the outcome, the lists as one JSON text (code to SHA-256 of the file searched, sorted keys) and the SHA-256 of that exact text. */
 interface Screening { outcome: string; lists: string; hash: string }

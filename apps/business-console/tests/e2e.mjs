@@ -939,7 +939,7 @@ try {
     && activated.after.includes('Signed and checked. The wallet is stored') && activated.asked.includes('eth_signTypedData_v4') && activated.fits)
   check('an activation names its wallet and chain, so the signing page offers WalletConnect first', activated.walletConnect)
   await on.getByRole('button', { name: 'The wallet has signed' }).click()
-  await on.getByText('It signed the activation.').waitFor()
+  await on.getByText('Wallet verified: it signed the activation', { exact: false }).waitFor()
   // Milestone 5b: the declaration, printed alone; the signed scan, sealed in this browser; the Worker keeps it sealed.
   check('without the sealed declaration "Submit for review" is closed, and the page says why', await on.getByRole('button', { name: 'Submit for review' }).isDisabled() && await on.getByText('The signed declaration is still missing.').isVisible())
   const paper = on.locator('article.sheet')
