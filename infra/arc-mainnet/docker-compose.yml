@@ -7,6 +7,8 @@ services:
     depends_on:
       credit-gate:
         condition: service_healthy
+      validationcloud-gate:
+        condition: service_healthy
     volumes:
       - ./erpc.yaml:/erpc.yaml:ro
     ports:
@@ -31,6 +33,24 @@ services:
     volumes:
       - ./credit_gate.py:/app/credit_gate.py:ro
       - credits:/data
+  validationcloud-gate:
+    image: python:3.13-alpine@sha256:79e7a9b9ff1cbceff819f856fb374477792a5967759d94df266de7b7b4120e6f
+    restart: "no"
+    mem_limit: 64m
+    healthcheck:
+      test: [CMD, python, -c, "import socket; socket.create_connection(('127.0.0.1', 8080), 1).close()"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+    environment:
+      ARC_GATE_LANE: validationcloud
+      ARC_VALIDATIONCLOUD_URL: ${ARC_VALIDATIONCLOUD_URL:?keyed Validation Cloud Arc URL in .env}
+    command: [python, /app/credit_gate.py]
+    volumes:
+      - ./credit_gate.py:/app/credit_gate.py:ro
+      - validationcloud-credits:/data
 volumes:
   credits:
     name: ophis-arc-drpc-cu
+  validationcloud-credits:
+    name: ophis-arc-validationcloud-cu

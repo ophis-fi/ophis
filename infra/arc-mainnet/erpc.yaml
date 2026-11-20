@@ -58,6 +58,16 @@ rateLimiters:
         - method: "*"
           maxCount: 120
           period: minute
+    # 40 CU per read; 1.5M CU/day keeps any month under the 50M free quota.
+    # The private gate enforces the same caps durably across proxy restarts.
+    - id: arc-validationcloud
+      rules:
+        - method: "*"
+          maxCount: 20000
+          period: minute
+        - method: "*"
+          maxCount: 1500000
+          period: day
 
 projects:
   - id: main
@@ -86,10 +96,13 @@ projects:
             enforceNonNullTaggedBlocks: true
         selectionPolicy:
           evalScope: network-method
+          # Free providers first; the Validation Cloud quota only fills a missing
+          # voter, and dRPC (smallest daily cap, also the trace lane) comes last.
           evalFunc: |
             (upstreams, ctx) => upstreams
               .sortByScore(PREFER_FASTEST)
-              .sort((a, b) => Number(a.id === 'arc-drpc') - Number(b.id === 'arc-drpc'))
+              .sort((a, b) => (2 * Number(a.id === 'arc-drpc') + Number(a.id === 'arc-validationcloud'))
+                - (2 * Number(b.id === 'arc-drpc') + Number(b.id === 'arc-validationcloud')))
         failsafe:
           - matchMethod: "eth_call|eth_estimateGas|eth_getBalance|eth_getCode|eth_getStorageAt|eth_getLogs|eth_getTransactionCount|eth_getTransactionByHash|eth_getTransactionReceipt|eth_getBlockByHash|eth_getBlockByNumber|eth_feeHistory"
             timeout:
@@ -170,6 +183,23 @@ projects:
         creditUnits: {"*": 1}
         ignoreMethods: ["*"]
         allowMethods: [eth_chainId, eth_blockNumber, eth_call, eth_estimateGas, eth_getBalance, eth_getCode, eth_getBlockByNumber, eth_gasPrice]
+      # Keyed Validation Cloud lane (key held by the private gate): extra quote
+      # capacity when a free voter is rate-limited or failing. Quote/balance reads
+      # only; it never counts as two voters, never indexes logs, relays or traces.
+      - id: arc-validationcloud
+        endpoint: http://validationcloud-gate:8080
+        rateLimitBudget: arc-validationcloud
+        rateLimitCountMode: credit
+        creditUnits:
+          "*": 40
+        ignoreMethods: ["*"]
+        allowMethods: [eth_call, eth_estimateGas, eth_getBalance, eth_getCode, eth_getBlockByNumber, eth_gasPrice]
+        evm:
+          chainId: 5042
+          # Header polls would cost ~230k CU/day at 30s; two per hour cost ~1.9k.
+          statePollerInterval: 1h
+          statePollerDebounce: 1h
+          skipSyncingCheck: true
       - id: arc-drpc
         endpoint: http://credit-gate:8080
         rateLimitBudget: arc-drpc

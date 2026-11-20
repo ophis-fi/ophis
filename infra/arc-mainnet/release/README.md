@@ -324,6 +324,8 @@ application development. Use the reviewed revision and actual `config.json`:
    pointing to the corresponding dedicated Arc file outside the repo, mode 0600.
    Set `ARC_DRPC_CU_ALLOWANCE` to CU available for this ledger (1..180,000,000).
    The gate uses keyless `https://arc.drpc.org`; no provider token is needed.
+   Set `ARC_VALIDATIONCLOUD_URL` to the keyed Validation Cloud Arc mainnet URL;
+   only the `validationcloud-gate` container receives it.
    Use the environment or an ignored release `.env`; never put these in frontend
    variables. `start.cjs` expects these variables exported in its environment.
 6. Run `node infra/arc-mainnet/release/start.cjs --start`. It checks the release
@@ -376,8 +378,10 @@ three unavailable free providers. Archive access through PublicNode is not assum
 Gas-price hints also have dRPC fallback; they retain their existing single-provider policy.
 Only the official endpoint receives `eth_sendRawTransaction`, one attempt; it
 never reaches dRPC. Each unmetered public provider is capped at 120 requests/minute.
-Public quote ingress stays paced globally at four/minute. Two requests may wait
-up to 30 seconds; excess receives JSON HTTP 429 with `Retry-After: 15`. The fastest
+When a free voter is rate-limited or failing, the keyed Validation Cloud lane fills
+it before dRPC; healthy free pairs spend no Validation Cloud CU.
+Public quote ingress stays paced globally at six/minute. Two requests may wait
+up to 20 seconds; excess receives JSON HTTP 429 with `Retry-After: 10`. The fastest
 pair can stay selected, so the third free provider is fallback headroom, not
 pooled sustained capacity. The
 frontend requests only optimal Arc quotes, skips hidden/offline polling and
@@ -408,6 +412,10 @@ Both compose projects share `ophis-arc-drpc-cu`; retain and
 back up this volume. Keep the separate old QuickNode ledger for its history.
 Other dRPC consumers remain outside this
 ledger, so compare against provider totals. Exhaustion stops the dRPC lane.
+
+Validation Cloud has its own gate and `ophis-arc-validationcloud-cu` ledger: 40 CU
+reserved before each attempt, 20,000 CU/minute and 1,500,000 CU/day, so a month
+stays under 46.5M of the 50M free CU. Exhaustion stops only that lane.
 
 The production event indexer starts at the verified settlement deployment block,
 then resumes its database cursor. `skip-event-sync=false` is deliberate: enabling
