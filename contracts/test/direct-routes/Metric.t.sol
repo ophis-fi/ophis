@@ -16,7 +16,18 @@ interface IMetricRouterTest {
         uint128 priceLimitX64;
         bytes extensionData;
     }
+    struct ExactInputParams {
+        address[] tokens;
+        address[] pools;
+        bytes[] extensionDatas;
+        uint256 zeroForOneBitMap;
+        uint128 amountIn;
+        uint128 amountOutMinimum;
+        address recipient;
+        uint256 deadline;
+    }
     function exactInputSingle(ExactInputSingleParams calldata params) external payable returns (uint256);
+    function exactInput(ExactInputParams calldata params) external payable returns (uint256);
 }
 
 interface IMetricQuoterTest {
@@ -55,6 +66,49 @@ contract MetricForkTest is Test {
         _checkPool();
         uint256 received = _swap(WETH, USDG, true, 0.0001 ether);
         _swap(USDG, WETH, false, uint128(received));
+    }
+
+    /// NVDA -> USDG -> META through two pinned pools. The solver quotes each hop separately at one block (the
+    /// router as first recipient, Settlement as last); execution must pay exactly the second quote.
+    function testMetricTwoPoolRoute() public {
+        address nvda = 0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC;
+        address meta = 0xc0D6457C16Cc70d6790Dd43521C899C87ce02f35;
+        address[] memory pools = new address[](2);
+        pools[0] = 0xBc6426CdBCE142dfbff33303dc0923509f61eedc;
+        pools[1] = 0x90CABdA18279BBB3D935989aF807b08B0e8CeC61;
+        uint128 amount = 0.001 ether;
+        vm.prank(address(0), address(0));
+        (uint256 consumed, uint256 mid) =
+            IMetricQuoterTest(QUOTER).quoteLiveExactInSingle(pools[0], ROUTER, ROUTER, true, amount, 0, "");
+        assertEq(consumed, amount);
+        vm.prank(address(0), address(0));
+        (uint256 midConsumed, uint256 quoted) = IMetricQuoterTest(QUOTER)
+            .quoteLiveExactInSingle(pools[1], ROUTER, SETTLEMENT, false, uint128(mid), type(uint128).max, "");
+        assertEq(midConsumed, mid);
+        assertGt(quoted, 0);
+
+        address[] memory tokens = new address[](3);
+        (tokens[0], tokens[1], tokens[2]) = (nvda, USDG, meta);
+        // Bit i is the direction of pools[i]: NVDA is token0 of the first pool, USDG token1 of the second.
+        IMetricRouterTest.ExactInputParams memory params = IMetricRouterTest.ExactInputParams(
+            tokens, pools, new bytes[](2), 1, amount, uint128(quoted), SETTLEMENT, block.timestamp + 300
+        );
+        deal(nvda, SETTLEMENT, amount);
+        uint256 beforeOut = IMetricTokenTest(meta).balanceOf(SETTLEMENT);
+        uint256 routerUsdg = IMetricTokenTest(USDG).balanceOf(ROUTER);
+        vm.startPrank(SETTLEMENT, SUBMITTER);
+        assertTrue(IMetricTokenTest(nvda).approve(ROUTER, amount));
+        // One wei above the quote is unattainable, while balance and allowance are still in place.
+        params.amountOutMinimum = uint128(quoted) + 1;
+        vm.expectRevert();
+        IMetricRouterTest(ROUTER).exactInput(params);
+        params.amountOutMinimum = uint128(quoted);
+        uint256 reported = IMetricRouterTest(ROUTER).exactInput(params);
+        vm.stopPrank();
+        assertEq(reported, quoted);
+        assertEq(IMetricTokenTest(meta).balanceOf(SETTLEMENT) - beforeOut, quoted);
+        assertEq(IMetricTokenTest(nvda).balanceOf(SETTLEMENT), 0);
+        assertEq(IMetricTokenTest(USDG).balanceOf(ROUTER), routerUsdg);
     }
 
     function testMetricRejectsUnattainableOutput() public {
