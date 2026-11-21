@@ -1,0 +1,34 @@
+name: Metric pinned pools freshness
+
+# The Robinhood Metric lane only trades through pools pinned in
+# apps/backend/crates/shared/src/metric.rs. Metric pauses and adds pools every
+# week, so this fails when the pinned set no longer matches the rule. Fix with
+# `python3 scripts/metric-pools.py` and a PR. (Actions may not open PRs in this
+# repository, so the refresh itself stays a reviewed human step.)
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '41 6 * * 1'
+  pull_request:
+    paths:
+      - 'scripts/metric-pools.py'
+      - 'apps/backend/crates/shared/src/metric.rs'
+      - '.github/workflows/metric-pools-freshness.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: metric-pools-freshness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Compare the pinned pools with the rule
+        run: python3 -I scripts/metric-pools.py --check

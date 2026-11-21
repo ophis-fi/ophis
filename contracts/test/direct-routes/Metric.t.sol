@@ -28,9 +28,21 @@ interface IMetricRouterTest {
     }
     function exactInputSingle(ExactInputSingleParams calldata params) external payable returns (uint256);
     function exactInput(ExactInputParams calldata params) external payable returns (uint256);
+    // Same field layout as ExactInputParams: (tokens, pools, extensionDatas, bitmap, amountOut, amountInMaximum,
+    // recipient, deadline).
+    function exactOutput(ExactInputParams calldata params) external payable returns (uint256);
 }
 
 interface IMetricQuoterTest {
+    function quoteLiveExactOutSingle(
+        address pool,
+        address sender,
+        address recipient,
+        bool zeroForOne,
+        uint128 amountOutDesired,
+        uint128 priceLimitX64,
+        bytes calldata extensionData
+    ) external returns (uint256 amountIn, uint256 amountOut);
     function quoteLiveExactInSingle(
         address pool,
         address sender,
@@ -107,6 +119,48 @@ contract MetricForkTest is Test {
         assertEq(reported, quoted);
         assertEq(IMetricTokenTest(meta).balanceOf(SETTLEMENT) - beforeOut, quoted);
         assertEq(IMetricTokenTest(nvda).balanceOf(SETTLEMENT), 0);
+        assertEq(IMetricTokenTest(USDG).balanceOf(ROUTER), 0);
+    }
+
+    /// Buy an exact 0.0001 META with NVDA through two pinned pools. The solver quotes the last hop first
+    /// (Settlement as recipient), then the first hop for that input with the last pool as recipient; execution
+    /// must take exactly the quoted input and pay exactly the requested output.
+    function testMetricTwoPoolExactOutput() public {
+        address nvda = 0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC;
+        address meta = 0xc0D6457C16Cc70d6790Dd43521C899C87ce02f35;
+        address[] memory pools = new address[](2);
+        pools[0] = 0xBc6426CdBCE142dfbff33303dc0923509f61eedc;
+        pools[1] = 0x90CABdA18279BBB3D935989aF807b08B0e8CeC61;
+        uint128 wanted = 0.0001 ether;
+        vm.prank(address(0), address(0));
+        (uint256 mid, uint256 lastOut) = IMetricQuoterTest(QUOTER)
+            .quoteLiveExactOutSingle(pools[1], ROUTER, SETTLEMENT, false, wanted, type(uint128).max, "");
+        assertEq(lastOut, wanted);
+        vm.prank(address(0), address(0));
+        (uint256 cost, uint256 midOut) =
+            IMetricQuoterTest(QUOTER).quoteLiveExactOutSingle(pools[0], ROUTER, pools[1], true, uint128(mid), 0, "");
+        assertEq(midOut, mid);
+        assertGt(cost, 0);
+
+        address[] memory tokens = new address[](3);
+        (tokens[0], tokens[1], tokens[2]) = (nvda, USDG, meta);
+        IMetricRouterTest.ExactInputParams memory params = IMetricRouterTest.ExactInputParams(
+            tokens, pools, new bytes[](2), 1, wanted, uint128(cost) - 1, SETTLEMENT, block.timestamp + 300
+        );
+        // Funded and approved above the cost, so only the cap can stop the swap.
+        deal(nvda, SETTLEMENT, cost * 2);
+        uint256 beforeOut = IMetricTokenTest(meta).balanceOf(SETTLEMENT);
+        vm.startPrank(SETTLEMENT, SUBMITTER);
+        assertTrue(IMetricTokenTest(nvda).approve(ROUTER, cost * 2));
+        // One wei under the quoted cost is not enough.
+        vm.expectRevert();
+        IMetricRouterTest(ROUTER).exactOutput(params);
+        params.amountOutMinimum = uint128(cost);
+        uint256 spent = IMetricRouterTest(ROUTER).exactOutput(params);
+        vm.stopPrank();
+        assertEq(spent, cost);
+        assertEq(IMetricTokenTest(meta).balanceOf(SETTLEMENT) - beforeOut, wanted);
+        assertEq(IMetricTokenTest(nvda).balanceOf(SETTLEMENT), cost);
         assertEq(IMetricTokenTest(USDG).balanceOf(ROUTER), 0);
     }
 
