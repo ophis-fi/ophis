@@ -22,14 +22,16 @@ pub const DEADLINE_SECS: u64 = 300;
 pub const MAX_DEADLINE_SECS: u64 = 600;
 
 /// `(pool, token0, token1)`, generated from the real
-/// `GET /public/v1/evm/4663/metadata` response of 2026-10-20 (41 pools). Only
-/// the 9 pools Metric classifies `green` are kept: locked, immutable anchored
-/// price provider, stop-loss and velocity guard, verified curator, no reason
-/// codes. Each was `v1`, unpaused, `healthy` and listed under the pinned
+/// `GET /public/v1/evm/4663/metadata` response of 2026-11-21 (701 pools). Only
+/// the busiest live pool per pair that Metric classifies `green` is kept (11
+/// of 40 green; the rest are paused, feed-down, or ANT/USDG, whose token is
+/// not in the Ophis token list and whose source extension differs): locked,
+/// immutable anchored price provider, stop-loss and velocity guard, verified
+/// curator, no reason codes. Each was `v1`, unpaused, `healthy` and listed under the pinned
 /// factory and quoter. Router `tokenOut` is unchecked onchain, so tokens and
 /// direction always come from this table; at its pinned block the solver
 /// re-reads `getImmutables()` and the factory's `isPool`.
-/// shortcut: nine reviewed pools; verify new pool identities before extending.
+/// shortcut: eleven reviewed pools; verify new pool identities before extending.
 pub const POOLS: &[(Address, Address, Address)] = &[
     // WETH/USDG
     (
@@ -75,7 +77,7 @@ pub const POOLS: &[(Address, Address, Address)] = &[
     ),
     // MU/USDG
     (
-        address!("f8b502f67E2Dc185172Dc5a3fE96950e65bf7acA"),
+        address!("4538681130D33CB1E3F7495F733CaEa3a678A299"),
         address!("fF080c8ce2E5feadaCa0Da81314Ae59D232d4afD"),
         USDG,
     ),
@@ -83,6 +85,18 @@ pub const POOLS: &[(Address, Address, Address)] = &[
     (
         address!("15C38890Ab7933c6cC06d28184D59b9915A2FC9b"),
         address!("c72b96e0E48ecd4DC75E1e45396e26300BC39681"),
+        USDG,
+    ),
+    // SPY/USDG
+    (
+        address!("13783E80F95DC9Fc10622451a3eE755593F0E666"),
+        address!("117cc2133c37B721F49dE2A7a74833232B3B4C0C"),
+        USDG,
+    ),
+    // QQQ/USDG
+    (
+        address!("74f5f207a1038C08F9980579a50D2719bfC15774"),
+        address!("D5f3879160bc7c32ebb4dC785F8a4F505888de68"),
         USDG,
     ),
 ];
@@ -191,7 +205,7 @@ mod tests {
 
     #[test]
     fn pinned_pools_are_unique_usdg_pairs() {
-        assert_eq!(POOLS.len(), 9);
+        assert_eq!(POOLS.len(), 11);
         for (i, &(pool, token0, token1)) in POOLS.iter().enumerate() {
             assert_eq!(token1, USDG);
             assert!(!pool.is_zero() && !token0.is_zero() && token0 != token1);
