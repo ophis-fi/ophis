@@ -97,11 +97,12 @@ contract MetricForkTest is Test {
         uint256 beforeOut = IMetricTokenTest(meta).balanceOf(SETTLEMENT);
         vm.startPrank(SETTLEMENT, SUBMITTER);
         assertTrue(IMetricTokenTest(nvda).approve(ROUTER, amount));
-        uint256 reported = IMetricRouterTest(ROUTER).exactInput(params);
-        // One wei above the quote is unattainable.
+        // One wei above the quote is unattainable, while balance and allowance are still in place.
         params.amountOutMinimum = uint128(quoted) + 1;
         vm.expectRevert();
         IMetricRouterTest(ROUTER).exactInput(params);
+        params.amountOutMinimum = uint128(quoted);
+        uint256 reported = IMetricRouterTest(ROUTER).exactInput(params);
         vm.stopPrank();
         assertEq(reported, quoted);
         assertEq(IMetricTokenTest(meta).balanceOf(SETTLEMENT) - beforeOut, quoted);

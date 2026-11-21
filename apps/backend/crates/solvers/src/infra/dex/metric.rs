@@ -82,6 +82,8 @@ impl Metric {
         };
         let two_pools = futures::future::try_join_all(mids.into_iter().map(|mid| async move {
             // The router holds the intermediate token between its two swaps.
+            // ponytail: only the best-paying first pool is tried; if no second
+            // pool fills its output the pair gets no two-pool route.
             let Some((first, mid_out)) =
                 self.best(context, sell, mid, input, metric::ROUTER).await?
             else {
@@ -93,15 +95,18 @@ impl Metric {
             Ok::<_, Error>(second.map(|(pool, out)| (vec![sell, mid, buy], vec![first, pool], out)))
         }));
         let (one_pool, two_pools) = futures::try_join!(one_pool, two_pools)?;
-        // On equal output the one-pool route wins: it costs less gas.
-        let (tokens, pools, quoted) = two_pools
-            .into_iter()
-            .flatten()
-            .fold(one_pool, |best, route| match best {
-                Some(best) if best.2 >= route.2 => Some(best),
-                _ => Some(route),
-            })
-            .ok_or(Error::NotFound)?;
+        let two_pools = two_pools.into_iter().flatten().max_by_key(|route| route.2);
+        // ponytail: the second pool's gas is not priced here, so a two-pool
+        // route must pay over 0.1% more than the one-pool route to replace it;
+        // price the gas in the buy token if that margin loses real orders.
+        let (tokens, pools, quoted) = match (one_pool, two_pools) {
+            (Some(one), Some(two))
+                if two.2.saturating_mul(U256::from(1000)) <= one.2.saturating_mul(U256::from(1001)) =>
+            {
+                one
+            }
+            (one, two) => two.or(one).ok_or(Error::NotFound)?,
+        };
         let gas = GAS_PER_POOL * pools.len() as u64;
         let bps = metrics::clamp_slippage_bps(
             metrics::Dex::Metric,

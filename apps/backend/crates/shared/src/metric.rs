@@ -21,6 +21,10 @@ pub const USDG: Address = address!("5fc5360D0400a0Fd4f2af552ADD042D716F1d168");
 pub const DEADLINE_SECS: u64 = 300;
 /// The latest deadline the driver accepts, leaving room for clock skew.
 pub const MAX_DEADLINE_SECS: u64 = 600;
+/// Byte lengths of the two canonical calls. `decode` checks them before ABI
+/// decoding so crafted offsets cannot make it allocate beyond a few kilobytes.
+const ONE_POOL_LEN: usize = 4 + 32 * 12;
+const TWO_POOL_LEN: usize = 4 + 32 * 21;
 
 /// `(pool, token0, token1)`, generated from the real
 /// `GET /public/v1/evm/4663/metadata` response of 2026-11-21 (701 pools).
@@ -512,6 +516,9 @@ pub fn decode(
     recipient: Address,
     now: u64,
 ) -> Option<(U256, U256)> {
+    if data.len() != ONE_POOL_LEN && data.len() != TWO_POOL_LEN {
+        return None;
+    }
     let (tokens, pools, input, minimum, deadline) =
         if let Ok(call) = exactInputSingleCall::abi_decode(data) {
             let p = call.params;
@@ -598,6 +605,7 @@ mod tests {
             )
         };
         let data = via(&[nvda, USDG, meta], &[first, second]).unwrap();
+        assert_eq!(data.len(), TWO_POOL_LEN);
         let p = exactInputCall::abi_decode(&data).unwrap().params;
         assert_eq!(p.tokens, [nvda, USDG, meta]);
         assert_eq!(p.pools, [first, second]);
@@ -687,7 +695,7 @@ mod tests {
         let usdg = U256::from(2_000_000_000u64);
         let deadline = NOW + DEADLINE_SECS;
         let sell = calldata(WETH, USDG, one, usdg, SETTLEMENT, deadline).unwrap();
-        assert_eq!(sell.len(), 4 + 32 * 12);
+        assert_eq!(sell.len(), ONE_POOL_LEN);
         assert_eq!(
             keccak256(&sell),
             b256!("7324ae42dcd607466d57953c0157c568fa0200f48e86fe62d147fc50bcb7620c")
