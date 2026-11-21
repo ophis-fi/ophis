@@ -71,45 +71,39 @@ impl Metric {
         }
         // Every quote of one order reads the same canonical block.
         let context = self.rpc.snapshot().await?;
-        let one_pool = async {
-            if !direct {
-                return Ok(None);
-            }
-            let best = self
+        // A pair with a pinned pool only ever uses one pool; two-pool routes
+        // exist for pairs without one. The two are never ranked against each
+        // other, so no second pool's gas has to be weighed against its gain.
+        let (tokens, pools, quoted) = if direct {
+            let (pool, out) = self
                 .best(context, sell, buy, input, self.settlement)
-                .await?;
-            Ok::<_, Error>(best.map(|(pool, out)| (vec![sell, buy], vec![pool], out)))
-        };
-        let two_pools = futures::future::try_join_all(mids.into_iter().map(|mid| async move {
-            // The router holds the intermediate token between its two swaps.
-            // ponytail: only the best-paying first pool is tried; if no second
-            // pool fills its output the pair gets no two-pool route.
-            let Some((first, mid_out)) =
-                self.best(context, sell, mid, input, metric::ROUTER).await?
-            else {
-                return Ok(None);
-            };
-            let second = self
-                .best(context, mid, buy, mid_out, self.settlement)
-                .await?;
-            Ok::<_, Error>(second.map(|(pool, out)| (vec![sell, mid, buy], vec![first, pool], out)))
-        }));
-        let (one_pool, two_pools) = futures::try_join!(one_pool, two_pools)?;
-        let two_pools = two_pools.into_iter().flatten().max_by_key(|route| route.2);
-        // A second pool has to earn its extra gas. Rank on the order's own
-        // fee-adjusted limit check: the headroom (bps) each route's output
-        // has above the minimum it needs with its own gas, then raw output;
-        // the one-pool route wins a full tie. Quotes carry no limit, so they
-        // rank on output alone.
-        let score = |route: &(Vec<Address>, Vec<Address>, U256)| {
-            let gas = GAS_PER_POOL * route.1.len() as u64 + dex::SIM_SETTLE_OVERHEAD_GAS;
-            let headroom =
-                order.bounded_solve_slippage_bps(route.2, 10_000, eth::Gas(U256::from(gas)), 0);
-            (headroom, route.2)
-        };
-        let (tokens, pools, quoted) = match (one_pool, two_pools) {
-            (Some(one), Some(two)) if score(&one) >= score(&two) => one,
-            (one, two) => two.or(one).ok_or(Error::NotFound)?,
+                .await?
+                .ok_or(Error::NotFound)?;
+            (vec![sell, buy], vec![pool], out)
+        } else {
+            let routes = futures::future::try_join_all(mids.into_iter().map(|mid| async move {
+                // The router holds the intermediate token between its swaps.
+                // ponytail: only the best-paying first pool is tried; if no
+                // second pool fills its output the pair gets no route.
+                let Some((first, mid_out)) =
+                    self.best(context, sell, mid, input, metric::ROUTER).await?
+                else {
+                    return Ok(None);
+                };
+                let second = self
+                    .best(context, mid, buy, mid_out, self.settlement)
+                    .await?;
+                Ok::<_, Error>(
+                    second.map(|(pool, out)| (vec![sell, mid, buy], vec![first, pool], out)),
+                )
+            }))
+            .await?;
+            // Both candidates cost the same gas, so the higher output wins.
+            routes
+                .into_iter()
+                .flatten()
+                .max_by_key(|route| route.2)
+                .ok_or(Error::NotFound)?
         };
         let gas = GAS_PER_POOL * pools.len() as u64;
         let bps = metrics::clamp_slippage_bps(
@@ -739,59 +733,19 @@ mod tests {
         );
         assert_eq!(calls[0][1], calls[1][1], "one canonical block");
 
-        // A pair with direct pools still takes the better two-pool route:
-        // SPCX -> USDG -> WETH pays ~0.5 WETH against the direct mock's 2e9
-        // wei.
+        // A pair with a pinned pool never takes two pools, even when the
+        // mock pays far more through USDG.
         let spcx = metric::POOLS[1].1;
-        assert!(metric::route(spcx, WETH).is_some());
+        let (direct, _) = metric::route(spcx, WETH).unwrap();
         let swap = solver
-            .swap(
-                &order(spcx, WETH, input),
-                &dex::Slippage::one_percent(),
-                true,
-            )
+            .swap(&order(spcx, WETH, input), &dex::Slippage::one_percent(), true)
             .await
             .unwrap();
-        let p = metric::exactInputCall::abi_decode(&swap.calls[0].calldata)
+        let p = metric::exactInputSingleCall::abi_decode(&swap.calls[0].calldata)
             .unwrap()
             .params;
-        assert_eq!(p.tokens, [spcx, metric::USDG, WETH]);
-        assert_eq!(p.pools, [metric::POOLS[1].0, metric::POOLS[0].0]);
-
-        // SPCX -> USDG: the direct pool pays 2e9 - 1, through WETH pays 2e9.
-        // With no limit the extra unit wins; against a signed limit, once the
-        // second pool's gas eats more headroom than that unit adds, the
-        // one-pool route stays.
-        let mut near = order(spcx, metric::USDG, input);
-        let swap = solver
-            .swap(&near, &dex::Slippage::one_percent(), true)
-            .await
-            .unwrap();
-        assert_eq!(swap.output.amount, U256::from(2_000_000_000u64));
-        assert_eq!(
-            metric::exactInputCall::abi_decode(&swap.calls[0].calldata)
-                .unwrap()
-                .params
-                .tokens,
-            [spcx, WETH, metric::USDG]
-        );
-        near.buy_limit = U256::from(1_800_000_000u64);
-        near.solve_fee = dex::SolveFee {
-            gas_price: eth::Ether(U256::from(100_000_000_000u64)),
-            sell_price: Some(crate::domain::auction::Price(eth::Ether(U256::from(
-                10u64.pow(18),
-            )))),
-            ..Default::default()
-        };
-        let swap = solver
-            .swap(&near, &dex::Slippage::one_percent(), true)
-            .await
-            .unwrap();
-        assert_eq!(
-            swap.output.amount,
-            U256::from(out(metric::POOLS[1].0, true))
-        );
-        assert!(metric::exactInputSingleCall::abi_decode(&swap.calls[0].calldata).is_ok());
+        assert_eq!(p.pool, direct);
+        assert_eq!(swap.gas.0, U256::from(350_000));
     }
 
     #[tokio::test]
