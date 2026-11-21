@@ -88,7 +88,11 @@ fn required_custom_amounts(
     } else {
         None
     };
-    if order.side != competition::order::Side::Sell
+    // Metric is the only protected route that fills BUY orders. They run the
+    // same exact-input router call as SELL orders, never an exact-output
+    // call that pulls less than its approval.
+    let buy_side = order.side == competition::order::Side::Buy;
+    if (buy_side && protected_interactions[0] != shared::metric::ROUTER)
         || (protected_interactions[0] == FXUSD && sell != FXUSD)
     {
         return Err(super::Error(
@@ -107,6 +111,25 @@ fn required_custom_amounts(
         .filter(|price| !price.is_zero())
         .ok_or_else(|| super::Error("missing or zero protected buy clearing price".to_owned()))?;
     let executed = eth::U256::from(fulfillment.executed_amount);
+    if buy_side {
+        // `executed` is the bought amount. The trader pays
+        // `executed * buy_price / sell_price` plus the fee; the router may
+        // spend no more than that first term (rounded down) and must return
+        // at least `executed`.
+        let max_input = executed
+            .checked_mul(buy_price)
+            .and_then(|paid| paid.checked_div(sell_price))
+            .ok_or_else(|| super::Error("protected clearing amount overflow".to_owned()))?;
+        return Ok(Some(
+            competition::solution::custom_allowlist::RequiredAmounts {
+                sell_token: sell,
+                buy_token: buy,
+                max_input,
+                min_output: executed,
+                arc_v4_input,
+            },
+        ));
+    }
     let amount_in = executed
         .checked_add(fulfillment.fee.unwrap_or_default())
         .ok_or_else(|| super::Error("protected fulfillment input overflow".to_owned()))?;
@@ -721,6 +744,46 @@ mod protected_interaction_tests {
             assert_eq!(context.min_output, U256::from(990));
             assert!(context.arc_v4_input.is_none());
         }
+    }
+
+    #[test]
+    fn only_metric_fills_protected_buy_orders() {
+        let sell = address!("4200000000000000000000000000000000000006");
+        let buy = address!("0b2C639c533813f4Aa9D7837CAf62653d097Ff85");
+        let mut order = protected_order(sell, buy);
+        order.side = competition::order::Side::Buy;
+        // A solver prices a BUY as sell = output, buy = input.
+        let amounts = |target: Address, input: &str| {
+            let solution = serde_json::from_value(serde_json::json!({
+                "id": 1,
+                "prices": {format!("{sell:#x}"): "990", format!("{buy:#x}"): input},
+                "trades": [{
+                    "kind": "fulfillment",
+                    "order": format!("0x{}", "00".repeat(56)),
+                    "executedAmount": "990",
+                    "fee": "7"
+                }],
+                "interactions": [{
+                    "kind": "custom", "internalize": false, "target": target,
+                    "value": "0", "callData": "0x", "allowances": [],
+                    "inputs": [], "outputs": []
+                }]
+            }))
+            .unwrap();
+            required_custom_amounts(&solution, std::slice::from_ref(&order), TEST_WETH.into())
+        };
+        // The router may spend what the trader pays before the fee and must
+        // return the whole bought amount.
+        let context = amounts(shared::metric::ROUTER, "1010").unwrap().unwrap();
+        assert_eq!((context.sell_token, context.buy_token), (sell, buy));
+        assert_eq!(
+            (context.max_input, context.min_output),
+            (U256::from(1010), U256::from(990))
+        );
+        assert!(amounts(shared::metric::ROUTER, "0").is_err());
+        // Every other protected route stays SELL-only.
+        assert!(amounts(shared::arc_sushi::ROUTER, "1010").is_err());
+        assert!(amounts(address!("833fA253e3A0cb2be15F14Cb0B0Ad0C17dD57b12"), "1010").is_err());
     }
 
     fn protected_order(sell: Address, buy: Address) -> competition::Order {

@@ -419,6 +419,8 @@ sol! {
     struct ExactInputParams { address[] tokens; address[] pools; bytes[] extensionDatas; uint256 zeroForOneBitMap; uint128 amountIn; uint128 amountOutMinimum; address recipient; uint256 deadline; }
     function exactInput(ExactInputParams params) external payable returns (uint256 amountOut);
     function quoteLiveExactInSingle(address pool, address sender, address recipient, bool zeroForOne, uint128 amountIn, uint128 priceLimitX64, bytes extensionData) external returns (uint256 amountIn_, uint256 amountOut);
+    // Quoting only: BUY orders still execute through the exact-input calls.
+    function quoteLiveExactOutSingle(address pool, address sender, address recipient, bool zeroForOne, uint128 amountOutDesired, uint128 priceLimitX64, bytes extensionData) external returns (uint256 amountIn, uint256 amountOut);
     // Static return whose first words are (factory, token0, token1).
     function getImmutables() external view;
     function isPool(address pool) external view returns (bool);
@@ -717,6 +719,10 @@ mod tests {
         assert_eq!(
             quoteLiveExactInSingleCall::SELECTOR,
             [0x67, 0xa0, 0x01, 0x05]
+        );
+        assert_eq!(
+            quoteLiveExactOutSingleCall::SELECTOR,
+            [0x6a, 0xc1, 0x4c, 0x1b]
         );
         assert_eq!(getImmutablesCall::SELECTOR, [0xbc, 0xdb, 0x4d, 0xad]);
         assert_eq!(isPoolCall::SELECTOR, [0x5b, 0x16, 0xeb, 0xb7]);

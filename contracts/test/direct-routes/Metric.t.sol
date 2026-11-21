@@ -40,11 +40,21 @@ interface IMetricQuoterTest {
         uint128 priceLimitX64,
         bytes calldata extensionData
     ) external returns (uint256 amountIn_, uint256 amountOut);
+    function quoteLiveExactOutSingle(
+        address pool,
+        address sender,
+        address recipient,
+        bool zeroForOne,
+        uint128 amountOutDesired,
+        uint128 priceLimitX64,
+        bytes calldata extensionData
+    ) external returns (uint256 amountIn, uint256 amountOut);
 }
 
 interface IMetricTokenTest {
     function approve(address spender, uint256 amount) external returns (bool);
     function balanceOf(address account) external view returns (uint256);
+    function allowance(address owner, address spender) external view returns (uint256);
 }
 
 contract MetricForkTest is Test {
@@ -109,6 +119,25 @@ contract MetricForkTest is Test {
         assertEq(IMetricTokenTest(meta).balanceOf(SETTLEMENT) - beforeOut, quoted);
         assertEq(IMetricTokenTest(nvda).balanceOf(SETTLEMENT), 0);
         assertEq(IMetricTokenTest(USDG).balanceOf(ROUTER), routerUsdg);
+    }
+
+    /// A BUY order: the quoter prices the exact output, and the exact-input call spends that whole input with the
+    /// bought amount as its floor. On a filled swap nothing of the input and no allowance stays behind.
+    function testMetricBuyOrderSpendsItsWholeAllowance() public {
+        uint128 want = 1e6;
+        vm.prank(address(0), address(0));
+        (uint256 cost, uint256 filled) =
+            IMetricQuoterTest(QUOTER).quoteLiveExactOutSingle(POOL, ROUTER, SETTLEMENT, true, want, 0, "");
+        assertEq(filled, want);
+        deal(WETH, SETTLEMENT, cost);
+        uint256 beforeOut = IMetricTokenTest(USDG).balanceOf(SETTLEMENT);
+        vm.startPrank(SETTLEMENT, SUBMITTER);
+        assertTrue(IMetricTokenTest(WETH).approve(ROUTER, cost));
+        IMetricRouterTest(ROUTER).exactInputSingle(_params(WETH, USDG, true, uint128(cost), want));
+        vm.stopPrank();
+        assertGe(IMetricTokenTest(USDG).balanceOf(SETTLEMENT) - beforeOut, want);
+        assertEq(IMetricTokenTest(WETH).balanceOf(SETTLEMENT), 0);
+        assertEq(IMetricTokenTest(WETH).allowance(SETTLEMENT, ROUTER), 0);
     }
 
     function testMetricRejectsUnattainableOutput() public {
