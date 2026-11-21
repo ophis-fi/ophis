@@ -96,17 +96,18 @@ impl Metric {
         }));
         let (one_pool, two_pools) = futures::try_join!(one_pool, two_pools)?;
         let two_pools = two_pools.into_iter().flatten().max_by_key(|route| route.2);
-        // ponytail: the second pool's gas is not priced here, so a two-pool
-        // route must pay over 0.1% more than the one-pool route to replace it,
-        // unless only the two-pool route reaches the order's minimum; price
-        // the gas in the buy token if that margin loses real orders.
+        // A second pool has to earn its extra gas: compare what each route
+        // credits after its own estimated fee, `output × (input − fee)`, as
+        // the solution builder does. With no fee estimate (quotes) that is
+        // plain output; the one-pool route wins a tie.
+        let credited = |route: &(Vec<Address>, Vec<Address>, U256)| {
+            let gas = GAS_PER_POOL * route.1.len() as u64 + dex::SIM_SETTLE_OVERHEAD_GAS;
+            let fee = order.solve_fee.fee_in_sell(eth::Gas(U256::from(gas)));
+            // Outputs fit u128 and inputs int128, so this cannot overflow.
+            route.2 * input.saturating_sub(fee)
+        };
         let (tokens, pools, quoted) = match (one_pool, two_pools) {
-            (Some(one), Some(two))
-                if one.2 >= order.buy_limit
-                    && two.2.saturating_mul(U256::from(1000)) <= one.2.saturating_mul(U256::from(1001)) =>
-            {
-                one
-            }
+            (Some(one), Some(two)) if credited(&one) >= credited(&two) => one,
             (one, two) => two.or(one).ok_or(Error::NotFound)?,
         };
         let gas = GAS_PER_POOL * pools.len() as u64;
@@ -756,16 +757,14 @@ mod tests {
         assert_eq!(p.tokens, [spcx, metric::USDG, WETH]);
         assert_eq!(p.pools, [metric::POOLS[1].0, metric::POOLS[0].0]);
 
-        // Within 0.1% the one-pool route stays, unless it misses the order's
-        // minimum. On SPCX -> USDG the
-        // direct pool pays 2e9 - 1, through WETH pays 2e9 exactly.
-        let direct = U256::from(out(metric::POOLS[1].0, true));
+        // SPCX -> USDG: the direct pool pays 2e9 - 1, through WETH pays 2e9.
+        // With no fee estimate the extra unit wins; once the second pool's gas
+        // costs more than that unit is worth, the one-pool route stays.
         let mut near = order(spcx, metric::USDG, input);
-        let swap = solver.swap(&near, &dex::Slippage::one_percent(), true).await.unwrap();
-        assert_eq!(swap.output.amount, direct);
-        assert!(metric::exactInputSingleCall::abi_decode(&swap.calls[0].calldata).is_ok());
-        near.buy_limit = direct + U256::from(1);
-        let swap = solver.swap(&near, &dex::Slippage::one_percent(), true).await.unwrap();
+        let swap = solver
+            .swap(&near, &dex::Slippage::one_percent(), true)
+            .await
+            .unwrap();
         assert_eq!(swap.output.amount, U256::from(2_000_000_000u64));
         assert_eq!(
             metric::exactInputCall::abi_decode(&swap.calls[0].calldata)
@@ -774,6 +773,22 @@ mod tests {
                 .tokens,
             [spcx, WETH, metric::USDG]
         );
+        near.solve_fee = dex::SolveFee {
+            gas_price: eth::Ether(U256::from(10_000u64)),
+            sell_price: Some(crate::domain::auction::Price(eth::Ether(U256::from(
+                10u64.pow(18),
+            )))),
+            ..Default::default()
+        };
+        let swap = solver
+            .swap(&near, &dex::Slippage::one_percent(), true)
+            .await
+            .unwrap();
+        assert_eq!(
+            swap.output.amount,
+            U256::from(out(metric::POOLS[1].0, true))
+        );
+        assert!(metric::exactInputSingleCall::abi_decode(&swap.calls[0].calldata).is_ok());
     }
 
     #[tokio::test]
