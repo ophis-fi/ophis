@@ -623,11 +623,10 @@ pub fn validate_with_settlement(
     if chain_id == 4663 && target == ROBINHOOD_ELFOMO {
         return validate_elfomo_swap(custom, required_amounts);
     }
-    // Metric's router also exposes externalSwap, multicall, sequence and
+    // Metric's router also exposes exact-output, externalSwap, sequence and
     // payment helpers, and never checks path tokens against the pools. Accept
-    // only the canonical exact-input or exact-output call over one pinned
-    // pool, or two pinned pools joined by one token, bound to the fulfillment
-    // and Settlement.
+    // only the canonical exact-input call over one pinned pool, or two pinned
+    // pools joined by one token, bound to the fulfillment and Settlement.
     if chain_id == metric::CHAIN_ID && target == metric::ROUTER {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -1896,24 +1895,6 @@ mod tests {
         assert!(check(Some(required(nvda, ROBINHOOD_USDG, 1000, 990))).is_err());
         assert!(check(Some(required(nvda, meta, 999, 990))).is_err());
         assert!(check(Some(required(nvda, meta, 1000, 991))).is_err());
-
-        // The exact-output form of the same route: at most 1000 in, exactly
-        // 990 out.
-        let data = metric::calldata_out_via(
-            &[nvda, ROBINHOOD_USDG, meta],
-            &[metric::POOLS[3].0, metric::POOLS[2].0],
-            U256::from(1000),
-            U256::from(990),
-            ROBINHOOD_SETTLEMENT,
-            NOW + metric::DEADLINE_SECS,
-        )
-        .unwrap();
-        let exact_out = direct_custom(metric::ROUTER, nvda, meta, 1000, 990, data);
-        let check = |r: Option<RequiredAmounts>| validate_metric_swap(&exact_out, r, NOW);
-        assert_eq!(check(Some(required(nvda, meta, 1000, 990))), Ok(()));
-        assert!(check(Some(required(nvda, meta, 999, 990))).is_err());
-        assert!(check(Some(required(nvda, meta, 1000, 991))).is_err());
-        assert!(check(Some(required(meta, nvda, 1000, 990))).is_err());
     }
 
     #[test]

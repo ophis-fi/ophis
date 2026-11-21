@@ -1,4 +1,4 @@
-//! Metric v1 exact-input and exact-output grammar (one pool, or two pools through one
+//! Metric v1 exact-input grammar (one pool, or two pools through one
 //! intermediate token) on Robinhood (4663), shared by the
 //! direct solver and the driver guard. No API response supplies a target, pool,
 //! token, price or calldata at runtime.
@@ -333,12 +333,6 @@ pub const POOLS: &[(Address, Address, Address)] = &[
         address!("2E8c31162b855A2ffa90F6F8634643Ad6F111e18"),
         USDG,
     ),
-    // ORBIO/USDG
-    (
-        address!("B0ADCfa307E4Af2355203497bA04EbC0C4b1E683"),
-        address!("Aa07A0e9209e16aC99708C3EC70159c6eF3128A3"),
-        USDG,
-    ),
     // INDEX/USDG
     (
         address!("71C950Ce34E4D5e15158De7521F0cE87b6554a49"),
@@ -355,6 +349,12 @@ pub const POOLS: &[(Address, Address, Address)] = &[
     (
         address!("46ee6729aFB50f38AcD436c83A8a9Fb25F8f5c00"),
         address!("98096d17e191B3dA1d5f99a6D7b3584351b11E18"),
+        USDG,
+    ),
+    // ORBIO/USDG
+    (
+        address!("B0ADCfa307E4Af2355203497bA04EbC0C4b1E683"),
+        address!("Aa07A0e9209e16aC99708C3EC70159c6eF3128A3"),
         USDG,
     ),
     // ANT/USDG
@@ -419,11 +419,6 @@ sol! {
     function exactInputSingle(ExactInputSingleParams params) external payable returns (uint256 amountOut);
     struct ExactInputParams { address[] tokens; address[] pools; bytes[] extensionDatas; uint256 zeroForOneBitMap; uint128 amountIn; uint128 amountOutMinimum; address recipient; uint256 deadline; }
     function exactInput(ExactInputParams params) external payable returns (uint256 amountOut);
-    struct ExactOutputSingleParams { address pool; address tokenIn; address tokenOut; bool zeroForOne; uint128 amountOut; uint128 amountInMaximum; address recipient; uint256 deadline; uint128 priceLimitX64; bytes extensionData; }
-    function exactOutputSingle(ExactOutputSingleParams params) external payable returns (uint256 amountIn);
-    struct ExactOutputParams { address[] tokens; address[] pools; bytes[] extensionDatas; uint256 zeroForOneBitMap; uint128 amountOut; uint128 amountInMaximum; address recipient; uint256 deadline; }
-    function exactOutput(ExactOutputParams params) external payable returns (uint256 amountIn);
-    function quoteLiveExactOutSingle(address pool, address sender, address recipient, bool zeroForOne, uint128 amountOutDesired, uint128 priceLimitX64, bytes extensionData) external returns (uint256 amountIn, uint256 amountOut);
     function quoteLiveExactInSingle(address pool, address sender, address recipient, bool zeroForOne, uint128 amountIn, uint128 priceLimitX64, bytes extensionData) external returns (uint256 amountIn_, uint256 amountOut);
     // Static return whose first words are (factory, token0, token1).
     function getImmutables() external view;
@@ -475,42 +470,14 @@ pub fn calldata(
     calldata_via(&[sell, buy], &[pool], input, minimum, recipient, deadline)
 }
 
-/// The canonical exact-input call swapping `tokens[0]` for the last token
-/// through one pinned pool per consecutive token pair: `exactInputSingle` for
-/// one pool, `exactInput` for two. Fails unless every pool is pinned for its
-/// hop.
+/// The canonical call swapping `tokens[0]` for the last token through one
+/// pinned pool per consecutive token pair: `exactInputSingle` for one pool,
+/// `exactInput` for two. Fails unless every pool is pinned for its hop.
 pub fn calldata_via(
     tokens: &[Address],
     pools: &[Address],
     input: U256,
     minimum: U256,
-    recipient: Address,
-    deadline: u64,
-) -> Option<Vec<u8>> {
-    encode(false, tokens, pools, input, minimum, recipient, deadline)
-}
-
-/// As [`calldata_via`] for a fixed `output`, spending at most `max_input`:
-/// `exactOutputSingle` for one pool, `exactOutput` for two.
-pub fn calldata_out_via(
-    tokens: &[Address],
-    pools: &[Address],
-    max_input: U256,
-    output: U256,
-    recipient: Address,
-    deadline: u64,
-) -> Option<Vec<u8>> {
-    encode(true, tokens, pools, max_input, output, recipient, deadline)
-}
-
-/// `input` is the exact input or the input cap; `output` the output floor or
-/// the exact output. The exact side must fit the pools' `int128`.
-fn encode(
-    exact_out: bool,
-    tokens: &[Address],
-    pools: &[Address],
-    input: U256,
-    output: U256,
     recipient: Address,
     deadline: u64,
 ) -> Option<Vec<u8>> {
@@ -527,94 +494,55 @@ fn encode(
             self::pools(tokens[hop], tokens[hop + 1]).find(|&(pinned, _)| pinned == pool)?;
         directions.push(zero_for_one);
     }
-    let bounded = |amount: U256| u128::try_from(amount).ok().filter(|&a| a != 0);
-    let (input, output) = if exact_out {
-        (bounded(input)?, exact_input(output)?)
-    } else {
-        (exact_input(input)?, bounded(output)?)
-    };
+    let amount_in = exact_input(input)?;
+    let minimum = u128::try_from(minimum).ok().filter(|&m| m != 0)?;
     if recipient.is_zero() || deadline == 0 {
         return None;
     }
-    let deadline = U256::from(deadline);
     if let [pool] = *pools {
-        let (zero_for_one, limit) = (directions[0], price_limit(directions[0]));
-        return Some(if exact_out {
-            exactOutputSingleCall {
-                params: ExactOutputSingleParams {
-                    pool,
-                    tokenIn: tokens[0],
-                    tokenOut: tokens[1],
-                    zeroForOne: zero_for_one,
-                    amountOut: output,
-                    amountInMaximum: input,
-                    recipient,
-                    deadline,
-                    priceLimitX64: limit,
-                    extensionData: Bytes::new(),
-                },
-            }
-            .abi_encode()
-        } else {
+        return Some(
             exactInputSingleCall {
                 params: ExactInputSingleParams {
                     pool,
                     tokenIn: tokens[0],
                     tokenOut: tokens[1],
-                    zeroForOne: zero_for_one,
-                    amountIn: input,
-                    amountOutMinimum: output,
+                    zeroForOne: directions[0],
+                    amountIn: amount_in,
+                    amountOutMinimum: minimum,
                     recipient,
-                    deadline,
-                    priceLimitX64: limit,
+                    deadline: U256::from(deadline),
+                    priceLimitX64: price_limit(directions[0]),
                     extensionData: Bytes::new(),
                 },
             }
-            .abi_encode()
-        });
+            .abi_encode(),
+        );
     }
-    let (tokens, pools) = (tokens.to_vec(), pools.to_vec());
-    let extension_datas = vec![Bytes::new(); pools.len()];
-    // Bit `i` is the direction of `pools[i]`, for both entrypoints.
-    let bitmap = U256::from(u8::from(directions[0]) | u8::from(directions[1]) << 1);
-    Some(if exact_out {
-        exactOutputCall {
-            params: ExactOutputParams {
-                tokens,
-                pools,
-                extensionDatas: extension_datas,
-                zeroForOneBitMap: bitmap,
-                amountOut: output,
-                amountInMaximum: input,
-                recipient,
-                deadline,
-            },
-        }
-        .abi_encode()
-    } else {
+    Some(
         exactInputCall {
             params: ExactInputParams {
-                tokens,
-                pools,
-                extensionDatas: extension_datas,
-                zeroForOneBitMap: bitmap,
-                amountIn: input,
-                amountOutMinimum: output,
+                tokens: tokens.to_vec(),
+                pools: pools.to_vec(),
+                extensionDatas: vec![Bytes::new(); pools.len()],
+                // Bit `i` is the direction of `pools[i]`.
+                zeroForOneBitMap: U256::from(
+                    u8::from(directions[0]) | u8::from(directions[1]) << 1,
+                ),
+                amountIn: amount_in,
+                amountOutMinimum: minimum,
                 recipient,
-                deadline,
+                deadline: U256::from(deadline),
             },
         }
-        .abi_encode()
-    })
+        .abi_encode(),
+    )
 }
 
-/// Returns `(input, output)` only for a byte-exact canonical call from `sell`
-/// to `buy` over pinned pools (one, or two through one intermediate token),
-/// paying `recipient`, with a deadline in `(now, now + MAX_DEADLINE_SECS]`.
-/// For the exact-input calls that is `(amountIn, amountOutMinimum)`; for the
-/// exact-output calls `(amountInMaximum, amountOut)`, so either way the swap
-/// takes at most `input` and pays at least `output`. Other selectors, payment
-/// helpers, unpinned pools, directions, tokens, price limits, extension data,
+/// Returns `(amountIn, amountOutMinimum)` only for the byte-exact canonical
+/// call from `sell` to `buy` over pinned pools (one, or two through one
+/// intermediate token), paying `recipient`, with a deadline in
+/// `(now, now + MAX_DEADLINE_SECS]`. Other selectors, payment helpers,
+/// unpinned pools, directions, tokens, price limits, extension data,
 /// noncanonical offsets and trailing bytes all fail.
 pub fn decode(
     data: &[u8],
@@ -626,36 +554,36 @@ pub fn decode(
     if data.len() != ONE_POOL_LEN && data.len() != TWO_POOL_LEN {
         return None;
     }
-    let selector: [u8; 4] = data[..4].try_into().ok()?;
-    let (exact_out, tokens, pools, input, output, deadline) = if selector
-        == exactInputSingleCall::SELECTOR
-    {
-        let p = exactInputSingleCall::abi_decode(data).ok()?.params;
-        let amounts = (p.amountIn, p.amountOutMinimum);
-        (false, vec![sell, buy], vec![p.pool], amounts.0, amounts.1, p.deadline)
-    } else if selector == exactOutputSingleCall::SELECTOR {
-        let p = exactOutputSingleCall::abi_decode(data).ok()?.params;
-        let amounts = (p.amountInMaximum, p.amountOut);
-        (true, vec![sell, buy], vec![p.pool], amounts.0, amounts.1, p.deadline)
-    } else if selector == exactInputCall::SELECTOR {
-        let p = exactInputCall::abi_decode(data).ok()?.params;
-        (false, p.tokens, p.pools, p.amountIn, p.amountOutMinimum, p.deadline)
-    } else if selector == exactOutputCall::SELECTOR {
-        let p = exactOutputCall::abi_decode(data).ok()?.params;
-        (true, p.tokens, p.pools, p.amountInMaximum, p.amountOut, p.deadline)
-    } else {
-        return None;
-    };
-    if tokens.first() != Some(&sell) || tokens.last() != Some(&buy) {
-        return None;
-    }
+    let (tokens, pools, input, minimum, deadline) =
+        if let Ok(call) = exactInputSingleCall::abi_decode(data) {
+            let p = call.params;
+            (
+                vec![sell, buy],
+                vec![p.pool],
+                p.amountIn,
+                p.amountOutMinimum,
+                p.deadline,
+            )
+        } else {
+            let p = exactInputCall::abi_decode(data).ok()?.params;
+            if p.tokens.len() != 3 || p.tokens[0] != sell || p.tokens[2] != buy {
+                return None;
+            }
+            (
+                p.tokens,
+                p.pools,
+                p.amountIn,
+                p.amountOutMinimum,
+                p.deadline,
+            )
+        };
     let deadline = u64::try_from(deadline).ok()?;
     if deadline <= now || deadline > now.checked_add(MAX_DEADLINE_SECS)? {
         return None;
     }
-    let (input, output) = (U256::from(input), U256::from(output));
-    (encode(exact_out, &tokens, &pools, input, output, recipient, deadline)?.as_slice() == data)
-        .then_some((input, output))
+    let (input, minimum) = (U256::from(input), U256::from(minimum));
+    (calldata_via(&tokens, &pools, input, minimum, recipient, deadline)?.as_slice() == data)
+        .then_some((input, minimum))
 }
 
 #[cfg(test)]
@@ -785,70 +713,6 @@ mod tests {
         let mut trailing = data.clone();
         trailing.extend([0; 32]);
         assert!(decode(&trailing).is_none());
-    }
-
-    #[test]
-    fn exact_output_calls_are_canonical_and_bound() {
-        // Independently computed with `cast sig` from Metric's router and quoter interfaces.
-        assert_eq!(exactOutputSingleCall::SELECTOR, [0x1b, 0x82, 0x0c, 0xe1]);
-        assert_eq!(exactOutputCall::SELECTOR, [0x05, 0x78, 0x40, 0xca]);
-        assert_eq!(quoteLiveExactOutSingleCall::SELECTOR, [0x6a, 0xc1, 0x4c, 0x1b]);
-        let (nvda, meta) = (POOLS[3].1, POOLS[2].1);
-        let deadline = NOW + DEADLINE_SECS;
-        let (max_in, out) = (U256::from(1010), U256::from(1000));
-        let one = calldata_out_via(&[WETH, USDG], &[POOLS[0].0], max_in, out, SETTLEMENT, deadline)
-            .unwrap();
-        assert_eq!(one.len(), ONE_POOL_LEN);
-        let p = exactOutputSingleCall::abi_decode(&one).unwrap().params;
-        assert_eq!(
-            (p.pool, p.tokenIn, p.tokenOut, p.zeroForOne, p.recipient),
-            (POOLS[0].0, WETH, USDG, true, SETTLEMENT)
-        );
-        assert_eq!((p.amountInMaximum, p.amountOut, p.priceLimitX64), (1010, 1000, 0));
-        assert_eq!(decode(&one, WETH, USDG, SETTLEMENT, NOW), Some((max_in, out)));
-        assert_eq!(decode(&one, USDG, WETH, SETTLEMENT, NOW), None);
-
-        let pools = [POOLS[3].0, POOLS[2].0];
-        let two = calldata_out_via(&[nvda, USDG, meta], &pools, max_in, out, SETTLEMENT, deadline)
-            .unwrap();
-        assert_eq!(two.len(), TWO_POOL_LEN);
-        let p = exactOutputCall::abi_decode(&two).unwrap().params;
-        assert_eq!(p.tokens, [nvda, USDG, meta]);
-        assert_eq!(p.pools, pools);
-        assert_eq!(p.zeroForOneBitMap, U256::from(0b01));
-        assert_eq!((p.amountInMaximum, p.amountOut), (1010, 1000));
-        assert_eq!(decode(&two, nvda, meta, SETTLEMENT, NOW), Some((max_in, out)));
-        assert_eq!(decode(&two, meta, nvda, SETTLEMENT, NOW), None);
-        assert_eq!(decode(&two, nvda, meta, WETH, NOW), None);
-
-        // Same bytes under the exact-input selector mean a different swap and
-        // still decode as that one: amounts keep their (input, output) order.
-        let as_input = calldata_via(&[nvda, USDG, meta], &pools, out, max_in, SETTLEMENT, deadline)
-            .unwrap();
-        assert_eq!(as_input[4..], two[4..]);
-        assert_eq!(decode(&as_input, nvda, meta, SETTLEMENT, NOW), Some((out, max_in)));
-
-        // The exact side must fit int128; the cap must be non-zero.
-        let big = U256::from(i128::MAX as u128) + U256::from(1);
-        let via = |max_in, out| {
-            calldata_out_via(&[WETH, USDG], &[POOLS[0].0], max_in, out, SETTLEMENT, deadline)
-        };
-        assert!(via(big, out).is_some());
-        assert!(via(max_in, big).is_none());
-        assert!(via(U256::ZERO, out).is_none());
-        assert!(via(max_in, U256::ZERO).is_none());
-        for index in 0..two.len() {
-            let mut bad = two.clone();
-            bad[index] ^= 1;
-            if decode(&bad, nvda, meta, SETTLEMENT, NOW).is_some() {
-                let q = exactOutputCall::abi_decode(&bad).unwrap().params;
-                assert_eq!(
-                    (q.tokens, q.pools, q.recipient, q.zeroForOneBitMap),
-                    (p.tokens.clone(), p.pools.clone(), p.recipient, p.zeroForOneBitMap),
-                    "byte {index}"
-                );
-            }
-        }
     }
 
     #[test]

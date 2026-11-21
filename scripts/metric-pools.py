@@ -58,13 +58,32 @@ def onchain(pool, token0, token1):
     return int(registered, 16) == 1 and immutables[: 3 * 64] == word(FACTORY) + word(token0) + word(token1)
 
 
+ROW = re.compile(
+    r'\(\s*address!\("([0-9a-fA-F]{40})"\),\s*address!\("([0-9a-fA-F]{40})"\),'
+    r'\s*(?:USDG|address!\("([0-9a-fA-F]{40})"\)),\s*\)'
+)
+
+
+def rows_of(text):
+    return [(pool.lower(), t0.lower(), (t1 or USDG[2:]).lower()) for pool, t0, t1 in ROW.findall(text)]
+
+
+def row(p):
+    return tuple(p[k][2:].lower() for k in ("poolAddress", "token0", "token1"))
+
+
 def main():
     source = open(TABLE).read()
     head, rest = source.split(BEGIN)
     generated, tail = rest.split(END)
-    table = head[head.index("pub const POOLS") :]
-    reviewed = [a.lower() for a in re.findall(r'\(\s*address!\("([0-9a-fA-F]{40})"\)', table)]
-    current = {a.lower() for a in re.findall(r'\(\s*address!\("([0-9a-fA-F]{40})"\)', generated)}
+    # Rows as lowercase (pool, token0, token1), read from the Rust source.
+    reviewed = rows_of(head[head.index("pub const POOLS") :])
+    current = set(rows_of(generated))
+    # Every `(` entry in the generated block must parse as a full row.
+    if len(rows_of(generated)) != generated.count("    (\n"):
+        sys.exit("unparseable generated row in the table")
+    if len(rows_of(generated)) != len(current):
+        sys.exit("duplicate generated rows in the table")
 
     pools, offset = [], 0
     while offset is not None:
@@ -87,29 +106,28 @@ def main():
     ]
     eligible.sort(key=volume, reverse=True)
     taken = {}
-    for p in pools:  # reviewed pools hold a slot whatever their state
-        if str(p.get("poolAddress", ""))[2:].lower() in reviewed:
-            pair = (p["token0"], p["token1"])
-            taken[pair] = taken.get(pair, 0) + 1
+    for _, token0, token1 in reviewed:  # reviewed pools hold a slot whatever their state
+        taken[(token0, token1)] = taken.get((token0, token1), 0) + 1
+    reviewed_pools = {pool for pool, _, _ in reviewed}
     chosen = []
     for p in eligible:
-        pair = (p["token0"], p["token1"])
-        if p["poolAddress"][2:].lower() in reviewed or taken.get(pair, 0) >= PER_PAIR:
+        pair = row(p)[1:]
+        if row(p)[0] in reviewed_pools or taken.get(pair, 0) >= PER_PAIR:
             continue
         if not onchain(p["poolAddress"], p["token0"], p["token1"]):
             sys.exit("chain disagrees with the Metric API about pool %s" % p["poolAddress"])
         taken[pair] = taken.get(pair, 0) + 1
         chosen.append(p)
 
-    wanted = {p["poolAddress"][2:].lower() for p in chosen}
+    wanted = {row(p) for p in chosen}
     if "--check" in sys.argv:
         for p in pools:
-            if str(p.get("poolAddress", ""))[2:].lower() in reviewed and p.get("pauseLevel") != 0:
+            if str(p.get("poolAddress", ""))[2:].lower() in reviewed_pools and p.get("pauseLevel") != 0:
                 print("reviewed pool is paused (edit by hand): %s" % p["poolAddress"])
-        for address in sorted(wanted - current):
-            print("missing from the table: 0x%s" % address)
-        for address in sorted(current - wanted):
-            print("no longer eligible: 0x%s" % address)
+        for entry in sorted(wanted - current):
+            print("missing from the table: 0x%s (tokens 0x%s, 0x%s)" % entry)
+        for entry in sorted(current - wanted):
+            print("no longer eligible: 0x%s (tokens 0x%s, 0x%s)" % entry)
         if wanted != current:
             sys.exit("pinned Metric pools drifted; run: python3 scripts/metric-pools.py")
         print("pinned Metric pools match the rule (%d generated)" % len(current))
