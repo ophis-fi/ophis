@@ -1,4 +1,5 @@
-//! Metric v1 single-pool exact-input grammar on Robinhood (4663), shared by the
+//! Metric v1 exact-input grammar (one pool, or two pools through one
+//! intermediate token) on Robinhood (4663), shared by the
 //! direct solver and the driver guard. No API response supplies a target, pool,
 //! token, price or calldata at runtime.
 //!
@@ -22,16 +23,19 @@ pub const DEADLINE_SECS: u64 = 300;
 pub const MAX_DEADLINE_SECS: u64 = 600;
 
 /// `(pool, token0, token1)`, generated from the real
-/// `GET /public/v1/evm/4663/metadata` response of 2026-11-21 (701 pools). Only
-/// the busiest live pool per pair that Metric classifies `green` is kept (11
-/// of 40 green; the rest are paused, feed-down, or ANT/USDG, whose token is
-/// not in the Ophis token list and whose source extension differs): locked,
-/// immutable anchored price provider, stop-loss and velocity guard, verified
-/// curator, no reason codes. Each was `v1`, unpaused, `healthy` and listed under the pinned
-/// factory and quoter. Router `tokenOut` is unchecked onchain, so tokens and
-/// direction always come from this table; at its pinned block the solver
-/// re-reads `getImmutables()` and the factory's `isPool`.
-/// shortcut: eleven reviewed pools; verify new pool identities before extending.
+/// `GET /public/v1/evm/4663/metadata` response of 2026-11-21 (701 pools).
+/// Kept: `v1` pools under the pinned factory and quoter that were `healthy`,
+/// unpaused and traded at least 10,000 USD in the prior 7 days, at most six
+/// per pair by that volume. The first eleven are the Metric-`green` pools
+/// (locked, immutable anchored price provider, stop-loss and velocity guard,
+/// verified curator); the rest carry any tier, so their curator can reprice or
+/// refuse a swap. That costs a reverted settlement at worst: only the router
+/// is approved, for exactly the input, and it reverts below the minimum
+/// output. Router path tokens are unchecked onchain, so tokens and direction
+/// always come from this table; at its pinned block the solver re-reads
+/// `getImmutables()` and the factory's `isPool` for every pool it quotes.
+/// ponytail: static snapshot, goes stale as Metric pauses and adds pools;
+/// regenerate with the rule above, appending so earlier indexes stay stable.
 pub const POOLS: &[(Address, Address, Address)] = &[
     // WETH/USDG
     (
@@ -99,20 +103,293 @@ pub const POOLS: &[(Address, Address, Address)] = &[
         address!("D5f3879160bc7c32ebb4dC785F8a4F505888de68"),
         USDG,
     ),
+    // WETH/USDG
+    (
+        address!("Af2640F82A499abFCF143fEC309f1D8953b4A3aB"),
+        address!("0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"),
+        USDG,
+    ),
+    // WETH/USDG
+    (
+        address!("b99A267E6a92F4cC360Ac49fD4B93E2811e83818"),
+        address!("0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"),
+        USDG,
+    ),
+    // WETH/USDG
+    (
+        address!("f8eEaC87637ddDe2B8eeCDA772783015E904Cb7d"),
+        address!("0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"),
+        USDG,
+    ),
+    // WETH/USDG
+    (
+        address!("3ffa7c104B91f75C95Ece3Db588F5CdeB361Ed24"),
+        address!("0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"),
+        USDG,
+    ),
+    // WETH/USDG
+    (
+        address!("1f2BF38b4Afdb9A234d9bf052806ec94c0d8f357"),
+        address!("0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"),
+        USDG,
+    ),
+    // ANT/USDG
+    (
+        address!("6FAd54a8Aba3cB0D67b4607B3D1418973305D5E8"),
+        address!("bbB6c29bCc3a1028A2B54310DF73F4F7A3bcB373"),
+        USDG,
+    ),
+    // NVDA/USDG
+    (
+        address!("5e91FB119F471c545ABc24c7042773793bbA6B12"),
+        address!("d0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC"),
+        USDG,
+    ),
+    // PONS/USDG
+    (
+        address!("5A3571DcA43ECAFCd670e87a6EaF6DE0e2d70954"),
+        address!("39dBED3a2bd333467115dE45665cC57F813C4571"),
+        USDG,
+    ),
+    // SPCX/USDG
+    (
+        address!("27f0338d3a66b49040F302c649A24d856FD28754"),
+        address!("4a0E65A3EcceC6dBe60AE065F2e7bb85Fae35eEa"),
+        USDG,
+    ),
+    // PONS/USDG
+    (
+        address!("769847CB712Af540429842aF45E2E4d4Df5f3993"),
+        address!("39dBED3a2bd333467115dE45665cC57F813C4571"),
+        USDG,
+    ),
+    // GOOGL/USDG
+    (
+        address!("38761054D2739AF2AA173ef5528fd46254c97b4b"),
+        address!("2e0847E8910a9732eB3fb1bb4b70a580ADAD4FE3"),
+        USDG,
+    ),
+    // NVDA/USDG
+    (
+        address!("362Fe643Ce7Fc42493F5144e238a71CE62f1Bd72"),
+        address!("d0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC"),
+        USDG,
+    ),
+    // NET/USDG
+    (
+        address!("9735A405CB634f5BCeE2debC0f6326B0d1749661"),
+        address!("CA9c78Dd337A67F6e0077F65F5E9218719d30eDf"),
+        USDG,
+    ),
+    // GOOGL/USDG
+    (
+        address!("e1D2e088F50EBBc2a46dB480885a1107A0EdCCA8"),
+        address!("2e0847E8910a9732eB3fb1bb4b70a580ADAD4FE3"),
+        USDG,
+    ),
+    // TSLA/USDG
+    (
+        address!("33997D2ac4aE74055aF92B2cA6DdA26a1E09Aa8D"),
+        address!("322F0929c4625eD5bAd873c95208D54E1c003b2d"),
+        USDG,
+    ),
+    // SPCX/USDG
+    (
+        address!("6D78ba4be5A18fdc572e193584C3eaE9D10b941e"),
+        address!("4a0E65A3EcceC6dBe60AE065F2e7bb85Fae35eEa"),
+        USDG,
+    ),
+    // CASHCAT/USDG
+    (
+        address!("60f1875b6EC684261DC86D48eB0572d98Cc7a9E6"),
+        address!("020bfC650A365f8BB26819deAAbF3E21291018b4"),
+        USDG,
+    ),
+    // META/USDG
+    (
+        address!("1a6b8c974713dA157C7Ca35Ab80494d038F30C37"),
+        address!("c0D6457C16Cc70d6790Dd43521C899C87ce02f35"),
+        USDG,
+    ),
+    // ORBIO/USDG
+    (
+        address!("B8184A2212DD95dc10A6da2Ed6383E23e161c06D"),
+        address!("Aa07A0e9209e16aC99708C3EC70159c6eF3128A3"),
+        USDG,
+    ),
+    // AAPL/USDG
+    (
+        address!("3c2Dae11373059b54dCA262016832FDfaaeA0c46"),
+        address!("aF3D76f1834A1d425780943C99Ea8A608f8a93f9"),
+        USDG,
+    ),
+    // META/USDG
+    (
+        address!("494186718b873e0f994cfC5aE6f8825E71d723c0"),
+        address!("c0D6457C16Cc70d6790Dd43521C899C87ce02f35"),
+        USDG,
+    ),
+    // TSLA/USDG
+    (
+        address!("9bEfc0f59b93c2AdFD2CDBb80fdD0A1a707d67aa"),
+        address!("322F0929c4625eD5bAd873c95208D54E1c003b2d"),
+        USDG,
+    ),
+    // META/USDG
+    (
+        address!("c82B3Ee73B6B44C7b8Ed990C0F2C8C74832Ed2F4"),
+        address!("c0D6457C16Cc70d6790Dd43521C899C87ce02f35"),
+        USDG,
+    ),
+    // SPCX/WETH
+    (
+        address!("D868E1B47fdcc3A59C7Be3DD34a284e8581AfDE3"),
+        address!("4a0E65A3EcceC6dBe60AE065F2e7bb85Fae35eEa"),
+        address!("0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"),
+    ),
+    // AAPL/USDG
+    (
+        address!("7054E59cC5aDeF6c0dFf80cf7f239eb961c8004b"),
+        address!("aF3D76f1834A1d425780943C99Ea8A608f8a93f9"),
+        USDG,
+    ),
+    // QQQ/USDG
+    (
+        address!("fF3b67d1293Dfc2291e3c8abb2A3b85AB541DaD3"),
+        address!("D5f3879160bc7c32ebb4dC785F8a4F505888de68"),
+        USDG,
+    ),
+    // AI/USDG
+    (
+        address!("5096B19133Fb571A988Bb23F5955D551289C66C2"),
+        address!("2E8c31162b855A2ffa90F6F8634643Ad6F111e18"),
+        USDG,
+    ),
+    // NVDA/USDG
+    (
+        address!("3198CDc491826c9B7A18a5aF94bc8a869546299d"),
+        address!("d0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC"),
+        USDG,
+    ),
+    // TSLA/USDG
+    (
+        address!("d824460f03134Ec0E6e23bcFafa9D4E0855ac231"),
+        address!("322F0929c4625eD5bAd873c95208D54E1c003b2d"),
+        USDG,
+    ),
+    // BONER/USDG
+    (
+        address!("ac6C4B17919DC439150fACdBFfE4dabD760E0A65"),
+        address!("98096d17e191B3dA1d5f99a6D7b3584351b11E18"),
+        USDG,
+    ),
+    // SPCX/WETH
+    (
+        address!("b24A2B7f34bD3aCCa374216B17612E3808843a5c"),
+        address!("4a0E65A3EcceC6dBe60AE065F2e7bb85Fae35eEa"),
+        address!("0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"),
+    ),
+    // GOOGL/USDG
+    (
+        address!("C7F5074fEE49B65c40b33C67113d44f6916D5f87"),
+        address!("2e0847E8910a9732eB3fb1bb4b70a580ADAD4FE3"),
+        USDG,
+    ),
+    // ORBIO/USDG
+    (
+        address!("B0ADCfa307E4Af2355203497bA04EbC0C4b1E683"),
+        address!("Aa07A0e9209e16aC99708C3EC70159c6eF3128A3"),
+        USDG,
+    ),
+    // AI/USDG
+    (
+        address!("19B5dC695543411a5e1b2CB8E4B6D190dc235d0f"),
+        address!("2E8c31162b855A2ffa90F6F8634643Ad6F111e18"),
+        USDG,
+    ),
+    // INDEX/USDG
+    (
+        address!("71C950Ce34E4D5e15158De7521F0cE87b6554a49"),
+        address!("56910D4409F3a0C78C64DD8D0545FF0705389870"),
+        USDG,
+    ),
+    // BONER/USDG
+    (
+        address!("46ee6729aFB50f38AcD436c83A8a9Fb25F8f5c00"),
+        address!("98096d17e191B3dA1d5f99a6D7b3584351b11E18"),
+        USDG,
+    ),
+    // NET/USDG
+    (
+        address!("c28E8B4A16cA47Ca51e064D168D5EA7C35425009"),
+        address!("CA9c78Dd337A67F6e0077F65F5E9218719d30eDf"),
+        USDG,
+    ),
+    // ANT/USDG
+    (
+        address!("8B411e11E7525F0320197EBeC0E2E4eb90bcE5F8"),
+        address!("bbB6c29bCc3a1028A2B54310DF73F4F7A3bcB373"),
+        USDG,
+    ),
+    // RAETO/WETH
+    (
+        address!("D9456A05819746E2c160F53427378e2b803646bc"),
+        address!("72bE1277E198D0C476869253Cb4E62807e14533c"),
+        address!("0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"),
+    ),
+    // VRAX/USDG
+    (
+        address!("B9aB36440f53004Db14324358eAD4e2C3528e273"),
+        address!("94641b97010608C3827fB058074889f19868FF33"),
+        USDG,
+    ),
+    // AI/USDG
+    (
+        address!("c700487F90a4DA807E0bbC30A5DA5D9A2cd24080"),
+        address!("2E8c31162b855A2ffa90F6F8634643Ad6F111e18"),
+        USDG,
+    ),
+    // SPCX/USDG
+    (
+        address!("71dE7F9e275964488284c7CeB2B12245A9723513"),
+        address!("4a0E65A3EcceC6dBe60AE065F2e7bb85Fae35eEa"),
+        USDG,
+    ),
+    // TORCH/WETH
+    (
+        address!("592bDa5893EE2a9d7aa4D40aDeCa1aB4a063e4e5"),
+        address!("000050E18ffa3F8F7aD170Eb9CeF160eb3Ed1111"),
+        address!("0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"),
+    ),
+    // PONS/USDG
+    (
+        address!("2Df441aE4b63E7fF342216BEEA704A7ABBeD25aE"),
+        address!("39dBED3a2bd333467115dE45665cC57F813C4571"),
+        USDG,
+    ),
+    // SPCX/WETH
+    (
+        address!("fE2755Fb59de7D21295D7b7e6adEE6971c4e4570"),
+        address!("4a0E65A3EcceC6dBe60AE065F2e7bb85Fae35eEa"),
+        address!("0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"),
+    ),
 ];
 
 sol! {
     struct ExactInputSingleParams { address pool; address tokenIn; address tokenOut; bool zeroForOne; uint128 amountIn; uint128 amountOutMinimum; address recipient; uint256 deadline; uint128 priceLimitX64; bytes extensionData; }
     function exactInputSingle(ExactInputSingleParams params) external payable returns (uint256 amountOut);
+    struct ExactInputParams { address[] tokens; address[] pools; bytes[] extensionDatas; uint256 zeroForOneBitMap; uint128 amountIn; uint128 amountOutMinimum; address recipient; uint256 deadline; }
+    function exactInput(ExactInputParams params) external payable returns (uint256 amountOut);
     function quoteLiveExactInSingle(address pool, address sender, address recipient, bool zeroForOne, uint128 amountIn, uint128 priceLimitX64, bytes extensionData) external returns (uint256 amountIn_, uint256 amountOut);
     // Static return whose first words are (factory, token0, token1).
     function getImmutables() external view;
     function isPool(address pool) external view returns (bool);
 }
 
-/// The pinned pool and `zeroForOne` direction for `sell -> buy`.
-pub fn route(sell: Address, buy: Address) -> Option<(Address, bool)> {
-    POOLS.iter().find_map(|&(pool, token0, token1)| {
+/// Every pinned pool and its `zeroForOne` direction for `sell -> buy`, in
+/// table order.
+pub fn pools(sell: Address, buy: Address) -> impl Iterator<Item = (Address, bool)> {
+    POOLS.iter().filter_map(move |&(pool, token0, token1)| {
         if (sell, buy) == (token0, token1) {
             Some((pool, true))
         } else if (sell, buy) == (token1, token0) {
@@ -121,6 +398,11 @@ pub fn route(sell: Address, buy: Address) -> Option<(Address, bool)> {
             None
         }
     })
+}
+
+/// The first pinned pool for `sell -> buy`.
+pub fn route(sell: Address, buy: Address) -> Option<(Address, bool)> {
+    pools(sell, buy).next()
 }
 
 /// The canonical open limit; the amount floor is the only slippage bound.
@@ -136,6 +418,7 @@ pub fn exact_input(amount: U256) -> Option<u128> {
         .filter(|&amount| amount != 0 && amount <= i128::MAX as u128)
 }
 
+/// The canonical call through the first pinned pool for `sell -> buy`.
 pub fn calldata(
     sell: Address,
     buy: Address,
@@ -144,25 +427,72 @@ pub fn calldata(
     recipient: Address,
     deadline: u64,
 ) -> Option<Vec<u8>> {
-    let (pool, zero_for_one) = route(sell, buy)?;
+    let (pool, _) = route(sell, buy)?;
+    calldata_via(&[sell, buy], &[pool], input, minimum, recipient, deadline)
+}
+
+/// The canonical call swapping `tokens[0]` for the last token through one
+/// pinned pool per consecutive token pair: `exactInputSingle` for one pool,
+/// `exactInput` for two. Fails unless every pool is pinned for its hop.
+pub fn calldata_via(
+    tokens: &[Address],
+    pools: &[Address],
+    input: U256,
+    minimum: U256,
+    recipient: Address,
+    deadline: u64,
+) -> Option<Vec<u8>> {
+    if tokens.len() != pools.len() + 1 || !(1..=2).contains(&pools.len()) {
+        return None;
+    }
+    // A path may not revisit a token: no round trips, no reused pool.
+    if tokens[0] == tokens[tokens.len() - 1] {
+        return None;
+    }
+    let mut directions = Vec::with_capacity(pools.len());
+    for (hop, &pool) in pools.iter().enumerate() {
+        let (_, zero_for_one) =
+            self::pools(tokens[hop], tokens[hop + 1]).find(|&(pinned, _)| pinned == pool)?;
+        directions.push(zero_for_one);
+    }
     let amount_in = exact_input(input)?;
     let minimum = u128::try_from(minimum).ok().filter(|&m| m != 0)?;
     if recipient.is_zero() || deadline == 0 {
         return None;
     }
+    if let [pool] = *pools {
+        return Some(
+            exactInputSingleCall {
+                params: ExactInputSingleParams {
+                    pool,
+                    tokenIn: tokens[0],
+                    tokenOut: tokens[1],
+                    zeroForOne: directions[0],
+                    amountIn: amount_in,
+                    amountOutMinimum: minimum,
+                    recipient,
+                    deadline: U256::from(deadline),
+                    priceLimitX64: price_limit(directions[0]),
+                    extensionData: Bytes::new(),
+                },
+            }
+            .abi_encode(),
+        );
+    }
     Some(
-        exactInputSingleCall {
-            params: ExactInputSingleParams {
-                pool,
-                tokenIn: sell,
-                tokenOut: buy,
-                zeroForOne: zero_for_one,
+        exactInputCall {
+            params: ExactInputParams {
+                tokens: tokens.to_vec(),
+                pools: pools.to_vec(),
+                extensionDatas: vec![Bytes::new(); pools.len()],
+                // Bit `i` is the direction of `pools[i]`.
+                zeroForOneBitMap: U256::from(
+                    u8::from(directions[0]) | u8::from(directions[1]) << 1,
+                ),
                 amountIn: amount_in,
                 amountOutMinimum: minimum,
                 recipient,
                 deadline: U256::from(deadline),
-                priceLimitX64: price_limit(zero_for_one),
-                extensionData: Bytes::new(),
             },
         }
         .abi_encode(),
@@ -170,10 +500,11 @@ pub fn calldata(
 }
 
 /// Returns `(amountIn, amountOutMinimum)` only for the byte-exact canonical
-/// call over the pinned pool and direction for `sell -> buy`, paying
-/// `recipient`, with a deadline in `(now, now + MAX_DEADLINE_SECS]`. Other
-/// selectors, payment helpers, pools, directions, tokens, price limits,
-/// extension data, noncanonical offsets and trailing bytes all fail.
+/// call from `sell` to `buy` over pinned pools (one, or two through one
+/// intermediate token), paying `recipient`, with a deadline in
+/// `(now, now + MAX_DEADLINE_SECS]`. Other selectors, payment helpers,
+/// unpinned pools, directions, tokens, price limits, extension data,
+/// noncanonical offsets and trailing bytes all fail.
 pub fn decode(
     data: &[u8],
     sell: Address,
@@ -181,14 +512,35 @@ pub fn decode(
     recipient: Address,
     now: u64,
 ) -> Option<(U256, U256)> {
-    let params = exactInputSingleCall::abi_decode(data).ok()?.params;
-    let deadline = u64::try_from(params.deadline).ok()?;
+    let (tokens, pools, input, minimum, deadline) =
+        if let Ok(call) = exactInputSingleCall::abi_decode(data) {
+            let p = call.params;
+            (
+                vec![sell, buy],
+                vec![p.pool],
+                p.amountIn,
+                p.amountOutMinimum,
+                p.deadline,
+            )
+        } else {
+            let p = exactInputCall::abi_decode(data).ok()?.params;
+            if p.tokens.len() != 3 || p.tokens[0] != sell || p.tokens[2] != buy {
+                return None;
+            }
+            (
+                p.tokens,
+                p.pools,
+                p.amountIn,
+                p.amountOutMinimum,
+                p.deadline,
+            )
+        };
+    let deadline = u64::try_from(deadline).ok()?;
     if deadline <= now || deadline > now.checked_add(MAX_DEADLINE_SECS)? {
         return None;
     }
-    let input = U256::from(params.amountIn);
-    let minimum = U256::from(params.amountOutMinimum);
-    (calldata(sell, buy, input, minimum, recipient, deadline)?.as_slice() == data)
+    let (input, minimum) = (U256::from(input), U256::from(minimum));
+    (calldata_via(&tokens, &pools, input, minimum, recipient, deadline)?.as_slice() == data)
         .then_some((input, minimum))
 }
 
@@ -202,21 +554,122 @@ mod tests {
     const WETH: Address = address!("0Bd7D308f8E1639FAb988df18A8011f41EAcAD73");
     const SETTLEMENT: Address = address!("886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD");
     const NOW: u64 = 1_792_050_000 - DEADLINE_SECS;
+    const EXACT_INPUT_SELECTOR: [u8; 4] = [0x87, 0xc0, 0xcd, 0xaa];
 
     #[test]
-    fn pinned_pools_are_unique_usdg_pairs() {
-        assert_eq!(POOLS.len(), 11);
+    fn pinned_pools_are_unique_and_keep_reviewed_indexes() {
+        assert_eq!(POOLS.len(), 56);
         for (i, &(pool, token0, token1)) in POOLS.iter().enumerate() {
+            assert!(!pool.is_zero() && !token0.is_zero() && !token1.is_zero());
+            assert!(token0 != token1);
+            assert!(pools(token0, token1).any(|p| p == (pool, true)));
+            assert!(pools(token1, token0).any(|p| p == (pool, false)));
+            assert!(pools(token0, token1).count() <= 6);
+            assert!(POOLS[i + 1..].iter().all(|other| other.0 != pool));
+        }
+        // The eleven reviewed green pools stay first, one per USDG pair, so
+        // `route` and the driver's indexed tests keep meaning the same pool.
+        for (i, &(pool, token0, token1)) in POOLS[..11].iter().enumerate() {
             assert_eq!(token1, USDG);
-            assert!(!pool.is_zero() && !token0.is_zero() && token0 != token1);
-            assert_eq!(route(token0, token1), Some((pool, true)));
-            assert_eq!(route(token1, token0), Some((pool, false)));
-            for &(other, other0, _) in &POOLS[i + 1..] {
-                assert!(other != pool && other0 != token0);
+            assert_eq!(route(token0, USDG), Some((pool, true)));
+            assert!(POOLS[i + 1..11].iter().all(|other| other.1 != token0));
+        }
+        assert_eq!(pools(WETH, WETH).count(), 0);
+        assert_eq!(pools(WETH, Address::repeat_byte(7)).count(), 0);
+    }
+
+    #[test]
+    fn two_pool_route_is_canonical_and_bound() {
+        // Independently computed: `cast sig
+        // "exactInput((address[],address[],bytes[],uint256,uint128,uint128,
+        // address,uint256))"`.
+        assert_eq!(exactInputCall::SELECTOR, EXACT_INPUT_SELECTOR);
+        let (nvda, meta) = (POOLS[3].1, POOLS[2].1);
+        let (first, second) = (POOLS[3].0, POOLS[2].0);
+        let deadline = NOW + DEADLINE_SECS;
+        let via = |tokens: &[Address], pools: &[Address]| {
+            calldata_via(
+                tokens,
+                pools,
+                U256::from(1000),
+                U256::from(990),
+                SETTLEMENT,
+                deadline,
+            )
+        };
+        let data = via(&[nvda, USDG, meta], &[first, second]).unwrap();
+        let p = exactInputCall::abi_decode(&data).unwrap().params;
+        assert_eq!(p.tokens, [nvda, USDG, meta]);
+        assert_eq!(p.pools, [first, second]);
+        assert_eq!(p.extensionDatas, [Bytes::new(), Bytes::new()]);
+        // NVDA is token0 of the first pool; USDG is token1 of the second.
+        assert_eq!(p.zeroForOneBitMap, U256::from(0b01));
+        assert_eq!((p.amountIn, p.amountOutMinimum), (1000, 990));
+        assert_eq!(
+            (p.recipient, p.deadline),
+            (SETTLEMENT, U256::from(deadline))
+        );
+        let decode = |data: &[u8]| decode(data, nvda, meta, SETTLEMENT, NOW);
+        assert_eq!(decode(&data), Some((U256::from(1000), U256::from(990))));
+        // The reverse path flips both directions.
+        let back = via(&[meta, USDG, nvda], &[second, first]).unwrap();
+        assert_eq!(
+            exactInputCall::abi_decode(&back)
+                .unwrap()
+                .params
+                .zeroForOneBitMap,
+            U256::from(0b01)
+        );
+        assert_eq!(decode(&back), None, "wrong order direction");
+
+        // Paths the table does not connect, round trips and longer paths.
+        assert!(via(&[nvda, USDG, meta], &[second, first]).is_none());
+        assert!(via(&[nvda, WETH, meta], &[first, second]).is_none());
+        assert!(via(&[nvda, USDG, nvda], &[first, first]).is_none());
+        assert!(via(&[nvda, USDG], &[first, second]).is_none());
+        assert!(via(&[nvda, USDG, meta, USDG], &[first, second, second]).is_none());
+        assert!(via(&[], &[]).is_none());
+
+        // Bit flips survive only in the amounts and as sub-window deadline
+        // drift.
+        for index in 0..data.len() {
+            let mut bad = data.clone();
+            bad[index] ^= 1;
+            if let Some(amounts) = decode(&bad) {
+                let q = exactInputCall::abi_decode(&bad).unwrap().params;
+                assert_eq!(
+                    amounts,
+                    (U256::from(q.amountIn), U256::from(q.amountOutMinimum))
+                );
+                assert_eq!(
+                    (q.tokens, q.pools, q.recipient, q.zeroForOneBitMap),
+                    (
+                        p.tokens.clone(),
+                        p.pools.clone(),
+                        p.recipient,
+                        p.zeroForOneBitMap
+                    ),
+                    "byte {index}"
+                );
             }
         }
-        assert_eq!(route(WETH, WETH), None);
-        assert_eq!(route(WETH, POOLS[1].1), None, "no multihop");
+        let with = |f: &dyn Fn(&mut ExactInputParams)| {
+            let mut call = exactInputCall::abi_decode(&data).unwrap();
+            f(&mut call.params);
+            decode(&call.abi_encode())
+        };
+        assert!(with(&|_| ()).is_some());
+        assert!(with(&|p| p.recipient = Address::repeat_byte(9)).is_none());
+        assert!(with(&|p| p.tokens[1] = WETH).is_none());
+        assert!(with(&|p| p.pools[1] = POOLS[1].0).is_none());
+        assert!(with(&|p| p.pools.swap(0, 1)).is_none());
+        assert!(with(&|p| p.extensionDatas[1] = vec![0].into()).is_none());
+        assert!(with(&|p| p.zeroForOneBitMap = U256::from(0b10)).is_none());
+        assert!(with(&|p| p.zeroForOneBitMap = U256::from(0b101)).is_none());
+        assert!(with(&|p| p.deadline = U256::MAX).is_none());
+        let mut trailing = data.clone();
+        trailing.extend([0; 32]);
+        assert!(decode(&trailing).is_none());
     }
 
     #[test]
@@ -279,7 +732,7 @@ mod tests {
         assert!(!ok(U256::from(1), U256::from(u128::MAX) + U256::from(1)));
         assert!(calldata(WETH, USDG, max, max, Address::ZERO, 1).is_none());
         assert!(calldata(WETH, USDG, max, max, SETTLEMENT, 0).is_none());
-        assert!(calldata(WETH, POOLS[1].1, max, max, SETTLEMENT, 1).is_none());
+        assert!(calldata(WETH, WETH, max, max, SETTLEMENT, 1).is_none());
     }
 
     #[test]

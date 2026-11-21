@@ -623,10 +623,10 @@ pub fn validate_with_settlement(
     if chain_id == 4663 && target == ROBINHOOD_ELFOMO {
         return validate_elfomo_swap(custom, required_amounts);
     }
-    // Metric's router also exposes multihop, exact-output, externalSwap,
-    // sequence and payment helpers, and never checks `tokenOut` against the
-    // pool. Accept only the canonical single-pool exact-input call over a
-    // pinned pool/token triple, bound to the fulfillment and Settlement.
+    // Metric's router also exposes exact-output, externalSwap, sequence and
+    // payment helpers, and never checks path tokens against the pools. Accept
+    // only the canonical exact-input call over one pinned pool, or two pinned
+    // pools joined by one token, bound to the fulfillment and Settlement.
     if chain_id == metric::CHAIN_ID && target == metric::ROUTER {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
