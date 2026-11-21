@@ -73,7 +73,8 @@ def row(p):
 
 
 def main():
-    source = open(TABLE).read()
+    with open(TABLE) as table:
+        source = table.read()
     head, rest = source.split(BEGIN)
     generated, tail = rest.split(END)
     # Rows as lowercase (pool, token0, token1), read from the Rust source.
@@ -144,7 +145,8 @@ def main():
             p["token0"][2:],
             token1,
         )
-    open(TABLE, "w").write(head + BEGIN + rows + END + tail)
+    with open(TABLE, "w") as table:
+        table.write(head + BEGIN + rows + END + tail)
     print("wrote %d generated pools (+%d, -%d)" % (len(chosen), len(wanted - current), len(current - wanted)))
 
 
