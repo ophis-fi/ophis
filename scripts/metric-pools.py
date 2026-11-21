@@ -89,7 +89,9 @@ def main():
     pools, offset = [], 0
     while offset is not None:
         page = fetch(API % offset)
-        pools += page["data"]
+        # Offset paging is not a snapshot: keep the first copy of each pool.
+        seen = {p.get("poolAddress") for p in pools}
+        pools += [p for p in page["data"] if p.get("poolAddress") not in seen]
         offset = page.get("nextOffset")
 
     def volume(pool):

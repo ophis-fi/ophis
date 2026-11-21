@@ -95,6 +95,7 @@ contract MetricForkTest is Test {
         );
         deal(nvda, SETTLEMENT, amount);
         uint256 beforeOut = IMetricTokenTest(meta).balanceOf(SETTLEMENT);
+        uint256 routerUsdg = IMetricTokenTest(USDG).balanceOf(ROUTER);
         vm.startPrank(SETTLEMENT, SUBMITTER);
         assertTrue(IMetricTokenTest(nvda).approve(ROUTER, amount));
         // One wei above the quote is unattainable, while balance and allowance are still in place.
@@ -107,7 +108,7 @@ contract MetricForkTest is Test {
         assertEq(reported, quoted);
         assertEq(IMetricTokenTest(meta).balanceOf(SETTLEMENT) - beforeOut, quoted);
         assertEq(IMetricTokenTest(nvda).balanceOf(SETTLEMENT), 0);
-        assertEq(IMetricTokenTest(USDG).balanceOf(ROUTER), 0);
+        assertEq(IMetricTokenTest(USDG).balanceOf(ROUTER), routerUsdg);
     }
 
     function testMetricRejectsUnattainableOutput() public {

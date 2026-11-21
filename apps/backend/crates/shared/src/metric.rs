@@ -21,8 +21,7 @@ pub const USDG: Address = address!("5fc5360D0400a0Fd4f2af552ADD042D716F1d168");
 pub const DEADLINE_SECS: u64 = 300;
 /// The latest deadline the driver accepts, leaving room for clock skew.
 pub const MAX_DEADLINE_SECS: u64 = 600;
-/// Byte lengths of the two canonical calls. `decode` checks them before ABI
-/// decoding so crafted offsets cannot make it allocate beyond a few kilobytes.
+/// Byte lengths of the two canonical calls; `decode` accepts no other.
 const ONE_POOL_LEN: usize = 4 + 32 * 12;
 const TWO_POOL_LEN: usize = 4 + 32 * 21;
 
@@ -551,37 +550,32 @@ pub fn decode(
     recipient: Address,
     now: u64,
 ) -> Option<(U256, U256)> {
-    if data.len() != ONE_POOL_LEN && data.len() != TWO_POOL_LEN {
-        return None;
-    }
-    let (tokens, pools, input, minimum, deadline) =
-        if let Ok(call) = exactInputSingleCall::abi_decode(data) {
-            let p = call.params;
+    // Fields are read from their fixed canonical positions rather than ABI
+    // decoded, so a crafted array length cannot make this allocate; anything
+    // that is not the canonical layout fails the byte comparison below.
+    let word = |i: usize| data.get(4 + 32 * i..36 + 32 * i);
+    let address = |i: usize| word(i).map(|w| Address::from_slice(&w[12..]));
+    let (tokens, pools) =
+        if data.len() == ONE_POOL_LEN && data[..4] == exactInputSingleCall::SELECTOR {
+            (vec![sell, buy], vec![address(1)?])
+        } else if data.len() == TWO_POOL_LEN && data[..4] == exactInputCall::SELECTOR {
             (
-                vec![sell, buy],
-                vec![p.pool],
-                p.amountIn,
-                p.amountOutMinimum,
-                p.deadline,
+                vec![address(10)?, address(11)?, address(12)?],
+                vec![address(14)?, address(15)?],
             )
         } else {
-            let p = exactInputCall::abi_decode(data).ok()?.params;
-            if p.tokens.len() != 3 || p.tokens[0] != sell || p.tokens[2] != buy {
-                return None;
-            }
-            (
-                p.tokens,
-                p.pools,
-                p.amountIn,
-                p.amountOutMinimum,
-                p.deadline,
-            )
+            return None;
         };
-    let deadline = u64::try_from(deadline).ok()?;
+    if tokens[0] != sell || tokens[tokens.len() - 1] != buy {
+        return None;
+    }
+    // Both calls keep amountIn, amountOutMinimum and deadline in these words.
+    let input = U256::from_be_slice(word(5)?);
+    let minimum = U256::from_be_slice(word(6)?);
+    let deadline = u64::try_from(U256::from_be_slice(word(8)?)).ok()?;
     if deadline <= now || deadline > now.checked_add(MAX_DEADLINE_SECS)? {
         return None;
     }
-    let (input, minimum) = (U256::from(input), U256::from(minimum));
     (calldata_via(&tokens, &pools, input, minimum, recipient, deadline)?.as_slice() == data)
         .then_some((input, minimum))
 }
