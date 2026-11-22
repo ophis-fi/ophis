@@ -6,6 +6,9 @@ import sample from './fixtures/usdc-base-optimism.json'
 import { RelayBridgeProvider } from './relayBridgeProvider.service'
 import { isRelayRecoveryRequired } from './relayStatus.service'
 
+import { NATIVE_CURRENCY_ADDRESS } from '../nativeAndWrappedTokens'
+import { USDC_BASE, USDT_BASE, USDT_PLASMA } from '../tokens'
+
 jest.mock('@cowprotocol/sdk-cow-shed', () => ({
   CowShedSdk: jest.fn(() => ({ getCowShedAccount: () => '0x2222222222222222222222222222222222222222' })),
 }))
@@ -87,6 +90,57 @@ it('returns only trusted same-asset intermediate tokens and refuses unproved sou
   expect(
     await relay.getIntermediateTokens({ ...request, buyTokenAddress: '0x4242424242424242424242424242424242424242' }),
   ).toEqual([])
+  expect(fetch).toHaveBeenCalledTimes(1)
+})
+
+it('discovers Base USDC through the exact Plasma USDT0 intermediate', async () => {
+  const plasma = {
+    id: SupportedChainId.PLASMA,
+    depositEnabled: true,
+    disabled: false,
+    currency: {
+      id: 'xpl',
+      address: '0x0000000000000000000000000000000000000000',
+      decimals: 18,
+      supportsBridging: true,
+    },
+    erc20Currencies: [{ id: 'usdt', address: USDT_PLASMA.address, decimals: 6, supportsBridging: true }],
+  }
+  ;(fetch as jest.Mock).mockResolvedValue({ ok: true, json: async () => ({ chains: [...chains.chains, plasma] }) })
+  const relay = new RelayBridgeProvider({
+    enabled: true,
+    trustedTokens: async () => [USDC_BASE, USDT_BASE, USDT_PLASMA],
+    isSourceRouteEnabled: () => true,
+  })
+  const xplToUsdc = {
+    ...request,
+    sellTokenChainId: SupportedChainId.PLASMA,
+    sellTokenAddress: NATIVE_CURRENCY_ADDRESS,
+    sellTokenDecimals: 18,
+    buyTokenChainId: SupportedChainId.BASE,
+    buyTokenAddress: USDC_BASE.address,
+  }
+  expect(await relay.getBuyTokens({ sellChainId: SupportedChainId.PLASMA, buyChainId: SupportedChainId.BASE })).toEqual(
+    {
+      tokens: [
+        expect.objectContaining({ address: USDT_BASE.address }),
+        expect.objectContaining({ address: USDC_BASE.address }),
+      ],
+      isRouteAvailable: true,
+    },
+  )
+  expect(await relay.getIntermediateTokens(xplToUsdc)).toEqual([
+    expect.objectContaining({ address: USDT_PLASMA.address }),
+  ])
+  await expect(relay.getQuote(xplToUsdc)).rejects.toThrow()
+  expect(
+    await relay.getIntermediateTokens({
+      ...xplToUsdc,
+      buyTokenChainId: SupportedChainId.PLASMA,
+      buyTokenAddress: USDT_PLASMA.address,
+      sellTokenChainId: SupportedChainId.BASE,
+    }),
+  ).toEqual([expect.objectContaining({ address: USDT_BASE.address })])
   expect(fetch).toHaveBeenCalledTimes(1)
 })
 
