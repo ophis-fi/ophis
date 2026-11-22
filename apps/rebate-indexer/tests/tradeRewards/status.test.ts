@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Fastify from 'fastify';
-import { TRADE_REWARDS_ELIGIBLE_CHAIN_IDS } from '../../src/tradeRewards/config.js';
 
 const state = vi.hoisted(() => ({
   campaign: { enabled: true, tickets_remaining: 105 },
@@ -54,7 +53,8 @@ describe('trade reward campaign status', () => {
       campaignEnabled: campaign.enabled,
       campaignAvailable: campaign.available,
       ticketsRemaining: campaign.tickets_remaining,
-      eligibleChainIds: [...TRADE_REWARDS_ELIGIBLE_CHAIN_IDS],
+      // Retired Unichain (130) keeps historical eligibility but is not advertised.
+      eligibleChainIds: [1, 56, 42161, 10, 8453, 4663, 9745, 57073, 100, 43114, 137],
     });
     await app.close();
   });

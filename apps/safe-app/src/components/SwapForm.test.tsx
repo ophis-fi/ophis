@@ -60,7 +60,8 @@ it.each([false, true])('Arc quotes with default or explicit URL referrals (expli
   mocks.context.safe = { ...mocks.context.safe, chainId: 5042 };
   await act(async () => root.render(<App />));
   await fillInputs();
-  expect(host.textContent).toContain('Eligible settled trades count toward referral and volume-tier rebates');
+  expect(host.textContent).toContain('Arc orders use ERC-20 tokens.');
+  expect(host.textContent).not.toMatch(/rebate/i);
   expect(host.textContent).toContain(`ref ${explicit ? 'caller-code' : 'builder-code'}`);
   expect(host.querySelector<HTMLInputElement>('input[type="checkbox"]')?.disabled).toBe(true);
   await act(async () => host.querySelector('button')?.click());

@@ -61,8 +61,8 @@ export function OrderStatus({ chainId, orderUid, safeTxHash, enrollmentWarning }
             borderRadius: 8,
           }}
         >
-          Rebate registration failed: your trade still executes, but the rebate may not be tracked.
-          You can retry by reopening this Safe App. ({enrollmentWarning})
+          Trade registration failed. Your order was submitted, and this does not block settlement, but Ophis
+          may not index it. Your next order retries the registration. ({enrollmentWarning})
         </div>
       )}
       {pendingSignature && (
