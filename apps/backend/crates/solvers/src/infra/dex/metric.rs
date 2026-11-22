@@ -4,8 +4,10 @@
 //! execution.
 //!
 //! BUY orders execute the same exact-input router call as SELL orders: the
-//! quoter prices the exact output, the input is padded by the slippage and
-//! the calldata minimum is the order's buy amount. No exact-output router
+//! quoter prices the exact output, the input is that quote plus one basis
+//! point and the calldata minimum is the order's buy amount. The configured
+//! slippage is not charged to a BUY: a price that moves further than the
+//! margin reverts the swap instead of settling. No exact-output router
 //! call, which by design pulls less than its approval, is ever built. A
 //! one-pool swap that drains its pool can still stop short of its input; the
 //! router only ever pulls from its caller, so what stays approved is
@@ -28,6 +30,11 @@ use {
 /// Per pool: router, pool swap, oracle read and three extensions; no quoter
 /// estimate.
 const GAS_PER_POOL: u64 = 350_000;
+/// Added to the quoted input of a BUY. The exact-output quote is not an exact
+/// inverse of the swap: spending the bare quote returns a few parts per
+/// million less than asked at the same block (measured on a fork,
+/// 2026-11-22), which would revert nearly every BUY.
+const BUY_MARGIN_BPS: u16 = 1;
 /// Tokens a two-pool route may pass through.
 const MIDS: [Address; 2] = [metric::USDG, WETH];
 const WETH: Address = address!("0Bd7D308f8E1639FAb988df18A8011f41EAcAD73");
@@ -155,31 +162,14 @@ impl Metric {
                 order.bounded_solve_slippage_bps(quoted, bps, fee_gas, 0)
             };
             (amount, scale(quoted, 10_000u16.saturating_sub(bps))?)
-        } else if is_quote {
-            (quoted, amount)
         } else {
-            // Pay up to the slippage above the quote, but never past what
-            // the signed limit leaves once `into_dex_solution` adds the fee.
-            // ponytail: a legacy market-class order carries no limit context
-            // here, so a pad beyond its limit yields no solution.
-            let fee = &order.solve_fee;
-            let cap = fee
-                .total_sell
-                .checked_mul(amount)
-                .filter(|scaled| !scaled.is_zero() && !fee.total_buy.is_zero())
-                .map_or(U256::MAX, |scaled| {
-                    (scaled / fee.total_buy).saturating_sub(fee.fee_in_sell(fee_gas))
-                });
-            let padded = quoted
-                .checked_add(scale(quoted, bps)?)
-                .ok_or(Error::InvalidResponse)?;
-            (padded.min(cap), amount)
+            // A BUY is charged the quote plus the fixed margin, rounded up,
+            // never the configured slippage. `into_dex_solution` checks the
+            // signed limit.
+            let margin = scale(quoted, BUY_MARGIN_BPS)?.saturating_add(U256::from(1));
+            (quoted.saturating_add(margin), amount)
         };
-        // A BUY whose limit cannot pay the quoted input has no route.
-        if min_out.is_zero()
-            || (!exact_in && input < quoted)
-            || metric::exact_input(input).is_none()
-        {
+        if min_out.is_zero() || metric::exact_input(input).is_none() {
             return Err(Error::NotFound);
         }
         let deadline = SystemTime::now()
@@ -867,7 +857,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn buy_orders_pad_the_input_of_the_exact_input_call() {
+    async fn buy_orders_spend_the_quote_plus_margin_through_the_exact_input_call() {
         let (solver, calls) = solver(Mode::Live).await;
         let want = U256::from(1_000_000_000u64);
         let buy = |sell, buy| {
@@ -879,14 +869,16 @@ mod tests {
         let (pool, _) = metric::route(WETH, metric::USDG).unwrap();
         let quoted = cost(pool, true);
 
-        // A quote advertises the quoter's input unpadded.
+        // Quote and solve both charge the quote plus the one-basis-point
+        // margin, whatever the slippage.
+        let charged = |quoted: u128| U256::from(quoted + quoted / 10_000 + 1);
         let quote = solver
             .swap(&buy(WETH, metric::USDG), &slippage, true)
             .await
             .unwrap();
         assert_eq!(
             (quote.input.amount, quote.output.amount),
-            (U256::from(quoted), want)
+            (charged(quoted), want)
         );
         let asked = quotes(&calls.lock().unwrap()[0]);
         assert!(asked.iter().all(|q| q.amountIn == 1_000_000_000
@@ -905,43 +897,26 @@ mod tests {
                 .all(|call| call.callData[..4] == metric::quoteLiveExactOutSingleCall::SELECTOR)
         );
 
-        // A solve pads the input by the slippage, executes exact-input, and
-        // approves exactly what the router pulls.
-        let padded = U256::from(quoted + quoted / 100);
+        // A solve executes exact-input and approves exactly what the router
+        // pulls.
+        let bare = charged(quoted);
         let swap = solver
             .swap(&buy(WETH, metric::USDG), &slippage, false)
             .await
             .unwrap();
-        assert_eq!((swap.input.amount, swap.output.amount), (padded, want));
-        assert_eq!(swap.allowance.amount.get(), padded);
+        assert_eq!((swap.input.amount, swap.output.amount), (bare, want));
+        assert_eq!(swap.allowance.amount.get(), bare);
         let p = metric::exactInputSingleCall::abi_decode(&swap.calls[0].calldata)
             .unwrap()
             .params;
         assert_eq!(
             (p.pool, U256::from(p.amountIn), U256::from(p.amountOutMinimum)),
-            (pool, padded, want)
+            (pool, bare, want)
         );
         assert_eq!(
             metric::decode(&swap.calls[0].calldata, WETH, metric::USDG, SETTLEMENT, now()),
-            Some((padded, want))
+            Some((bare, want))
         );
-
-        // The signed limit caps the pad; a limit below the quote has no route.
-        let limited = |total_sell: u128| {
-            let mut order = buy(WETH, metric::USDG);
-            order.solve_fee.total_sell = U256::from(total_sell);
-            order.solve_fee.total_buy = want;
-            order
-        };
-        let swap = solver
-            .swap(&limited(quoted + 5), &slippage, false)
-            .await
-            .unwrap();
-        assert_eq!(swap.input.amount, U256::from(quoted + 5));
-        assert!(matches!(
-            solver.swap(&limited(quoted - 1), &slippage, false).await,
-            Err(Error::NotFound)
-        ));
 
         // Two pools are quoted backward from the output: USDG -> META first,
         // then NVDA -> USDG for the USDG that hop needs.
@@ -955,7 +930,7 @@ mod tests {
         assert_eq!(p.pools, [first, second]);
         assert_eq!(
             (U256::from(p.amountIn), U256::from(p.amountOutMinimum)),
-            (U256::from(cost(first, true)), want)
+            (charged(cost(first, true)), want)
         );
         let calls = calls.lock().unwrap()[before..].to_vec();
         assert_eq!(calls.len(), 2);

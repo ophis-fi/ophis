@@ -118,13 +118,19 @@ pub const POOLS: &[(Address, Address, Address)] = &[
     ),
     // WETH/USDG
     (
+        address!("Af2640F82A499abFCF143fEC309f1D8953b4A3aB"),
+        address!("0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"),
+        USDG,
+    ),
+    // WETH/USDG
+    (
         address!("3ffa7c104B91f75C95Ece3Db588F5CdeB361Ed24"),
         address!("0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"),
         USDG,
     ),
     // WETH/USDG
     (
-        address!("Af2640F82A499abFCF143fEC309f1D8953b4A3aB"),
+        address!("1f2BF38b4Afdb9A234d9bf052806ec94c0d8f357"),
         address!("0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"),
         USDG,
     ),
@@ -134,16 +140,22 @@ pub const POOLS: &[(Address, Address, Address)] = &[
         address!("0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"),
         USDG,
     ),
-    // WETH/USDG
+    // ANT/USDG
     (
-        address!("B89Fd35eBc48B791339520af812b70F71D823cc5"),
-        address!("0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"),
+        address!("6FAd54a8Aba3cB0D67b4607B3D1418973305D5E8"),
+        address!("bbB6c29bCc3a1028A2B54310DF73F4F7A3bcB373"),
         USDG,
     ),
     // NVDA/USDG
     (
         address!("5e91FB119F471c545ABc24c7042773793bbA6B12"),
         address!("d0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC"),
+        USDG,
+    ),
+    // PONS/USDG
+    (
+        address!("5A3571DcA43ECAFCd670e87a6EaF6DE0e2d70954"),
+        address!("39dBED3a2bd333467115dE45665cC57F813C4571"),
         USDG,
     ),
     // SPCX/USDG
@@ -154,14 +166,14 @@ pub const POOLS: &[(Address, Address, Address)] = &[
     ),
     // PONS/USDG
     (
-        address!("5A3571DcA43ECAFCd670e87a6EaF6DE0e2d70954"),
+        address!("769847CB712Af540429842aF45E2E4d4Df5f3993"),
         address!("39dBED3a2bd333467115dE45665cC57F813C4571"),
         USDG,
     ),
-    // PONS/USDG
+    // GOOGL/USDG
     (
-        address!("769847CB712Af540429842aF45E2E4d4Df5f3993"),
-        address!("39dBED3a2bd333467115dE45665cC57F813C4571"),
+        address!("38761054D2739AF2AA173ef5528fd46254c97b4b"),
+        address!("2e0847E8910a9732eB3fb1bb4b70a580ADAD4FE3"),
         USDG,
     ),
     // NVDA/USDG
@@ -176,12 +188,6 @@ pub const POOLS: &[(Address, Address, Address)] = &[
         address!("d0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC"),
         USDG,
     ),
-    // GOOGL/USDG
-    (
-        address!("e1D2e088F50EBBc2a46dB480885a1107A0EdCCA8"),
-        address!("2e0847E8910a9732eB3fb1bb4b70a580ADAD4FE3"),
-        USDG,
-    ),
     // NET/USDG
     (
         address!("9735A405CB634f5BCeE2debC0f6326B0d1749661"),
@@ -194,27 +200,27 @@ pub const POOLS: &[(Address, Address, Address)] = &[
         address!("322F0929c4625eD5bAd873c95208D54E1c003b2d"),
         USDG,
     ),
-    // SPCX/USDG
-    (
-        address!("6D78ba4be5A18fdc572e193584C3eaE9D10b941e"),
-        address!("4a0E65A3EcceC6dBe60AE065F2e7bb85Fae35eEa"),
-        USDG,
-    ),
     // CASHCAT/USDG
     (
         address!("60f1875b6EC684261DC86D48eB0572d98Cc7a9E6"),
         address!("020bfC650A365f8BB26819deAAbF3E21291018b4"),
         USDG,
     ),
-    // META/USDG
+    // SPCX/USDG
     (
-        address!("1a6b8c974713dA157C7Ca35Ab80494d038F30C37"),
-        address!("c0D6457C16Cc70d6790Dd43521C899C87ce02f35"),
+        address!("6D78ba4be5A18fdc572e193584C3eaE9D10b941e"),
+        address!("4a0E65A3EcceC6dBe60AE065F2e7bb85Fae35eEa"),
         USDG,
     ),
     // META/USDG
     (
         address!("494186718b873e0f994cfC5aE6f8825E71d723c0"),
+        address!("c0D6457C16Cc70d6790Dd43521C899C87ce02f35"),
+        USDG,
+    ),
+    // META/USDG
+    (
+        address!("1a6b8c974713dA157C7Ca35Ab80494d038F30C37"),
         address!("c0D6457C16Cc70d6790Dd43521C899C87ce02f35"),
         USDG,
     ),
@@ -244,13 +250,13 @@ pub const POOLS: &[(Address, Address, Address)] = &[
     ),
     // NVDA/USDG
     (
-        address!("03703b8c438A9FFa155048106425362643adF3E5"),
+        address!("1Bd815F11fA25164B5b6636996ABb1e6F420975c"),
         address!("d0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC"),
         USDG,
     ),
     // NVDA/USDG
     (
-        address!("1Bd815F11fA25164B5b6636996ABb1e6F420975c"),
+        address!("03703b8c438A9FFa155048106425362643adF3E5"),
         address!("d0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC"),
         USDG,
     ),
@@ -320,16 +326,16 @@ pub const POOLS: &[(Address, Address, Address)] = &[
         address!("bbB6c29bCc3a1028A2B54310DF73F4F7A3bcB373"),
         USDG,
     ),
-    // GOOGL/USDG
-    (
-        address!("C7F5074fEE49B65c40b33C67113d44f6916D5f87"),
-        address!("2e0847E8910a9732eB3fb1bb4b70a580ADAD4FE3"),
-        USDG,
-    ),
     // ANT/USDG
     (
         address!("8B411e11E7525F0320197EBeC0E2E4eb90bcE5F8"),
         address!("bbB6c29bCc3a1028A2B54310DF73F4F7A3bcB373"),
+        USDG,
+    ),
+    // GOOGL/USDG
+    (
+        address!("C7F5074fEE49B65c40b33C67113d44f6916D5f87"),
+        address!("2e0847E8910a9732eB3fb1bb4b70a580ADAD4FE3"),
         USDG,
     ),
     // AI/USDG
@@ -356,10 +362,10 @@ pub const POOLS: &[(Address, Address, Address)] = &[
         address!("72bE1277E198D0C476869253Cb4E62807e14533c"),
         address!("0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"),
     ),
-    // INDEX/USDG
+    // PONS/USDG
     (
-        address!("71C950Ce34E4D5e15158De7521F0cE87b6554a49"),
-        address!("56910D4409F3a0C78C64DD8D0545FF0705389870"),
+        address!("2Df441aE4b63E7fF342216BEEA704A7ABBeD25aE"),
+        address!("39dBED3a2bd333467115dE45665cC57F813C4571"),
         USDG,
     ),
     // TORCH/WETH
@@ -374,16 +380,16 @@ pub const POOLS: &[(Address, Address, Address)] = &[
         address!("2E8c31162b855A2ffa90F6F8634643Ad6F111e18"),
         USDG,
     ),
+    // INDEX/USDG
+    (
+        address!("71C950Ce34E4D5e15158De7521F0cE87b6554a49"),
+        address!("56910D4409F3a0C78C64DD8D0545FF0705389870"),
+        USDG,
+    ),
     // SPCX/USDG
     (
         address!("71dE7F9e275964488284c7CeB2B12245A9723513"),
         address!("4a0E65A3EcceC6dBe60AE065F2e7bb85Fae35eEa"),
-        USDG,
-    ),
-    // PONS/USDG
-    (
-        address!("2Df441aE4b63E7fF342216BEEA704A7ABBeD25aE"),
-        address!("39dBED3a2bd333467115dE45665cC57F813C4571"),
         USDG,
     ),
     // AI/USDG
