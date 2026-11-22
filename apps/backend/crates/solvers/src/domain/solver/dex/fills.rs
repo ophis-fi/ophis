@@ -87,8 +87,15 @@ impl Fills {
             order::Side::Sell => (order.sell.token, order.sell.amount),
         };
 
-        let smallest_fill = self.smallest_fill.clone()
-            * conv::ether_to_decimal(&tokens.reference_price(&ETH)?.0)
+        // Reference prices are quoted in the native token, so its own price
+        // is one by definition. The driver lists the 0xee pseudo-token only
+        // when an order in the auction trades it; requiring that entry
+        // skipped every partially fillable order in all other auctions.
+        let native_price = tokens.reference_price(&ETH).map_or_else(
+            || BigDecimal::from(1),
+            |price| conv::ether_to_decimal(&price.0),
+        );
+        let smallest_fill = self.smallest_fill.clone() * native_price
             / conv::ether_to_decimal(&tokens.reference_price(&token)?.0);
         let smallest_fill = big_decimal_to_u256(&smallest_fill)?;
 
@@ -205,6 +212,53 @@ impl Fills {
 
         lock_fill_amounts(&self.amounts)
             .retain(|_, entry| now.duration_since(entry.last_requested) < MAX_AGE)
+    }
+}
+
+#[cfg(test)]
+mod native_price_tests {
+    use super::*;
+
+    /// The auction the driver sends for a WETH -> stock-token limit order:
+    /// only the traded tokens are listed, never the 0xee native pseudo-token.
+    #[test]
+    fn partially_fillable_order_is_tried_without_a_native_token_entry() {
+        let token = |price: u128| auction::Token {
+            decimals: Some(18),
+            symbol: None,
+            reference_price: Some(auction::Price(eth::Ether(U256::from(price)))),
+            available_balance: U256::ZERO,
+            trusted: false,
+        };
+        let sell = eth::TokenAddress(eth::Address::repeat_byte(1));
+        let buy = eth::TokenAddress(eth::Address::repeat_byte(2));
+        let tokens = auction::Tokens(HashMap::from([
+            (sell, token(10u128.pow(18))),
+            (buy, token(9 * 10u128.pow(15))),
+        ]));
+        let order = order::Order {
+            uid: order::Uid([0; 56]),
+            sell: eth::Asset {
+                token: sell,
+                amount: U256::from(4 * 10u128.pow(18)),
+            },
+            buy: eth::Asset {
+                token: buy,
+                amount: U256::from(444 * 10u128.pow(18)),
+            },
+            side: order::Side::Sell,
+            class: order::Class::Limit,
+            partially_fillable: true,
+            flashloan_hint: None,
+            wrappers: vec![],
+        };
+        let fills = Fills::new(eth::Ether(U256::from(10u128.pow(16))));
+        let first = fills.dex_order(&order, &tokens).expect("order must be tried");
+        assert_eq!(first.amount().amount, U256::from(4 * 10u128.pow(18)));
+        // A miss halves the next attempt instead of dropping the order.
+        fills.reduce_next_try(order.uid);
+        let second = fills.dex_order(&order, &tokens).expect("half must be tried");
+        assert_eq!(second.amount().amount, U256::from(2 * 10u128.pow(18)));
     }
 }
 
