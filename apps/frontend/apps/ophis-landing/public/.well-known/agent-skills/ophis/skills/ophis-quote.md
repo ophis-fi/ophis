@@ -1,6 +1,6 @@
 ---
 name: ophis-quote
-description: Get an Ophis best-execution quote for one sell token into one buy token. Read-only, never signs and never broadcasts. Use when the user asks "what's the best price for X to Y", "quote me a swap", or wants the expected output and fee before deciding to execute.
+description: Get an Ophis quote for one sell token into one buy token. Read-only, never signs and never broadcasts. Use when the user asks "what's the best price for X to Y", "quote me a swap", or wants the expected output and fee before deciding to execute.
 license: MIT
 ---
 

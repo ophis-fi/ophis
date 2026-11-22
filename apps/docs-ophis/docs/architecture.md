@@ -46,8 +46,8 @@ The [Intent API](/intent-api) converts natural language into a structured `Parse
  plain English          structured order           batch auction          settlement
 ┌──────────────┐  parse ┌──────────────────┐ sign ┌──────────────────┐    ┌──────────────┐
 │ "swap 100    │ ─────▶ │ sell: USDC       │ ───▶ │ solvers compete  │ ─▶ │ uniform-price│
-│  USDC for    │  LLM   │ buy:  ETH        │ wallet│ for best execution│   │ on-chain     │
-│  ETH on Base"│        │ amount: 100      │      │ (DEX / peer match)│  │ settlement   │
+│  USDC for    │  LLM   │ buy:  ETH        │wallet│ for the batch    │    │ on-chain     │
+│  ETH on Base"│        │ amount: 100      │      │ (DEX/peer match) │    │ settlement   │
 └──────────────┘        │ chain: base      │      └──────────────────┘    └──────────────┘
                         └──────────────────┘
 ```

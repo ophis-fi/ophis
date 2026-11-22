@@ -1,6 +1,6 @@
 ---
 name: swap-via-ophis
-description: Swap or bridge tokens through Ophis, an intent-based DEX aggregator. Parse a natural-language request, get a best-execution quote, build an EIP-712 order, sign it in the user's own wallet, and submit it. Non-custodial: the agent never holds keys or funds.
+description: Swap or bridge tokens through Ophis, an intent-based DEX aggregator. Parse a natural-language request, get a quote, build an EIP-712 order, sign it in the user's own wallet, and submit it. Non-custodial: the agent never holds keys or funds.
 license: MIT
 ---
 
@@ -17,7 +17,7 @@ they do not eliminate every execution risk. Signing happens in the user's wallet
 ## When to use this skill
 
 Use it when a user wants to swap one token for another, or bridge to another
-chain, and you want best execution with MEV protection and a predictable fee.
+chain, and you want MEV protection and a predictable fee.
 
 ## Capabilities and endpoints
 
@@ -32,7 +32,7 @@ All endpoints are public and require no API key or authentication.
    (discovery at `https://ophis.fi/.well-known/mcp.json`). Thirteen tools:
    - `parse_intent` natural language to a structured intent
    - `resolve_token` a token symbol to its canonical address
-   - `get_quote` best-execution quote for a pair/amount/chain
+   - `get_quote` quote for a pair/amount/chain
    - `build_order` a bounded, EIP-712-signable order (receiver pinned to owner)
    - `submit_order` broadcast a signed order to the orderbook
    - `get_integrator_earnings` routed volume, the Ophis base fee, and the

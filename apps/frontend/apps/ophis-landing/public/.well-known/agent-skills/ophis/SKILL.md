@@ -1,7 +1,7 @@
 ---
 name: ophis
 description: Use this skill when the user asks to swap tokens, get a swap quote, check or cancel an order, or report the surplus their trades earned, via Ophis, the intent-based DEX aggregator. Triggers on phrases like "swap X for Y", "best price", "quote", "order status", "cancel my order", "how much surplus did I earn", "Ophis". The skill loads sub-skills under `skills/` for each operation.
-version: 0.1.2
+version: 0.1.3
 homepage: https://docs.ophis.fi
 license: MIT
 metadata:

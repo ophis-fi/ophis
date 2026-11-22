@@ -4,7 +4,7 @@
  * Agent-facing tools for the Ophis DEX:
  *   parse_intent     — natural language -> structured swap intent (LibertAI Qwen)
  *   resolve_token    — trusted token symbol -> canonical address (anti-spoof)
- *   get_quote        — best-execution quote from the chain's Ophis orderbook
+ *   get_quote        — quote from the chain's Ophis orderbook
  *   build_order      — a bounded, ready-to-sign EIP-712 order (receiver pinned)
  *   validate_order   — offline preflight for externally-built orders
  *   submit_order     — relay a PRE-SIGNED order to the orderbook (no keys held here)

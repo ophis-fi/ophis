@@ -18,7 +18,7 @@ Connect your agent to Ophis to parse requests, get quotes and build orders for w
 
 ## Connect a client {/* #connect-your-mcp-client */}
 
-The current server release is **v0.2.2**. It uses streamable HTTP and requires no API key:
+The current server release is **v0.2.3**. It uses streamable HTTP and requires no API key:
 
 ```
 https://mcp.ophis.fi/mcp
@@ -326,7 +326,7 @@ See [Fees](/fees) for the chain-specific policy and [Security and audits](/audit
 ## Shell agent skills {/* #markdown-skill-family-shell-capable-agents */}
 
 Use [`@ophis/agent-skills`](https://www.npmjs.com/package/@ophis/agent-skills)
-v0.1.2 for runtimes with a shell, `curl`, `jq` and Foundry's `cast`.
+v0.1.3 for runtimes with a shell, `curl`, `jq` and Foundry's `cast`.
 
 | Resource | Use |
 | --- | --- |
@@ -334,7 +334,6 @@ v0.1.2 for runtimes with a shell, `curl`, `jq` and Foundry's `cast`.
 | [Umbrella skill](https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md) | Read contract addresses, signing domains, orderbook hosts and slippage limits. |
 | Sub-skills | `ophis-quote`, `ophis-swap`, `ophis-order-status`, `ophis-cancel`, `ophis-surplus-report` |
 | Active skill chains | Optimism and Robinhood Chain |
-| Published v0.1.2 package | Also lists Unichain (130), now retired; reject chain 130 regardless of package version. |
 
 Use MCP `list_chains` for supported networks beyond the shell skills.
 
