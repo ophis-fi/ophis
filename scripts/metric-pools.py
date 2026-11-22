@@ -2,7 +2,7 @@
 """Regenerate (or check) the generated part of the pinned Metric pool table.
 
   python3 scripts/metric-pools.py           rewrite the table in place
-  python3 scripts/metric-pools.py --check   exit 1 if the table has drifted
+  python3 scripts/metric-pools.py --check   exit 1 if the table needs a refresh
 
 Rule: Metric v1 pools on Robinhood (4663) under the pinned factory and quoter
 that are unpaused and traded at least 10,000 USD in the prior 7 days, at most
@@ -12,6 +12,11 @@ by hand, never touched here, and count toward their pair's six.
 The price-feed status is deliberately not part of the rule: stock feeds go
 down outside market hours and flap within them, and the solver already skips
 any pool whose live quote reverts.
+
+The check is looser than the rule so that it does not fail on noise: weekly
+volume crosses the 10,000 USD line daily. It fails only when a generated pool
+is paused or gone from the API, or when a pool the rule would add trades at
+least twice the line. Everything else is printed as a note.
 
 The Metric API only proposes pools. Each one is then read onchain (factory
 isPool, pool getImmutables) and dropped with an error if the chain disagrees.
@@ -97,16 +102,17 @@ def main():
     def volume(pool):
         return ((pool.get("volumeByWindow") or {}).get("7d")) or 0
 
-    eligible = [
+    # Tradable whatever the volume: what a pinned pool must stay.
+    live = [
         p
         for p in pools
         if p.get("contractVersion") == "v1"
         and p.get("poolFactoryAddress") == FACTORY
         and p.get("quoterAddress") == QUOTER
         and p.get("pauseLevel") == 0
-        and volume(p) >= MIN_VOLUME_USD
         and all(ADDRESS.fullmatch(str(p.get(k))) for k in ("poolAddress", "token0", "token1"))
     ]
+    eligible = [p for p in live if volume(p) >= MIN_VOLUME_USD]
     eligible.sort(key=volume, reverse=True)
     taken = {}
     for _, token0, token1 in reviewed:  # reviewed pools hold a slot whatever their state
@@ -127,13 +133,19 @@ def main():
         for p in pools:
             if str(p.get("poolAddress", ""))[2:].lower() in reviewed_pools and p.get("pauseLevel") != 0:
                 print("reviewed pool is paused (edit by hand): %s" % p["poolAddress"])
-        for entry in sorted(wanted - current):
-            print("missing from the table: 0x%s (tokens 0x%s, 0x%s)" % entry)
-        for entry in sorted(current - wanted):
-            print("no longer eligible: 0x%s (tokens 0x%s, 0x%s)" % entry)
-        if wanted != current:
-            sys.exit("pinned Metric pools drifted; run: python3 scripts/metric-pools.py")
-        print("pinned Metric pools match the rule (%d generated)" % len(current))
+        dead = current - {row(p) for p in live}
+        busy = {row(p) for p in chosen if volume(p) >= 2 * MIN_VOLUME_USD} - current
+        for entry in sorted(dead):
+            print("paused or gone: 0x%s (tokens 0x%s, 0x%s)" % entry)
+        for entry in sorted(busy):
+            print("active pool missing from the table: 0x%s (tokens 0x%s, 0x%s)" % entry)
+        for entry in sorted(wanted - current - busy):
+            print("note, newly over the volume line: 0x%s (tokens 0x%s, 0x%s)" % entry)
+        for entry in sorted(current - wanted - dead):
+            print("note, under the volume line or outside its pair's six: 0x%s (tokens 0x%s, 0x%s)" % entry)
+        if dead or busy:
+            sys.exit("pinned Metric pools need a refresh; run: python3 scripts/metric-pools.py")
+        print("pinned Metric pools need no refresh (%d generated)" % len(current))
         return
 
     rows = ""

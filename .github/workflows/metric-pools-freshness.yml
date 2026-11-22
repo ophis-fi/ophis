@@ -2,7 +2,8 @@ name: Metric pinned pools freshness
 
 # The Robinhood Metric lane only trades through pools pinned in
 # apps/backend/crates/shared/src/metric.rs. Metric pauses and adds pools every
-# week, so this fails when the pinned set no longer matches the rule. Fix with
+# week, so this fails when a pinned pool is paused or gone, or an active pool
+# is missing (see the script for the exact thresholds). Fix with
 # `python3 scripts/metric-pools.py` and a PR. (Actions may not open PRs in this
 # repository, so the refresh itself stays a reviewed human step.)
 on:
