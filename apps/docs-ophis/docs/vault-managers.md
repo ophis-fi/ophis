@@ -20,7 +20,7 @@ Rebalance your vault or treasury Safe through Ophis with onchain rules for token
 
 The curator can be an EOA, MPC signer or multisig. It must be separate from the Safe's owners and enabled modules. The constructor rejects a curator with either role.
 
-The Safe is both `order.from` and `order.receiver`. Sold tokens leave at settlement, and bought tokens return to the Safe. Each order carries the Ophis partner fee.
+The Safe is both `order.from` and `order.receiver`. Sold tokens leave at settlement, and bought tokens return to the Safe. Each order must carry the appData pinned in the module, which includes the Ophis partner fee.
 
 ## Policy checks
 
@@ -48,7 +48,7 @@ You can rebalance any allowlisted token into another, such as USDC, WETH, WBTC o
 | Token count | Minimum two; the upper limit depends on gas. |
 | Price feeds | Each token needs a Chainlink USD feed and staleness window. |
 | Oracle floor | Uses the sell-token/USD and buy-token/USD cross-rate minus the slippage band. |
-| Token type | Fee-on-transfer and rebasing tokens are excluded from rebalancing. |
+| Token type | Do not allowlist fee-on-transfer or rebasing tokens; the module does not detect them, and the floor uses the gross sell amount. |
 | Active orders | One live presigned order per sell token. |
 | Turnover budget | Shared across every token. |
 | Policy changes | Deploy and enable a new module to change tokens, feeds or caps. |
@@ -57,7 +57,7 @@ An unlisted token is rejected as `TokenNotAllowed`. Your vault can still hold as
 
 ## Operational chains
 
-The current `@ophis/safe-swap` source supports these 13 chains. Published versions from before retirement can still accept Unichain (130); reject it explicitly until you have verified a release that removes it.
+The current `@ophis/safe-swap` source supports these 13 chains. The published v0.1.8 package, through `@ophis/sdk` v0.4.6, still accepts the retired Unichain (130); reject chain 130 explicitly.
 
 | Orderbook | Chains |
 | --- | --- |

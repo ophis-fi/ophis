@@ -23,8 +23,8 @@ On a 100 USDC swap, the Ophis base fee is 0.01 USDC.
 | Ophis base fee | 1 bp (0.01%) | 1 bp (0.01%) |
 | Volatile-pair improvement capture | 80%, capped at 99 bps (0.99%) of volume | 80%, capped at 99 bps (0.99%) of volume |
 | Stablecoin-pair improvement capture | 50%, capped at 20 bps (0.20%) of volume | 50%, capped at 20 bps (0.20%) of volume |
-| Upstream volume fee | None | 0.02%, or 0.003% on correlated pairs such as stablecoins |
-| Combined volume fee | 0.01% | 0.03% volatile / 0.013% correlated stables |
+| Upstream volume fee | None | 0.02%, or none on correlated pairs such as stablecoins |
+| Combined volume fee | 0.01% | 0.03% volatile / 0.01% correlated stables |
 | Upstream improvement policy | None | Applies separately |
 
 | Settlement stack | Networks |
@@ -53,6 +53,8 @@ Arc follows the same rules as the other Ophis-operated chains, and USDC/EURC cou
 | Route | Fee treatment |
 | --- | --- |
 | NEAR Intents, including external deposits | 3 bps Ophis app fee plus provider costs in the quote |
+| Across | 10 bps Ophis app fee plus provider costs in the quote |
+| Relay | 3 bps Ophis app fee plus provider costs in the quote |
 | Direct NEAR deposit | Uses the NEAR quote's fees |
 | Direct Circle bridge | Uses the route quote's fees |
 | Source approval, deposit and destination execution | Network gas costs |

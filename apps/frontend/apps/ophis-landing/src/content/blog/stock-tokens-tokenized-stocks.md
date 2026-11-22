@@ -21,7 +21,7 @@ So where do you find these tokens, how do you buy them, and what should you know
 
 ## Where can you buy tokenized stocks?
 
-You can buy tokenized stocks through supported exchanges, wallets and decentralized trading apps. Start with the provider, then choose a chain and a platform that actually supports its tokens.
+You can buy tokenized stocks through supported exchanges, wallets and decentralized trading apps. Start with the provider, then choose a chain and a platform that supports its tokens.
 
 | Provider | Example tokens | Chains to look for | Where eligible traders can start |
 | --- | --- | --- | --- |
@@ -133,7 +133,7 @@ The Reality, Ondo, xStocks and Robinhood offerings discussed here restrict acces
 
 ### Can I trade every stock token on Ophis?
 
-Availability depends on the network, token, eligibility and a usable quote. Ophis supports stock-token trading on Robinhood Chain, but this article's provider comparison is not a promise that every listed product is tradable through Ophis. Check the app for your chosen pair.
+Availability depends on the network, token, eligibility and a usable quote. Ophis supports stock-token trading on Robinhood Chain. Check the app for your chosen pair.
 
 ## Explore stock-token trading with Ophis
 

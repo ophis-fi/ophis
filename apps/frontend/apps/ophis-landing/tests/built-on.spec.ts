@@ -26,10 +26,13 @@ test('built-on strip has updated headline and subhead', async ({ page }) => {
 test('venue grid shows dapp names and logos without status comments or Arcus', async ({ page }) => {
   await page.goto('/')
   const grid = page.locator('.protocol-grid')
-  for (const name of ['RamsesX', 'Dexalot', 'Native', 'Pharaoh', 'UP33']) {
+  for (const name of ['RamsesX', 'UP33']) {
     await expect(grid.getByText(name, { exact: true })).toBeVisible()
   }
-  await expect(grid.locator('.protocol')).toHaveCount(20)
+  await expect(grid.locator('.protocol')).toHaveCount(17)
+  for (const name of ['Dexalot', 'Native', 'Pharaoh']) {
+    await expect(grid.getByText(name, { exact: true })).toHaveCount(0)
+  }
   await expect(grid.getByText('Pons', { exact: true })).toHaveCount(0)
   await expect(grid.getByText('Arcus', { exact: true })).toHaveCount(0)
   await expect(grid.locator('.protocol-status')).toHaveCount(0)

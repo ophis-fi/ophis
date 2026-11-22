@@ -18,7 +18,7 @@ import { jsonLdSafe } from '../lib/jsonld'
 const faqs: { q: string; a: string }[] = [
   {
     q: 'What is Ophis?',
-    a: `Ophis is an intent-based, MEV-protected DEX aggregator for agents and tokenized markets. Traders can route supported stablecoins, Stock Tokens, tokenized stocks, and other onchain assets; builders can integrate through MCP, SDK, or API. Ophis batch-settles on supported EVM chains, with additional NEAR sources and destinations including ${nearNetworkList}. External-source swaps use a deposit flow in the standalone app. It is non-custodial and a CoW Protocol fork.`,
+    a: `Ophis is an intent-based, MEV-protected DEX aggregator for agents and tokenized markets. Traders can route supported stablecoins, Stock Tokens, tokenized stocks, and other onchain assets; builders can integrate through MCP, SDK, or API. Ophis batch-settles on supported EVM chains, with additional NEAR sources and destinations including ${nearNetworkList}. External-source swaps use a deposit flow in the standalone app. Standard swaps are non-custodial, and Ophis is a CoW Protocol fork.`,
   },
   {
     q: 'What does Ophis charge?',
@@ -34,7 +34,7 @@ const faqs: { q: string; a: string }[] = [
   },
   {
     q: 'Is MEV protection guaranteed?',
-    a: 'Batch-auction orders settle through CoW Protocol, which are designed to protect trades from MEV such as front-running and sandwiching by settling at a uniform clearing price per token pair. An order can never be settled below its signed limit price. Batch-auction settlement mitigates MEV by design; it is not an absolute guarantee against all adversarial conditions.',
+    a: 'Batch auctions, run by CoW Protocol or by Ophis deployments on operated chains, are designed to protect trades from MEV such as front-running and sandwiching by settling at a uniform clearing price per token pair. An order can never be settled below its signed limit price. Batch-auction settlement mitigates MEV by design; it is not an absolute guarantee against all adversarial conditions.',
   },
   {
     q: 'Who controls the keys, and is Ophis custodial?',
@@ -50,7 +50,7 @@ const faqs: { q: string; a: string }[] = [
   },
   {
     q: 'How does an agent swap on Ophis?',
-    a: 'An agent parses a natural-language intent, gets a best-execution quote, and builds a bounded EIP-712 order with the receiver pinned to the owner using the @ophis/sdk or the MCP build_order tool. It signs the order locally with its own key, then submits the pre-signed order to the Ophis orderbook or via the MCP submit_order tool. The agent can also call the public Intent API at POST /api/intent, rate-limited to 30 requests per minute per IP.',
+    a: 'An agent parses a natural-language intent, gets a quote, and builds a bounded EIP-712 order with the receiver pinned to the owner using the @ophis/sdk or the MCP build_order tool. It signs the order locally with its own key, then submits the pre-signed order to the Ophis orderbook or via the MCP submit_order tool. The agent can also call the public Intent API at POST /api/intent, rate-limited to 30 requests per minute per IP.',
   },
 ]
 
@@ -70,7 +70,7 @@ const faqSchema = {
   <div class="faq-inner">
     <div class="label reveal-up" data-reveal>Questions</div>
     <h2 class="serif reveal-up" data-reveal>
-      Asked <em>plainly.</em>
+      Common <em>questions.</em>
     </h2>
     <div class="faq-list stagger">
       {

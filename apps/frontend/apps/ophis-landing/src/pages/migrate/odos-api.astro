@@ -6,7 +6,7 @@ const { updated } = canonicalPage('/migrate/odos-api/')
 const FAQS = [
   {
     q: 'Is Ophis a drop-in replacement for the full Odos API?',
-    a: 'No. Ophis provides a narrow Odos v3 quote-shape compatibility layer for one ERC-20 input, one ERC-20 output, EOA signing, and Ophis-operated chains. It returns a signable intent rather than executable router calldata.',
+    a: 'No. Ophis provides a narrow Odos v3 quote-shape compatibility layer for one ERC-20 input, one ERC-20 output and EOA signing, on Optimism and Robinhood Chain. It returns a signable intent rather than executable router calldata.',
   },
   {
     q: 'Can a Safe or smart account use the Odos compatibility layer?',
@@ -14,7 +14,7 @@ const FAQS = [
   },
   {
     q: 'Does the compatibility API support Base or Avalanche?',
-    a: 'No. The compatibility surface is limited to Ophis-operated chains. Integrations that need Base, Avalanche, Ink, Ethereum, Arbitrum, or another CoW-hosted chain should use the Ophis SDK and per-chain orderbook flow.',
+    a: 'No. The compatibility surface serves Optimism and Robinhood Chain. Integrations that need Arc, Base, Avalanche, Ink, Ethereum, Arbitrum, or another chain should use the Ophis SDK and per-chain orderbook flow.',
   },
 ]
 ---
@@ -32,13 +32,13 @@ const FAQS = [
   <ul>
     <li>You send one ERC-20 input and request one ERC-20 output.</li>
     <li>An EOA signs the resulting order with EIP-712 or <code>ethsign</code>.</li>
-    <li>You trade on an enabled Ophis-operated chain.</li>
+    <li>You trade on Optimism or Robinhood Chain.</li>
     <li>You can settle asynchronously through an intent rather than receive router calldata.</li>
     <li>You do not require native ETH, zaps, baskets, or the wider Odos endpoint surface.</li>
   </ul>
   <p>
     If every condition holds, review the current production status and field mapping in the
-    <a href="https://docs.ophis.fi/migrating-from-odos">complete Odos compatibility reference</a>.
+    <a href="https://docs.ophis.fi/migrating-from-odos">Odos compatibility reference</a>.
     The detailed page documents live endpoints, limits, pricing, error classes, and settlement
     polling.
   </p>

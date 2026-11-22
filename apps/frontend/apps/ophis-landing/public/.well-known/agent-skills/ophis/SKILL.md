@@ -54,7 +54,7 @@ minimum. The signer pays no gas at settlement (solvers do). Price improvement
 is shared under the chain's published fee policy.
 
 This skill family's pinned raw HTTP + `cast` execution policy covers these
-three Ophis-operated chains, not every chain in the swap app:
+two Ophis-operated chains, not every chain in the swap app:
 
 | Chain | chainId | Orderbook host |
 | --- | --- | --- |
@@ -62,7 +62,7 @@ three Ophis-operated chains, not every chain in the swap app:
 | Robinhood Chain | 4663 | `https://robinhood-mainnet.ophis.fi` |
 
 Arc (5042) is also Ophis-operated and is supported by the published SDK and
-hosted MCP. It remains outside this skill's three-chain execution policy.
+hosted MCP. It remains outside this skill's two-chain execution policy.
 Resolve Arc's settlement domain and orderbook through `@ophis/sdk` or MCP
 `list_chains`; do not use a external canonical address for Arc. SDK v0.4.4 enables
 referral codes on Arc orders. The ten externally hosted networks use separate canonical
@@ -169,7 +169,7 @@ appData=$(jq -Snc --argjson slippageBips "$slippageBips" '{
 appDataHash=$(cast keccak "$appData")
 ```
 
-- The three chains pinned by this skill use the 1 bip (0.01%) sovereign base
+- The two chains pinned by this skill use the 1 bip (0.01%) sovereign base
   via the CIP-75 `partnerFee` entry. Their backends separately apply capped
   reference-quote-improvement capture; never encode that policy as another
   appData fee.

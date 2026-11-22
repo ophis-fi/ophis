@@ -17,15 +17,15 @@ const FAQS = [
   },
   {
     q: 'How do batch auctions find coincidences of wants?',
-    a: `By collecting orders into discrete batches instead of executing them one by one. A solver that considers multiple orders together can spot overlap: a sell of WETH for USDC and a buy of WETH with USDC can settle against each other at the batch's uniform clearing price, with only the unmatched remainder routing to on-chain liquidity. Whether that actually happens depends on the solver lineup, not on the contracts: it takes a solver built to combine orders.`,
+    a: `By collecting orders into discrete batches instead of executing them one by one. A solver that considers multiple orders together can spot overlap: a sell of WETH for USDC and a buy of WETH with USDC can settle against each other at the batch's uniform clearing price, with only the unmatched remainder routing to on-chain liquidity. Whether that happens depends on the solver lineup, not on the contracts: it takes a solver built to combine orders.`,
   },
   {
     q: 'Why is a peer match better than routing through an AMM?',
-    a: `Because the matched portion skips the costs that pools impose: no liquidity-provider fee, no price impact from walking a curve, and no exposure to the pool's state at execution time. Two traders simply cross at one price. That saving shows up as better execution, and better execution is how a solver wins the batch, so solvers have a direct incentive to find every match that exists.`,
+    a: `Because the matched portion skips the costs that pools impose: no liquidity-provider fee, no price impact from walking a curve, and no exposure to the pool's state at execution time. Two traders simply cross at one price. That saving shows up as better execution, and better execution is how a solver wins the batch, so solvers have a direct incentive to find matches.`,
   },
   {
     q: 'Do coincidences of wants happen on Ophis today?',
-    a: `On the CoW-hosted chains, orders settle through CoW Protocol's solver competition, which includes solvers that combine orders, so matches happen there when opposite flow overlaps. On the Ophis-operated chains (${sovereignList}), the current solver lineup builds each settlement against on-chain liquidity per order, so peer matches do not occur there today; the settlement layer supports them, but the current solver lineup does not combine orders. Where matching runs, the rate depends entirely on opposite flow in the same window, so any fixed number would be made up.`,
+    a: `On the CoW-hosted chains, orders settle through CoW Protocol's solver competition, which includes solvers that combine orders, so matches can happen there when opposite flow overlaps. On the Ophis-operated chains (${sovereignList}), the current solver lineup builds each settlement against on-chain liquidity per order, so peer matches do not occur there today; the settlement layer supports them, but the current solver lineup does not combine orders. Where matching runs, how often it happens depends on opposite flow in the same window.`,
   },
   {
     q: 'Is this where the name CoW Protocol comes from?',
@@ -47,8 +47,8 @@ const FAQS = [
     <strong>The short version:</strong> when one order in a batch sells what another order buys,
     the matched portion can settle directly between the two at the batch's uniform price: no
     pool, no liquidity-provider fee, no price impact. Whatever does not match routes to on-chain
-    liquidity as usual. It takes a solver built to combine orders: live today on the CoW-hosted
-    chains, not yet in the solver lineup on the Ophis-operated ones.
+    liquidity as usual. It takes a solver built to combine orders: available on the CoW-hosted
+    chains, not in the current solver lineup on the Ophis-operated ones.
   </p>
 
   {FAQS.map((f) => (

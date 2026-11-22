@@ -13,15 +13,15 @@ const { updated } = canonicalPage('/learn/slippage-vs-signed-limit/')
 const FAQS = [
   {
     q: 'What is slippage in crypto trading?',
-    a: `Slippage is the difference between the price you were quoted and the price you actually get. It exists because time passes between quoting and execution: other trades land first, pools move, and your transaction executes against whatever state it finds. A slippage tolerance is the worst version of that outcome you agree to accept in advance.`,
+    a: `Slippage is the difference between the price you were quoted and the price you get. It exists because time passes between quoting and execution: other trades land first, pools move, and your transaction executes against whatever state it finds. A slippage tolerance is the worst version of that outcome you agree to accept in advance.`,
   },
   {
     q: 'Why do router DEXes need a slippage tolerance?',
-    a: `Because a router swap fixes its route at signing time and executes later on-chain. If the pool has moved by more than the tolerance when the transaction lands, the swap reverts and you pay gas for nothing, so the tolerance exists to keep trades from failing constantly. The price of that convenience is pre-authorizing a worse fill every single time.`,
+    a: `Because a router swap fixes its route at signing time and executes later on-chain. If the pool has moved by more than the tolerance when the transaction lands, the swap reverts and you pay gas for nothing, so the tolerance exists to keep trades from failing on small moves. The cost of that convenience is a pre-authorized worse fill on each trade.`,
   },
   {
-    q: 'What does a slippage tolerance actually cost?',
-    a: `It is a standing offer to accept up to that much less, and in adversarial conditions the offer gets taken: a sandwich attacker can harvest up to the full tolerance, and ordinary price movement inside the tolerance is simply yours to absorb. Set it tight and trades revert; set it loose and you fund the attack. That dilemma is built into the tolerance model itself.`,
+    q: 'What does a slippage tolerance cost?',
+    a: `It is a standing offer to accept up to that much less, and in adversarial conditions the offer gets taken: a sandwich attacker can harvest up to the full tolerance, and ordinary price movement inside the tolerance is simply yours to absorb. Set it tight and more trades revert; set it loose and more of the trade is exposed to an attacker. That dilemma is built into the tolerance model itself.`,
   },
   {
     q: 'How is a signed limit price different?',
@@ -33,7 +33,7 @@ const FAQS = [
   },
   {
     q: 'Do hard-limit orders fail more often?',
-    a: `They fail differently, and cheaper. A router swap that violates its tolerance reverts on-chain and burns gas. An ERC-20 order that cannot be filled at its limit just stays open until it expires and lapses with nothing spent; you signed a message, not a transaction. You either trade at your floor or better, or you do not trade.`,
+    a: `They fail differently, and at lower cost. A router swap that violates its tolerance reverts on-chain and burns gas. An ERC-20 order that cannot be filled at its limit just stays open until it expires and lapses with nothing spent; you signed a message, not a transaction. You either trade at your floor or better, or you do not trade.`,
   },
 ]
 ---

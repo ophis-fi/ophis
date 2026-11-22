@@ -5,7 +5,7 @@ slug: "crosschain-swap"
 primaryKeyword: "crosschain swap"
 author: "Ophis"
 pubDate: 2026-09-06
-updatedDate: 2026-10-01
+updatedDate: 2026-11-22
 tags: [crosschain-swap, cross-chain, swaps, bridging]
 draft: false
 cover: ./crosschain-swap.cover.webp
@@ -18,7 +18,7 @@ Perhaps your funds are on one network, but the app you want to use runs on anoth
 
 Ophis brings supported cross-chain routes into its swap interface. You select what you have, choose what you want to receive, and review the quote before approving the trade.
 
-## What does a crosschain swap actually change?
+## What does a crosschain swap change?
 
 Two details matter whenever you hold a crypto asset: **which token it is and which network it is on**.
 
@@ -38,8 +38,6 @@ A bridge moves value between blockchains. A crosschain swap can combine that mov
 | Bridge | Moves value from one network to another | USDC on Ethereum to USDC on Base |
 | Crosschain swap | Combines a change of network with the desired token outcome | USDC on Ethereum to ETH on Base |
 
-These examples explain the concepts; they are not live quotes or promises of route availability.
-
 The practical question is the same in each case: **Will this route deliver the asset I need on the network I intend to use?**
 
 ## When would you use a crosschain swap?
@@ -58,11 +56,11 @@ Using several networks can leave you with small balances in different places. Mo
 
 ## How Ophis helps with cross-chain swaps
 
-Ophis connects its swap experience to cross-chain providers including Across, NEAR Intents and configured Circle routes. The app requests supported routes so you can review the outcome without arranging every step in a separate service.
+Ophis connects its swap experience to cross-chain providers including Across, Relay, NEAR Intents and configured Circle routes. The app requests supported routes so you can review the outcome without arranging every step in a separate service.
 
 The app covers 13 EVM blockchains, including Arc. SDK v0.4.3 and the hosted MCP server also cover these chains for ERC-20 orders. The standalone app also supports Bitcoin, Solana, Monad, Hyperliquid (Hypercore), X Layer, Sui, Tron, Starknet and Zcash as NEAR sources and destinations where assets and quotes permit. External-source deposits are a separate flow from SDK/MCP orders. See the [Ophis supported-chain list](https://ophis.fi/supported-chains/).
 
-Arc has direct Circle routes for configured assets and a separate Ethereum WBTC → Ethereum cirBTC → Arc cirBTC conversion flow. This is not a native Bitcoin bridge or a single atomic swap. Exact-input, same-wallet EOA restrictions and recovery details are in [Networks & assets](https://docs.ophis.fi/networks-assets).
+Arc has direct Circle routes for configured assets and a separate Ethereum WBTC → Ethereum cirBTC → Arc cirBTC conversion flow, which runs as two separate steps. Exact-input, same-wallet EOA restrictions and recovery details are in [Networks & assets](https://docs.ophis.fi/networks-assets).
 
 If Robinhood Chain is your destination, the [Ophis Robinhood Chain swap guide](https://ophis.fi/blog/dex-aggregator-robinhood/) explains how to check assets and review a same-chain trade once your funds arrive.
 
@@ -106,7 +104,7 @@ For more background on choosing a trade and signing an order, read [Getting star
 
 A low advertised fee is only one part of a swap. Compare the expected final amount alongside any minimum received figure and separate costs shown.
 
-For illustration, if two routes start with the same 100 units and deliver 98.8 or 98.2 units of the same destination asset, the first provides more output. Delivery time and other route conditions may still affect your choice. These numbers are examples, not Ophis quotes.
+For illustration, if two routes start with the same 100 units and deliver 98.8 or 98.2 units of the same destination asset, the first provides more output. Delivery time and other route conditions may still affect your choice.
 
 Ophis has its own trading fees, and a cross-chain route can add provider and network costs. The [pricing page](https://ophis.fi/pricing/) explains the Ophis fee model; review your route's quote for the specific trade.
 
@@ -130,7 +128,7 @@ Yes. The standalone app supports Bitcoin and Solana as NEAR sources and destinat
 
 For an EVM order delivering to Bitcoin or Solana, provide a destination address you control and authorize the source flow. Receiving does not require a second wallet connection. To start with BTC or a supported Solana balance, select it under **You sell**; review the quote and refund address, then fund the deposit from your source wallet.
 
-Delivery is a separate stage and is not instant. The [native Bitcoin guide](https://docs.ophis.fi/agent-btc-cookbook/) explains that distinction.
+Delivery is a separate stage and is not instant. The [NEAR Intents section of Networks & assets](https://docs.ophis.fi/networks-assets#externally-funded-swaps-through-near-intents) covers deposits, delivery tracking and refunds.
 
 ## FAQ
 

@@ -17,11 +17,11 @@ const FAQS = [
   },
   {
     q: 'What does a trading MCP server expose?',
-    a: `The Ophis MCP server exposes 13 tools covering the full trade lifecycle: parse_intent turns natural language into a structured swap, resolve_token maps a symbol to a canonical address and fails closed on spoofs, get_quote fetches a best-execution quote, build_order returns a bounded, ready-to-sign EIP-712 order with the receiver pinned to the owner, validate_order preflights it, and submit_order relays the signed result. Supporting tools cover integrator volume and fees, chains, balances, portfolio, gas, charts, and expected surplus.`,
+    a: `The Ophis MCP server exposes 13 tools covering the trade lifecycle: parse_intent turns natural language into a structured swap, resolve_token maps a symbol to a canonical address and fails closed on spoofs, get_quote fetches a quote from the chain's Ophis orderbook, build_order returns a bounded, ready-to-sign EIP-712 order with the receiver pinned to the owner, validate_order preflights it, and submit_order relays the signed result. Supporting tools cover integrator volume and fees, chains, balances, portfolio, gas, charts, and expected surplus.`,
   },
   {
     q: 'Does the MCP server hold keys or funds?',
-    a: `No. The Ophis MCP server is public, unauthenticated, and keyless: it never holds keys and never signs. The agent signs locally with its own key, so custody never leaves the agent's side. The flip side is that signing is where your safety lives: a faulty or manipulated tool result can only ever produce a bad unsigned proposal, and the signer's own policy has to catch it before signing.`,
+    a: `No. The Ophis MCP server is public, unauthenticated, and keyless: it never holds keys and never signs. The agent signs locally with its own key, so the key stays with the agent and standard ERC-20 orders keep funds in its wallet until settlement. The flip side is that signing is where your safety lives: a faulty or manipulated tool result can at most produce a bad unsigned proposal, and the signer's own policy has to catch it before signing.`,
   },
   {
     q: 'What does using it cost?',
@@ -36,7 +36,7 @@ const FAQS = [
 
 <ContentPage
   title="What is an MCP server for trading? | Ophis"
-  description="An MCP server gives an AI assistant callable tools. A trading MCP server exposes quoting, order building, and submission as tools; Ophis runs a public keyless one where the agent always signs with its own key."
+  description="An MCP server gives an AI assistant callable tools. A trading MCP server exposes quoting, order building, and submission as tools; Ophis runs a public keyless one where the agent signs with its own key."
   path="/learn/mcp-server-for-trading/"
   heading="What is an MCP server for trading?"
   lede="MCP is how an AI assistant goes from talking about a trade to executing one. Here is what a trading MCP server exposes, what it never touches, and how the keyless model keeps custody with the agent."

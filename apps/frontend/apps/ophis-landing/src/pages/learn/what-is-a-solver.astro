@@ -13,15 +13,15 @@ const { updated } = canonicalPage('/learn/what-is-a-solver/')
 const FAQS = [
   {
     q: 'What is a solver?',
-    a: `A solver is a professional execution party that competes to settle signed orders. Instead of the trader picking a route, solvers pick up the order from an orderbook, each proposes the best settlement it can construct, and the proposal with the best execution wins the batch and goes on-chain.`,
+    a: `A solver is a professional execution party that competes to settle signed orders. Instead of the trader picking a route, solvers pick up the order from an orderbook, each proposes a settlement, and the auction picks the winners by what their settlements deliver to traders; winning settlements go on-chain.`,
   },
   {
-    q: 'What does a solver actually do with my order?',
-    a: `It hunts for the best way to fill it: routing across on-chain AMMs and aggregators, quoting professional market makers, using its own inventory, or matching your order directly against an opposite one in the same batch. It then bundles the result into a settlement transaction, submits it, and pays the gas. Your signed limit binds it the whole way: a settlement below your limit reverts.`,
+    q: 'What does a solver do with my order?',
+    a: `It searches for a way to fill it: routing across on-chain AMMs and aggregators, quoting professional market makers, using its own inventory, or, if it is built to combine orders, matching your order directly against an opposite one in the same batch. It then bundles the result into a settlement transaction, submits it, and pays the gas. Your signed limit binds it the whole way: a settlement below your limit reverts.`,
   },
   {
     q: 'Why does solver competition help me?',
-    a: `Because the auction turns routing skill into a competitive price. Every solver that finds a better fill has an incentive to bid it, since that is how it wins the batch. Ophis retains the published capped share under its standard policy, and the trader receives the remainder; CoW-hosted chains additionally follow CoW Protocol's upstream policy.`,
+    a: `Because the auction turns routing skill into a competitive price. A solver that finds a better fill has an incentive to bid it, since that is how it wins the batch. Ophis retains the published capped share under its standard policy, and the trader receives the remainder; CoW-hosted chains additionally follow CoW Protocol's upstream policy.`,
   },
   {
     q: 'What happens if a solver fails or misbehaves?',
@@ -29,24 +29,24 @@ const FAQS = [
   },
   {
     q: 'Do I choose which solver settles my trade?',
-    a: `No, and that is the point. You sign what you want and the auction decides who delivers it best for that batch. Choosing a solver yourself would reintroduce exactly the trust-one-router model that competition exists to replace.`,
+    a: `No. You sign what you want and the auction decides which solver settles it in that batch. Choosing a solver yourself would bring back the single-router model that the competition replaces.`,
   },
 ]
 ---
 
 <ContentPage
   title="What is a solver? | Ophis"
-  description="A solver is a professional execution party that competes to settle signed orders: routing, matching, and submitting the settlement while your signed limit binds it. Why the competition is the product."
+  description="A solver is a professional execution party that competes to settle signed orders: routing, matching, and submitting the settlement while your signed limit binds it. What solvers do and why they compete."
   path="/learn/what-is-a-solver/"
   heading="What is a solver?"
-  lede="The party that actually executes your trade, chosen by auction rather than by you. What solvers do, why they compete, and what happens when one fails."
+  lede="The party that executes your trade, chosen by auction rather than by you. What solvers do, why they compete, and what happens when one fails."
   updated={updated}
   faqs={FAQS}
 >
   <p>
     <strong>The short version:</strong> a solver is an execution specialist that competes in
     per-batch auctions to settle signed orders. It finds the route or the match, submits the
-    settlement, pays the gas, and can never fill you below your signed limit. Competition between
+    settlement, pays the gas, and cannot fill you below your signed limit. Competition between
     solvers is what turns better routing into better prices for you instead of profit for a
     router.
   </p>

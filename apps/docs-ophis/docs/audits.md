@@ -47,7 +47,7 @@ The winning settlement transaction's calldata can be visible in the public mempo
 
 ## Smart contracts
 
-Ophis operates the GPv2 settlement stack on the four networks below. The listed settlement, relayer and EthFlow contracts are immutable. The solver allowlist controls which addresses can settle orders.
+Ophis operates the GPv2 settlement stack on Optimism, Robinhood Chain and Arc. The Unichain contracts below remain onchain; Unichain was retired on 19 November 2026. The listed settlement, relayer and EthFlow contracts are immutable. The solver allowlist controls which addresses can settle orders.
 
 | Contract | Address (Optimism, chain 10) | Function |
 | --- | --- | --- |
@@ -55,7 +55,7 @@ Ophis operates the GPv2 settlement stack on the four networks below. The listed 
 | `GPv2VaultRelayer` | `0x83847EaB41ad9ea43809ce71569eB2e9daF51830` | Honors calls from the settlement above. |
 | `CoWSwapEthFlow` | `0x764fE4aa1FF493cf39931c7923C8ff5837596504` | Accepts native-ETH sell orders. |
 
-| Contract | Address (Unichain, chain 130) | Function |
+| Contract | Address (Unichain, chain 130, retired) | Function |
 | --- | --- | --- |
 | `GPv2Settlement` | `0x108A678716e5E1776036eF044CAB7064226F714E` | Settles orders. |
 | `GPv2VaultRelayer` | `0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb` | Honors calls from the settlement above. |
@@ -72,40 +72,40 @@ Ophis operates the GPv2 settlement stack on the four networks below. The listed 
 | `GPv2Settlement` | `0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A` | Settles orders. |
 | `GPv2VaultRelayer` | `0x895505F1FE6D762296685fF4a8201782FFdCB8E9` | Honors calls from the settlement above. |
 
-Use each address on its listed chain. The [SDK deployment map](https://github.com/ophis-fi/ophis/blob/main/packages/sdk/src/domain.ts) and [Arc release sources](https://github.com/ophis-fi/ophis/tree/main/infra/arc-mainnet/release) contain deployment configuration. SDK v0.4.5 includes Arc signing and approval helpers; use ERC-20 token interfaces for Arc batch orders.
+Use each address on its listed chain. The [SDK deployment map](https://github.com/ophis-fi/ophis/blob/main/packages/sdk/src/domain.ts) and [Arc release sources](https://github.com/ophis-fi/ophis/tree/main/infra/arc-mainnet/release) contain deployment configuration. SDK v0.4.6 includes Arc signing and approval helpers; use ERC-20 token interfaces for Arc batch orders.
 
 ## Security reviews {/* #audit-methodology-and-tools */}
 
 CoW Protocol publishes [contract audits](https://github.com/cowprotocol/contracts) and [protocol documentation](https://docs.cow.fi/cow-protocol) for the upstream settlement code.
 
-Ophis internal security reviews cover the `GPv2AllowListAuthentication` two-step manager transfer and partner-fee settlement-buffer handling. Reports in [`audit/`](https://github.com/ophis-fi/ophis/tree/main/audit) and [`docs/audits/`](https://github.com/ophis-fi/ophis/tree/main/docs/audits) record each review's scope and results.
+Ophis internal security reviews cover the `GPv2AllowListAuthentication` two-step manager transfer and partner-fee settlement-buffer handling. Reports in [`docs/audits/`](https://github.com/ophis-fi/ophis/tree/main/docs/audits) record each review's scope and results; [`audit/`](https://github.com/ophis-fi/ophis/tree/main/audit) holds the Slither and dependency-scan baselines.
 
 Ophis uses these tools and guides in its reviews:
 
 <Cards>
-<Card icon="search" title="Pashov skills" href="https://www.pashov.com/">Ophis uses threat models, invariants and differential-review workflows.</Card>
+<Card icon="search" title="Pashov skills" href="https://www.pashov.com/">Ophis uses x-ray threat models, invariant reports and fizz fuzz suites.</Card>
 <Card icon="book-open" title="ETHSKILLS" href="https://ethskills.com">Ophis uses guidance for chain behavior, contract calls and signing.</Card>
-<Card icon="code" title="Trail of Bits tools" href="https://www.trailofbits.com">Ophis uses Slither analysis, Echidna fuzzing and review checklists.</Card>
-<Card icon="check" title="Verity Lang" href="https://veritylang.com">Ophis uses Lean 4 proofs for access-control models.</Card>
+<Card icon="code" title="Trail of Bits tools" href="https://www.trailofbits.com">Ophis uses Slither analysis, Echidna fuzzing and differential-review methods.</Card>
+<Card icon="check" title="Verity Lang" href="https://veritylang.com">Ophis uses Lean 4 proofs of contract models: solver-allowlist access control, reward claims and liquidity arithmetic.</Card>
 </Cards>
 
-### Dependency status — 19 November 2026
+### Dependency status, 22 November 2026
 
-[Dependabot](https://github.com/ophis-fi/ophis/security/dependabot) has three open high-severity alerts: broadcaster `zod` (#1144) and `@graphql-tools/utils` (#1143 and #1141). Tested local security backports are installed, but their upstream version numbers remain flagged. Migrating to compatible upstream fixed versions remains outstanding. This is not a claim of zero vulnerabilities or a complete audit.
+[Dependabot](https://github.com/ophis-fi/ophis/security/dependabot) has 12 open alerts. Three are high severity in the broadcaster: `zod` (#1144) and `@graphql-tools/utils` (#1143 and #1141). Tested local security backports are installed, but their upstream version numbers remain flagged. Migrating to compatible upstream fixed versions remains outstanding. Nine are medium severity for `next` 15.5.28 in the frontend: three advisories, each reported in three manifest files.
 
 Five picomatch alerts disappeared after [GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) was withdrawn on 18 November; they were not closed by another release. Existing patches and regression checks remain. The [dependency review](https://github.com/ophis-fi/ophis/blob/main/docs/audits/dependency-review-2026-11-03.md) records the dated inventory, backports and scan limitations.
 
 ## Private wallet security
 
-Private mode uses a separate RAILGUN wallet on Ethereum, Arbitrum and BNB Chain. Keep its recovery material secure. Public deposits and withdrawals remain visible onchain; shielding does not guarantee anonymity or hide every aspect of a pool swap. Only synchronized balances marked **Spendable** can fund a private transaction.
+Private mode uses a separate RAILGUN wallet on Ethereum, Arbitrum and BNB Chain. Keep its recovery material secure. Public deposits, withdrawals and the pool swap remain visible onchain. Only synchronized balances marked **Spendable** can fund a private transaction.
 
 Review the minimum output, broadcaster identity, fee and any native-gas prepayment before authorizing. A pending transaction must be reconciled with the recovery controls before another spend. The public batch-auction solver allowlist and fee schedule do not govern this path.
 
 Unused native-prepaid gas credit is **custodial**. Refunds require the operator's enabled signing service and sufficient backing; balances below the maximum processing allowance cannot produce a positive refund. There is no independent onchain withdrawal of this operator-held balance. These limits concern fee credit, not all shielded wallet assets. Follow [Privacy pools and private swaps](/privacy-pools) for wallet setup, deposits, fees, refunds and recovery. Read the [refund policy](https://github.com/ophis-fi/ophis/blob/main/apps/broadcaster/PREPAID-REFUNDS.md) and [private recovery instructions](https://github.com/ophis-fi/ophis/blob/main/apps/railgun/README.md#interrupted-transactions).
 
-The production RPC allowlist enables Ethereum, BNB Chain and Arbitrum. Base remains a held pilot and Polygon is deferred; SDK configuration and local fork tests do not establish production availability. The current Ophis wallet and broadcaster disable PPOI checks; other RAILGUN wallets and services can enforce their own policies. Transaction proofs and synchronized spendable balances remain required. Private spending also depends on RPC access and transaction delivery. Public deposits, withdrawals and the pool swap remain visible. Ophis's gateway and Cloudflare can see the client's IP; the gateway's simulation upstream receives the signed batch without the original client-IP header.
+The production RPC allowlist enables Ethereum, BNB Chain and Arbitrum. The current Ophis wallet and broadcaster disable PPOI checks; other RAILGUN wallets and services can enforce their own policies. Transaction proofs and synchronized spendable balances remain required. Private spending also depends on RPC access and transaction delivery. Public deposits, withdrawals and the pool swap remain visible. Ophis's gateway and Cloudflare can see the client's IP; the gateway's simulation upstream receives the signed batch without the original client-IP header.
 
-The upstream settlement audits linked above concern the GPv2 contracts. They do not certify Ophis frontend changes, the private wallet, broadcasters, bridge providers or deployment configuration.
+The upstream settlement audits linked above cover the GPv2 contracts.
 
 ## Native ETH orders {/* #native-eth-sells-ethflow */}
 
@@ -115,16 +115,16 @@ For the EthFlow batch-auction path, you place native ETH sell orders through an 
 
 Only authorized solvers can call the Ophis-operated settlement contracts. Immutable settlement code does not make this allowlist permissionless: its authenticator is upgradeable and its administrators can change solver access.
 
-The following ownership, manager, timelock-delay and Safe-threshold reads were checked on **17 November 2026**. They are a dated configuration snapshot, not a full Safe-module or deployed-bytecode audit.
+The following ownership, manager, timelock-delay and Safe-threshold reads were checked on **22 November 2026**.
 
 | Chain | Authenticator | Owner and manager controls | Checked block |
 | --- | --- | --- | --- |
-| Optimism (10) | `0xAAA13bC6C1A505ccE6B4BF262fdDf4c703B9BD70` | Owner: 24-hour timelock `0x8fEe42897a0113BbeC86e4caCCaC5787D7AEC373`. Manager: guardian `0x327F8894caEd538525c3956Fcd694b374B26B6fC`, controlled by the 2-of-3 Safe below. | 159667653 |
-| Unichain (130) | `0x1002E12f2e7f848b20fe572F92133E467a5D010C` | Owner: 24-hour timelock `0xFC2A6a54122E6D0a598CAe7453DD61263c1065Ed`. Manager: guardian `0x4821A534FB11ea4bb2f88d48B13A498A80462e64`, controlled by the same 2-of-3 Safe. | 64185725 |
-| Robinhood Chain (4663) | `0x5c802B14d9E132717aE78D42B19a4c517876F2E7` | Owner and manager: 2-of-3 Safe `0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF`, with no intervening timelock. | 116730425 |
-| Arc (5042) | `0xBA352C486B526886fDe4D15f3d3c9aC67Eca9d59` | Owner and manager: 2-of-3 Safe `0x858f0F5eE954846D47155F5203c04aF1819eCeF8`, with no intervening timelock. | 31742661 |
+| Optimism (10) | `0xAAA13bC6C1A505ccE6B4BF262fdDf4c703B9BD70` | Owner: 24-hour timelock `0x8fEe42897a0113BbeC86e4caCCaC5787D7AEC373`. Manager: guardian `0x327F8894caEd538525c3956Fcd694b374B26B6fC`, controlled by the 2-of-3 Safe below. | 159883453 |
+| Unichain (130, retired) | `0x1002E12f2e7f848b20fe572F92133E467a5D010C` | Owner: 24-hour timelock `0xFC2A6a54122E6D0a598CAe7453DD61263c1065Ed`. Manager: guardian `0x4821A534FB11ea4bb2f88d48B13A498A80462e64`, controlled by the same 2-of-3 Safe. | 64617327 |
+| Robinhood Chain (4663) | `0x5c802B14d9E132717aE78D42B19a4c517876F2E7` | Owner and manager: 2-of-3 Safe `0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF`, with no intervening timelock. | 120760710 |
+| Arc (5042) | `0xBA352C486B526886fDe4D15f3d3c9aC67Eca9d59` | Owner and manager: 2-of-3 Safe `0x858f0F5eE954846D47155F5203c04aF1819eCeF8`, with no intervening timelock. | 32593799 |
 
-On Optimism and Unichain, Safe `0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF` controls the timelock and guardian. Solver additions and manager or implementation changes go through the timelock; the guardian permits immediate solver removal. Robinhood Chain and Arc permit direct multisig administration. Neither a 24-hour delay nor a multisig alone establishes permissionless access or independent transaction inclusion.
+On Optimism and Unichain, Safe `0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF` controls the timelock and guardian. Solver additions and manager or implementation changes go through the timelock; the guardian permits immediate solver removal. Robinhood Chain and Arc permit direct multisig administration.
 
 ## Key custody
 
@@ -145,11 +145,11 @@ On Optimism and Unichain, Safe `0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF` cont
 | Frontend policies | Each app uses Content-Security-Policy headers; the swap app permits `unsafe-eval`, HTTPS connections and embedding for integrations. |
 | Deployment | A branch-protected, SHA-pinned CI pipeline produces signed build provenance; the edge enforces HTTPS. |
 
-The current backend source screens addresses against an OFAC SDN snapshot and manual bans. Its configured stale-snapshot policy stops order admission and auction delivery after 24 hours, rather than silently accepting unchecked addresses. The [screening runbook](https://github.com/ophis-fi/ophis/blob/main/docs/operations/ofac-address-screening.md) describes the implementation and rollout; this source review did not verify which binaries or screening configuration each production stack runs. Private services and external routes have separate policies. Holding your own signing keys does not guarantee access to a hosted API or solver.
+The current backend source screens addresses against an OFAC SDN snapshot and manual bans. Its configured stale-snapshot policy stops order admission and auction delivery after 24 hours, rather than silently accepting unchecked addresses. The [screening runbook](https://github.com/ophis-fi/ophis/blob/main/docs/operations/ofac-address-screening.md) describes the implementation and rollout. Private services and external routes have separate policies.
 
 ## Business console
 
-The [Business console](https://github.com/ophis-fi/ophis/tree/main/apps/business-console) at pro.ophis.fi is a separate permissioned service with invitations, company review, KYB records, sanctions screening and role-based approvals. Applications record the submitted company domain; operators review the company before enabling it. New applications allow synced passkeys, and an organisation can require hardware keys. These onboarding rules describe the Business console, not every public retail swap.
+The [Business console](https://github.com/ophis-fi/ophis/tree/main/apps/business-console) at pro.ophis.fi is a separate permissioned service with invitations, company review, KYB records, sanctions screening and role-based approvals. Applications record the submitted company domain; operators review the company before enabling it. New applications allow synced passkeys, and an organisation can require hardware keys. These onboarding rules apply to the Business console.
 
 ## Ophis source code {/* #ophis-specific-code */}
 

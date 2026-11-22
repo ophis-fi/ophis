@@ -25,7 +25,7 @@ A payment is a one-sided transfer. A swap is an *adversarial* action on a public
 mempool. The instant an agent broadcasts a market swap, searchers can sandwich
 it: buy in front, sell behind, and pocket the spread. A human does this
 occasionally; an agent that rebalances or DCAs on a schedule is a predictable,
-high-frequency, fully-automated target. The MEV tax compounds on every trade.
+high-frequency, fully-automated target. The MEV tax compounds across trades.
 
 And an autonomous signer has no wallet pop-up to catch a bad order. The three
 things a human would notice in a confirmation dialog all fail **silently** for a
@@ -36,15 +36,15 @@ machine:
 - an **unbounded price**: the order fills far below the quote the agent reasoned
   about;
 - a **wrong settlement contract or orderbook host**: the order is rejected or
-  targets an unintended deployment; this is not a supported fee-free route.
+  targets an unintended deployment.
 
 Ophis is built for exactly this. It is **intent-based**: you do not broadcast a
 swap, you sign a *bounded order* and a competitive solver network races to fill
 it. Batch auctions use a uniform clearing price per token pair to **mitigate common MEV**.
-Settlement can still be public; this is not universal sandwich immunity. And
+Settlement can still be public. And
 the agent signs a **bounded capability**, not an arbitrary transaction.
 
-## The fastest path: point your agent at the MCP server
+## Point your agent at the MCP server
 
 If your agent speaks the [Model Context Protocol](https://modelcontextprotocol.io),
 you do not have to write any swap code. Ophis runs a hosted, streamable-HTTP MCP
@@ -246,7 +246,7 @@ EIP-1271 policy gate rather than trusting the agent to honour them.
 
 ### What does it cost an agent to swap?
 
-Two things set the number, so it is worth being exact. On Optimism,
+Two things set the number, so it is worth being exact. On Optimism
 and Robinhood Chain, the MCP and high-level SDK builders embed a 1 bp base; the
 backend then retains 80% of reference-quote improvement on volatile pairs (99 bps
 cap), or 50% on stable pairs (20 bps cap). CoW-hosted orders encode the same

@@ -165,7 +165,7 @@ Errors return `{ "ok": false, "error": { "code", "message" } }`:
 
 | Status | `code` | Cause or action |
 | --- | --- | --- |
-| `400` | `BAD_INPUT` | Missing or empty `text`, text over 280 characters, or invalid JSON. |
+| `400` | `BAD_INPUT` | Missing or empty `text`, text over 280 characters, invalid JSON, or text that names the retired Unichain (130). |
 | `403` | `FORBIDDEN` | The supplied `Origin` is outside the allowlist. |
 | `429` | `RATE_LIMITED` | More than 30 requests in 60s from your IP; honour `Retry-After`. |
 | `500` | `UPSTREAM` | The server's model key is unset. |

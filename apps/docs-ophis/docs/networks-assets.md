@@ -9,7 +9,7 @@ sidebar_label: Networks & assets
 
 Use the swap app's token pickers to choose a network, asset and route.
 
-> **Unichain retired (19 November 2026).** Chain 130 is no longer supported for new swaps, bridge routes or agent orders. Older clients may still list it; do not submit new trades there. Historical trades, fee accounting and recovery records are retained. A replacement network will be considered after the Ophis security, code and development cleanup.
+> **Unichain retired (19 November 2026).** Chain 130 is no longer supported for new swaps, bridge routes or agent orders. Older clients may still list it; do not submit new trades there. Historical trades remain onchain.
 
 Published packages from before retirement can still map chain 130. Reject it explicitly regardless of SDK version; source coverage below does not imply those older releases removed it.
 
@@ -98,6 +98,10 @@ The app also uses Across for supported cross-chain routes.
 
 For terminal swaps, use the [CLI's bridge source list](/cli#bridge-tokens).
 
+## Relay bridges
+
+The app also uses Relay for supported cross-chain routes, for example Plasma XPL to Base USDC.
+
 ## Tokenized assets {/* #tokenized-asset-labels */}
 
 | Provider label | Source |
@@ -111,7 +115,7 @@ Check the token contract, issuer disclosures and trading restrictions before swa
 
 ## Private swaps
 
-Select **Private** in the standalone swap app to open the RAILGUN shielded-wallet flow. It supports **Ethereum, Arbitrum and BNB Chain**. Base remains a held pilot and Polygon is deferred. Private mode has its own token list, balances, quotes and broadcaster availability; public-mode network coverage does not apply.
+Select **Private** in the standalone swap app to open the RAILGUN shielded-wallet flow. It supports **Ethereum, Arbitrum and BNB Chain**. Private mode has its own token list, balances, quotes and broadcaster availability; public-mode network coverage does not apply.
 
 1. Create or unlock the private wallet and keep its recovery material securely.
 2. Shield supported assets from your public wallet. Approvals and deposits require public transactions; a deposit must synchronize and become **Spendable** before it can fund a private swap.

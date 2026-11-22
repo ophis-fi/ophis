@@ -92,7 +92,7 @@ OpenAI Agents SDK, LangChain and custom clients can connect with a streamable-HT
 
 ## Main MCP tools {/* #mcp-server-recommended */}
 
-Your MCP client lists every tool the server offers.
+The server offers these 13 tools.
 
 | Tool | Purpose |
 | --- | --- |
@@ -263,7 +263,7 @@ The v0.3.8 adapter family is built and published against `@ophis/sdk` v0.4.6. Th
 | --- | --- | --- | --- |
 | [`@ophis/agentkit-ophis`](https://www.npmjs.com/package/@ophis/agentkit-ophis) | v0.3.8 | [Coinbase AgentKit](https://github.com/coinbase/agentkit) | `OphisActionProvider_swap` |
 | [`@ophis/plugin-goat`](https://www.npmjs.com/package/@ophis/plugin-goat) | v0.3.8 | [GOAT SDK](https://github.com/goat-sdk/goat) | `ophis_swap` |
-| [`@ophis/plugin-elizaos`](https://www.npmjs.com/package/@ophis/plugin-elizaos) | v0.3.8 | [elizaOS](https://github.com/elizaOS/eliza) | `swap` |
+| [`@ophis/plugin-elizaos`](https://www.npmjs.com/package/@ophis/plugin-elizaos) | v0.3.8 | [elizaOS](https://github.com/elizaOS/eliza) | `OPHIS_SWAP` |
 | [`@ophis/agent-swap`](https://www.npmjs.com/package/@ophis/agent-swap) | v0.3.8 | Custom EOA frameworks | `executeOphisSwap()` |
 
 | Requirement | Value |
@@ -308,7 +308,7 @@ import { ophisPlugin } from '@ophis/plugin-elizaos';
 
 export const character = {
   name: 'Trader',
-  plugins: [ophisPlugin], // registers a natural-language `swap` action
+  plugins: [ophisPlugin], // registers the natural-language OPHIS_SWAP action
 };
 ```
 
@@ -334,7 +334,7 @@ v0.1.2 for runtimes with a shell, `curl`, `jq` and Foundry's `cast`.
 | [Umbrella skill](https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md) | Read contract addresses, signing domains, orderbook hosts and slippage limits. |
 | Sub-skills | `ophis-quote`, `ophis-swap`, `ophis-order-status`, `ophis-cancel`, `ophis-surplus-report` |
 | Active skill chains | Optimism and Robinhood Chain |
-| Legacy v0.1.2 package | Also lists Unichain (130), now retired; reject chain 130 regardless of package version. |
+| Published v0.1.2 package | Also lists Unichain (130), now retired; reject chain 130 regardless of package version. |
 
 Use MCP `list_chains` for supported networks beyond the shell skills.
 
