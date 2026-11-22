@@ -121,14 +121,15 @@ contract MetricForkTest is Test {
         assertEq(IMetricTokenTest(USDG).balanceOf(ROUTER), routerUsdg);
     }
 
-    /// A BUY order: the quoter prices the exact output, and the exact-input call spends that whole input with the
-    /// bought amount as its floor. On a filled swap nothing of the input and no allowance stays behind.
+    /// A BUY order: the quoter prices the exact output, and the exact-input call spends that input plus the margin
+    /// with the bought amount as its floor. On a filled swap nothing of the input and no allowance stays behind.
     function testMetricBuyOrderSpendsItsWholeAllowance() public {
         uint128 want = 1e6;
         vm.prank(address(0), address(0));
         (uint256 cost, uint256 filled) =
             IMetricQuoterTest(QUOTER).quoteLiveExactOutSingle(POOL, ROUTER, SETTLEMENT, true, want, 0, "");
         assertEq(filled, want);
+        cost = _withMargin(cost);
         deal(WETH, SETTLEMENT, cost);
         uint256 beforeOut = IMetricTokenTest(USDG).balanceOf(SETTLEMENT);
         vm.startPrank(SETTLEMENT, SUBMITTER);
@@ -138,6 +139,41 @@ contract MetricForkTest is Test {
         assertGe(IMetricTokenTest(USDG).balanceOf(SETTLEMENT) - beforeOut, want);
         assertEq(IMetricTokenTest(WETH).balanceOf(SETTLEMENT), 0);
         assertEq(IMetricTokenTest(WETH).allowance(SETTLEMENT, ROUTER), 0);
+    }
+
+    /// A two-pool BUY: quoting backward from the output (USDG -> META, then NVDA -> USDG) and spending that NVDA
+    /// plus the margin must return at least the bought META at the same block.
+    function testMetricTwoPoolBuyAtTheQuotePlusMargin() public {
+        address nvda = 0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC;
+        address meta = 0xc0D6457C16Cc70d6790Dd43521C899C87ce02f35;
+        address[] memory pools = new address[](2);
+        pools[0] = 0xBc6426CdBCE142dfbff33303dc0923509f61eedc;
+        pools[1] = 0x90CABdA18279BBB3D935989aF807b08B0e8CeC61;
+        uint128 want = 0.0005 ether;
+        vm.prank(address(0), address(0));
+        (uint256 mid, uint256 filled) = IMetricQuoterTest(QUOTER)
+            .quoteLiveExactOutSingle(pools[1], ROUTER, SETTLEMENT, false, want, type(uint128).max, "");
+        assertEq(filled, want);
+        vm.prank(address(0), address(0));
+        (uint256 cost, uint256 midFilled) =
+            IMetricQuoterTest(QUOTER).quoteLiveExactOutSingle(pools[0], ROUTER, ROUTER, true, uint128(mid), 0, "");
+        assertEq(midFilled, mid);
+
+        cost = _withMargin(cost);
+        address[] memory tokens = new address[](3);
+        (tokens[0], tokens[1], tokens[2]) = (nvda, USDG, meta);
+        deal(nvda, SETTLEMENT, cost);
+        uint256 beforeOut = IMetricTokenTest(meta).balanceOf(SETTLEMENT);
+        vm.startPrank(SETTLEMENT, SUBMITTER);
+        assertTrue(IMetricTokenTest(nvda).approve(ROUTER, cost));
+        IMetricRouterTest(ROUTER).exactInput(
+            IMetricRouterTest.ExactInputParams(
+                tokens, pools, new bytes[](2), 1, uint128(cost), want, SETTLEMENT, block.timestamp + 300
+            )
+        );
+        vm.stopPrank();
+        assertGe(IMetricTokenTest(meta).balanceOf(SETTLEMENT) - beforeOut, want);
+        assertEq(IMetricTokenTest(nvda).allowance(SETTLEMENT, ROUTER), 0);
     }
 
     function testMetricRejectsUnattainableOutput() public {
@@ -156,6 +192,12 @@ contract MetricForkTest is Test {
         vm.prank(SETTLEMENT);
         vm.expectRevert();
         IMetricRouterTest(ROUTER).exactInputSingle(params);
+    }
+
+    /// The solver's BUY margin: the exact-output quote is not an exact inverse of the swap (the bare quote comes
+    /// back a few parts per million short at the same block), so one basis point, rounded up, is added.
+    function _withMargin(uint256 cost) internal pure returns (uint256) {
+        return cost + cost / 10000 + 1;
     }
 
     function _checkPool() internal view {
