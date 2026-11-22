@@ -1,8 +1,8 @@
 # Authentication for agents
 
 **The public Intent API and MCP trading tools require no API key.** Wallet
-signatures authorize orders. This does not mean every Ophis service is
-unauthenticated: partner dashboards and operational controls have separate access rules.
+signatures authorize orders. Partner dashboards and operational controls have
+separate access rules.
 
 ## Why there is no auth
 

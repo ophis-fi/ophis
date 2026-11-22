@@ -56,7 +56,7 @@ But it is mitigation, not structural change. The trade is still the same
 object: a market order that executes at whatever price the pool holds at
 execution time, bounded only by a slippage tolerance, sitting at a specific
 position in a block. The protection is operational. It depends on which RPC
-your wallet actually uses, on every app in the path keeping that default, and
+your wallet uses, on every app in the path keeping that default, and
 on the private channel staying private all the way to inclusion. If any hop
 re-exposes the transaction, the original attack applies unchanged, because
 nothing about the order's structure changed.
@@ -81,8 +81,7 @@ against which liquidity, at what prices. The solver offering the best execution
 wins the right to settle the batch on-chain, in a single transaction that the
 solver, not you, submits. On most chains that settlement goes through CoW
 Protocol's GPv2 contracts; on Optimism, Robinhood Chain and Arc, Ophis
-operates its own orderbook and settlement deployment derived from GPv2. Shared
-foundations do not establish identical audit coverage or execution quality.
+operates its own orderbook and settlement deployment derived from GPv2.
 
 **One batch, one price.** Inside a batch, all orders trading the same token
 pair clear at the same uniform clearing price. That reduces ordering advantages
@@ -113,8 +112,7 @@ the final quote and minimum amount instead of assuming all improvement is yours.
 ## What "MEV protected" means at Ophis
 
 MEV protection here means mechanism-level mitigation through offchain orders,
-uniform prices per token pair and signed execution limits. It is not universal
-sandwich immunity. Standard ERC-20 settlement gas is paid by the solver, but
+uniform prices per token pair and signed execution limits. Standard ERC-20 settlement gas is paid by the solver, but
 approvals and other wallet transactions can still cost gas. Native-token orders
 and bridges can require deposits with separate refund and recovery rules.
 

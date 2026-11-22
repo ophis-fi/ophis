@@ -88,7 +88,7 @@ Leave `partnerFee` unset to use Ophis's base and price-improvement fees. An expl
 | --- | --- | --- |
 | `baseUrl` | `https://swap.ophis.fi` | Iframe host; override for a self-hosted or staging Ophis. |
 | `appCode` | `ophis` | Tags orders in appData. Set it to your registered code to see your volume in the [earnings report](/partners#verifying-your-earnings-get-earningsappcode). |
-| `partnerFee` | Unset | The iframe applies the complete Ophis fee policy. |
+| `partnerFee` | Unset | The iframe applies the Ophis base and price-improvement fees. |
 | `partnerFee.recipient` | Ophis Safe when overridden | Pinned by the React wrapper. |
 | `chainId`, `sell`, `buy`, `theme`, `tokenLists` | Upstream defaults | [Widget parameters](https://www.npmjs.com/package/@cowprotocol/widget-lib) pass through. |
 
@@ -118,7 +118,7 @@ A self-hosted iframe host must allow third-party framing: set CSP `frame-ancesto
 
 | License | Value |
 | --- | --- |
-| Widget | GPL-3.0 |
+| Widget | GPL-3.0-or-later |
 
 ## Next
 

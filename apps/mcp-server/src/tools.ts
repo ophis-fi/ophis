@@ -34,7 +34,7 @@ import {
 import { resolveStablePair } from './stablePair.js'
 
 /** Identity reported by both transports (stdio + Worker). */
-export const MCP_SERVER_VERSION = '0.2.2' as const
+export const MCP_SERVER_VERSION = '0.2.3' as const
 
 /** Canonical public tool inventory. Metadata tests fail if registration or server.json drifts. */
 export const OPHIS_TOOL_NAMES = [
@@ -110,7 +110,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
     {
       annotations: { title: 'Get swap quote', readOnlyHint: true, openWorldHint: true },
       description:
-        "Fetch a best-execution quote from the chain's Ophis orderbook (use a chainId from list_chains' `tradeable`). Amounts are in atoms (smallest unit, uint256 decimal string). For kind='sell' the amount is the sell amount before fee; for kind='buy' it is the desired buy amount. Returns the orderbook quote (sellAmount/buyAmount/feeAmount/validTo). Before build_order, apply slippage to the limit side by kind: kind='sell' -> lower buyAmount (min out); kind='buy' -> raise sellAmount (max in).",
+        "Fetch a quote from the chain's Ophis orderbook (use a chainId from list_chains' `tradeable`). Amounts are in atoms (smallest unit, uint256 decimal string). For kind='sell' the amount is the sell amount before fee; for kind='buy' it is the desired buy amount. Returns the orderbook quote (sellAmount/buyAmount/feeAmount/validTo). Before build_order, apply slippage to the limit side by kind: kind='sell' -> lower buyAmount (min out); kind='buy' -> raise sellAmount (max in).",
       inputSchema: {
         chainId: z.number().int().describe('EVM chain id (use list_chains for supported chains).'),
         sellToken: z.string().describe('Sell token address (0x...).'),

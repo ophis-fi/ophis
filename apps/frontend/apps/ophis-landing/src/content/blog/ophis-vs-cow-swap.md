@@ -1,8 +1,8 @@
 ---
 title: "Ophis vs CoW Swap: what a CoW Protocol fork changes"
-description: "Ophis is a CoW Protocol fork with batch auctions, an agent stack, and solver-aligned sovereign pricing on Optimism, and Robinhood Chain."
+description: "Ophis is a CoW Protocol fork with batch auctions, an agent stack, and solver-aligned sovereign pricing on Optimism, Robinhood Chain and Arc."
 pubDate: 2026-07-11
-updatedDate: 2026-10-19
+updatedDate: 2026-11-22
 author: Ophis
 tags: [cow-protocol, comparison, defi, swaps, mev]
 draft: false
@@ -12,7 +12,7 @@ coverAlt: "Ophis emblem ringed by supported chain logos, a CoW Protocol fork"
 
 Ophis is a fork of CoW Protocol's frontend. On most chains an Ophis order settles through CoW Protocol's canonical audited GPv2 contracts and solver competition; on Optimism, Robinhood Chain and Arc, Ophis operates sovereign deployments with its own orderbook and a settlement derived from GPv2 at a non-canonical address. What the fork changes is the layer on top: natural-language intent input, an agent stack, chain-aware pricing, referral attribution, and a live trade-rewards campaign.
 
-That is the whole comparison in three sentences. The rest of this page unpacks it plainly, because Ophis (the intent-based DEX aggregator at [ophis.fi](https://ophis.fi/)) exists because of CoW Protocol, not despite it. A maintained side-by-side also lives in the [comparison docs](https://docs.ophis.fi/comparison).
+That is the whole comparison in three sentences. The rest of this page unpacks it. Ophis (the intent-based DEX aggregator at [ophis.fi](https://ophis.fi/)) exists because of CoW Protocol, not despite it. A maintained side-by-side also lives in the [comparison docs](https://docs.ophis.fi/comparison).
 
 ## The same settlement engine
 
@@ -20,7 +20,7 @@ Ophis did not reimplement settlement. A CoW Protocol fork inherits the three pro
 
 **Batch auctions.** You do not broadcast a swap transaction. You sign an EIP-712 order with a hard limit price, competing solvers race to fill it, and fills settle in batches at a uniform clearing price.
 
-**The [MEV mitigation](/blog/mev-protection-batch-auctions/) model.** Offchain orders and uniform clearing prices per token pair reduce common ordering advantages. Settlement using external pools can still be public; no universal sandwich immunity is promised.
+**The [MEV mitigation](/blog/mev-protection-batch-auctions/) model.** Offchain orders and uniform clearing prices per token pair reduce common ordering advantages. Settlement using external pools can still be public.
 
 **Wallet authorization.** Standard signed ERC-20 orders keep funds in the wallet until settlement, with gas paid by the solver. Approvals and other transactions cost gas; native-token and bridge deposits have separate recovery rules.
 
@@ -57,13 +57,13 @@ A comparison written by the fork owes you the cases where the original wins:
 - **You want the longer track record.** CoW Protocol built and has operated this settlement design in production; a fork is younger by definition.
 - **You want the smallest trust surface.** Ophis adds a frontend, an agent stack, and, on three chains, an operator role. The added code is open source, but it is added surface. If minimizing surface is the priority, use the original.
 
-For CoW Swap's current fee model, check [docs.cow.fi](https://docs.cow.fi); this page makes no claims about it.
+For CoW Swap's current fee model, check [docs.cow.fi](https://docs.cow.fi).
 
 ## FAQ
 
 ### Is Ophis audited?
 
-Upstream CoW audits cover relevant shared code, not every Ophis modification or deployment. Ophis-specific code has internal/tool-assisted reviews; this is not an organizational audit by the tool authors. See [Security & audits](https://docs.ophis.fi/audits) for report scopes and source links.
+Upstream CoW audits cover relevant shared code, not every Ophis modification or deployment. Ophis-specific code has internal and tool-assisted reviews. See [Security & audits](https://docs.ophis.fi/audits) for report scopes and source links.
 
 ### Can I keep my CoW workflow on Ophis?
 
@@ -79,4 +79,4 @@ Every supported chain pays the 1 bp Ophis base. Under the standard schedule, cap
 
 ## Try it
 
-The fastest comparison is one trade. Open [swap.ophis.fi](https://swap.ophis.fi/), choose the pair and amount, and review the limit price you are signing before you sign it. Building an agent instead? Start with the [AI agent docs](https://docs.ophis.fi/ai-agents).
+One trade makes the comparison concrete. Open [swap.ophis.fi](https://swap.ophis.fi/), choose the pair and amount, and review the limit price you are signing before you sign it. Building an agent instead? Start with the [AI agent docs](https://docs.ophis.fi/ai-agents).

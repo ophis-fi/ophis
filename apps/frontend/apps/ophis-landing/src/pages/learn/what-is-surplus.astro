@@ -16,7 +16,7 @@ const FAQS = [
   },
   {
     q: 'Where does surplus come from?',
-    a: `Three main places. Prices move between signing and settlement, and movement in your favor lands beyond your limit. Solvers compete, so a better route, a market-maker quote, or private inventory found by the winning solver shows up as execution above your floor. And a coincidence of wants inside the batch skips pool fees and price impact entirely, with the saving surfacing as surplus on both sides.`,
+    a: `Three main places. Prices move between signing and settlement, and movement in your favor lands beyond your limit. Solvers compete, so a better route, a market-maker quote, or private inventory found by the winning solver shows up as execution above your floor. And where a solver combines orders, a coincidence of wants inside the batch skips pool fees and price impact for the matched portion, with the saving surfacing as surplus on both sides.`,
   },
   {
     q: 'Who keeps the surplus?',
@@ -24,7 +24,7 @@ const FAQS = [
   },
   {
     q: 'How is surplus different from positive slippage?',
-    a: `Positive slippage is the tolerance-model cousin: price movement in your favor inside a router swap. Whether it reaches you depends on how the router handles it, and captured positive slippage has historically been a quiet revenue line in parts of the industry. Surplus in a batch auction is explicit by construction: the signed limit defines exactly where your terms end, so everything beyond it is measurable, attributable, and returned under published rules.`,
+    a: `Positive slippage is the tolerance-model cousin: price movement in your favor inside a router swap. Whether it reaches you depends on how the router handles it. Surplus in a batch auction is explicit by construction: the signed limit defines exactly where your terms end, so everything beyond it is measurable, attributable, and shared under published rules.`,
   },
   {
     q: 'Can I see the surplus on my trades?',
@@ -44,8 +44,8 @@ const FAQS = [
 >
   <p>
     <strong>The short version:</strong> surplus is the gap between what you signed for and the
-    better execution settlement achieved. It comes from price movement, solver competition, and
-    peer matches. The standard schedule shares reference-quote improvement under capped Ophis
+    better execution settlement achieved. It comes from price movement, solver competition, and,
+    where solvers combine orders, peer matches. The standard schedule shares reference-quote improvement under capped Ophis
     policies; hosted chains also apply upstream CoW fees. Arc follows the same policy.
     Check the <a href="/pricing/">current fee scope</a> before calculating the trader's remainder.
   </p>

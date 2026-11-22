@@ -21,9 +21,9 @@ RAILGUN holds the shielded assets and verifies private spending proofs. **Uniswa
 
 Native deposits wrap ETH or BNB into the corresponding wrapped asset. Check token contracts: assets with the same symbol on different networks are not interchangeable. The BNB stablecoins above are Binance-pegged assets.
 
-These are the default choices. Address-based token discovery does not guarantee a supported swap route or available liquidity. Private balances stay on their selected network; private mode does not bridge them. The public app's wider network and bridge coverage does not apply.
+These are the default choices. A token found by address can lack a supported swap route or liquidity. Private balances stay on their selected network; private mode does not bridge them. The public app's wider network and bridge coverage does not apply.
 
-**Base remains a held pilot; Polygon is deferred.** Their presence in SDK configuration or local tests does not establish public production availability. New activity also requires synchronized wallet history and an available broadcaster on the selected network.
+New activity requires synchronized wallet history and an available broadcaster on the selected network.
 
 ## Create or restore your wallet
 
@@ -73,7 +73,7 @@ For an uncertain payment, check the public wallet's activity first. **Check top-
 3. Select **Confirm private swap** only after reviewing those terms. Keep the saved transaction record until its outcome is known.
 4. Wait for settlement and synchronization before spending the resulting balance again. If the outcome is uncertain, use [recovery](#interrupted-transactions) before preparing another transaction.
 
-The current router quotes **Uniswap v3 only**, using direct or one-intermediate-token paths and supported fee tiers. It selects the best successful quote within its bounded search; it does not compare every DEX or guarantee liquidity for every token. Private swaps do not enter the public batch auction.
+The current router quotes **Uniswap v3 only**, using direct or one-intermediate-token paths and supported fee tiers. It selects the highest successful quote among those paths. Private swaps do not enter the public batch auction.
 
 Ophis charges **0.1% (10 bps) of swap output**, in addition to liquidity-pool fees, broadcaster costs and applicable deposit or withdrawal fees. Review [Fees](/fees#private-swap-costs) and the current quote. Slippage limits still matter, and private submission is not a universal MEV or transaction-inclusion guarantee.
 
@@ -125,4 +125,4 @@ Where offered, public-wallet withdrawal recovery reuses the saved proof and reta
 | Gateway simulation provider | It receives the executable signed batch without the original client-IP header and may be able to submit that batch. |
 | Public recovery | Gas funding and recovery transactions can link public and temporary execution accounts. |
 
-RAILGUN's cryptographic spending proofs do not guarantee anonymity against timing, amount or network-metadata correlation. Availability also depends on RPC access, synchronization, delivery services and their policies. The [security page](/audits#private-wallet-security) distinguishes shielded-asset custody, operator-held credit and review scope. Upstream GPv2 settlement audits do not certify this private-wallet integration.
+Timing, amounts and network metadata can still link private activity. Availability also depends on RPC access, synchronization, delivery services and their policies. The [security page](/audits#private-wallet-security) distinguishes shielded-asset custody, operator-held credit and review scope.

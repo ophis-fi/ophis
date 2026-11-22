@@ -31,7 +31,7 @@ Use your Odos v3 quote requests to trade one ERC-20 input for one ERC-20 output 
 
 Threshold-ECDSA MPC signers controlling an EOA use the same signing flow. For Safe or other contract-wallet orders, use [Partner integration](/partners).
 
-Use wrapped tokens such as WETH. Native-token inputs or outputs using `0xEeee…EEeE` or the zero address return `UPSTREAM_UNAVAILABLE` (503, numeric 3000); replace the token instead of retrying.
+Use wrapped tokens such as WETH. A native-token input using `0xEeee…EEeE` returns `UPSTREAM_VALIDATION` (400, numeric 4913), and the zero address returns `UPSTREAM_UNAVAILABLE` (503, numeric 3000); replace the token instead of retrying.
 
 ## Supported chains {/* #chains */}
 
@@ -60,9 +60,9 @@ The backend applies improvement capture separately from the appData base fee. So
 | `POST /sor/assemble` | Rebuild the unsigned order from `userAddr` and `pathId`; accepts an optional `receiver` override |
 | `POST /sor/swap/v3` | Quote and assembly in one call |
 | `POST /sor/submit` | Validate and submit your signed order |
-| `GET /sor/order-status/10/{orderUid}` | Order status and executed amounts |
+| `GET /sor/order-status/{chainId}/{orderUid}` | Order status and executed amounts |
 | `GET /sor/settlement/{chainId}/{orderUid}?waitSeconds=20` | Wait for settlement or the bounded timeout |
-| `/healthz` | Configured chains |
+| `GET /healthz` | Configured chains |
 
 ## Get a quote {/* #quote-only-use */}
 
@@ -203,7 +203,7 @@ Use the returned status and settlement amounts to update your app after executio
 | `sourceWhitelist`, `sourceBlacklist`, `poolBlacklist` | Ignored with a warning; solvers choose routing |
 | `disableRFQs`, `compact` | Ignored |
 | `likeAsset` | Ignored with a warning |
-| `pathViz`, `pathVizImage`, `pathVizImageConfig` | Route graph and rendered SVG on Optimism; Robinhood Chain return `null` with a warning |
+| `pathViz`, `pathVizImage`, `pathVizImageConfig` | Route graph and rendered SVG on Optimism; Robinhood Chain returns `null` with a warning |
 | `permit2` | `null` with `PERMIT2_UNAVAILABLE`; approve the vault relayer |
 
 ## Response field mapping
@@ -230,7 +230,7 @@ Errors use `{ traceId, error: { code, numericCode, httpStatus, message, docs } }
 | Response | Client action |
 | --- | --- |
 | `NO_ROUTE` (404) | Choose another pair or amount |
-| 503 with `Retry-After` | Retry after the delay, except for native-token inputs or outputs |
+| 503 with `Retry-After` | Retry after the delay, except for a zero-address token |
 | 429 | Reduce the request rate globally |
 | `PATH_ID_EXPIRED` (410) | Request a new quote |
 

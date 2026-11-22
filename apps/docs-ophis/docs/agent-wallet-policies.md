@@ -25,7 +25,7 @@ The [policy packs](https://github.com/ophis-fi/ophis/tree/main/examples/agent-wa
 1. **Create a dedicated user.** Give the agent a non-root API user; keep root credentials offline with a guardian who can revoke signing.
 2. **Set the policy values.** Use the chain's addresses below, your wallet as `receiver`, and your token allowlist.
 3. **Upload the token ABI.** Turnkey needs it to decode `eth.tx.contract_call_args['spender']`; match argument names to the token ABI.
-4. **Check address casing.** Use lowercase hex in `eth.eip_712.*` conditions and the checksummed addresses shown for `eth.tx.*`; verify against a real payload.
+4. **Check address casing.** Use lowercase hex in `eth.eip_712.*` conditions and the checksummed addresses shown for `eth.tx.*`; verify against a signed payload.
 5. **Apply the deny guards.** Include the pre-hashed signing and key-export deny rules in the examples below.
 
 </Steps>
@@ -169,7 +169,7 @@ For other chains, use the [Turnkey template](https://github.com/ophis-fi/ophis/t
 
 <Steps>
 
-1. **Build the order.** Call `build_order` through the [MCP server](/ai-agents) to get a live quote, slippage bounds, owner-pinned receiver and EIP-712 `domain` and `types`.
+1. **Build the order.** Call `build_order` through the [MCP server](/ai-agents) to get an order checked against a live quote and your slippage bound, with an owner-pinned receiver and its EIP-712 `domain` and `types`.
 2. **Approve the sell token.** Approve a bounded amount for the vault relayer; keep native gas for the transaction.
 3. **Review and sign.** Check the sell amount and minimum buy amount, then sign with the constrained wallet.
 4. **Submit the signature.** Call `submit_order`, which also checks that the receiver is the owner.

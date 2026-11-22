@@ -2,7 +2,7 @@
 title: "Ophis moves to solver-aligned pricing"
 description: "A 1 bp base and capped price-improvement capture on Ophis-operated chains aligns protocol revenue with execution quality."
 pubDate: 2026-08-05
-updatedDate: 2026-10-04
+updatedDate: 2026-11-22
 author: Ophis
 tags: [fees, solver-auctions, price-improvement, optimism]
 draft: false
@@ -19,7 +19,7 @@ of trade volume**. On same-chain stablecoin pairs, Ophis retains **50%, capped
 at 20 bps**. The base remains 1 bp in both cases.
 
 The standard policy applies to Optimism, Robinhood Chain, Arc and the ten
-CoW-hosted networks. Those four operated backends enforce it directly; CoW-hosted orders encode the same policy in
+CoW-hosted networks. Those three operated backends enforce it directly; CoW-hosted orders encode the same policy in
 CIP-75 appData, with CoW Protocol's upstream fees applied separately.
 
 **September 30 update:** Arc now uses the same backend market-order improvement
@@ -74,9 +74,9 @@ CoW's upstream fees. Use the complete SDK fee helper output.
 ## What remains unchanged
 
 Orders remain self-custodial, gasless for ERC-20 swaps, MEV-protected through
-batch settlement, and bounded by the signed limit price. Integrators can still
-add an onboarded fee of their own, and Ophis continues to take 0% of that
-integrator markup.
+batch settlement, and bounded by the signed limit price. On CoW-hosted chains,
+integrators can still add a fee of their own, and Ophis continues to take 0% of
+that integrator markup.
 
 On CoW-hosted chains, the same Ophis improvement policy is encoded in appData.
 CoW Protocol's upstream fees apply separately and are not Ophis fees.

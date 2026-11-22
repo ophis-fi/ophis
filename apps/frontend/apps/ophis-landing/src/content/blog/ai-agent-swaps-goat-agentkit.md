@@ -2,7 +2,7 @@
 title: "AI agent token swaps with GOAT or Coinbase AgentKit"
 description: "Wire a swap tool into a GOAT SDK or Coinbase AgentKit agent with Ophis: bounded orders, pinned receiver, capped slippage, gasless MEV-protected settlement."
 pubDate: 2026-07-12
-updatedDate: 2026-10-19
+updatedDate: 2026-11-22
 author: Ophis
 tags: [ai-agents, goat, agentkit, mev, swaps]
 draft: false
@@ -14,7 +14,7 @@ To add token swaps to a TypeScript AI agent, install `@ophis/plugin-goat` (for t
 
 This is the sequel to [our walkthrough of agent swaps via MCP, the Intent API, and the SDK](/blog/let-an-ai-agent-swap-tokens/). That post explains why an autonomous signer needs *bounded orders* instead of market swaps; this one is the TypeScript integration, with minimal glue code.
 
-## What the swap tool actually does
+## What the swap tool does
 
 Both packages register one capability (GOAT names the tool `ophis_swap`; AgentKit exposes an `OphisActionProvider_swap` action) with identical behavior underneath. On each call, the package:
 
@@ -117,7 +117,7 @@ An autonomous signer has no confirmation dialog, so the properties a human would
 - **Receiver pinned to the signer.** The agent's wallet is the order owner *and* receiver. Funds only ever move through the settlement contract, back to the same wallet; a prompt-injected "send the proceeds elsewhere" has no parameter to grab.
 - **Slippage capped.** `slippageBps` bounds the gap between quote and worst acceptable fill, defaulting to 0.5%.
 - **The agent's own key.** Signing happens inside your process, via the wallet you constructed; nothing custodial.
-- **Batch settlement.** Offchain orders and uniform prices per token pair mitigate common MEV. External-pool settlement can still be public; this is not universal sandwich immunity.
+- **Batch settlement.** Offchain orders and uniform prices per token pair mitigate common MEV. External-pool settlement can still be public.
 - **Solver-paid ERC-20 settlement.** Approvals, wrapping and other wallet transactions can still require gas; exact allowances can need renewal after each fill.
 
 Two limits to plan around: the flow is ERC-20 to ERC-20 only (wrap native ETH to WETH first), and it signs as an EOA via `signTypedData`, not as a Safe. Before removing the human from the loop entirely, read the autonomous-agent section of the first post: unattended operation also needs policy gates and spend caps around the signer.
@@ -146,7 +146,7 @@ Whichever framework your agent already runs on; the swap behavior is identical b
 
 ### What does this cost?
 
-The packages are free and open source. Their SDK builders select the fee by chain and pair: a 1 bp base on Optimism, and Robinhood Chain, where the backend also applies capped improvement capture; or the same 1 bp base plus pair-aware capped improvement policy in appData on CoW-hosted chains. CoW Protocol's fees apply upstream on hosted chains. Details are maintained at [docs.ophis.fi/fees](https://docs.ophis.fi/fees). A referral code attributes routed volume to your integration.
+The packages are free and open source. Their SDK builders select the fee by chain and pair: a 1 bp base on Optimism, Robinhood Chain and Arc, where the backend also applies capped improvement capture; or the same 1 bp base plus pair-aware capped improvement policy in appData on CoW-hosted chains. CoW Protocol's fees apply upstream on hosted chains. Details are maintained at [docs.ophis.fi/fees](https://docs.ophis.fi/fees). A referral code attributes routed volume to your integration.
 
 ## Start here
 

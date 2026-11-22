@@ -3,8 +3,8 @@
 Agent-facing **MCP server** for the Ophis DEX, deployed as a Cloudflare Worker
 with the Streamable-HTTP transport at **`https://mcp.ophis.fi/mcp`**.
 
-Current server release: **v0.2.2**, with 13 tools across 15 configured EVM
-chains (14 mainnets plus Sepolia).
+Current server release: **v0.2.3**, with 13 tools across 14 configured EVM
+chains (13 mainnets plus Sepolia).
 
 It exposes the Ophis trading surface to autonomous agents and MCP clients
 without making them re-derive chain-specific integration details
@@ -42,7 +42,7 @@ owner for indexing. It can therefore change orderbook and indexer state.
 | `parse_intent` | Plain-English swap request → structured intent (LibertAI Qwen via `swap.ophis.fi/api/intent`). |
 | `resolve_token` | Resolve a token symbol to its canonical address from the trusted Ophis list; fails closed (anti-spoof). |
 | `list_chains` | Supported chains, orderbook hosts, settlement contracts, partner-fee config. |
-| `get_quote` | Best-execution quote from the chain's Ophis orderbook (`/api/v1/quote`). |
+| `get_quote` | Quote from the chain's Ophis orderbook (`/api/v1/quote`). |
 | `expected_surplus` | Estimate price improvement versus a public aggregator (KyberSwap), in basis points. |
 | `build_order` | A bounded, ready-to-sign order: correct per-chain settlement + orderbook, CIP-75 partner fee in appData, receiver pinned to owner. |
 | `submit_order` | Relay a **pre-signed** order to the orderbook (`/api/v1/orders`). No keys held here. |

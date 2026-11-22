@@ -132,13 +132,13 @@ Run `ophis chains` to see the names to type.
 | --- | --- |
 | Ophis base | 0.01%; 0.01 USDC on a 100 USDC swap |
 | Price improvement | Share and cap shown on every quote and confirmation |
-| Upstream volume fee on partner-hosted networks | 0.02%, or 0.003% on correlated pairs such as stablecoins |
-| Combined volume fee on partner-hosted networks | 0.03% standard / 0.013% correlated; improvement and execution costs are additional |
+| Upstream volume fee on partner-hosted networks | 0.02%, or none on correlated pairs such as stablecoins |
+| Combined volume fee on partner-hosted networks | 0.03% standard / 0.01% correlated; improvement and execution costs are additional |
 | Partner-hosted networks | 10, including Base |
 | Ophis-operated networks | Optimism, Robinhood Chain, Arc; no upstream fee |
 | Across bridge fee | Included in the displayed amounts |
 
-If the order fills, settlement enforces the amount shown as **At least**. A quote or signed order does not guarantee a fill. See [Fees](/fees) for improvement capture and upstream fee details.
+If the order fills, settlement enforces the amount shown as **At least**. A quote or signed order can expire without a fill. See [Fees](/fees) for improvement capture and upstream fee details.
 
 Signing an order is free. Token approvals, wrapping ETH and `ophis recover` require network fees. Each approval covers the amount needed for that swap.
 
@@ -150,7 +150,7 @@ Signing an order is free. Token approvals, wrapping ETH and `ophis recover` requ
 <Card icon="search" title="Token addresses">The CLI displays each token's contract address for you to check.</Card>
 </Cards>
 
-The CLI checks the Ophis token list first, then public lists from swap.ophis.fi. It flags tokens outside the Ophis list and rejects ambiguous names. Before approving, match the wallet's amounts and token addresses to the terminal.
+The CLI checks the Ophis token list first, then the public token lists that swap.ophis.fi offers. It flags tokens outside the Ophis list and rejects ambiguous names. Before approving, match the wallet's amounts and token addresses to the terminal.
 
 ## Connection and tokens {/* #troubleshooting */}
 

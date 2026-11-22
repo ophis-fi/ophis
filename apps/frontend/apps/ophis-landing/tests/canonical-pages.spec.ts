@@ -149,7 +149,7 @@ test('pricing page includes Arc in the standard capture policy', async ({ page }
   await expect(body).toContainText('Arc uses the same backend market-order policy')
   await expect(body).toContainText('Out-of-market limit orders pay the signed base without this backend improvement fee')
   await expect(body).toContainText('Historical base-only trades retain their original fees')
-  await expect(page.locator('.updated time')).toHaveAttribute('datetime', /2026-10-04/)
+  await expect(page.locator('.updated time')).toHaveAttribute('datetime', /2026-11-22/)
 })
 
 test('acquisition pages are linked from their relevant guides', async ({ page }) => {
@@ -184,7 +184,7 @@ test('supported-chains explains the current SDK, Arc referrals and enrollment', 
   await expect(body).toContainText('register the actual order owner for trade indexing and the USDG trade-rewards campaign.')
   await expect(body).toContainText('Track routed volume by appCode in the earnings report at rebates.ophis.fi/earnings/<appCode>.')
   await expect(body.locator('a[href="https://swap.ophis.fi/#/rewards"]')).toBeVisible()
-  await expect(page.locator('.updated time')).toHaveAttribute('datetime', /2026-10-04/)
+  await expect(page.locator('.updated time')).toHaveAttribute('datetime', /2026-11-22/)
   const ldBlocks = await page.locator('script[type="application/ld+json"]').allTextContents()
   const faq = ldBlocks.map((block) => JSON.parse(block)).find((block) => block['@type'] === 'FAQPage')
   expect(JSON.stringify(faq)).toContain(`SDK v${sdk.version} and hosted MCP include Arc (5042)`)
@@ -192,9 +192,9 @@ test('supported-chains explains the current SDK, Arc referrals and enrollment', 
   expect(guide.ok()).toBe(true)
   const guideText = (await guide.text()).replace(/\s+/g, ' ')
   expect(guideText).toContain('Arc (5042) is also Ophis-operated and is supported by the published SDK and hosted MCP.')
-  expect(guideText).toContain("It remains outside this skill's three-chain execution policy.")
+  expect(guideText).toContain("It remains outside this skill's two-chain execution policy.")
   const sitemap = readFileSync(dist('sitemap.xml'), 'utf8')
-  expect(sitemap).toMatch(/<loc>https:\/\/ophis\.fi\/supported-chains\/<\/loc>\s*<lastmod>2026-10-04/)
+  expect(sitemap).toMatch(/<loc>https:\/\/ophis\.fi\/supported-chains\/<\/loc>\s*<lastmod>2026-11-22/)
 })
 
 test('sitemap lists the canonical pages with trailing-slash URLs', () => {

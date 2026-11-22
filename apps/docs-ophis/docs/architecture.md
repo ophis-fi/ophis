@@ -36,7 +36,7 @@ The onchain `GPv2AllowListAuthentication` contract controls which solvers can se
 
 A direct swap executes a quoted transaction from your wallet and requires network gas. It does not enter a batch auction. The form shows the selected route and its minimum output before approval.
 
-Private mode uses a RAILGUN shielded wallet on Ethereum, Arbitrum and BNB Chain. Base remains a held pilot and Polygon is deferred. Swaps use supported Uniswap v3 routes and separate broadcaster fee credit. See [Privacy pools and private swaps](/privacy-pools) for deposits, withdrawals, refunds and recovery.
+Private mode uses a RAILGUN shielded wallet on Ethereum, Arbitrum and BNB Chain. Swaps use supported Uniswap v3 routes and separate broadcaster fee credit. See [Privacy pools and private swaps](/privacy-pools) for deposits, withdrawals, refunds and recovery.
 
 ## Developer intent parsing
 
@@ -46,8 +46,8 @@ The [Intent API](/intent-api) converts natural language into a structured `Parse
  plain English          structured order           batch auction          settlement
 ┌──────────────┐  parse ┌──────────────────┐ sign ┌──────────────────┐    ┌──────────────┐
 │ "swap 100    │ ─────▶ │ sell: USDC       │ ───▶ │ solvers compete  │ ─▶ │ uniform-price│
-│  USDC for    │  LLM   │ buy:  ETH        │ wallet│ for best execution│   │ on-chain     │
-│  ETH on Base"│        │ amount: 100      │      │ (DEX / peer match)│  │ settlement   │
+│  USDC for    │  LLM   │ buy:  ETH        │wallet│ for the batch    │    │ on-chain     │
+│  ETH on Base"│        │ amount: 100      │      │ (DEX/peer match) │    │ settlement   │
 └──────────────┘        │ chain: base      │      └──────────────────┘    └──────────────┘
                         └──────────────────┘
 ```

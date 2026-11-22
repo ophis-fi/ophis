@@ -1,6 +1,6 @@
 {
   "name": "@ophis/agent-skills",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "The Ophis agent-skill family as an npm package: markdown skills (quote, swap, order status, cancel, surplus report) with a machine-readable per-chain policy block, for AI agents with shell access. Packaged unmodified from the canonical family served at ophis.fi/.well-known/agent-skills/.",
   "license": "MIT",
   "files": [

@@ -14,7 +14,7 @@ const orderbook = getOphisOrderbookUrl(/* chainId */ 10)
 const domain = getOphisOrderDomain(10)
 
 // Pin the receiver to the owner before signing; an unpinned
-// receiver is the #1 drain vector for an automated signer.
+// receiver can send the proceeds to another address.
 assertReceiverIsOwner(owner, order.receiver)`
 ---
 <section class="sdk" id="sdk">
@@ -23,7 +23,7 @@ assertReceiverIsOwner(owner, order.receiver)`
       <span class="sdk-tag">@ophis/sdk</span>
       <h2 class="serif">Ship integrations <em>in an afternoon.</em></h2>
       <p>
-        Correct orderbook hosts, per-chain signing domains, and agent-safety guards: everything an integrator needs to ship without footguns.
+        Correct orderbook hosts, per-chain signing domains, and agent-safety guards in one package.
       </p>
       <div class="ctas">
         <a class="cta-secondary cta-primary" href="https://www.npmjs.com/package/@ophis/sdk" rel="noopener">npm i @ophis/sdk</a>

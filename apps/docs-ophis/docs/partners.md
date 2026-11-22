@@ -117,7 +117,7 @@ Resolve the relayer with `getOphisVaultRelayer(chainId)`. An approval from the S
 | Arc | `0x895505F1FE6D762296685fF4a8201782FFdCB8E9` |
 | partner-hosted chains | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` |
 
-Use the Ophis host, settlement, and relayer on Ophis-operated chains. Resolve all three through the Ophis helpers, including on partner-hosted chains. Use SDK v0.4.5 for the current chain and safety helpers; Arc support was introduced in v0.4.3.
+Use the Ophis host, settlement, and relayer on Ophis-operated chains. Resolve all three through the Ophis helpers, including on partner-hosted chains. Use SDK v0.4.6 for the current chain and safety helpers; Arc support was introduced in v0.4.3. Published versions still map the retired Unichain (130), so reject chain 130 in your integration.
 
 ## Ophis fees
 
@@ -333,7 +333,7 @@ await ethFlow.createOrder(built.orderTuple, { value: built.value });
 
 | Chain | Native-token path |
 | --- | --- |
-| Optimism, Base, and other partner-hosted chains | Resolve EthFlow support through the SDK |
+| Optimism and partner-hosted chains such as Base | Resolve EthFlow support through the SDK |
 | Robinhood Chain | `getOphisEthFlowAddress(4663)` resolves `0xC1Ee77e8a1B85D5EED702a9bB435f434408A4d29` |
 | Arc | Use the ERC-20 USDC interface for native USDC |
 

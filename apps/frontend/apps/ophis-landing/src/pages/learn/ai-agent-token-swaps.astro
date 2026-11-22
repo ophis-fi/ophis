@@ -18,15 +18,15 @@ const FAQS = [
   },
   {
     q: 'What is receiver pinning, and why is it the first rule?',
-    a: `The receiver field says where the bought tokens go. An unpinned receiver is the top drain vector for an automated signer: a manipulated agent that signs an otherwise-correct order with an attacker receiver has lost the funds even though the price was fair. Pin the receiver to the owner and assert it in code before signing; the @ophis/sdk ships assertReceiverIsOwner for exactly this.`,
+    a: `The receiver field says where the bought tokens go. An unpinned receiver is a direct drain vector for an automated signer: a manipulated agent that signs an otherwise-correct order with an attacker receiver has lost the funds even though the price was fair. Pin the receiver to the owner and assert it in code before signing; the @ophis/sdk ships assertReceiverIsOwner for exactly this.`,
   },
   {
     q: 'Why must an agent resolve the settlement domain per chain?',
-    a: `On ${sovereignList}, settlement uses Ophis's own GPv2Settlement at a non-canonical address. An EIP-712 signature binds to its verifying contract. Resolve supported domains and hosts via @ophis/sdk or MCP list_chains before signing. SDK v0.4.3 and hosted MCP include Arc (5042); do not substitute another chain's domain.`,
+    a: `On ${sovereignList}, settlement uses Ophis's own GPv2Settlement at a non-canonical address. An EIP-712 signature binds to its verifying contract. Resolve supported domains and hosts via @ophis/sdk or MCP list_chains before signing. SDK v0.4.3 or later and hosted MCP include Arc (5042); do not substitute another chain's domain.`,
   },
   {
     q: 'What does the Ophis MCP server do, and what does it never do?',
-    a: `The MCP server at mcp.ophis.fi lets an agent parse an intent, resolve tokens, quote, build a bounded order, and submit a pre-signed order. It is public, unauthenticated, and keyless: it never holds keys and never signs. The agent signs locally with its own key, so custody never leaves the agent's side.`,
+    a: `The MCP server at mcp.ophis.fi lets an agent parse an intent, resolve tokens, quote, build a bounded order, and submit a pre-signed order. It is public, unauthenticated, and keyless: it never holds keys and never signs. The agent signs locally with its own key, so the key stays with the agent and standard ERC-20 orders keep funds in its wallet until settlement.`,
   },
   {
     q: 'What else should a production agent enforce?',
@@ -34,7 +34,7 @@ const FAQS = [
   },
   {
     q: 'What does an agent pay?',
-    a: `Calling the MCP server and the Intent API is free. On every supported chain, the keyless MCP and SDK paths apply the 1 bp base plus capped price-improvement capture: 80%/99 bps for volatile pairs or 50%/20 bps for stable pairs. CoW-hosted chains additionally apply CoW Protocol fees upstream. ERC-20 order settlement is gasless; approvals and other wallet transactions still require gas.`,
+    a: `Calling the MCP server and the Intent API is free. On every supported chain, the keyless MCP and SDK paths apply the 1 bp base plus capped price-improvement capture: 80%/99 bps for volatile pairs or 50%/20 bps for stable pairs. CoW-hosted chains additionally apply CoW Protocol fees upstream. Signing an ERC-20 order costs no gas and the solver submits the settlement, with its estimated network cost included in the quote; approvals and other wallet transactions still require gas.`,
   },
 ]
 ---
@@ -44,7 +44,7 @@ const FAQS = [
   description="How to let an AI agent swap tokens without handing it open-ended signing power: bounded EIP-712 orders, receiver pinning, per-chain domain resolution, expiry, and the keyless MCP server."
   path="/learn/ai-agent-token-swaps/"
   heading="AI agent token swaps: the safe pattern"
-  lede="An agent should sign bounded orders, not arbitrary transactions. The pattern: hard limit price, receiver pinned to the owner, resolved per-chain domain, expiry, and keys that never leave the agent."
+  lede="An agent should sign bounded orders, not arbitrary transactions. The pattern: hard limit price, receiver pinned to the owner, resolved per-chain domain, expiry, and keys that stay with the agent."
   updated={updated}
   faqs={FAQS}
 >

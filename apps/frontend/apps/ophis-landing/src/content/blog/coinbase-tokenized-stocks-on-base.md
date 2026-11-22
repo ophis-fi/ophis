@@ -2,7 +2,7 @@
 title: "Coinbase tokenized stocks on Base: swap AAPLc, NVDAc on Ophis"
 description: "Coinbase tokenized stocks are live on Base and listed on Ophis. Swap AAPLc, NVDAc, METAc and GOOGLc gasless and MEV-protected, multiplier read on chain."
 pubDate: 2026-08-24
-updatedDate: 2026-10-04
+updatedDate: 2026-11-22
 author: Ophis
 tags: [base, tokenized-stocks, coinbase, b20, dex-aggregator, swaps]
 draft: false
@@ -20,7 +20,7 @@ Two sentences of context. Base is chain id 8453, an OP-Stack L2 operated by Coin
 
 2. **Connect your wallet.** Ophis is self-custodial. It never holds your funds, and nothing moves without a signature from your wallet (EIP-712 for regular accounts, ERC-1271 for smart-contract accounts).
 
-3. **Pick the stock from the list, or type it.** For visitors in eligible jurisdictions outside the U.S., the Base token selector carries every Coinbase stock with its on-chain symbol, the issuer's logo where Coinbase has published one, and a "Coinbase stock" badge. Search by ticker or company name. Ophis never asks you to paste a contract address for these tokens, which is the point: a token that merely calls itself AAPL is not on that list. Visitors identified as being in the U.S. see a curated Base list instead, which does not include these tokens, consistent with Coinbase's eligibility terms.
+3. **Pick the stock from the list, or type it.** The Base token selector lists the Coinbase stocks with its on-chain symbol, the issuer's logo where Coinbase has published one, and a "Coinbase stock" badge. Search by ticker or company name. Ophis never asks you to paste a contract address for these tokens, which is the point: a token that merely calls itself AAPL is not on that list.
 
 4. **Read the stock panel.** As soon as a Coinbase stock is on either side of the pair, the swap form shows a panel specific to it: the corporate-action multiplier, whether transfers are paused on chain, whether Coinbase has minted supply yet, and the issuer's eligibility statement. The panel is advisory: it sits next to the quote and says so when its data is unavailable, and it never blocks or alters an order. More on what each of those means below.
 
@@ -47,11 +47,11 @@ Coinbase issues these tokens under [B20](https://docs.base.org/base-chain/specs/
 | Onchain price feeds | Chainlink, 24/5, total-return values that include corporate actions |
 | Eligibility | Available only to persons in eligible jurisdictions outside the U.S. |
 
-One detail is invisible in the app but worth knowing: these tokens have no bytecode. B20 tokens are native precompiles, so every Coinbase stock shares the same implementation that Base shipped in its Beryl upgrade, audited by Base and Spearbit, rather than a per-asset contract you would verify on Basescan. The ERC-20 surface, `permit`, the multiplier and pause views all answer normally, which is why the tokens work through Ophis without any special handling at settlement.
+One detail is invisible in the app but worth knowing: these tokens have no contract bytecode of their own: `eth_getCode` returns a single `0xef` byte. B20 tokens are native precompiles, so every Coinbase stock shares the same implementation that Base shipped in its Beryl upgrade, audited by Base and Spearbit, rather than a per-asset contract you would verify on Basescan. The ERC-20 surface, `permit`, the multiplier and pause views all answer normally, which is why the tokens work through Ophis without any special handling at settlement.
 
 ### The thirteen tokens
 
-The launch list contained thirteen stocks, four with minted supply and nine without. This is a launch snapshot, not a current supply or liquidity report. Ophis lists these addresses; quoting still requires minted supply, usable liquidity and an available solver route. Check the live issuer list and quote.
+The launch list contained thirteen stocks, four with minted supply and nine without. This is a launch snapshot. Ophis lists these addresses; quoting still requires minted supply, usable liquidity and an available solver route. Check the live issuer list and quote.
 
 | Token | Company | Address on Base |
 | --- | --- | --- |
@@ -116,7 +116,7 @@ Everything the app uses is public and keyless.
 
 - **Token list.** [swap.ophis.fi/token-lists/coinbase-tokenized-stocks.json](https://swap.ophis.fi/token-lists/coinbase-tokenized-stocks.json) is a standard Uniswap-schema list with CORS enabled, so any interface can load it. Identify tokens by address; B20 names and symbols are mutable on chain.
 - **Metadata endpoint.** [swap.ophis.fi/api/base/tokenized-stocks](https://swap.ophis.fi/api/base/tokenized-stocks) returns, per token, the multiplier as an 18-decimal string, whether supply is issued, and whether transfers are paused.
-- **MCP server.** `https://mcp.ophis.fi/mcp` ([connection guide](https://docs.ophis.fi/ai-agents#mcp-server-recommended)) is keyless and unauthenticated. On Base, `resolve_token` consults the Coinbase stock list first, then CoW's list, so `AAPLc` or `NVDAc` resolves to the same canonical address the selector shows, with decimals and the list it came from; a symbol that is not on a trusted list returns no canonical rather than a guess. `build_order` returns a bounded order with the receiver pinned to the owner, and the server never holds keys and never signs. The [agent walkthrough](/blog/let-an-ai-agent-swap-tokens/) covers the safety model.
+- **MCP server.** `https://mcp.ophis.fi/mcp` ([connection guide](https://docs.ophis.fi/ai-agents#mcp-server-recommended)) is keyless and unauthenticated. On Base, `resolve_token` consults the Coinbase stock list first, then the Ophis token list, so `AAPLc` or `NVDAc` resolves to the same canonical address the selector shows, with decimals and the list it came from; a symbol that is not on a trusted list returns no canonical rather than a guess. `build_order` returns a bounded order with the receiver pinned to the owner, and the server never holds keys and never signs. The [agent walkthrough](/blog/let-an-ai-agent-swap-tokens/) covers the safety model.
 - **SDK.** `@ophis/sdk` resolves the orderbook URL and the EIP-712 signing domain per chain; on Base that is CoW Protocol's canonical settlement domain.
 - **Widget.** `@ophis/widget-react` embeds the swap form directly. See the [widget docs](https://docs.ophis.fi/widget).
 

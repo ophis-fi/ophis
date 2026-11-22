@@ -1,11 +1,11 @@
 ---
 title: "DEX Aggregator on Robinhood Chain: Ophis Guide"
-description: "Use Ophis as a DEX aggregator on Robinhood Chain. Compare routing sources, check fees, and follow a real WETH-to-USDG quote before your first swap."
+description: "Use Ophis as a DEX aggregator on Robinhood Chain. Compare routing sources, check fees, and follow a recorded WETH-to-USDG quote before your first swap."
 slug: "dex-aggregator-robinhood"
 primaryKeyword: "dex aggregator robinhood"
 author: "Ophis"
 pubDate: 2026-09-06
-updatedDate: 2026-09-27
+updatedDate: 2026-11-22
 tags: [dex-aggregator, robinhood-chain, swaps, stock-tokens]
 draft: false
 cover: ./dex-aggregator-robinhood.cover.webp
@@ -51,7 +51,7 @@ Before starting, check that your wallet holds the asset you intend to sell **on 
 
 ## Which liquidity sources does Ophis use?
 
-Ophis's [Robinhood deployment guide](https://ophis.fi/blog/swap-on-robinhood-chain/#three-active-solver-lanes) documents these routing sources:
+Ophis's [Robinhood deployment guide](https://ophis.fi/blog/swap-on-robinhood-chain/#solver-lanes) documents these routing sources:
 
 | Source | How Ophis uses it |
 | --- | --- |
@@ -61,7 +61,7 @@ Ophis's [Robinhood deployment guide](https://ophis.fi/blog/swap-on-robinhood-cha
 
 KyberSwap and LI.FI are route providers in this setup, not separate operators of Ophis's solver services. A configured source does not guarantee an executable quote for every pair or amount.
 
-**Routing status reviewed September 27, 2026:** the [direct-routing rollout record](https://github.com/ophis-fi/ophis/blob/08739fc0/docs/operations/direct-dex-routes.md) also describes the existing UP33 integration and implemented PancakeSwap, RamsesX and Fables routes. That record still requires production rollout, so implementation alone is not confirmation that those newer routes are available in your live quote.
+**Routing status reviewed 22 November 2026:** the Robinhood backend also runs solver lanes for Ekubo, UP33, pools.trade, PancakeSwap, RamsesX, Fables, Metric and ElfomoFi.
 
 Ophis combines route selection with a signed minimum output and batch settlement designed to mitigate front-running and sandwich attacks. Read the [security model](https://ophis.fi/security/) for the protection and its limits. The live quote is the practical check for your trade.
 
@@ -74,13 +74,13 @@ Start by identifying the asset on the correct network. [Robinhood's official tok
 | **WETH**, wrapped ETH | [`0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73`](https://robinhoodchain.blockscout.com/address/0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73) |
 | **USDG**, Global Dollar | [`0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168`](https://robinhoodchain.blockscout.com/address/0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168) |
 
-WETH is the token form of ETH; native ETH is also used to pay network gas. Ophis can request quotes for supported token pairs and Stock Tokens when a route and sufficient liquidity are available. A token appearing in a list is not a promise that every trade size can be filled.
+WETH is the token form of ETH; native ETH is also used to pay network gas. Ophis can request quotes for supported token pairs and Stock Tokens when a route and sufficient liquidity are available. A listed token can still lack liquidity for a given trade size.
 
 For Stock Tokens, pay attention to the asset information in the app. Ophis can display checks against published token records, information about corporate actions such as stock splits, and available trading-restriction data. If the information cannot be retrieved, do not treat the asset as verified.
 
 A familiar ticker alone is not enough to identify a token. Check the token details, applicable eligibility requirements, and product terms. The [tokenized-assets overview](https://ophis.fi/tokenized-stocks-rwa/) provides more context.
 
-## A real WETH-to-USDG quote example
+## A recorded WETH-to-USDG quote example
 
 On **September 26, 2026 at 23:08 UTC**, we requested an indicative quote from Ophis's public Robinhood Chain orderbook:
 
@@ -91,7 +91,7 @@ On **September 26, 2026 at 23:08 UTC**, we requested an indicative quote from Op
 | Quoted execution-fee amount | **0.00000639474819 WETH**, included in the requested sale |
 | Quote expiry | September 26, 2026 at 23:09:14 UTC |
 
-The [saved request and response](/evidence/robinhood-quote-2026-09-26.json) show the amounts and quote ID **10825**. The request included Ophis's 0.01% base-fee metadata and used a neutral address. No order was signed or submitted. This is evidence of a returned quote at that time, not a completed trade or a price available now.
+The [saved request and response](/evidence/robinhood-quote-2026-09-26.json) show the amounts and quote ID **10825**. The request included Ophis's 0.01% base-fee metadata and used a neutral address. No order was signed or submitted.
 
 The returned buy amount is an estimate, **not the signed minimum**. The app prepares the final order with the applicable fees and your slippage setting. The quoted execution-fee field is not the whole Ophis fee policy. Request a fresh quote for your wallet and compare the final amounts before signing.
 
@@ -150,7 +150,7 @@ These services can reach overlapping liquidity. Compare the flow you want to use
 
 Sources: [KyberSwap Aggregator](https://docs.kyberswap.com/kyberswap-solutions/kyberswap-aggregator), [KyberSwap network support](https://docs.kyberswap.com/getting-started/supported-exchanges-and-networks), and [LI.FI's system overview](https://docs.li.fi/introduction/lifi-architecture/system-overview).
 
-For a useful comparison, use the **same network, token contracts, amount and time**, then compare final output and minimum received. This table describes product differences; the quote example above is not a head-to-head price benchmark.
+For a useful comparison, use the **same network, token contracts, amount and time**, then compare final output and minimum received.
 
 ## FAQ
 

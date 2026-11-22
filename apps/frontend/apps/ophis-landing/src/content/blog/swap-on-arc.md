@@ -1,8 +1,8 @@
 ---
 title: "Swap on Arc: Ophis Is Live on Circle's Stablecoin Blockchain"
-description: "Ophis is now live on Arc, Circle's stablecoin blockchain. Swap USDC, EURC and cirBTC, bring USDC over from five networks and trade with MEV protection."
+description: "Ophis is now live on Arc, Circle's stablecoin blockchain. Swap USDC, EURC and cirBTC, bring USDC over from four networks and trade with MEV protection."
 pubDate: 2026-09-27
-updatedDate: 2026-09-30
+updatedDate: 2026-11-22
 author: Ophis
 tags: [arc, circle, usdc, stablecoins, dex-aggregator, swaps, cctp]
 draft: false
@@ -10,7 +10,7 @@ cover: ./swap-on-arc.cover.webp
 coverAlt: "Three tokens cross a white ceramic arch toward an open wallet."
 ---
 
-**Ophis is now live on Arc, the stablecoin blockchain built by Circle. You can swap tokens on Arc, starting with USDC, EURC and cirBTC, bring USDC over from Ethereum, Base, Arbitrum, Optimism and trade with the protections Ophis offers everywhere: gasless settlement, MEV protection and a minimum you sign yourself.**
+**Ophis is now live on Arc, the stablecoin blockchain built by Circle. You can swap tokens on Arc, starting with USDC, EURC and cirBTC, bring USDC over from Ethereum, Base, Arbitrum and Optimism, and trade with the protections Ophis offers on its other chains: gasless settlement, MEV protection and a minimum you sign yourself.**
 
 Ophis is a member of the [Circle Alliance Program](https://www.circle.com/alliance-program), as shown in [Circle's member directory](https://partners.circle.com/partner/ophis).
 
@@ -24,15 +24,15 @@ Ophis went live on Arc on September 24, 2026, eight days after Arc's public main
 
 ### Circle's blockchain, with Ophis protections
 
-Ophis is an intent-based DEX aggregator. You set the trade you want, and Ophis's [solver](https://ophis.fi/learn/what-is-a-solver/) checks several routing paths through Uniswap pools and other on-chain liquidity on Arc. Ophis currently operates this solver itself. You get one quote instead of checking venues one by one.
+Ophis is an intent-based DEX aggregator. You set the trade you want, and Ophis's [solvers](https://ophis.fi/learn/what-is-a-solver/) check several routing paths through Uniswap pools and other on-chain liquidity on Arc. Ophis operates these solvers itself. You get one quote instead of checking venues one by one.
 
 Every order includes the minimum amount you agree to receive, and it cannot settle below that. Orders are also MEV-protected: they settle in batch auctions designed to reduce exposure to front-running and sandwich attacks. Here is [how batch auctions work](https://ophis.fi/blog/mev-protection-batch-auctions/).
 
 ### What does an Arc swap cost?
 
-You sign an order instead of paying Arc gas to submit the swap yourself. Ophis's solver pays the network gas to settle it; the quoted trade accounts for settlement costs. Arc now follows the standard Ophis market-order policy: a 0.01% base plus 80% of reference-quote improvement capped at 99 bps for volatile pairs, or 50% capped at 20 bps for recognized stablecoin pairs such as USDC/EURC. Check the current quote and signed fee details before trading; the [fee documentation](https://docs.ophis.fi/fees/) explains the fee schedule. If a token needs approval first, that separate wallet transaction costs USDC gas on Arc. The [gasless swaps guide](https://ophis.fi/blog/gasless-swaps-how-intents-work/) explains the distinction.
+You sign an order instead of paying Arc gas to submit the swap yourself. The winning solver pays the network gas to settle it; the quoted trade accounts for settlement costs. Arc now follows the standard Ophis market-order policy: a 0.01% base plus 80% of reference-quote improvement capped at 99 bps for volatile pairs, or 50% capped at 20 bps for recognized stablecoin pairs such as USDC/EURC. Check the current quote and signed fee details before trading; the [fee documentation](https://docs.ophis.fi/fees/) explains the fee schedule. If a token needs approval first, that separate wallet transaction costs USDC gas on Arc. The [gasless swaps guide](https://ophis.fi/blog/gasless-swaps-how-intents-work/) explains the distinction.
 
-For one real example, the first Ophis swap on Arc, on September 24, 2026, sold 2 USDC for 1.740907 EURC. The solver's on-chain transaction used about 0.0066 USDC in network gas. That figure is the network gas for this transaction, not the total cost of every swap. [See the transaction on Arc's explorer](https://explorer.arc.io/tx/0xba2f98b61df1c265f1f3d5e795293085523d2146c664bd2a5e8670c137e0685e).
+For one example, the first Ophis swap on Arc, on September 24, 2026, sold 2 USDC for 1.740907 EURC. The solver's on-chain transaction used about 0.0066 USDC in network gas. That figure is the network gas for this transaction, not the total cost of every swap. [See the transaction on Arc's explorer](https://explorer.arc.io/tx/0xba2f98b61df1c265f1f3d5e795293085523d2146c664bd2a5e8670c137e0685e).
 
 ### Bridge and swap in one place
 
@@ -82,7 +82,7 @@ A token's presence on the list does not guarantee an executable quote. Check the
 
 ### Bring USDC and more to Arc
 
-In the Ophis swap box, choose USDC on Ethereum, Base, Arbitrum, Optimism as the token you send, and USDC on Arc as the token you receive. Ophis moves it with Circle's Cross-Chain Transfer Protocol (CCTP): your USDC is burned on the source network and native USDC is issued to you on Arc, so you never hold a wrapped copy. The same route takes you back when you want to leave Arc.
+In the Ophis swap box, choose USDC on Ethereum, Base, Arbitrum or Optimism as the token you send, and USDC on Arc as the token you receive. Ophis moves it with Circle's Cross-Chain Transfer Protocol (CCTP): your USDC is burned on the source network and native USDC is issued to you on Arc, so you never hold a wrapped copy. The same route takes you back when you want to leave Arc.
 
 Ophis also lists Circle-based bridge routes for EURC between Ethereum, Base and Arc, and for cirBTC between Ethereum and Arc. Check the current route, fee and wallet eligibility in the app. If you hold WBTC on Ethereum, the app can first swap it for cirBTC and then bridge it to Arc. Those are separate steps with separate costs, each confirmed in the same box.
 
@@ -94,11 +94,11 @@ Ophis also lists Circle-based bridge routes for EURC between Ethereum, Base and 
 4. **Choose your tokens and amount.**
 5. **Review the quote.** You see the expected amount, the minimum you will receive and the fee.
 6. **Approve if needed, then sign.** If your token allowance is insufficient, approve it with an on-chain wallet transaction paid in USDC on Arc. Then sign the swap order; signing the order itself does not use gas.
-7. **Your order settles.** Ophis's solver checks available routing paths to fill it, and you can follow your Arc trades in the [Ophis explorer](https://explorer.ophis.fi/arc).
+7. **Your order settles.** Ophis's solvers check available routing paths to fill it, and you can follow your Arc trades in the [Ophis explorer](https://explorer.ophis.fi/arc).
 
 ## How to bridge USDC to Arc
 
-1. **Choose your USDC.** In the swap box, select USDC on Ethereum, Base, Arbitrum, Optimism as the token to send.
+1. **Choose your USDC.** In the swap box, select USDC on Ethereum, Base, Arbitrum or Optimism as the token to send.
 2. **Choose USDC on Arc** as the token to receive.
 3. **Review the transfer.** The swap box shows Circle's bridge fee and the minimum you will receive on Arc. Ophis adds no fee to this direct USDC bridge; source-network gas is separate.
 4. **Approve if needed and confirm in your wallet.** Approval and the source transfer each use ETH for gas. This CCTP route currently supports personal wallets and delivers to the same wallet address on Arc.
@@ -114,7 +114,7 @@ Arc is an open Layer-1 blockchain built by Circle, the issuer of USDC. It uses U
 
 ### Is Ophis live on Arc?
 
-Yes. Ophis went live on Arc on September 24, 2026. You can swap tokens on Arc and move USDC between Arc and Ethereum, Base, Arbitrum, Optimism in the Ophis swap app.
+Yes. Ophis went live on Arc on September 24, 2026. You can swap tokens on Arc and move USDC between Arc and Ethereum, Base, Arbitrum or Optimism in the Ophis swap app.
 
 ### Do I need a separate token to pay fees on Arc?
 
@@ -122,7 +122,7 @@ No separate gas token is needed. Arc charges network fees in USDC. A solver pays
 
 ### How do I bridge USDC to Arc?
 
-In the Ophis swap box, choose USDC on Ethereum, Base, Arbitrum, Optimism as the token to send and USDC on Arc as the token to receive. Circle's CCTP burns the USDC on the source network and normally forwards native USDC to the same personal wallet on Arc. Review the bridge fee and source gas before confirming.
+In the Ophis swap box, choose USDC on Ethereum, Base, Arbitrum or Optimism as the token to send and USDC on Arc as the token to receive. Circle's CCTP burns the USDC on the source network and normally forwards native USDC to the same personal wallet on Arc. Review the bridge fee and source gas before confirming.
 
 ### How much does it cost to swap on Arc with Ophis?
 

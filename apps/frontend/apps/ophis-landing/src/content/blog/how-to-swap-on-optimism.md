@@ -31,9 +31,9 @@ On most of its chains, Ophis settles through CoW Protocol's canonical audited GP
 0x310784c7FCE12d578dA6f53460777bAc9718B859
 ```
 
-For a trader in the app this changes nothing visible. For anyone building against the API it changes two things: Optimism orders sign against a different EIP-712 domain than canonical CoW deployments, and they submit to a different orderbook host. Do not hardcode either one. Resolve the per-chain settlement domain via `@ophis/sdk` or the MCP `list_chains` tool and both are always correct.
+For a trader in the app this changes nothing visible. For anyone building against the API it changes two things: Optimism orders sign against a different EIP-712 domain than canonical CoW deployments, and they submit to a different orderbook host. Do not hardcode either one. Resolve the per-chain settlement domain via `@ophis/sdk` or the MCP `list_chains` tool.
 
-The settlement mechanics themselves are CoW Protocol's, and Ophis says so plainly: batch auctions, solver competition, and the GPv2 contract suite are documented at [docs.cow.fi](https://docs.cow.fi). Ophis adds the intent layer, the agent stack, and the fee policy below.
+The settlement mechanics themselves are CoW Protocol's: batch auctions, solver competition, and the GPv2 contract suite are documented at [docs.cow.fi](https://docs.cow.fi). Ophis adds the intent layer, the agent stack, and the fee policy below.
 
 ## What batch settlement changes versus a router aggregator
 

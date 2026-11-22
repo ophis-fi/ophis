@@ -19,7 +19,7 @@ the fee comes out of the trade. Approval transactions can still require native
 gas. An unfilled signed ERC-20 order has no settlement fee; any approval gas
 already spent is not refunded.
 
-The rest of this article is the mechanism: where the gas cost actually goes,
+The rest of this article is the mechanism: where the gas cost goes,
 the places it can still appear, and why this matters most for new wallets,
 AI agents, and anyone trading across many chains.
 
@@ -89,7 +89,7 @@ and direct bridge or conversion transactions can also require gas. Native-token
 orders deposit funds before settlement and need a separate refund if unfilled.
 This article's gasless flow is the standard signed ERC-20 order.
 
-## Who actually hits the gas wall
+## Who hits the gas wall
 
 **New wallets.** On most chains, ERC-20 tokens alone do not cover approval gas. A wallet needs
 an existing allowance or a supported permit flow before gasless signing can help. Once that requirement is met, the solver pays settlement gas.
@@ -102,7 +102,7 @@ not all wallet operations. Keep gas available for approvals and other required t
 Gnosis, Robinhood Chain, Polygon, Base, Plasma, Arbitrum, Avalanche,
 Ink, Linea, and Arc. SDK v0.4.3 and the hosted MCP server also include Arc.
 They do not all share one gas token. Pre-funding a native balance on every
-chain you might trade on is dead capital and real friction; signed orders
+chain you might trade on is dead capital and friction; signed orders
 remove settlement-gas payment by the trader, not approval or other transaction gas.
 
 ## FAQ

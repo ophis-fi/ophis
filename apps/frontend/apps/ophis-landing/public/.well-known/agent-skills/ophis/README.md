@@ -11,7 +11,7 @@ instead (discovery: `https://ophis.fi/.well-known/mcp.json`).
 ```
 SKILL.md                        Umbrella: safety rules + machine-readable policy
 skills/
-  ophis-quote.md                Best-execution quote (read-only)
+  ophis-quote.md                Quote (read-only)
   ophis-swap.md                 Execute a swap (quote, confirm, sign, submit)
   ophis-order-status.md         Track an order by UID (read-only)
   ophis-cancel.md               Gasless cancellation, single or batch

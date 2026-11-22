@@ -26,7 +26,7 @@ SDK source and hosted MCP cover 13 EVM mainnets, including Arc.
 <Steps>
 
 1. **Connect your client.** Point an MCP client at `https://mcp.ophis.fi/mcp`.
-2. **Request an order.** Call `build_order` to fetch a live quote, apply your slippage bound and pin the receiver to the owner.
+2. **Request an order.** Call `build_order` to fetch a live quote, check your limit against your slippage bound and pin the receiver to the owner.
 3. **Check the fields.** Review the tokens, sell amount, minimum received and receiver before signing.
 4. **Sign and submit.** Sign the EIP-712 order with your wallet, then call `submit_order`.
 

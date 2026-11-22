@@ -4,23 +4,23 @@
     {
       "name": "swap-via-ophis",
       "type": "skill-md",
-      "description": "Swap or bridge tokens through Ophis, a non-custodial intent-based DEX aggregator: parse a natural-language request, get a best-execution quote, build an EIP-712 order, sign it in the user's own wallet, and submit it. Covers the public Intent API and the hosted MCP server.",
+      "description": "Swap or bridge tokens through Ophis, a non-custodial intent-based DEX aggregator: parse a natural-language request, get a quote, build an EIP-712 order, sign it in the user's own wallet, and submit it. Covers the public Intent API and the hosted MCP server.",
       "url": "https://ophis.fi/.well-known/agent-skills/swap-via-ophis/SKILL.md",
-      "digest": "sha256:0ae1a0edd8b2f40e191141ff92f03ceea8f9b0b82916d930c162bf5afb5a18f5"
+      "digest": "sha256:a46d1d715394cb5040a0c798ca95fca3b9cd4d4c32c65061ca0c5aae5978eed1"
     },
     {
       "name": "ophis",
       "type": "skill-md",
       "description": "Umbrella skill for the Ophis family: when to use each sub-skill, the eight safety rules, and a machine-readable per-chain policy block (pinned settlement and vault-relayer contracts, EIP-712 domains, orderbook hosts, slippage latches) for shell-capable agents with curl, jq and cast.",
       "url": "https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md",
-      "digest": "sha256:88bcaae09b33d7784889da3e072675af395a6bba93f01abd0c912275b7f342b5"
+      "digest": "sha256:ddd4201c303551dbd9089916dd9aff42853e1b6ed83a254202614a2f3b3fcd68"
     },
     {
       "name": "ophis-quote",
       "type": "skill-md",
-      "description": "Get an Ophis best-execution quote for one sell token into one buy token. Read-only: never signs, never broadcasts.",
+      "description": "Get an Ophis quote for one sell token into one buy token. Read-only: never signs, never broadcasts.",
       "url": "https://ophis.fi/.well-known/agent-skills/ophis/skills/ophis-quote.md",
-      "digest": "sha256:04a2a8a945f4fb9eca97c120fd7c81b24b1f617429e3f1abe081649fa2987ab9"
+      "digest": "sha256:398759fa4fd19b762bf9152fbdea685a1827963c16505486b5f6f5697744e92d"
     },
     {
       "name": "ophis-swap",

@@ -17,15 +17,15 @@ const FAQS = [
   },
   {
     q: 'What is the domain separator?',
-    a: `The domain separator binds a signature to one verifying contract on one chain (plus a name and version). A signature produced for one domain is invalid everywhere else, which is what prevents a signed order from being replayed against a different contract or a different chain. It is also why getting the domain right is not optional: sign against the wrong one and the real contract rejects the result.`,
+    a: `The domain separator binds a signature to the domain fields it includes; for an Ophis order those are a name, a version, the chain ID, and the verifying contract. A signature produced for one domain does not verify under any other, which is what prevents a signed order from being replayed against a different contract or a different chain. It is also why getting the domain right is not optional: sign against the wrong one and the settlement contract rejects the result.`,
   },
   {
     q: 'Why does EIP-712 matter for trading agents?',
-    a: `Because the signed order IS the agent's capability. Typed fields mean the agent's policy layer can inspect exactly what is about to be authorized (which tokens, what amount, what floor price, until when, and to whom the proceeds go) before the signature exists. For the audit trail, retain the full typed payload with its signature: together they prove exactly what the agent authorized, though not when it was signed, so record a timestamp as ordinary log metadata alongside. The signature bytes alone cannot be decoded back into the order, so log the payload, not just the signature.`,
+    a: `Because the signed order is the agent's capability. Typed fields mean the agent's policy layer can inspect exactly what is about to be authorized (which tokens, what amount, what floor price, until when, and to whom the proceeds go) before the signature exists. For the audit trail, retain the full typed payload with its signature: together they prove exactly what the agent authorized, though not when it was signed, so record a timestamp as ordinary log metadata alongside. The signature bytes alone cannot be decoded back into the order, so log the payload, not just the signature.`,
   },
   {
     q: 'Why must agents resolve the signing domain per chain on Ophis?',
-    a: `On ${sovereignList}, settlement uses Ophis's own GPv2Settlement at a non-canonical address. An EIP-712 signature binds to its verifying contract. Resolve supported domains and hosts via @ophis/sdk or MCP list_chains before signing. SDK v0.4.3 and hosted MCP include Arc (5042); do not substitute another chain's domain.`,
+    a: `On ${sovereignList}, settlement uses Ophis's own GPv2Settlement at a non-canonical address. An EIP-712 signature binds to its verifying contract. Resolve supported domains and hosts via @ophis/sdk or MCP list_chains before signing. SDK v0.4.3 or later and hosted MCP include Arc (5042); do not substitute another chain's domain.`,
   },
   {
     q: 'Is an EIP-712 signature the same as a transaction?',
@@ -46,7 +46,7 @@ const FAQS = [
   <p>
     <strong>The short version:</strong> EIP-712 turns a signature from an opaque blob into a
     typed, inspectable statement: this token, this amount, this floor price, this expiry, this
-    receiver, on this contract, on this chain. For an autonomous agent that is the whole game:
+    receiver, on this contract, on this chain. For an autonomous agent this means the
     policy can check every field before the signature exists, and the typed payload kept with its
     signature is the audit record.
   </p>
@@ -61,8 +61,8 @@ const FAQS = [
   <h2>Go deeper</h2>
   <p>
     How the signed order travels from message to settlement:
-    <a href="/learn/intent-based-dex-aggregator/">what is an intent-based DEX aggregator</a>. Why
-    this beats standing exchange authority for agents:
+    <a href="/learn/intent-based-dex-aggregator/">what is an intent-based DEX aggregator</a>. How
+    this compares with standing exchange authority for agents:
     <a href="/learn/api-keys-vs-wallet-signatures/">API keys vs wallet signatures</a>. The
     per-chain domains and addresses are in the machine-readable policy shipped with the
     <a href="https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md">Ophis agent skill</a>, and
