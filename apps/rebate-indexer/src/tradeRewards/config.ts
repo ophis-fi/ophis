@@ -31,5 +31,10 @@ export const TRADE_REWARDS_ELIGIBLE_CHAIN_IDS = Object.freeze([
   137,    // Polygon
 ] as const);
 
+/** The chains the public campaign status advertises: retired Unichain keeps historical eligibility only. */
+export const TRADE_REWARDS_ADVERTISED_CHAIN_IDS: readonly number[] = Object.freeze(
+  TRADE_REWARDS_ELIGIBLE_CHAIN_IDS.filter((id) => id !== 130),
+);
+
 export const TRADE_REWARDS_ELIGIBLE_CHAIN_ID_SET: ReadonlySet<number> =
   new Set<number>(TRADE_REWARDS_ELIGIBLE_CHAIN_IDS);

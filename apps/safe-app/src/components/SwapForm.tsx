@@ -115,7 +115,7 @@ export function SwapForm({ sdk, owner, chainId }: Props) {
       <p style={{ color: '#666', marginTop: -8 }}>
         Chain {chainId} · Safe {short(owner)}{referral ? ` · ref ${referral}` : ''}{isSafeWalletLaunch() ? ' · via Safe Wallet' : ''}
       </p>
-      {chainId === 5042 && <p>Arc orders use ERC-20 tokens. Eligible settled trades count toward referral and volume-tier rebates.</p>}
+      {chainId === 5042 && <p>Arc orders use ERC-20 tokens.</p>}
       <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <input
           type="checkbox"

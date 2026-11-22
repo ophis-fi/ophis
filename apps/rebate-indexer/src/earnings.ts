@@ -287,7 +287,7 @@ export function assembleEarnings(appCode: string, input: EarningsInput, now: Dat
 
   const disclaimer =
     `Trades on Optimism (10), Robinhood (4663), and Arc (5042) settle through Ophis-operated stacks; Unichain (130) is retired. ` +
-    `Own-fee payouts are currently guaranteed only on Optimism and historical Unichain trades. ` +
+    `Own-fee payouts appear here only after they execute onchain. ` +
     `Figures on CoW-hosted chains are ${HOSTED_ACCRUAL_LABEL}. ` +
     `Routed volume is cumulative (lifetime); this surface never reports a 30-day figure or a next-payout time.`;
 
@@ -316,10 +316,10 @@ export function assembleEarnings(appCode: string, input: EarningsInput, now: Dat
       payouts: ownFeePayouts,
       note:
         `Own-fee is the partner-fee entry you stack to your own recipient in appData, decoded from settled orders, reported GROSS (Ophis takes 0% of it). ` +
-        `sovereignGuaranteed (Optimism, Unichain) is swept through the configured Ophis own-fee payout lanes. ` +
-        `hostedAccrued is the backwards-compatible field for every non-guaranteed own-fee accrual: it includes Robinhood and Arc, which have no own-fee payout lane, while CoW-hosted amounts are ${HOSTED_ACCRUAL_LABEL} and subject to CoW's terms. Treat this field as gross and not guaranteed. ` +
+        `sovereignGuaranteed (Optimism, Unichain) is a legacy field for own-fee accrued on those chains; payouts appear in sovereignPaidToDateWeth and sovereignPaidToDateUsd only after they execute. ` +
+        `hostedAccrued is the backwards-compatible field for the other own-fee accruals: it includes Robinhood and Arc, which have no own-fee payout lane, while CoW-hosted amounts are ${HOSTED_ACCRUAL_LABEL} and subject to CoW's terms. Treat this field as gross and not guaranteed. ` +
         `Only flat Volume own-fees are priced from routed volume; a surplus or price-improvement own-fee is not included. ` +
-        `sovereignPaidToDate is exact, summed from executed Ophis Safe own-fee batches on Optimism and Unichain; it is keyed on the recipient address, so if several integrators share one own-fee recipient the paid-to-date is attributed to each.`,
+        `sovereignPaidToDateWeth and sovereignPaidToDateUsd are exact, summed from executed Ophis Safe own-fee batches on Optimism and Unichain; it is keyed on the recipient address, so if several integrators share one own-fee recipient the paid-to-date is attributed to each.`,
     },
     referral: {
       registered: input.registered,

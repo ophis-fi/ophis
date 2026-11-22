@@ -10,16 +10,15 @@
  */
 
 const CHAIN_ID = 4663;
-const PONS_ORIGIN = 'https://www.ponsfamily.com';
+const PONS_ORIGIN = 'https://ponsfamily.com';
 const TRUSTED_ROBINHOOD_RPC = 'https://rpc.mainnet.chain.robinhood.com';
 const ROBINHOOD_RPCS = [
   TRUSTED_ROBINHOOD_RPC,
-  'https://hood-rpc.pastrylabs.cloud',
+  'https://4663.rpc.thirdweb.com',
   'https://robinhood-rpc.publicnode.com',
 ];
-const UPSTREAM_URL =
-  `${PONS_ORIGIN}/api/pons-launches?explore=1&sort=recentBuys&age=all&page=1&pageSize=75` +
-  '&graduatedPage=1&graduatedPageSize=25&includeGraduated=1&v=10';
+// Graduated launches (pool liquidity), the board's default view; the API serves at most 40 per page.
+const UPSTREAM_URL = `${PONS_ORIGIN}/api/launches?limit=40`;
 const PONS_LOGO = `${PONS_ORIGIN}/icon.png`;
 const WETH = '0x0bd7d308f8e1639fab988df18a8011f41eacad73';
 const GET_LAUNCHED_TOKEN_SELECTOR = '3cf28b5a';
@@ -112,20 +111,34 @@ function launchArrays(raw: unknown): PonsLaunch[] {
   return [...active, ...graduated] as PonsLaunch[];
 }
 
+interface PonsCatalogItem {
+  factory?: unknown;
+  address?: unknown;
+  quote?: { address?: unknown };
+  name?: unknown;
+  symbol?: unknown;
+  artwork?: unknown;
+}
+
+/** GET /api/launches returns { items: [...] }; map each item onto the launch tuple verified onchain. */
 export function parsePonsCatalog(raw: unknown): PonsLaunch[] {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+  const items = (raw as { items?: unknown } | null)?.items;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !Array.isArray(items)) {
     throw new Error('Pons catalog returned a malformed response');
   }
-  const response = raw as { active?: { items?: unknown }; graduated?: { items?: unknown } };
-  if (!response.active || !Array.isArray(response.active.items)) {
-    throw new Error('Pons catalog returned a malformed response');
-  }
-  const graduated = Array.isArray(response.graduated?.items) ? response.graduated.items : [];
-  return [...graduated, ...response.active.items]
+  return items
     .filter(
-      (item): item is PonsLaunch => !!item && typeof item === 'object' && !Array.isArray(item),
+      (item): item is PonsCatalogItem => !!item && typeof item === 'object' && !Array.isArray(item),
     )
-    .slice(0, 75);
+    .slice(0, 75)
+    .map((item) => ({
+      factory: item.factory,
+      token: item.address,
+      pairToken: item.quote && typeof item.quote === 'object' ? item.quote.address : undefined,
+      name: item.name,
+      symbol: item.symbol,
+      logo: item.artwork,
+    }));
 }
 
 export function ponsTokenListFromResponse(raw: unknown, now = new Date()): PonsTokenList {
@@ -447,14 +460,38 @@ export const onRequestGet: PagesFunction = async (context) => {
   let failureStage: 'catalog' | 'verification' = 'catalog';
   try {
     let launches: PonsLaunch[] = [];
-    try {
-      const activeResponse = await fetch(UPSTREAM_URL, {
-        // Reserve 20 seconds for at most five RPC batches (75 entries plus reference PONS).
-        signal: AbortSignal.timeout(5_000),
+    // Only a complete catalog read may replace the 24-hour last-known-good copy.
+    let complete = false;
+    // Both catalog pages share 5 seconds; reserve 20 seconds for at most five RPC batches (75 entries plus reference PONS).
+    const catalogDeadline = AbortSignal.timeout(5_000);
+    const catalogPage = async (cursor?: string): Promise<unknown> => {
+      const url = cursor ? `${UPSTREAM_URL}&cursor=${encodeURIComponent(cursor)}` : UPSTREAM_URL;
+      const response = await fetch(url, {
+        signal: catalogDeadline,
         headers: { accept: 'application/json', 'user-agent': 'Ophis pons token-list adapter' },
       });
-      if (!activeResponse.ok) throw new Error('Catalog unavailable');
-      launches = parsePonsCatalog(await activeResponse.json());
+      if (!response.ok) throw new Error('Catalog unavailable');
+      return response.json();
+    };
+    try {
+      const first = await catalogPage();
+      launches = parsePonsCatalog(first);
+      complete = true;
+      const cursor = (first as { nextCursor?: unknown }).nextCursor;
+      const next = typeof cursor === 'string' || typeof cursor === 'number' ? String(cursor) : '';
+      if (launches.length < 75 && cursor !== undefined && cursor !== null) {
+        // More launches exist: a second page fills the 75-candidate budget, and page one stays
+        // usable (but incomplete) if the cursor is malformed or the second page fails.
+        complete = false;
+        if (/^[\w.:-]{1,100}$/.test(next)) {
+          try {
+            launches = [...launches, ...parsePonsCatalog(await catalogPage(next))].slice(0, 75);
+            complete = true;
+          } catch {
+            // keep page one
+          }
+        }
+      }
     } catch {
       const stale = await safeCacheMatch(cache, staleKey);
       if (stale) return serveCached(stale);
@@ -474,7 +511,7 @@ export const onRequestGet: PagesFunction = async (context) => {
     context.waitUntil(
       Promise.all([
         safeCachePut(cache, cacheKey, cacheResponse(result, CACHE_SECONDS)),
-        safeCachePut(cache, staleKey, cacheResponse(result, LAST_KNOWN_GOOD_SECONDS)),
+        ...(complete ? [safeCachePut(cache, staleKey, cacheResponse(result, LAST_KNOWN_GOOD_SECONDS))] : []),
       ]).then(() => undefined),
     );
     return result;
