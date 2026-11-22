@@ -122,7 +122,14 @@ it('compares net destination output, including the app fee, and refunds to the o
   const sent = JSON.parse((fetch as jest.Mock).mock.calls[1][1].body)
   expect(sent.user).toBe('0x2222222222222222222222222222222222222222')
   expect(sent.refundTo).toBe(request.account)
+  expect(sent.slippageBps).toBe(9)
+  expect(quote.amountsAndCosts.slippageBps).toBe(10)
   expect(JSON.parse(quote.quoteBody || '{}').request.signer).toBeUndefined()
+})
+
+it('keeps zero tolerance when requesting a quote and rejects any signed slippage', async () => {
+  await expect(provider().getQuote({ ...request, bridgeSlippageBps: 0 })).rejects.toThrow()
+  expect(JSON.parse((fetch as jest.Mock).mock.calls[1][1].body).slippageBps).toBe(0)
 })
 
 it('rejects tightened slippage during quoting and refuses reuse after a tolerance change', async () => {

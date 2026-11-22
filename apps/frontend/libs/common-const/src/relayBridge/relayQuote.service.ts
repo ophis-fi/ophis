@@ -18,7 +18,8 @@ export async function relayQuote(api: RelayApi, request: QuoteBridgeRequest, she
     originCurrency: request.sellTokenAddress,
     destinationCurrency: relayCurrency(request.buyTokenAddress),
     amount: request.amount.toString(),
-    slippageBps,
+    // Relay may round the minimum down by one token atom.
+    slippageBps: Math.max(0, slippageBps - 1),
   })
   const quoteTimestamp = Math.floor(Date.now() / 1000)
   const relay = verifyRelayQuote(response, request, quoteTimestamp)
