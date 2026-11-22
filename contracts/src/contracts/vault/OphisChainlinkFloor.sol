@@ -41,14 +41,10 @@ library OphisChainlinkFloor {
             uint80 answeredInRound
         ) = feed.latestRoundData();
         if (answer <= 0) revert InvalidOraclePrice(address(feed));
-        // Reject an incomplete round (updatedAt == 0) or an answer carried over
-        // from an earlier round (answeredInRound < roundId): a proxy pointing at
-        // a stalled or newly-swapped aggregator can return a stale price that the
-        // pure updatedAt-age check below would still accept.
-        if (updatedAt == 0 || answeredInRound < roundId) {
+        if (updatedAt == 0 || updatedAt > block.timestamp || answeredInRound < roundId) {
             revert StaleOraclePrice(address(feed));
         }
-        if (block.timestamp > updatedAt + maxStaleness) {
+        if (block.timestamp - updatedAt > maxStaleness) {
             revert StaleOraclePrice(address(feed));
         }
         price18 = uint256(answer) * (10 ** (18 - feedDecimals));

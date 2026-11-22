@@ -44,7 +44,7 @@ test('130 remains a valid swap amount on an active network', async (t) => {
   t.mock.method(globalThis, 'fetch', async () => Response.json({
     choices: [{ message: { content: JSON.stringify(parsed) } }],
   }))
-  const request = new Request('https://swap.ophis.fi/api/intent', { method: 'POST', body: JSON.stringify({ text }) })
+  const request = new Request('http://localhost/api/intent', { method: 'POST', body: JSON.stringify({ text }) })
   const response = await intent.onRequestPost({ request, env: { LIBERTAI_API_KEY: 'test-only' } } as Parameters<typeof intent.onRequestPost>[0])
   assert.equal(response.status, 200)
   const result = await response.json()
@@ -58,10 +58,43 @@ test('an address that starts with 0x82 is a token, not the retired chain id', as
   const text = `swap 1 USDC for WETH using ${weth} on Arbitrum` // "using" is a chain position: the guard reads what follows
   const parsed = { intent: 'swap', entities: [ent('amount', '1', '1', text), ent('sellToken', 'USDC', 'USDC', text), ent('buyToken', weth, weth, text)] }
   t.mock.method(globalThis, 'fetch', async () => Response.json({ choices: [{ message: { content: JSON.stringify(parsed) } }] }))
-  const request = new Request('https://swap.ophis.fi/api/intent', { method: 'POST', body: JSON.stringify({ text }) })
+  const request = new Request('http://localhost/api/intent', { method: 'POST', body: JSON.stringify({ text }) })
   const response = await intent.onRequestPost({ request, env: { LIBERTAI_API_KEY: 'test-only' } } as Parameters<typeof intent.onRequestPost>[0])
   assert.equal(response.status, 200)
   assert.equal((await response.json()).ok, true)
+})
+
+test('production and preview cache misses share durable quota and fail closed without it', async (t) => {
+  const upstream = t.mock.method(globalThis, 'fetch', async () => Response.json({
+    choices: [{ message: { content: JSON.stringify({ intent: 'unknown', entities: [] }) } }],
+  }))
+  const idFromName = t.mock.fn((name: string) => name)
+  const makeRequest = (host: string) => new Request(`https://${host}/api/intent`, {
+    method: 'POST', headers: { 'cf-connecting-ip': '192.0.2.10' },
+    body: JSON.stringify({ text: 'swap USDC for ETH' }),
+  })
+
+  for (const host of ['swap.ophis.fi', 'preview.greg-etm.pages.dev']) {
+    for (const quota of [true, false, 'unavailable', 'missing'] as const) {
+      const limiter = quota === 'missing' ? undefined : {
+        idFromName,
+        get: () => ({
+          fetch: async (url: string, options: RequestInit) => {
+            assert.equal(new URL(url).pathname, '/')
+            assert.equal(options.method, 'POST')
+            return quota === 'unavailable' ? new Response(null, { status: 503 }) : Response.json({ success: quota })
+          },
+        }),
+      }
+      const response = await intent.onRequestPost({
+        request: makeRequest(host), env: { LIBERTAI_API_KEY: 'test-only', OPHIS_RELAY_RATE_LIMITER: limiter },
+      } as unknown as Parameters<typeof intent.onRequestPost>[0])
+      assert.equal(response.status, quota === true ? 200 : quota === false ? 429 : 503, `${host}, ${quota}`)
+    }
+  }
+
+  assert.deepEqual(idFromName.mock.calls.map(({ arguments: [name] }) => name), Array(6).fill('intent:global'))
+  assert.equal(upstream.mock.callCount(), 2)
 })
 
 test('intent timeout covers a stalled response body after successful headers', async (t) => {
@@ -79,7 +112,7 @@ test('intent timeout covers a stalled response body after successful headers', a
       setTimeout(() => deadline.abort(new DOMException('Timed out', 'TimeoutError')), 0)
     },
   })))
-  const request = new Request('https://swap.ophis.fi/api/intent', {
+  const request = new Request('http://localhost/api/intent', {
     method: 'POST', body: JSON.stringify({ text: 'swap 1 ETH for USDC' }),
   })
   let timer: ReturnType<typeof setTimeout> | undefined

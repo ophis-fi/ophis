@@ -257,14 +257,7 @@ async fn sell() {
 // than factored so the two fixtures cannot drift apart — the whole value of this
 // test is that exactly one variable changes.
 //
-// WHAT IT PROVES: merely CONFIGURING OKX buy-mode does not break the sell path.
-// That matters because `buy_enabled` is quarantined for a V6 sell leg that stops
-// firing after a buy, and OKX V6 sell-only is a LIVE lane on Unichain. Without
-// this test, "the sell path is unaffected" was an inference; with it, the defect
-// is positively isolated to the buy-then-sell SEQUENCE rather than the presence
-// of a buy endpoint. Requested by the Codex review of PR #937.
-// If this test ever fails, the quarantine on `buy_enabled` is hiding something
-// that DOES reach production - treat it as a release blocker.
+// Verify that enabling the V5 buy endpoint still sends sell orders to V6.
 #[tokio::test]
 async fn sell_with_buy_orders_configured() {
     let api = mock::http::setup(vec![
@@ -571,75 +564,10 @@ async fn buy_disabled() {
     assert_eq!(solution, json!({ "solutions": [] }),);
 }
 
-// QUARANTINED 2026-07-26 — pre-existing failure, NOT REACHABLE IN THE CURRENT
-// PRODUCTION CONFIGURATION. (Earlier wording here said "not a production issue"
-// and "the live sell path is unaffected"; a Codex review correctly pushed back
-// that this is stronger than the evidence supports. It is a latent correctness
-// bug that would bite if buy-mode were ever enabled, including accidentally.)
-//
-// This test drives two solves against one mock: a `buy` order (which must use
-// the OKX V5 API: chainId / slippage / swapMode=exactOut) and then a `sell`
-// order (V6: chainIndex / slippagePercent / exactIn), asserting both the
-// version selection and the approval cache.
-//
-// Observed: the V5 buy leg is issued CORRECTLY and matches its expectation
-// byte-for-byte, but the subsequent V6 sell leg never issues its requests at
-// all — only 2 of the 4 expected mock calls occur — so the asserted solution
-// does not match. It regressed in #732 (`enable OKX V6 as a 6th solver lane,
-// sell-only`), which reworked the sell path; the test was not updated.
-//
-// Why quarantining is acceptable rather than fixing now:
-//   - The failure needs `buy_orders_endpoint` CONFIGURED, which production does
-//     not do: the rendered OKX configs leave it unset, and the driver's
-//     MAX_CUSTOM_ALLOWANCE gate documents OKX buy-mode as a KNOWN
-//     INCOMPATIBILITY (it emits U256::MAX allowances the driver rejects by
-//     design). OKX is also parked entirely (its API passphrase is missing).
-//   - The SELL path is PROVEN unaffected by merely configuring buy-mode, not
-//     merely inferred: `sell_with_buy_orders_configured` below is a verbatim
-//     copy of `sell()` differing ONLY in that the config also sets
-//     `buy-orders-endpoint`, and it PASSES. So the defect is isolated to the
-//     buy-then-sell SEQUENCE, not to the presence of a buy endpoint. This
-//     matters because OKX V6 sell-only is a LIVE lane on Unichain.
-//     (That test was added at the Codex review's request on PR #937, which
-//     correctly refused to accept the isolation claim on inference alone.)
-//   - Supporting: `sell` / `sell_twice` / `sell_twice_parallel` all pass,
-//     `handle_sell_order` always uses the V6 sell endpoint, and the approval
-//     cache is keyed by (token, side).
-//
-// STILL NOT ESTABLISHED: that the buy-then-sell sequence itself is harmless.
-// It is simply unreachable today. Fix it before re-enabling buy-mode.
-//
-// This was invisible because CI's cargo-test job only covered 4 crates and not
-// `solvers`. That gap is closed in the same change as this quarantine, so the
-// trade is: broad coverage now, with ONE explicitly-named exclusion, instead of
-// no coverage and an unknown number of silent failures.
-//
-// TO UN-QUARANTINE: re-enable OKX buy-mode support (a solver-side rewrite that
-// emits per-trade allowances instead of U256::MAX), then make the sell leg of
-// this test issue its V6 requests again.
-#[ignore = "pre-existing since #732: V6 sell leg never issues its requests when \
-            buy_orders_endpoint is configured; OKX buy-mode is disabled in prod \
-            and OKX is parked. See the comment above."]
+// V5 exact-out spends up to maxSpendAmount, including slippage. The approval
+// request, settlement allowance and declared input must fund the same amount.
 #[tokio::test]
 async fn buy_enabled() {
-    /// Config with buy orders enabled.
-    fn config_with_buy_orders(solver_addr: &std::net::SocketAddr) -> tests::Config {
-        tests::Config::String(format!(
-            r"
-node-url = 'http://localhost:8545'
-internalize-interactions = true
-[dex]
-chain-id = '1'
-sell-orders-endpoint = 'http://{solver_addr}/'
-buy-orders-endpoint = 'http://{solver_addr}/'
-api-project-id = '1'
-api-key = '1234'
-api-secret-key = '1234567890123456'
-api-passphrase = 'pass'
-",
-        ))
-    }
-
     let api = mock::http::setup(vec![
         mock::http::Expectation::Get {
             path: mock::http::Path::exact(
@@ -728,6 +656,7 @@ api-passphrase = 'pass'
                          "gas":"202500",
                          "gasPrice":"6756286873",
                          "maxPriorityFeePerGas":"1000000000",
+                         "maxSpendAmount":"30805000000000000",
                          "minReceiveAmount":"6490696564868305072578",
                          "signatureData":[
                             ""
@@ -745,7 +674,7 @@ api-passphrase = 'pass'
          path: mock::http::Path::exact(
              "approve-transaction?chainId=1\
              &tokenContractAddress=0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2\
-             &approveAmount=30500000000000000"
+             &approveAmount=30805000000000000"
          ),
          res: json!(
            {
@@ -758,7 +687,7 @@ api-passphrase = 'pass'
     ])
     .await;
 
-    let engine = tests::SolverEngine::new("okx", config_with_buy_orders(&api.address)).await;
+    let engine = tests::SolverEngine::new("okx", super::config_with_buy_orders(&api.address)).await;
 
     let solution = engine
         .solve(json!({
@@ -822,7 +751,7 @@ api-passphrase = 'pass'
                     {
                        "allowances":[
                           {
-                             "amount":"115792089237316195423570985008687907853269984665640564039457584007913129639935",
+                             "amount":"30805000000000000",
                              "spender":"0x40aa958dd87fc8305b97f2ba922cddca374bcd7f",
                              "token":"0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
                           }
@@ -830,11 +759,11 @@ api-passphrase = 'pass'
                        "callData":"0x0d5f0e3b00000000000000000001a0cf2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a0000000000000000000000000000000000000000000000000de0b6b3a764000000000000000000000000000000000000000000000000015fdc8278903f7f31c10000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000100000000000000000000000014424eeecbff345b38187d0b8b749e56faa68539",
                        "inputs":[
                           {
-                             "amount":"30500000000000000",
+                             "amount":"30805000000000000",
                              "token":"0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
                           }
                        ],
-                       "internalize":true,
+                       "internalize":false,
                        "kind":"custom",
                        "outputs":[
                           {
@@ -850,7 +779,7 @@ api-passphrase = 'pass'
                  "preInteractions":[],
                  "prices":{
                     "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2":"200000000000000000000",
-                    "0xe41d2489571d322189246dafa5ebde1f4699f498":"30500000000000000"
+                    "0xe41d2489571d322189246dafa5ebde1f4699f498":"30805000000000000"
                  },
                  "trades":[
                     {

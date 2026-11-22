@@ -249,6 +249,9 @@ impl Okx {
 
             let client = reqwest::Client::builder()
                 .default_headers(headers)
+                // The signature covers the configured path, and reqwest does
+                // not strip OKX's custom credential headers on redirects.
+                .redirect(reqwest::redirect::Policy::none())
                 .build()?;
             super::Client::new(client, config.block_stream)
         };
@@ -317,7 +320,7 @@ impl Okx {
         );
         let slippage = dex::Slippage::from_bps(clamped_bps);
 
-        let (swap_response, dex_contract_address) = self
+        let (swap_response, dex_contract_address, input_amount) = self
             .handle_api_requests(order, &slippage)
             .instrument(tracing::trace_span!("swap", id = %id))
             .await?;
@@ -339,9 +342,7 @@ impl Okx {
         // contract's OWN buffer of the sold token — a direct loss of protocol
         // funds. The framework's allowance_within_sell_limit only enforces the
         // limit-price relation (O*S >= A*B), not A <= order.sell, so it does not
-        // close this. Fail fast rather than trust the echoed amount. (BUY /
-        // exactOut legitimately varies the input; it is bounded by the
-        // U256::MAX-allowance branch + the driver's 2^200 custom_allowlist cap.)
+        // close this. Fail fast rather than trust the echoed amount.
         if order.side == order::Side::Sell
             && swap_response.router_result.from_token_amount != order.amount.get()
         {
@@ -394,33 +395,6 @@ impl Okx {
             .checked_add(swap_response.tx.gas / U256::from(2))
             .ok_or(Error::GasCalculationFailed)?;
 
-        // For buy orders (ExactOut mode), the slippage is on the input token,
-        // so we need to use U256::MAX allowance to cover the maximum possible
-        // input.
-        //
-        // **WARNING — driver allowlist incompatibility (Codex PR-227 P1
-        // r3287846607, 2026-05-22):**
-        // The driver-level `custom_allowlist::MAX_CUSTOM_ALLOWANCE = 2^200`
-        // rejects U256::MAX. If `buy_orders_endpoint` is configured AND
-        // a buy-side order arrives, the solver will emit U256::MAX here,
-        // and the driver will REJECT the resulting `Custom` interaction
-        // with `AmountTooLarge` at parse time. As of 2026-05-22 the
-        // rendered production OKX config keeps `buy_orders_endpoint`
-        // unset (sell-only), so this is a latent failure mode, not an
-        // active bug. Re-enabling OKX buy-mode requires:
-        //   1. Replace `U256::MAX` here with a per-trade upper bound
-        //      derived from `swap_response.router_result.from_token_amount *
-        //      (1 + slippage_bps / 10000)` (or similar).
-        //   2. Drop the driver allowlist exemption — the structural
-        //      anti-pattern (solver emitting unbounded allowance) is
-        //      intentionally rejected.
-        let allowance_amount =
-            if self.buy_orders_endpoint.is_some() && order.side == order::Side::Buy {
-                eth::U256::MAX
-            } else {
-                swap_response.router_result.from_token_amount
-            };
-
         Ok(dex::Swap {
             calls: vec![dex::Call {
                 to: swap_response.tx.to,
@@ -430,10 +404,10 @@ impl Okx {
                 // Trust the SIGNED order's sell token, never the API-echoed
                 // token (a hijacked response could otherwise redirect the
                 // approval/spend to an unrelated token). For SELL the amount is
-                // provably == order.amount.get() by the guard above; for BUY it
-                // is the computed exactOut input.
+                // fixed by the signed order. ExactOut funds the full approved
+                // input to avoid drawing on Settlement's buffer.
                 token: order.sell,
-                amount: swap_response.router_result.from_token_amount,
+                amount: input_amount,
             },
             output: eth::Asset {
                 // Trust the SIGNED order's buy token, never the API-echoed one.
@@ -447,8 +421,7 @@ impl Okx {
                 // `clamped_bps` == the slippage actually sent.
                 //
                 // BUY (exactOut): the output is the user's EXACT requested buy
-                // amount; slippage applies to the INPUT (the allowance pad
-                // above), not the output, so report to_token_amount unmodified.
+                // amount; slippage applies to the input.
                 amount: match order.side {
                     order::Side::Sell => {
                         okx_min_received(swap_response.router_result.to_token_amount, clamped_bps)
@@ -458,7 +431,7 @@ impl Okx {
             },
             allowance: dex::Allowance {
                 spender: dex_contract_address.0,
-                amount: dex::Amount::new(allowance_amount),
+                amount: dex::Amount::new(input_amount),
             },
             gas: eth::Gas(gas),
         })
@@ -473,9 +446,12 @@ impl Okx {
         &self,
         order: &dex::Order,
         slippage: &dex::Slippage,
-    ) -> Result<(dto::SwapResponse, eth::ContractAddress), Error> {
+    ) -> Result<(dto::SwapResponse, eth::ContractAddress, U256), Error> {
         match order.side {
-            order::Side::Sell => self.handle_sell_order(order, slippage).await,
+            order::Side::Sell => {
+                let (response, spender) = self.handle_sell_order(order, slippage).await?;
+                Ok((response, spender, order.amount.get()))
+            }
             order::Side::Buy => self.handle_buy_order(order, slippage).await,
         }
     }
@@ -537,13 +513,13 @@ impl Okx {
     /// Handle buy orders with sequential API requests.
     ///
     /// Since the approval amount depends on the swap response
-    /// (`from_token_amount`), we must execute `/swap` first, then
+    /// (`tx.maxSpendAmount`), we must execute `/swap` first, then
     /// `/approve-transaction`.
     async fn handle_buy_order(
         &self,
         order: &dex::Order,
         slippage: &dex::Slippage,
-    ) -> Result<(dto::SwapResponse, eth::ContractAddress), Error> {
+    ) -> Result<(dto::SwapResponse, eth::ContractAddress, U256), Error> {
         let endpoint = self
             .buy_orders_endpoint
             .as_ref()
@@ -560,11 +536,29 @@ impl Okx {
             .send_get_request(endpoint, signature_base_url, "swap", &swap_request_v5)
             .await?;
 
+        let max_spend = swap_response
+            .tx
+            .max_spend_amount
+            .as_deref()
+            .and_then(|amount| amount.parse::<U256>().ok())
+            .filter(|&amount| {
+                !amount.is_zero()
+                    && amount != U256::MAX
+                    && amount >= swap_response.router_result.from_token_amount
+            })
+            .ok_or(Error::InvalidMaxSpendAmount)?;
+        if swap_response.router_result.to_token_amount != order.amount.get() {
+            return Err(Error::Api {
+                code: -1,
+                reason: "OKX /swap returned a different exact-out amount".to_owned(),
+            });
+        }
+
         let approve_future = async {
             let approve_request = dto::ApproveTransactionRequest::new(
                 self.defaults.chain_index,
                 order.sell,
-                swap_response.router_result.from_token_amount,
+                max_spend,
             );
             let approve_request_v5: dto::ApproveTransactionRequestV5 = (&approve_request).into();
 
@@ -590,7 +584,7 @@ impl Okx {
 
         let dex_approved_address = self.cache_approval_address(order, approve_future).await?;
 
-        Ok((swap_response, dex_approved_address))
+        Ok((swap_response, dex_approved_address, max_spend))
     }
 
     /// Helper to cache approval addresses.
@@ -786,6 +780,8 @@ pub enum Error {
     NotFound,
     #[error("order type is not supported")]
     OrderNotSupported,
+    #[error("OKX /swap returned a missing or invalid exact-out tx.maxSpendAmount")]
+    InvalidMaxSpendAmount,
     #[error("rate limited")]
     RateLimited,
     #[error("failed to get approve-transaction response for token address: {0:?}")]
@@ -852,6 +848,56 @@ impl From<util::http::RoundtripError<dto::Error>> for Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn signed_okx_requests_do_not_follow_redirects() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint =
+            reqwest::Url::parse(&format!("http://{}/", listener.local_addr().unwrap())).unwrap();
+        let app = axum::Router::new()
+            .route(
+                "/approve-transaction",
+                axum::routing::get(|| async { axum::response::Redirect::temporary("/other") }),
+            )
+            .route(
+                "/other",
+                axum::routing::get(|| async { "unexpected redirect" }),
+            );
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let okx = Okx::try_new(Config {
+            sell_orders_endpoint: endpoint.clone(),
+            buy_orders_endpoint: None,
+            sell_orders_signature_base_url: None,
+            buy_orders_signature_base_url: None,
+            chain_id: eth::ChainId::Mainnet,
+            settlement_contract: Address::ZERO,
+            okx_credentials: OkxCredentialsConfig {
+                project_id: "test-project".to_owned(),
+                api_key: "test-key".to_owned(),
+                api_secret_key: "test-secret".to_owned(),
+                api_passphrase: "test-passphrase".to_owned(),
+            },
+            block_stream: None,
+            price_impact_protection_percent: 1.0,
+        })
+        .unwrap();
+        let result = okx
+            .send_get_request::<_, dto::ApproveTransactionResponse>(
+                &endpoint,
+                &endpoint,
+                "approve-transaction",
+                &dto::ApproveTransactionRequest::default(),
+            )
+            .await;
+        server.abort();
+        assert!(matches!(
+            result,
+            Err(Error::Http(util::http::Error::Status(
+                StatusCode::TEMPORARY_REDIRECT,
+                _
+            )))
+        ));
+    }
 
     fn op_router() -> Address {
         address!("1f5b43127414e36c31ecb5ff5567262997cd24d0")

@@ -142,8 +142,9 @@ async fn swap_buy_enabled() {
         swap.allowance.spender,
         address!("0x40aA958dd87FC8305b97f2BA922CDdCa374bcD7f")
     );
-    // For buy orders, allowance should be U256::MAX
-    assert_eq!(swap.allowance.amount.get(), U256::MAX);
+    assert!(!swap.input.amount.is_zero());
+    assert_ne!(swap.input.amount, U256::MAX);
+    assert_eq!(swap.allowance.amount.get(), swap.input.amount);
 }
 
 #[ignore]

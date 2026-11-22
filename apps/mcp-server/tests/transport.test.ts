@@ -66,4 +66,34 @@ describe('MCP request body bounds', () => {
     const atLimit = '{}'.padEnd(256 * 1024, ' ')
     expect(await (await worker.fetch(post(atLimit), env, ctx)).text()).toBe(atLimit)
   })
+
+  it('records only recognized telemetry labels without changing the transport body', async () => {
+    const writeDataPoint = vi.fn()
+    const waitUntil = vi.fn()
+    const body = JSON.stringify([
+      { method: 'initialize' },
+      { method: 'tools/call', params: { name: 'get_quote', arguments: { chainId: 10 } } },
+      { method: 'tools/call', params: { name: 'get_quote', arguments: { chainId: 'unknown chain' } } },
+      { method: 'tools/call', params: { name: 'get_quote', arguments: { chainId: 123456 } } },
+      { method: 'tools/call', params: { name: 'unrecognized tool', arguments: { chainId: 10 } } },
+      { method: 'unrecognized method' },
+    ].map((request, id) => ({ jsonrpc: '2.0', id, ...request })))
+    const response = await worker.fetch(post(body, { 'user-agent': 'Test Client', origin: 'https://example.com' }),
+      { MCP_ANALYTICS: { writeDataPoint } }, { waitUntil } as unknown as ExecutionContext)
+
+    expect(await response.text()).toBe(body)
+    expect(waitUntil).toHaveBeenCalledOnce()
+    await waitUntil.mock.calls[0][0]
+    expect(writeDataPoint).toHaveBeenCalledTimes(6)
+    const consumer = writeDataPoint.mock.calls[0][0].blobs[1]
+    expect(consumer).toMatch(/^[a-f0-9]{16}$/)
+    for (const [i, [name, chain]] of [
+      ['rpc:initialize', ''], ['get_quote', '10'], ['get_quote', ''],
+      ['get_quote', ''], ['unknown', ''], ['rpc:unknown', ''],
+    ].entries()) {
+      expect(writeDataPoint).toHaveBeenNthCalledWith(i + 1, {
+        indexes: [name], blobs: [name, consumer, 'user-agent', 'origin', chain], doubles: [1],
+      })
+    }
+  })
 })

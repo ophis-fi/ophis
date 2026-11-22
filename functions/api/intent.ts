@@ -20,10 +20,10 @@ interface Env {
   // not use KV read/modify/write because KV is eventually consistent and not
   // atomic under burst concurrency.
   OPHIS_RATELIMIT?: KVNamespace
-  // Cloudflare Rate Limiting bindings. Production should bind both; local
-  // wrangler/dev falls back to a per-isolate limiter.
+  // Cloudflare's fast per-location limiter, with an isolate fallback.
   OPHIS_INTENT_RATE_LIMITER?: RateLimitBinding
-  OPHIS_INTENT_GLOBAL_RATE_LIMITER?: RateLimitBinding
+  // One Durable Object bucket across all Pages locations for the model quota.
+  OPHIS_RELAY_RATE_LIMITER?: DurableObjectNamespace
 }
 
 type EntityType = 'sellToken' | 'buyToken' | 'amount' | 'chain'
@@ -94,14 +94,19 @@ const RATE_LIMIT_MAX_REQUESTS = 30
 const RATE_LIMIT_MAX_KEYS = 1024 // hard cap on memory growth per isolate (fallback path)
 const ipBuckets = new Map<string, number[]>()
 
-// Authoritative global LibertAI-call circuit breaker. Uses Cloudflare's
-// Rate Limiting binding instead of KV so admission is handled by Cloudflare's
-// rate-limiter primitive rather than a non-atomic KV read/modify/write. Counts
-// only cache-MISS calls (a cache hit makes no LibertAI call).
-async function checkGlobalLlmBudget(env: Env): Promise<boolean> {
-  if (!env.OPHIS_INTENT_GLOBAL_RATE_LIMITER) return true
-  const result = await env.OPHIS_INTENT_GLOBAL_RATE_LIMITER.limit({ key: 'global' })
-  return result.success
+// The shared limiter's default rolling window admits 40 model calls/minute.
+async function checkGlobalLlmBudget(env: Env, hostname: string): Promise<boolean> {
+  const limiter = env.OPHIS_RELAY_RATE_LIMITER
+  if (!limiter) {
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]') return true
+    throw new Error('Intent quota binding unavailable')
+  }
+  const response = await limiter.get(limiter.idFromName('intent:global')).fetch('https://intent-limits.internal/', {
+    method: 'POST',
+    signal: AbortSignal.timeout(2_000),
+  })
+  if (!response.ok) throw new Error('Intent quota admission unavailable')
+  return (await response.json<{ success: boolean }>()).success === true
 }
 
 const ALLOWED_ORIGINS = new Set<string>([
@@ -762,12 +767,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
   }
 
-  // Global LibertAI-call circuit breaker — reached only on a cache MISS, i.e.
-  // we are about to make a real upstream LLM call. Bounds total calls/min
-  // across ALL IPs so a distributed flood (each IP under the per-IP cap) can't
-  // saturate the upstream or run up cost. If the binding is absent, the deployment relies on the per-IP cap only.
-  if (env.OPHIS_INTENT_GLOBAL_RATE_LIMITER) {
-    const withinGlobalBudget = await checkGlobalLlmBudget(env)
+  // A cache hit never reaches the upstream model or consumes its quota.
+  try {
+    const withinGlobalBudget = await checkGlobalLlmBudget(env, new URL(request.url).hostname)
     if (!withinGlobalBudget) {
       return json(
         { ok: false, error: { code: 'RATE_LIMITED', message: 'service is busy, try again shortly' } },
@@ -775,6 +777,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         { 'retry-after': '30' },
       )
     }
+  } catch {
+    return json({ ok: false, error: { code: 'UPSTREAM', message: 'parser temporarily unavailable' } }, 503)
   }
 
   let upstreamRes: Response

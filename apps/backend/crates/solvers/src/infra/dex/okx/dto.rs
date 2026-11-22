@@ -215,6 +215,8 @@ pub struct SwapResponseTx {
     /// Call data.
     #[serde_as(as = "BytesHex")]
     pub data: Vec<u8>,
+    /// Maximum input at the slippage limit, required for exact-out.
+    pub max_spend_amount: Option<String>,
 }
 
 /// A OKX API approve transaction request.
