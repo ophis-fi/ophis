@@ -94,19 +94,6 @@ it('returns only trusted same-asset intermediate tokens and refuses unproved sou
 })
 
 it('discovers Base USDC through the exact Plasma USDT0 intermediate', async () => {
-  const plasma = {
-    id: SupportedChainId.PLASMA,
-    depositEnabled: true,
-    disabled: false,
-    currency: {
-      id: 'xpl',
-      address: '0x0000000000000000000000000000000000000000',
-      decimals: 18,
-      supportsBridging: true,
-    },
-    erc20Currencies: [{ id: 'usdt', address: USDT_PLASMA.address, decimals: 6, supportsBridging: true }],
-  }
-  ;(fetch as jest.Mock).mockResolvedValue({ ok: true, json: async () => ({ chains: [...chains.chains, plasma] }) })
   const relay = new RelayBridgeProvider({
     enabled: true,
     trustedTokens: async () => [USDC_BASE, USDT_BASE, USDT_PLASMA],
