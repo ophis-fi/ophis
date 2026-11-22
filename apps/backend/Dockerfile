@@ -42,11 +42,11 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry --mount=type=cache,targe
     cp target/release/solvers /
 
 # Create an intermediate image to extract the binaries
-FROM docker.io/debian:bookworm-slim AS intermediate
+FROM docker.io/debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2 AS intermediate
 ARG OPHIS_GIT_SHA
 LABEL org.opencontainers.image.revision=$OPHIS_GIT_SHA
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked apt-get update && \
-    apt-get install -y ca-certificates tini gettext-base && \
+    apt-get install -y --no-install-recommends ca-certificates tini gettext-base zlib1g && \
     apt-get clean && \
     groupadd --system --gid 10001 ophis && \
     useradd --system --uid 10001 --gid 10001 --home-dir /nonexistent --shell /usr/sbin/nologin ophis
@@ -79,7 +79,7 @@ ENTRYPOINT [ "solvers" ]
 # Extract Binary
 FROM intermediate
 
-RUN apt-get update && apt-get install -y netcat-openbsd
+RUN apt-get update && apt-get install -y --no-install-recommends netcat-openbsd
 COPY --from=cargo-build /autopilot /usr/local/bin/autopilot
 COPY --from=cargo-build /driver /usr/local/bin/driver
 COPY --from=cargo-build /orderbook /usr/local/bin/orderbook

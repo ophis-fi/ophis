@@ -22,8 +22,10 @@
  * orders and registers their owners for indexing; the other tools read or build.
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import { OPHIS_FEE_CHAIN_IDS } from '@ophis/sdk'
 import { createMcpHandler } from 'agents/mcp'
 
+import { PUBLIC_RPCS } from './ophis.js'
 import { OPHIS_TOOL_NAMES, registerOphisTools, SERVER_INFO } from './tools.js'
 
 /** Cloudflare Workers rate-limit binding (unsafe.bindings type "ratelimit"). */
@@ -51,9 +53,11 @@ interface Env {
   OPHIS_REBATES_API?: string
   /** Optional funnel-telemetry dataset. When bound, each /mcp JSON-RPC call
    *  writes one privacy-preserving data point (tool name, a hashed consumer id,
-   *  truncated UA, origin-or-not, chainId). Absent binding = no-op. */
+   *  user-agent presence, origin presence, chain ID). Absent binding = no-op. */
   MCP_ANALYTICS?: AnalyticsEngineDataset
 }
+
+const TELEMETRY_METHODS = new Set(['initialize', 'notifications/initialized', 'notifications/cancelled', 'ping', 'tools/list'])
 
 /**
  * Record one funnel data point per JSON-RPC item, fully non-blocking and
@@ -72,16 +76,21 @@ async function recordTelemetry(
   const enc = new TextEncoder()
   const digest = await crypto.subtle.digest('SHA-256', enc.encode(`${ip}|${ua}`))
   const consumer = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 16)
-  const uaTrunc = ua.slice(0, 48)
+  const userAgent = ua ? 'user-agent' : 'no-user-agent'
   const browser = hasOrigin ? 'origin' : 'no-origin'
   for (const item of items) {
     const it = item as { method?: unknown; params?: { name?: unknown; arguments?: { chainId?: unknown } } }
     if (typeof it?.method !== 'string') continue
-    const toolName = it.method === 'tools/call' ? String(it.params?.name ?? 'unknown') : `rpc:${it.method}`
-    const chainId = it.params?.arguments?.chainId != null ? String(it.params.arguments.chainId) : ''
+    const isToolCall = it.method === 'tools/call'
+    const tool = isToolCall ? OPHIS_TOOL_NAMES.find((name) => name === it.params?.name) : undefined
+    const method = TELEMETRY_METHODS.has(it.method) ? it.method : 'unknown'
+    const label = isToolCall ? tool ?? 'unknown' : `rpc:${method}`
+    const chain = it.params?.arguments?.chainId
+    const chainId = tool && typeof chain === 'number' && (OPHIS_FEE_CHAIN_IDS.includes(chain) || Object.hasOwn(PUBLIC_RPCS, chain))
+      ? String(chain) : ''
     analytics.writeDataPoint({
-      indexes: [toolName.slice(0, 32)],
-      blobs: [toolName, consumer, uaTrunc, browser, chainId],
+      indexes: [label],
+      blobs: [label, consumer, userAgent, browser, chainId],
       doubles: [1],
     })
   }

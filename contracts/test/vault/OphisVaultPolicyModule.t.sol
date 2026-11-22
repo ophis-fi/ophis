@@ -251,6 +251,17 @@ contract OphisVaultPolicyModuleTest is Test {
         rebalanceAsCurator(validOrder(), 0);
     }
 
+    function test_future_dated_oracle_round_reverts() public {
+        usdcFeed.set(1e8, block.timestamp + 1);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OphisChainlinkFloor.StaleOraclePrice.selector,
+                address(usdcFeed)
+            )
+        );
+        rebalanceAsCurator(validOrder(), 0);
+    }
+
     function test_incomplete_round_reverts() public {
         // updatedAt == 0: an in-progress round the aggregator has not answered.
         usdcFeed.set(1e8, 0);

@@ -212,3 +212,12 @@ hook returns any remainder to the order owner on the source chain. The explorer
 tracks the V5 order ID after matching its `PrefundingStored` event and token pull.
 V4 status reads remain available for pre-migration orders while the legacy
 endpoint serves them.
+
+### Intent parser
+
+The Pages intent parser uses the same `OPHIS_RELAY_RATE_LIMITER` binding with
+its own bucket for 40 LibertAI cache misses per rolling minute. Production
+and any preview with `LIBERTAI_API_KEY` must use the same Durable Object
+namespace when they share that credential. A missing or unavailable binding
+returns HTTP 503 for cache misses. Loopback development can use the local
+per-IP limiter without the binding.
