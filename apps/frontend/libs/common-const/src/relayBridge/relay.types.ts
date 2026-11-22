@@ -63,7 +63,7 @@ export interface RelayProviderOptions {
   enabled?: boolean
   apiUrl?: string
   trustedTokens?: () => Promise<TokenInfo[]>
-  sourceChainIds?: ReadonlySet<number>
+  isSourceRouteEnabled?: (sourceChainId: number, destinationChainId: number) => boolean
   signHook?: (
     terms: RelayHookTerms,
     ...args: Parameters<HookBridgeProvider<RelayQuote>['getSignedHook']>

@@ -50,8 +50,11 @@ export const nearIntentsBridgeProvider = new OphisNearIntentsBridgeProvider({
 
 const relayTokens: { list?: Promise<TokenInfo[]> } = {}
 export const relayBridgeProvider = new RelayBridgeProvider({
-  // Existing source execution gates also prove the Shed/Weiroll path; Relay needs no Across math helper.
-  sourceChainIds: ACROSS_EXECUTABLE_SOURCE_IDS,
+  // Plasma's Shed/Weiroll path is verified for Relay independently of Across.
+  isSourceRouteEnabled: (source, destination) =>
+    source === SupportedChainId.PLASMA
+      ? destination === SupportedChainId.BASE
+      : ACROSS_EXECUTABLE_SOURCE_IDS.has(source),
   trustedTokens: () => {
     relayTokens.list ??= fetchTokenList({ source: OPHIS_TOKENS_LIST_SOURCE })
       .then((state) => state.list.tokens)
