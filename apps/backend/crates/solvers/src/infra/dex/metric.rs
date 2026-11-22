@@ -1,13 +1,23 @@
-//! Direct, single-pool Metric v1 SELL routes on Robinhood. Router, quoter,
-//! pools and tokens are pinned in `shared::metric`; the Metric API never
-//! participates in quoting or execution.
+//! Metric v1 routes on Robinhood through one pinned pool, or two pinned
+//! pools joined by USDG or WETH. Router, quoter, pools and tokens are pinned
+//! in `shared::metric`; the Metric API never participates in quoting or
+//! execution.
+//!
+//! BUY orders execute the same exact-input router call as SELL orders: the
+//! quoter prices the exact output, the input is padded by the slippage and
+//! the calldata minimum is the order's buy amount. No exact-output router
+//! call, which by design pulls less than its approval, is ever built. A
+//! one-pool swap that drains its pool can still stop short of its input; the
+//! router only ever pulls from its caller, so what stays approved is
+//! spendable only by a later driver-validated settlement call.
 use {
     crate::{
         domain::{dex, eth, order},
         infra::metrics,
     },
     alloy::{
-        primitives::{Address, Bytes, U256},
+        primitives::{Address, Bytes, U256, address},
+        sol,
         sol_types::SolCall,
     },
     ethrpc::block_context::{BlockContext, Error as RpcError, ReadOnlyRpc},
@@ -15,8 +25,20 @@ use {
     std::time::{SystemTime, UNIX_EPOCH},
 };
 
-/// Router, pool swap, oracle read and three extensions; no quoter estimate.
-const GAS: u64 = 350_000;
+/// Per pool: router, pool swap, oracle read and three extensions; no quoter
+/// estimate.
+const GAS_PER_POOL: u64 = 350_000;
+/// Tokens a two-pool route may pass through.
+const MIDS: [Address; 2] = [metric::USDG, WETH];
+const WETH: Address = address!("0Bd7D308f8E1639FAb988df18A8011f41EAcAD73");
+/// Canonical Multicall3; one `eth_call` quotes every pinned pool of a hop.
+const MULTICALL3: Address = address!("cA11bde05977b3631167028862bE2a173976CA11");
+
+sol! {
+    struct Call3 { address target; bool allowFailure; bytes callData; }
+    struct CallResult { bool success; bytes returnData; }
+    function aggregate3(Call3[] calls) external payable returns (CallResult[] returnData);
+}
 
 pub struct Config {
     pub node_url: reqwest::Url,
@@ -42,85 +64,122 @@ impl Metric {
         slippage: &dex::Slippage,
         is_quote: bool,
     ) -> Result<dex::Swap, Error> {
-        let (sell, buy, input) = (order.sell.0, order.buy.0, order.amount.get());
-        if order.side != order::Side::Sell {
+        // The exact input of a SELL order, the exact output of a BUY order.
+        let (sell, buy, amount) = (order.sell.0, order.buy.0, order.amount.get());
+        let exact_in = order.side == order::Side::Sell;
+        if sell == buy || metric::exact_input(amount).is_none() {
             return Err(Error::OrderNotSupported);
         }
-        let (pool, zero_for_one) = metric::route(sell, buy).ok_or(Error::OrderNotSupported)?;
-        let amount_in = metric::exact_input(input).ok_or(Error::OrderNotSupported)?;
+        let pinned = |a, b| metric::pools(a, b).next().is_some();
+        let direct = pinned(sell, buy);
+        let mids: Vec<Address> = MIDS
+            .into_iter()
+            .filter(|&mid| mid != sell && mid != buy && pinned(sell, mid) && pinned(mid, buy))
+            .collect();
+        if !direct && mids.is_empty() {
+            return Err(Error::OrderNotSupported);
+        }
+        // Every quote of one order reads the same canonical block.
         let context = self.rpc.snapshot().await?;
-        // The pool sees the router as its caller; Settlement receives output.
-        let quote = metric::quoteLiveExactInSingleCall {
-            pool,
-            sender: metric::ROUTER,
-            recipient: self.settlement,
-            zeroForOne: zero_for_one,
-            amountIn: amount_in,
-            priceLimitX64: metric::price_limit(zero_for_one),
-            extensionData: Bytes::new(),
-        };
-        // Registration, pool immutables and price come from one canonical
-        // block. The router never checks tokens against the pool, so a
-        // pinned-table mismatch is an integrity failure, not missing liquidity.
-        let (immutables, registered, quoted) = futures::try_join!(
-            self.read(context, pool, metric::getImmutablesCall {}.abi_encode()),
-            self.read(
-                context,
-                metric::FACTORY,
-                metric::isPoolCall { pool }.abi_encode()
-            ),
-            self.quote(context, quote.abi_encode()),
-        )?;
-        let word = |i: usize| {
-            immutables
-                .get(i * 32..(i + 1) * 32)
-                .filter(|word| word[..12] == [0; 12])
-                .map(|word| Address::from_slice(&word[12..]))
-        };
-        let (token0, token1) = if zero_for_one {
-            (sell, buy)
+        // A pair with a pinned pool only ever uses one pool; two-pool routes
+        // exist for pairs without one. The two are never ranked against each
+        // other, so no second pool's gas has to be weighed against its gain.
+        let (tokens, pools, quoted) = if direct {
+            let (pool, quoted) = self
+                .best(context, sell, buy, amount, self.settlement, exact_in)
+                .await?
+                .ok_or(Error::NotFound)?;
+            (vec![sell, buy], vec![pool], quoted)
         } else {
-            (buy, sell)
+            let routes = futures::future::try_join_all(mids.into_iter().map(|mid| async move {
+                // The router holds the intermediate token between its swaps.
+                // A SELL is quoted forward from its input, a BUY backward
+                // from its output.
+                // ponytail: only the best pool of the hop quoted first is
+                // tried; if no pool fills the other hop the pair gets no
+                // route.
+                let (near, far) = if exact_in {
+                    ((sell, mid, metric::ROUTER), (mid, buy, self.settlement))
+                } else {
+                    ((mid, buy, self.settlement), (sell, mid, metric::ROUTER))
+                };
+                let Some((near_pool, mid_amount)) = self
+                    .best(context, near.0, near.1, amount, near.2, exact_in)
+                    .await?
+                else {
+                    return Ok(None);
+                };
+                let Some((far_pool, quoted)) = self
+                    .best(context, far.0, far.1, mid_amount, far.2, exact_in)
+                    .await?
+                else {
+                    return Ok(None);
+                };
+                let pools = if exact_in {
+                    vec![near_pool, far_pool]
+                } else {
+                    vec![far_pool, near_pool]
+                };
+                Ok::<_, Error>(Some((vec![sell, mid, buy], pools, quoted)))
+            }))
+            .await?;
+            // Both candidates cost the same gas, so the higher output of a
+            // SELL or the lower input of a BUY wins.
+            let routes = routes.into_iter().flatten();
+            if exact_in {
+                routes.max_by_key(|route| route.2)
+            } else {
+                routes.min_by_key(|route| route.2)
+            }
+            .ok_or(Error::NotFound)?
         };
-        if immutables.len() % 32 != 0
-            || [word(0), word(1), word(2)] != [Some(metric::FACTORY), Some(token0), Some(token1)]
-            || registered != U256::from(1).to_be_bytes::<32>()
-        {
-            return Err(Error::InvalidResponse);
-        }
-        let (filled, quoted) = quoted.ok_or(Error::NotFound)?;
-        if filled > input {
-            return Err(Error::InvalidResponse);
-        }
-        // A partial fill must never be advertised as the full exact input.
-        if filled < input || quoted.is_zero() {
-            return Err(Error::NotFound);
-        }
-        if quoted > U256::from(u128::MAX) {
-            return Err(Error::InvalidResponse);
-        }
+        let gas = GAS_PER_POOL * pools.len() as u64;
         let bps = metrics::clamp_slippage_bps(
             metrics::Dex::Metric,
             slippage.as_bps().ok_or(Error::InvalidSlippage)?,
             2_000,
         );
-        let bps = if is_quote {
-            // Quotes never execute; as with direct V3, the advertised output
-            // equals the calldata minimum the driver binds it to.
-            0
-        } else {
-            order.bounded_solve_slippage_bps(
-                quoted,
-                bps,
-                eth::Gas(U256::from(GAS + dex::SIM_SETTLE_OVERHEAD_GAS)),
-                0,
-            )
+        let fee_gas = eth::Gas(U256::from(gas + dex::SIM_SETTLE_OVERHEAD_GAS));
+        let scale = |amount: U256, bps: u16| {
+            amount
+                .checked_mul(U256::from(bps))
+                .map(|scaled| scaled / U256::from(10_000u16))
+                .ok_or(Error::InvalidResponse)
         };
-        let min_out = quoted
-            .checked_mul(U256::from(10_000u16.saturating_sub(bps)))
-            .ok_or(Error::InvalidResponse)?
-            / U256::from(10_000u16);
-        if min_out.is_zero() {
+        let (input, min_out) = if exact_in {
+            let bps = if is_quote {
+                // Quotes never execute; as with direct V3, the advertised
+                // output equals the calldata minimum the driver binds it to.
+                0
+            } else {
+                order.bounded_solve_slippage_bps(quoted, bps, fee_gas, 0)
+            };
+            (amount, scale(quoted, 10_000u16.saturating_sub(bps))?)
+        } else if is_quote {
+            (quoted, amount)
+        } else {
+            // Pay up to the slippage above the quote, but never past what
+            // the signed limit leaves once `into_dex_solution` adds the fee.
+            // ponytail: a legacy market-class order carries no limit context
+            // here, so a pad beyond its limit yields no solution.
+            let fee = &order.solve_fee;
+            let cap = fee
+                .total_sell
+                .checked_mul(amount)
+                .filter(|scaled| !scaled.is_zero() && !fee.total_buy.is_zero())
+                .map_or(U256::MAX, |scaled| {
+                    (scaled / fee.total_buy).saturating_sub(fee.fee_in_sell(fee_gas))
+                });
+            let padded = quoted
+                .checked_add(scale(quoted, bps)?)
+                .ok_or(Error::InvalidResponse)?;
+            (padded.min(cap), amount)
+        };
+        // A BUY whose limit cannot pay the quoted input has no route.
+        if min_out.is_zero()
+            || (!exact_in && input < quoted)
+            || metric::exact_input(input).is_none()
+        {
             return Err(Error::NotFound);
         }
         let deadline = SystemTime::now()
@@ -128,8 +187,9 @@ impl Metric {
             .map_err(|_| Error::InvalidResponse)?
             .as_secs()
             + metric::DEADLINE_SECS;
-        let calldata = metric::calldata(sell, buy, input, min_out, self.settlement, deadline)
-            .ok_or(Error::InvalidResponse)?;
+        let calldata =
+            metric::calldata_via(&tokens, &pools, input, min_out, self.settlement, deadline)
+                .ok_or(Error::InvalidResponse)?;
         Ok(dex::Swap {
             calls: vec![dex::Call {
                 to: metric::ROUTER,
@@ -147,40 +207,131 @@ impl Metric {
                 spender: metric::ROUTER,
                 amount: dex::Amount::new(input),
             },
-            gas: eth::Gas(U256::from(GAS)),
+            gas: eth::Gas(U256::from(gas)),
         })
     }
 
-    async fn read(
+    /// The best pinned `sell -> buy` pool for the whole `amount`, with the
+    /// other side of its quote: the highest output for an exact input, the
+    /// lowest input for an exact output. `None` when no pool fills it: a
+    /// reverted quote means a paused pool, stale or refused feed, empty bins
+    /// or extension rejection. Transport failures stay errors.
+    async fn best(
         &self,
         context: BlockContext,
-        to: Address,
-        data: Vec<u8>,
-    ) -> Result<Vec<u8>, Error> {
-        Ok(self.rpc.call_at(context, to, data).await?)
-    }
-
-    /// `None` when the quoter reverts: paused pool, stale or refused feed,
-    /// empty bins or extension rejection. Transport failures stay errors.
-    async fn quote(
-        &self,
-        context: BlockContext,
-        data: Vec<u8>,
-    ) -> Result<Option<(U256, U256)>, Error> {
-        let data = match self.rpc.call_at(context, metric::QUOTER, data).await {
-            Ok(data) => data,
-            Err(RpcError::Rpc(e)) if ethrpc::alloy::errors::is_revert_error_payload(&e) => {
-                return Ok(None);
-            }
-            Err(e) => return Err(e.into()),
+        sell: Address,
+        buy: Address,
+        amount: U256,
+        recipient: Address,
+        exact_in: bool,
+    ) -> Result<Option<(Address, U256)>, Error> {
+        // An intermediate amount can exceed the quoter's `int128`.
+        let Some(exact) = metric::exact_input(amount) else {
+            return Ok(None);
         };
-        if data.len() != 64 {
+        let candidates: Vec<_> = metric::pools(sell, buy).collect();
+        let call = |target, call_data: Vec<u8>| Call3 {
+            target,
+            allowFailure: true,
+            callData: call_data.into(),
+        };
+        let calls = candidates
+            .iter()
+            .flat_map(|&(pool, zero_for_one)| {
+                [
+                    call(pool, metric::getImmutablesCall {}.abi_encode()),
+                    call(metric::FACTORY, metric::isPoolCall { pool }.abi_encode()),
+                    // The pool sees the router as its caller.
+                    call(
+                        metric::QUOTER,
+                        if exact_in {
+                            metric::quoteLiveExactInSingleCall {
+                                pool,
+                                sender: metric::ROUTER,
+                                recipient,
+                                zeroForOne: zero_for_one,
+                                amountIn: exact,
+                                priceLimitX64: metric::price_limit(zero_for_one),
+                                extensionData: Bytes::new(),
+                            }
+                            .abi_encode()
+                        } else {
+                            metric::quoteLiveExactOutSingleCall {
+                                pool,
+                                sender: metric::ROUTER,
+                                recipient,
+                                zeroForOne: zero_for_one,
+                                amountOutDesired: exact,
+                                priceLimitX64: metric::price_limit(zero_for_one),
+                                extensionData: Bytes::new(),
+                            }
+                            .abi_encode()
+                        },
+                    ),
+                ]
+            })
+            .collect();
+        let raw = self
+            .rpc
+            .call_at(context, MULTICALL3, aggregate3Call { calls }.abi_encode())
+            .await?;
+        let results =
+            aggregate3Call::abi_decode_returns(&raw).map_err(|_| Error::InvalidResponse)?;
+        if results.len() != candidates.len() * 3 {
             return Err(Error::InvalidResponse);
         }
-        Ok(Some((
-            U256::from_be_slice(&data[..32]),
-            U256::from_be_slice(&data[32..]),
-        )))
+        let mut best = None;
+        for (&(pool, zero_for_one), result) in candidates.iter().zip(results.chunks(3)) {
+            let (immutables, registered, quoted) = (&result[0], &result[1], &result[2]);
+            let word = |i: usize| {
+                immutables
+                    .returnData
+                    .get(i * 32..(i + 1) * 32)
+                    .filter(|word| word[..12] == [0; 12])
+                    .map(|word| Address::from_slice(&word[12..]))
+            };
+            let (token0, token1) = if zero_for_one {
+                (sell, buy)
+            } else {
+                (buy, sell)
+            };
+            // The router never checks tokens against the pool, so a
+            // pinned-table mismatch is an integrity failure, not missing
+            // liquidity.
+            if !immutables.success
+                || !registered.success
+                || immutables.returnData.len() % 32 != 0
+                || [word(0), word(1), word(2)]
+                    != [Some(metric::FACTORY), Some(token0), Some(token1)]
+                || registered.returnData[..] != U256::from(1).to_be_bytes::<32>()
+            {
+                return Err(Error::InvalidResponse);
+            }
+            if !quoted.success {
+                continue;
+            }
+            if quoted.returnData.len() != 64 {
+                return Err(Error::InvalidResponse);
+            }
+            // Both quotes return `(amountIn, amountOut)`.
+            let amount_in = U256::from_be_slice(&quoted.returnData[..32]);
+            let amount_out = U256::from_be_slice(&quoted.returnData[32..]);
+            let (filled, other) = if exact_in {
+                (amount_in, amount_out)
+            } else {
+                (amount_out, amount_in)
+            };
+            if filled > amount || other > U256::from(u128::MAX) {
+                return Err(Error::InvalidResponse);
+            }
+            // A partial fill must never be advertised as the full exact
+            // amount. Ties keep the earlier, higher-volume pool.
+            let better = |top: U256| if exact_in { other > top } else { other < top };
+            if filled == amount && !other.is_zero() && best.is_none_or(|(_, top)| better(top)) {
+                best = Some((pool, other));
+            }
+        }
+        Ok(best)
     }
 }
 
@@ -203,30 +354,54 @@ mod tests {
     use {
         super::*,
         crate::infra::dex::Error as DexError,
-        alloy::primitives::address,
         axum::{Json, Router, routing::post},
         serde_json::{Value, json},
         std::sync::{Arc, Mutex},
     };
 
-    const WETH: Address = address!("0Bd7D308f8E1639FAb988df18A8011f41EAcAD73");
     const SETTLEMENT: Address = address!("886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD");
 
     #[derive(Clone, Copy, PartialEq)]
     enum Mode {
         Live,
+        /// The first pinned pool of every pair refuses the swap.
+        FirstReverts,
         Revert,
-        RevertInternalCode,
-        RevertCodeOnly,
-        RevertData,
         Partial,
         WrongToken,
         Unregistered,
         RpcDown,
     }
 
-    /// A canonical-block RPC whose pool is WETH/USDG and whose quoter returns
-    /// 2000 USDG per WETH or 0.5 WETH per 1000 USDG.
+    fn index(pool: Address) -> usize {
+        metric::POOLS.iter().position(|p| p.0 == pool).unwrap()
+    }
+
+    /// What the mock quoter pays: 2000 USDG-like units for selling token0,
+    /// 0.5 token0 for selling token1, minus the pool's table index so earlier
+    /// pools are better.
+    fn out(pool: Address, zero_for_one: bool) -> u128 {
+        let base = if zero_for_one {
+            2_000_000_000
+        } else {
+            5 * 10u128.pow(17)
+        };
+        base - index(pool) as u128
+    }
+
+    /// What the mock quoter charges for any exact output: the mirror of
+    /// `out`, plus the pool's table index so earlier pools are cheaper.
+    fn cost(pool: Address, zero_for_one: bool) -> u128 {
+        let base = if zero_for_one {
+            5 * 10u128.pow(17)
+        } else {
+            2_000_000_000
+        };
+        base + index(pool) as u128
+    }
+
+    /// A canonical-block RPC serving Multicall3 over the pinned pools. Returns
+    /// the solver and every `eth_call` it made.
     async fn solver(mode: Mode) -> (Metric, Arc<Mutex<Vec<Value>>>) {
         let calls = Arc::new(Mutex::new(Vec::new()));
         let seen = calls.clone();
@@ -235,10 +410,6 @@ mod tests {
             post(move |Json(request): Json<Value>| {
                 let seen = seen.clone();
                 async move {
-                    let error = |code: i64, message: &str| {
-                        Json(json!({"jsonrpc":"2.0", "id":1, "error":{"code":code, "message":message}}))
-                    };
-                    let word = |a: Address| a.into_word().to_vec();
                     let result = match request["method"].as_str().unwrap() {
                         "eth_chainId" => json!("0x1237"),
                         "eth_getBlockByNumber" => {
@@ -246,45 +417,24 @@ mod tests {
                         }
                         "eth_call" => {
                             seen.lock().unwrap().push(request["params"].clone());
-                            let data =
-                                const_hex::decode(request["params"][0]["data"].as_str().unwrap())
-                                    .unwrap();
-                            let selector: [u8; 4] = data[..4].try_into().unwrap();
-                            if selector == metric::getImmutablesCall::SELECTOR {
-                                let token1 = if mode == Mode::WrongToken {
-                                    Address::repeat_byte(9)
-                                } else {
-                                    metric::USDG
-                                };
-                                // Real getImmutables RPC response from the pinned pool, 2026-10-20.
-                                let mut raw = const_hex::decode(include_str!("../../tests/fixtures/metric-immutables.hex").trim()).unwrap();
-                                raw[64..96].copy_from_slice(&token1.into_word()[..]);
-                                json!(const_hex::encode_prefixed(raw))
-                            } else if selector == metric::isPoolCall::SELECTOR {
-                                assert_eq!(data[4..], word(metric::POOLS[0].0)[..]);
-                                let registered = u8::from(mode != Mode::Unregistered);
-                                json!(const_hex::encode_prefixed(U256::from(registered).to_be_bytes::<32>()))
-                            } else if mode == Mode::Revert {
-                                return error(3, "execution reverted");
-                            } else if mode == Mode::RevertInternalCode {
-                                return error(-32_603, "execution reverted");
-                            } else if mode == Mode::RevertCodeOnly {
-                                return error(3, "call failed");
-                            } else if mode == Mode::RevertData {
-                                return Json(json!({"jsonrpc":"2.0", "id":1, "error":{
-                                    "code":-32_603, "message":"transaction reverted", "data":"0x08c379a0"
-                                }}));
-                            } else if mode == Mode::RpcDown {
-                                return error(-32_603, "internal error");
-                            } else {
-                                let q = metric::quoteLiveExactInSingleCall::abi_decode(&data)
-                                    .unwrap();
-                                let filled = q.amountIn - u128::from(mode == Mode::Partial);
-                                let out = if q.zeroForOne { 2_000_000_000 } else { 5 * 10u128.pow(17) };
-                                let mut bytes = U256::from(filled).to_be_bytes::<32>().to_vec();
-                                bytes.extend(U256::from(out).to_be_bytes::<32>());
-                                json!(const_hex::encode_prefixed(bytes))
+                            if mode == Mode::RpcDown {
+                                return Json(json!({"jsonrpc":"2.0", "id":1, "error":{"code":-32_603, "message":"internal error"}}));
                             }
+                            let call = &request["params"][0];
+                            assert_eq!(call["to"], format!("{MULTICALL3:#x}"));
+                            let data = const_hex::decode(call["data"].as_str().unwrap()).unwrap();
+                            let results: Vec<CallResult> = aggregate3Call::abi_decode(&data)
+                                .unwrap()
+                                .calls
+                                .iter()
+                                .map(|inner| {
+                                    assert!(inner.allowFailure);
+                                    answer(mode, inner.target, &inner.callData)
+                                })
+                                .collect();
+                            json!(const_hex::encode_prefixed(
+                                aggregate3Call::abi_encode_returns(&results)
+                            ))
                         }
                         other => panic!("unexpected RPC {other}"),
                     };
@@ -303,6 +453,81 @@ mod tests {
         })
         .unwrap();
         (solver, calls)
+    }
+
+    fn answer(mode: Mode, target: Address, data: &[u8]) -> CallResult {
+        let ok = |bytes: Vec<u8>| CallResult {
+            success: true,
+            returnData: bytes.into(),
+        };
+        let selector: [u8; 4] = data[..4].try_into().unwrap();
+        if selector == metric::getImmutablesCall::SELECTOR {
+            let &(_, token0, token1) = &metric::POOLS[index(target)];
+            let token1 = if mode == Mode::WrongToken {
+                Address::repeat_byte(9)
+            } else {
+                token1
+            };
+            // Real getImmutables RPC response from the first pinned pool,
+            // 2026-10-20, with this pool's tokens written in.
+            let mut raw = const_hex::decode(
+                include_str!("../../tests/fixtures/metric-immutables.hex").trim(),
+            )
+            .unwrap();
+            raw[32..64].copy_from_slice(&token0.into_word()[..]);
+            raw[64..96].copy_from_slice(&token1.into_word()[..]);
+            ok(raw)
+        } else if selector == metric::isPoolCall::SELECTOR {
+            assert_eq!(target, metric::FACTORY);
+            let registered = u8::from(mode != Mode::Unregistered);
+            ok(U256::from(registered).to_be_bytes::<32>().to_vec())
+        } else {
+            assert_eq!(target, metric::QUOTER);
+            let exact_in = selector == metric::quoteLiveExactInSingleCall::SELECTOR;
+            assert!(exact_in || selector == metric::quoteLiveExactOutSingleCall::SELECTOR);
+            // Both quoter calls share one argument layout.
+            let q = metric::quoteLiveExactInSingleCall::abi_decode_raw(&data[4..]).unwrap();
+            assert_eq!(q.sender, metric::ROUTER, "the pool sees the router");
+            assert_eq!(q.priceLimitX64, metric::price_limit(q.zeroForOne));
+            assert!(q.extensionData.is_empty());
+            let &(_, token0, token1) = &metric::POOLS[index(q.pool)];
+            let (sell, buy) = if q.zeroForOne {
+                (token0, token1)
+            } else {
+                (token1, token0)
+            };
+            let first = metric::route(sell, buy).unwrap().0 == q.pool;
+            if mode == Mode::Revert || (mode == Mode::FirstReverts && first) {
+                return CallResult {
+                    success: false,
+                    returnData: vec![0x08, 0xc3, 0x79, 0xa0].into(),
+                };
+            }
+            let filled = q.amountIn - u128::from(mode == Mode::Partial);
+            let (amount_in, amount_out) = if exact_in {
+                (filled, out(q.pool, q.zeroForOne))
+            } else {
+                (cost(q.pool, q.zeroForOne), filled)
+            };
+            let mut bytes = U256::from(amount_in).to_be_bytes::<32>().to_vec();
+            bytes.extend(U256::from(amount_out).to_be_bytes::<32>());
+            ok(bytes)
+        }
+    }
+
+    /// The quoter requests inside one recorded Multicall3 `eth_call`; an
+    /// exact-output request carries its output in `amountIn`.
+    fn quotes(params: &Value) -> Vec<metric::quoteLiveExactInSingleCall> {
+        let data = const_hex::decode(params[0]["data"].as_str().unwrap()).unwrap();
+        aggregate3Call::abi_decode(&data)
+            .unwrap()
+            .calls
+            .iter()
+            .filter(|call| call.target == metric::QUOTER)
+            .map(|call| {
+                metric::quoteLiveExactInSingleCall::abi_decode_raw(&call.callData[4..]).unwrap()
+            })
+            .collect()
     }
 
     fn order(sell: Address, buy: Address, amount: U256) -> dex::Order {
@@ -340,7 +565,8 @@ mod tests {
                 settlement: SETTLEMENT,
             })
             .unwrap();
-        // Authenticate every driver-pinned triple against independent onchain immutables.
+        // Authenticate every driver-pinned triple against independent onchain
+        // immutables.
         let context = metric.rpc.snapshot().await.unwrap();
         for &(pool, token0, token1) in metric::POOLS {
             let raw = metric
@@ -398,10 +624,54 @@ mod tests {
                 );
             }
         }
+        // Two pools: 0.001 NVDA -> USDG -> META against the live quoter.
+        let (nvda, meta) = (metric::POOLS[3].1, metric::POOLS[2].1);
+        let swap = metric
+            .swap(
+                &order(nvda, meta, U256::from(10u64.pow(15))),
+                &dex::Slippage::one_percent(),
+                true,
+            )
+            .await
+            .unwrap();
+        let p = metric::exactInputCall::abi_decode(&swap.calls[0].calldata)
+            .unwrap()
+            .params;
+        assert_eq!(p.tokens, [nvda, metric::USDG, meta]);
+        eprintln!(
+            "0.001 NVDA -> {} wei META through pools {:?}",
+            swap.output.amount, p.pools
+        );
+        assert_eq!(
+            metric::decode(&swap.calls[0].calldata, nvda, meta, SETTLEMENT, now()),
+            Some((U256::from(10u64.pow(15)), swap.output.amount))
+        );
+        // BUY: selling the input the quoter asks for an exact output must
+        // return that output again, through one pool and through two.
+        for (sell, buy, want) in [
+            (WETH, metric::USDG, U256::from(1_000_000u64)),
+            (nvda, meta, U256::from(10u64.pow(15))),
+        ] {
+            let slippage = dex::Slippage::one_percent();
+            let mut exact_out = order(sell, buy, want);
+            exact_out.side = order::Side::Buy;
+            let bought = metric.swap(&exact_out, &slippage, true).await.unwrap();
+            assert_eq!(bought.output.amount, want);
+            let sold = metric
+                .swap(&order(sell, buy, bought.input.amount), &slippage, true)
+                .await
+                .unwrap();
+            eprintln!(
+                "BUY {want} costs {}; selling that returns {}",
+                bought.input.amount, sold.output.amount
+            );
+            // The two quotes read different blocks; allow 0.1% of drift.
+            assert!(sold.output.amount >= want - want / U256::from(1000));
+        }
     }
 
     #[tokio::test]
-    async fn quotes_and_solves_pinned_pool_at_one_block() {
+    async fn quotes_and_solves_best_pinned_pool_at_one_block() {
         let (solver, calls) = solver(Mode::Live).await;
         let one = U256::from(10u64.pow(18));
         let before = now();
@@ -415,6 +685,7 @@ mod tests {
             .unwrap();
         let after = now();
         assert_eq!(quote.output.amount, U256::from(2_000_000_000u64));
+        assert_eq!(quote.gas.0, U256::from(350_000));
         assert_eq!(quote.calls.len(), 1);
         assert_eq!(quote.calls[0].to, metric::ROUTER);
         assert_eq!(
@@ -450,51 +721,26 @@ mod tests {
             Some((one, quote.output.amount))
         );
 
+        // One Multicall3 read covers every pinned WETH/USDG pool.
         let calls = calls.lock().unwrap().clone();
-        assert_eq!(calls.len(), 3);
-        for params in &calls {
-            assert!(
-                params[0].get("from").is_none(),
-                "restricted providers need no from"
+        assert_eq!(calls.len(), 1);
+        let params = &calls[0];
+        assert!(
+            params[0].get("from").is_none(),
+            "restricted providers need no from"
+        );
+        assert_eq!(params[1]["blockHash"], format!("0x{}", "11".repeat(32)));
+        assert_eq!(params[1]["requireCanonical"], true);
+        let quoted = quotes(params);
+        let pinned: Vec<_> = metric::pools(WETH, metric::USDG).collect();
+        assert!(pinned.len() > 1);
+        assert_eq!(quoted.len(), pinned.len());
+        for (q, &(pool, zero_for_one)) in quoted.iter().zip(&pinned) {
+            assert_eq!(
+                (q.pool, q.recipient, q.zeroForOne, q.amountIn),
+                (pool, SETTLEMENT, zero_for_one, 10u128.pow(18))
             );
-            assert_eq!(params[1]["blockHash"], format!("0x{}", "11".repeat(32)));
-            assert_eq!(params[1]["requireCanonical"], true);
         }
-        let to = |a: Address| format!("{a:#x}");
-        assert_eq!(
-            calls
-                .iter()
-                .filter(|p| p[0]["to"] == to(metric::POOLS[0].0))
-                .count(),
-            1
-        );
-        assert_eq!(
-            calls
-                .iter()
-                .filter(|p| p[0]["to"] == to(metric::FACTORY))
-                .count(),
-            1
-        );
-        let request = calls
-            .iter()
-            .find(|p| p[0]["to"] == to(metric::QUOTER))
-            .unwrap();
-        let q = metric::quoteLiveExactInSingleCall::abi_decode(
-            &const_hex::decode(request[0]["data"].as_str().unwrap()).unwrap(),
-        )
-        .unwrap();
-        assert_eq!(
-            (q.pool, q.sender, q.recipient, q.zeroForOne, q.amountIn),
-            (
-                metric::POOLS[0].0,
-                metric::ROUTER,
-                SETTLEMENT,
-                true,
-                10u128.pow(18)
-            )
-        );
-        assert_eq!(q.priceLimitX64, 0);
-        assert!(q.extensionData.is_empty());
 
         let usdg = U256::from(1_000_000_000u64);
         let swap = solver
@@ -525,36 +771,229 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn falls_back_to_the_next_pinned_pool() {
+        let (solver, _) = solver(Mode::FirstReverts).await;
+        let one = U256::from(10u64.pow(18));
+        let quote = solver
+            .swap(
+                &order(WETH, metric::USDG, one),
+                &dex::Slippage::one_percent(),
+                true,
+            )
+            .await
+            .unwrap();
+        let (second, _) = metric::pools(WETH, metric::USDG).nth(1).unwrap();
+        let p = metric::exactInputSingleCall::abi_decode(&quote.calls[0].calldata)
+            .unwrap()
+            .params;
+        assert_eq!(p.pool, second);
+        assert_eq!(quote.output.amount, U256::from(out(second, true)));
+        assert!(
+            metric::decode(
+                &quote.calls[0].calldata,
+                WETH,
+                metric::USDG,
+                SETTLEMENT,
+                now()
+            )
+            .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn routes_two_pools_through_an_intermediate_token() {
+        let (solver, calls) = solver(Mode::Live).await;
+        let (nvda, meta) = (metric::POOLS[3].1, metric::POOLS[2].1);
+        let input = U256::from(10u64.pow(18));
+        let quote = solver
+            .swap(
+                &order(nvda, meta, input),
+                &dex::Slippage::one_percent(),
+                true,
+            )
+            .await
+            .unwrap();
+        let (first, second) = (metric::POOLS[3].0, metric::POOLS[2].0);
+        let mid = out(first, true);
+        assert_eq!(quote.output.amount, U256::from(out(second, false)));
+        assert_eq!(quote.gas.0, U256::from(700_000));
+        assert_eq!(quote.calls.len(), 1);
+        assert_eq!(quote.calls[0].to, metric::ROUTER);
+        assert_eq!(
+            (quote.allowance.spender, quote.allowance.amount.get()),
+            (metric::ROUTER, input)
+        );
+        let p = metric::exactInputCall::abi_decode(&quote.calls[0].calldata)
+            .unwrap()
+            .params;
+        assert_eq!(p.tokens, [nvda, metric::USDG, meta]);
+        assert_eq!(p.pools, [first, second]);
+        assert_eq!(p.zeroForOneBitMap, U256::from(0b01));
+        assert_eq!(
+            (p.amountIn, p.amountOutMinimum, p.recipient),
+            (10u128.pow(18), out(second, false), SETTLEMENT)
+        );
+        assert_eq!(
+            metric::decode(&quote.calls[0].calldata, nvda, meta, SETTLEMENT, now()),
+            Some((input, quote.output.amount))
+        );
+        // The router holds the USDG between hops; Settlement receives META.
+        let calls = calls.lock().unwrap().clone();
+        assert_eq!(calls.len(), 2);
+        let (leg1, leg2) = (quotes(&calls[0]), quotes(&calls[1]));
+        assert!(
+            leg1.iter()
+                .all(|q| q.recipient == metric::ROUTER && q.amountIn == 10u128.pow(18))
+        );
+        assert!(
+            leg2.iter()
+                .all(|q| q.recipient == SETTLEMENT && q.amountIn == mid && !q.zeroForOne)
+        );
+        assert_eq!(calls[0][1], calls[1][1], "one canonical block");
+
+        // A pair with a pinned pool never takes two pools, even when the
+        // mock pays far more through USDG.
+        let spcx = metric::POOLS[1].1;
+        let (direct, _) = metric::route(spcx, WETH).unwrap();
+        let swap = solver
+            .swap(&order(spcx, WETH, input), &dex::Slippage::one_percent(), true)
+            .await
+            .unwrap();
+        let p = metric::exactInputSingleCall::abi_decode(&swap.calls[0].calldata)
+            .unwrap()
+            .params;
+        assert_eq!(p.pool, direct);
+        assert_eq!(swap.gas.0, U256::from(350_000));
+    }
+
+    #[tokio::test]
+    async fn buy_orders_pad_the_input_of_the_exact_input_call() {
+        let (solver, calls) = solver(Mode::Live).await;
+        let want = U256::from(1_000_000_000u64);
+        let buy = |sell, buy| {
+            let mut order = order(sell, buy, want);
+            order.side = order::Side::Buy;
+            order
+        };
+        let slippage = dex::Slippage::one_percent();
+        let (pool, _) = metric::route(WETH, metric::USDG).unwrap();
+        let quoted = cost(pool, true);
+
+        // A quote advertises the quoter's input unpadded.
+        let quote = solver
+            .swap(&buy(WETH, metric::USDG), &slippage, true)
+            .await
+            .unwrap();
+        assert_eq!(
+            (quote.input.amount, quote.output.amount),
+            (U256::from(quoted), want)
+        );
+        let asked = quotes(&calls.lock().unwrap()[0]);
+        assert!(asked.iter().all(|q| q.amountIn == 1_000_000_000
+            && q.recipient == SETTLEMENT
+            && q.zeroForOne));
+        let data = const_hex::decode(
+            calls.lock().unwrap()[0][0]["data"].as_str().unwrap(),
+        )
+        .unwrap();
+        assert!(
+            aggregate3Call::abi_decode(&data)
+                .unwrap()
+                .calls
+                .iter()
+                .filter(|call| call.target == metric::QUOTER)
+                .all(|call| call.callData[..4] == metric::quoteLiveExactOutSingleCall::SELECTOR)
+        );
+
+        // A solve pads the input by the slippage, executes exact-input, and
+        // approves exactly what the router pulls.
+        let padded = U256::from(quoted + quoted / 100);
+        let swap = solver
+            .swap(&buy(WETH, metric::USDG), &slippage, false)
+            .await
+            .unwrap();
+        assert_eq!((swap.input.amount, swap.output.amount), (padded, want));
+        assert_eq!(swap.allowance.amount.get(), padded);
+        let p = metric::exactInputSingleCall::abi_decode(&swap.calls[0].calldata)
+            .unwrap()
+            .params;
+        assert_eq!(
+            (p.pool, U256::from(p.amountIn), U256::from(p.amountOutMinimum)),
+            (pool, padded, want)
+        );
+        assert_eq!(
+            metric::decode(&swap.calls[0].calldata, WETH, metric::USDG, SETTLEMENT, now()),
+            Some((padded, want))
+        );
+
+        // The signed limit caps the pad; a limit below the quote has no route.
+        let limited = |total_sell: u128| {
+            let mut order = buy(WETH, metric::USDG);
+            order.solve_fee.total_sell = U256::from(total_sell);
+            order.solve_fee.total_buy = want;
+            order
+        };
+        let swap = solver
+            .swap(&limited(quoted + 5), &slippage, false)
+            .await
+            .unwrap();
+        assert_eq!(swap.input.amount, U256::from(quoted + 5));
+        assert!(matches!(
+            solver.swap(&limited(quoted - 1), &slippage, false).await,
+            Err(Error::NotFound)
+        ));
+
+        // Two pools are quoted backward from the output: USDG -> META first,
+        // then NVDA -> USDG for the USDG that hop needs.
+        let (nvda, meta) = (metric::POOLS[3].1, metric::POOLS[2].1);
+        let (first, second) = (metric::POOLS[3].0, metric::POOLS[2].0);
+        let before = calls.lock().unwrap().len();
+        let swap = solver.swap(&buy(nvda, meta), &slippage, true).await.unwrap();
+        let p = metric::exactInputCall::abi_decode(&swap.calls[0].calldata)
+            .unwrap()
+            .params;
+        assert_eq!(p.pools, [first, second]);
+        assert_eq!(
+            (U256::from(p.amountIn), U256::from(p.amountOutMinimum)),
+            (U256::from(cost(first, true)), want)
+        );
+        let calls = calls.lock().unwrap()[before..].to_vec();
+        assert_eq!(calls.len(), 2);
+        assert!(quotes(&calls[0]).iter().all(|q| q.recipient == SETTLEMENT
+            && q.amountIn == 1_000_000_000
+            && !q.zeroForOne));
+        assert!(quotes(&calls[1]).iter().all(|q| q.recipient == metric::ROUTER
+            && q.amountIn == cost(second, false)
+            && q.zeroForOne));
+    }
+
+    #[tokio::test]
     async fn liquidity_and_rpc_failures_are_distinct() {
         let one = U256::from(10u64.pow(18));
         for (mode, liquidity) in [
             (Mode::Revert, true),
-            (Mode::RevertInternalCode, true),
-            (Mode::RevertCodeOnly, true),
-            (Mode::RevertData, true),
             (Mode::Partial, true),
             (Mode::WrongToken, false),
             (Mode::Unregistered, false),
             (Mode::RpcDown, false),
         ] {
-            let (solver, _) = solver(mode).await;
-            let err = solver
-                .swap(
-                    &order(WETH, metric::USDG, one),
-                    &dex::Slippage::one_percent(),
-                    false,
-                )
-                .await
-                .unwrap_err();
-            match mode {
-                Mode::WrongToken | Mode::Unregistered => {
-                    assert!(matches!(err, Error::InvalidResponse))
+            for buy in [metric::USDG, metric::POOLS[2].1] {
+                let (solver, _) = solver(mode).await;
+                let err = solver
+                    .swap(&order(WETH, buy, one), &dex::Slippage::one_percent(), false)
+                    .await
+                    .unwrap_err();
+                match mode {
+                    Mode::WrongToken | Mode::Unregistered => {
+                        assert!(matches!(err, Error::InvalidResponse))
+                    }
+                    Mode::RpcDown => assert!(matches!(err, Error::Rpc(_))),
+                    _ => assert!(matches!(err, Error::NotFound)),
                 }
-                Mode::RpcDown => assert!(matches!(err, Error::Rpc(_))),
-                _ => assert!(matches!(err, Error::NotFound)),
+                // Only real liquidity failures shrink partially fillable
+                // orders.
+                assert_eq!(matches!(DexError::from(err), DexError::NotFound), liquidity);
             }
-            // Only real liquidity failures shrink partially fillable orders.
-            assert_eq!(matches!(DexError::from(err), DexError::NotFound), liquidity);
         }
     }
 
@@ -565,13 +1004,11 @@ mod tests {
             settlement: SETTLEMENT,
         })
         .unwrap();
-        let spcx = metric::POOLS[1].1;
+        let unpinned = Address::repeat_byte(7);
         let too_large = U256::from(i128::MAX as u128) + U256::from(1);
-        let mut buy = order(WETH, metric::USDG, U256::from(1));
-        buy.side = order::Side::Buy;
         for unsupported in [
-            buy,
-            order(WETH, spcx, U256::from(1)),
+            order(WETH, unpinned, U256::from(1)),
+            order(unpinned, metric::USDG, U256::from(1)),
             order(WETH, WETH, U256::from(1)),
             order(WETH, metric::USDG, U256::ZERO),
             order(WETH, metric::USDG, too_large),

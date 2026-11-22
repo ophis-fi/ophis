@@ -623,10 +623,10 @@ pub fn validate_with_settlement(
     if chain_id == 4663 && target == ROBINHOOD_ELFOMO {
         return validate_elfomo_swap(custom, required_amounts);
     }
-    // Metric's router also exposes multihop, exact-output, externalSwap,
-    // sequence and payment helpers, and never checks `tokenOut` against the
-    // pool. Accept only the canonical single-pool exact-input call over a
-    // pinned pool/token triple, bound to the fulfillment and Settlement.
+    // Metric's router also exposes exact-output, externalSwap, sequence and
+    // payment helpers, and never checks path tokens against the pools. Accept
+    // only the canonical exact-input call over one pinned pool, or two pinned
+    // pools joined by one token, bound to the fulfillment and Settlement.
     if chain_id == metric::CHAIN_ID && target == metric::ROUTER {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -1873,6 +1873,28 @@ mod tests {
                 .is_err()
             );
         }
+    }
+
+    #[test]
+    fn metric_router_accepts_canonical_two_pool_route() {
+        const NOW: u64 = 1_800_000_000;
+        let (nvda, meta) = (metric::POOLS[3].1, metric::POOLS[2].1);
+        let data = metric::calldata_via(
+            &[nvda, ROBINHOOD_USDG, meta],
+            &[metric::POOLS[3].0, metric::POOLS[2].0],
+            U256::from(1000),
+            U256::from(990),
+            ROBINHOOD_SETTLEMENT,
+            NOW + metric::DEADLINE_SECS,
+        )
+        .unwrap();
+        let custom = direct_custom(metric::ROUTER, nvda, meta, 1000, 990, data);
+        let check = |r: Option<RequiredAmounts>| validate_metric_swap(&custom, r, NOW);
+        assert_eq!(check(Some(required(nvda, meta, 1000, 990))), Ok(()));
+        assert!(check(Some(required(meta, nvda, 1000, 990))).is_err());
+        assert!(check(Some(required(nvda, ROBINHOOD_USDG, 1000, 990))).is_err());
+        assert!(check(Some(required(nvda, meta, 999, 990))).is_err());
+        assert!(check(Some(required(nvda, meta, 1000, 991))).is_err());
     }
 
     #[test]
