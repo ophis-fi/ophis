@@ -36,7 +36,11 @@ const request: QuoteBridgeRequest = {
   buyTokenDecimals: 6,
 }
 const provider = (enabled = true): RelayBridgeProvider =>
-  new RelayBridgeProvider({ enabled, trustedTokens: async () => tokens, sourceChainIds: new Set([8453]) })
+  new RelayBridgeProvider({
+    enabled,
+    trustedTokens: async () => tokens,
+    isSourceRouteEnabled: (source) => source === 8453,
+  })
 
 beforeEach(() => {
   jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-11-13T12:00:00Z'))
@@ -49,7 +53,11 @@ afterEach(() => jest.restoreAllMocks())
 
 it('disabled provider makes no discovery requests and remains usable for history', async () => {
   const trustedTokens = jest.fn(async () => tokens)
-  const disabled = new RelayBridgeProvider({ enabled: false, trustedTokens, sourceChainIds: new Set([8453]) })
+  const disabled = new RelayBridgeProvider({
+    enabled: false,
+    trustedTokens,
+    isSourceRouteEnabled: (source) => source === 8453,
+  })
   expect(await disabled.getNetworks()).toEqual([])
   expect(await disabled.getBuyTokens({ buyChainId: 10 as SupportedChainId, sellChainId: 8453 })).toEqual({
     tokens: [],
@@ -92,6 +100,20 @@ it('returns destination native ETH through WETH without asking Relay to perform 
   expect(result).toEqual([expect.objectContaining({ address: '0x4200000000000000000000000000000000000006' })])
 })
 
+it('rejects an excluded destination during both discovery and quote validation', async () => {
+  const relay = new RelayBridgeProvider({
+    enabled: true,
+    trustedTokens: async () => tokens,
+    isSourceRouteEnabled: (source, destination) => source === 8453 && destination === 1,
+  })
+  expect(await relay.getBuyTokens({ sellChainId: 8453, buyChainId: 10 })).toEqual({
+    tokens: [],
+    isRouteAvailable: false,
+  })
+  await expect(relay.getQuote(request)).rejects.toThrow()
+  expect(fetch).not.toHaveBeenCalled()
+})
+
 it('compares net destination output, including the app fee, and refunds to the owner', async () => {
   const quote = await provider().getQuote(request)
   expect(quote.amountsAndCosts.afterSlippage.buyAmount).toBe(9_966_020n)
@@ -100,7 +122,14 @@ it('compares net destination output, including the app fee, and refunds to the o
   const sent = JSON.parse((fetch as jest.Mock).mock.calls[1][1].body)
   expect(sent.user).toBe('0x2222222222222222222222222222222222222222')
   expect(sent.refundTo).toBe(request.account)
+  expect(sent.slippageBps).toBe(9)
+  expect(quote.amountsAndCosts.slippageBps).toBe(10)
   expect(JSON.parse(quote.quoteBody || '{}').request.signer).toBeUndefined()
+})
+
+it('keeps zero tolerance when requesting a quote and rejects any signed slippage', async () => {
+  await expect(provider().getQuote({ ...request, bridgeSlippageBps: 0 })).rejects.toThrow()
+  expect(JSON.parse((fetch as jest.Mock).mock.calls[1][1].body).slippageBps).toBe(0)
 })
 
 it('rejects tightened slippage during quoting and refuses reuse after a tolerance change', async () => {
@@ -129,7 +158,7 @@ it.each(['to', 'data', 'value'])(
     const relay = new RelayBridgeProvider({
       enabled: true,
       trustedTokens: async () => tokens,
-      sourceChainIds: new Set([8453]),
+      isSourceRouteEnabled: (source) => source === 8453,
       signHook,
     })
     const quote = await relay.getQuote(request)

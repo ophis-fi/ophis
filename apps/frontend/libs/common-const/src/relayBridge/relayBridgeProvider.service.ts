@@ -72,7 +72,7 @@ export class RelayBridgeProvider implements HookBridgeProvider<RelayQuote> {
 
   async getBuyTokens({ buyChainId, sellChainId }: BuyTokensParams): Promise<GetProviderBuyTokens> {
     if (!this.enabled) return { tokens: [], isRouteAvailable: false }
-    if (sellChainId !== undefined && !this.options.sourceChainIds?.has(sellChainId))
+    if (sellChainId !== undefined && !this.options.isSourceRouteEnabled?.(sellChainId, buyChainId))
       return { tokens: [], isRouteAvailable: false }
     const chains = await this.chains()
     const destination = chains.find((chain) => chain.id === buyChainId)
@@ -87,7 +87,8 @@ export class RelayBridgeProvider implements HookBridgeProvider<RelayQuote> {
   }
 
   async getIntermediateTokens(request: QuoteBridgeRequest): Promise<TokenInfo[]> {
-    if (!this.enabled || !this.options.sourceChainIds?.has(request.sellTokenChainId)) return []
+    if (!this.enabled || !this.options.isSourceRouteEnabled?.(request.sellTokenChainId, request.buyTokenChainId))
+      return []
     const [chains, trusted] = await Promise.all([this.chains(), this.trustedTokens()])
     const source = chains.find((chain) => chain.id === request.sellTokenChainId)
     const destination = chains.find((chain) => chain.id === request.buyTokenChainId)

@@ -1,7 +1,8 @@
 /** @jest-environment node */
 import { RELAY_DAPP_ID, RelayBridgeProvider } from '@cowprotocol/common-const'
-import { OrderKind, setGlobalAdapter, SupportedChainId } from '@cowprotocol/cow-sdk'
-import { QuoteBridgeRequest } from '@cowprotocol/sdk-bridging'
+import { OrderKind, setGlobalAdapter, SupportedChainId, TokenInfo } from '@cowprotocol/cow-sdk'
+import { BridgeHook, QuoteBridgeRequest } from '@cowprotocol/sdk-bridging'
+import { ContractsSigningScheme, InteractionStage, SettlementEncoder } from '@cowprotocol/sdk-contracts-ts'
 import { CowShedHooks, CowShedSdk } from '@cowprotocol/sdk-cow-shed'
 import { EthersV5Adapter } from '@cowprotocol/sdk-ethers-v5-adapter'
 import { Interface } from '@ethersproject/abi'
@@ -9,6 +10,8 @@ import { keccak256 } from '@ethersproject/keccak256'
 import { JsonRpcProvider } from '@ethersproject/providers'
 import { toUtf8Bytes } from '@ethersproject/strings'
 import { Wallet } from '@ethersproject/wallet'
+
+import { Contract } from 'ethers'
 
 import { readFileSync } from 'fs'
 import { join } from 'path'
@@ -25,36 +28,111 @@ const sample = JSON.parse(readFileSync(join(fixtureRoot, 'weth-optimism-base.jso
 
 const forkTest = process.env.OPHIS_RELAY_FORK_RPC ? it : it.skip
 // shortcut: the signed quote expires 2026-11-20; refresh the fixture before a later fork rehearsal.
-const TOKEN = '0x4200000000000000000000000000000000000006'
+const WETH = '0x4200000000000000000000000000000000000006'
+const USDT0 = '0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb'
+const BASE_USDT = '0xfde4c96c8593536e31f229ea8f37b2ada2699bb2'
 const DEPOSITORY = '0x4cd00e387622c35bddb9b4c962c136462338bc31'
+const PLASMA_SETTLEMENT = '0x9008D19f58AAbD9eD0D60971565AA8510560ab41'
+const HOOKS_TRAMPOLINE = '0x60Bf78233f48eC42eE3F101b9a05eC7878728006'
+const GAS_LIMIT = 1_200_000
 const erc20 = new Interface([
   'function balanceOf(address) view returns (uint256)',
+  'function approve(address,uint256) returns (bool)',
   'function transfer(address,uint256) returns (bool)',
   'function allowance(address,address) view returns (uint256)',
 ])
 
+async function settlePlasma(
+  provider: JsonRpcProvider,
+  owner: Wallet,
+  adapter: EthersV5Adapter,
+  hook: BridgeHook,
+  amount: bigint,
+  sellAmount: bigint,
+  validTo: number,
+): Promise<Awaited<ReturnType<JsonRpcProvider['getTransactionReceipt']>>> {
+  const settlement = new Contract(
+    PLASMA_SETTLEMENT,
+    [
+      'function authenticator() view returns (address)',
+      'function vaultRelayer() view returns (address)',
+      'function settle(address[],uint256[],(uint256 sellTokenIndex,uint256 buyTokenIndex,address receiver,uint256 sellAmount,uint256 buyAmount,uint32 validTo,bytes32 appData,uint256 feeAmount,uint256 flags,uint256 executedAmount,bytes signature)[],(address target,uint256 value,bytes callData)[][3])',
+    ],
+    owner,
+  )
+  const authenticator = new Contract(
+    await settlement.authenticator(),
+    ['function manager() view returns (address)', 'function addSolver(address)'],
+    provider,
+  )
+  const manager: string = await authenticator.manager()
+  for (const address of [manager, DEPOSITORY]) {
+    await provider.send('anvil_impersonateAccount', [address])
+    await provider.send('anvil_setBalance', [address, '0x56bc75e2d63100000'])
+  }
+  await (await authenticator.connect(provider.getUncheckedSigner(manager)).addSolver(owner.address)).wait()
+  const token = new Contract(USDT0, erc20, owner)
+  await (await token.connect(provider.getUncheckedSigner(DEPOSITORY)).transfer(owner.address, sellAmount)).wait()
+  await (await token.approve(await settlement.vaultRelayer(), sellAmount)).wait()
+
+  const encoder = new SettlementEncoder(
+    { name: 'Gnosis Protocol', version: 'v2', chainId: SupportedChainId.PLASMA, verifyingContract: PLASMA_SETTLEMENT },
+    adapter,
+  )
+  await encoder.signEncodeTrade(
+    {
+      sellToken: USDT0,
+      buyToken: USDT0,
+      receiver: hook.recipient,
+      sellAmount,
+      buyAmount: amount,
+      validTo,
+      appData: `0x${'00'.repeat(32)}`,
+      feeAmount: 0,
+      kind: OrderKind.SELL,
+      partiallyFillable: false,
+    },
+    ContractsSigningScheme.EIP712,
+  )
+  const trampoline = new Interface(['function execute((address,bytes,uint256)[])'])
+  const { target, callData, gasLimit } = hook.postHook
+  encoder.encodeInteraction(
+    {
+      target: HOOKS_TRAMPOLINE,
+      callData: trampoline.encodeFunctionData('execute', [[[target, callData, gasLimit]]]),
+      value: 0,
+    },
+    InteractionStage.POST,
+  )
+  return (await settlement.settle(...encoder.encodedSettlement({ [USDT0]: 1 }), { gasLimit: 2_000_000 })).wait()
+}
+
 forkTest(
-  'real OP fork: empty shed cannot burn nonce; exact deposit, surplus return and replay protection',
+  'real fork: empty shed cannot burn nonce; exact deposit, surplus return and replay protection',
   async () => {
     const rpc = process.env.OPHIS_RELAY_FORK_RPC || ''
     expect(['localhost', '127.0.0.1']).toContain(new URL(rpc).hostname)
     const provider = new JsonRpcProvider(rpc)
     expect(String(await provider.send('web3_clientVersion', []))).toMatch(/anvil/i)
-    expect((await provider.getNetwork()).chainId).toBe(10)
+    const { chainId } = await provider.getNetwork()
+    expect([10, SupportedChainId.PLASMA]).toContain(chainId)
+    const plasma = chainId === SupportedChainId.PLASMA
+    const source = plasma ? SupportedChainId.PLASMA : SupportedChainId.OPTIMISM
+    const token = plasma ? USDT0 : WETH
     await provider.send('evm_mine', [])
     const snapshot = await provider.send('evm_snapshot', [])
     // Deliberately public test-only key, derived at runtime; never use a funded account.
     const owner = new Wallet(keccak256(toUtf8Bytes('Ophis Relay isolated fork test account')), provider)
-    expect(owner.address).toBe(sample.request.recipient)
+    if (!plasma) expect(owner.address).toBe(sample.request.recipient)
     await provider.send('anvil_setBalance', [owner.address, '0x56bc75e2d63100000'])
     const adapter = new EthersV5Adapter({ provider, signer: owner })
     setGlobalAdapter(adapter)
-    const shed = new CowShedSdk(adapter).getCowShedAccount(10 as SupportedChainId, owner.address)
-    expect(shed).toBe(sample.request.user)
+    const shed = new CowShedSdk(adapter).getCowShedAccount(source, owner.address)
+    if (!plasma) expect(shed).toBe(sample.request.user)
     for (const address of [
-      TOKEN,
+      token,
       DEPOSITORY,
-      new CowShedHooks(10 as SupportedChainId).getFactoryAddress(),
+      new CowShedHooks(source).getFactoryAddress(),
       '0x9585c3062Df1C247d5E373Cfca9167F7dC2b5963',
     ])
       expect(await provider.getCode(address)).not.toBe('0x')
@@ -75,27 +153,34 @@ forkTest(
         locks: { request: async (_key: string, _options: unknown, run: (lock: object) => Promise<unknown>) => run({}) },
       },
     })
-    global.fetch = jest.fn(async (input) => ({
-      ok: true,
-      json: async () => (String(input).endsWith('/chains') ? chains : sample.response),
-    })) as jest.Mock
+    if (!plasma) {
+      global.fetch = jest.fn(async (input) => ({
+        ok: true,
+        json: async () => (String(input).endsWith('/chains') ? chains : sample.response),
+      })) as jest.Mock
+    }
     try {
+      const trustedTokens: TokenInfo[] = [
+        { chainId: SupportedChainId.PLASMA, address: USDT0, decimals: 6, symbol: 'USDT0' },
+        { chainId: SupportedChainId.BASE, address: BASE_USDT, decimals: 6, symbol: 'USDT' },
+      ]
       const relay = new RelayBridgeProvider({
         enabled: true,
-        sourceChainIds: new Set([10]),
-        trustedTokens: async () => [],
+        apiUrl: plasma ? 'https://swap.ophis.fi/api/relay' : undefined,
+        isSourceRouteEnabled: (origin, destination) => origin === source && destination === SupportedChainId.BASE,
+        trustedTokens: async () => (plasma ? trustedTokens : []),
         signHook: (terms, ...args) => signRelayHook(async () => [], terms, ...args),
       })
       const request: QuoteBridgeRequest = {
         kind: OrderKind.SELL,
         account: owner.address,
-        amount: 10n ** 16n,
-        sellTokenChainId: 10 as SupportedChainId,
-        sellTokenAddress: TOKEN,
-        sellTokenDecimals: 18,
+        amount: plasma ? 10_000_000n : 10n ** 16n,
+        sellTokenChainId: source,
+        sellTokenAddress: token,
+        sellTokenDecimals: plasma ? 6 : 18,
         buyTokenChainId: SupportedChainId.BASE,
-        buyTokenAddress: TOKEN,
-        buyTokenDecimals: 18,
+        buyTokenAddress: plasma ? BASE_USDT : token,
+        buyTokenDecimals: plasma ? 6 : 18,
       }
       const quote = await relay.getQuote(request)
       const call = await relay.getUnsignedBridgeCall(request, quote)
@@ -103,36 +188,49 @@ forkTest(
       const deadline = BigInt((await provider.getBlock('latest')).timestamp + 120)
       const shown = { ...quote, providerInfo: relay.info, tradeParameters: request }
       const hook = await placeConfirmed(shown, owner.address, () =>
-        relay.getSignedHook(10 as SupportedChainId, call, nonce, deadline, 1_200_000),
+        relay.getSignedHook(source, call, nonce, deadline, GAS_LIMIT),
       )
       expect(hook.postHook.dappId).toBe(RELAY_DAPP_ID)
-      const tx = { to: hook.postHook.target, data: hook.postHook.callData, gasLimit: 1_200_000 }
+      const tx = { to: hook.postHook.target, data: hook.postHook.callData, gasLimit: GAS_LIMIT }
       await expect((await owner.sendTransaction(tx)).wait()).rejects.toThrow()
       const surplus = 123_456n
-      await (
-        await owner.sendTransaction({ to: TOKEN, data: '0xd0e30db0', value: String(request.amount + surplus) })
-      ).wait()
-      await (
-        await owner.sendTransaction({
-          to: TOKEN,
-          data: erc20.encodeFunctionData('transfer', [shed, String(request.amount + surplus)]),
-        })
-      ).wait()
       const balanceOf = async (address: string): Promise<bigint> =>
-        BigInt(await provider.call({ to: TOKEN, data: erc20.encodeFunctionData('balanceOf', [address]) }))
+        BigInt(await provider.call({ to: token, data: erc20.encodeFunctionData('balanceOf', [address]) }))
       const before = await balanceOf(DEPOSITORY)
-      const receipt = await (await owner.sendTransaction(tx)).wait()
+      let receipt
+      if (plasma) {
+        receipt = await settlePlasma(
+          provider,
+          owner,
+          adapter,
+          hook,
+          request.amount,
+          request.amount + surplus,
+          Number(deadline),
+        )
+      } else {
+        await (
+          await owner.sendTransaction({ to: token, data: '0xd0e30db0', value: String(request.amount + surplus) })
+        ).wait()
+        await (
+          await owner.sendTransaction({
+            to: token,
+            data: erc20.encodeFunctionData('transfer', [shed, String(request.amount + surplus)]),
+          })
+        ).wait()
+        receipt = await (await owner.sendTransaction(tx)).wait()
+      }
       expect(receipt.status).toBe(1)
-      expect(await balanceOf(DEPOSITORY)).toBe(before + request.amount)
+      expect(await balanceOf(DEPOSITORY)).toBe(plasma ? before - surplus : before + request.amount)
       expect(await balanceOf(shed)).toBe(0n)
       expect(await balanceOf(owner.address)).toBe(surplus)
       expect(
-        BigInt(await provider.call({ to: TOKEN, data: erc20.encodeFunctionData('allowance', [shed, DEPOSITORY]) })),
+        BigInt(await provider.call({ to: token, data: erc20.encodeFunctionData('allowance', [shed, DEPOSITORY]) })),
       ).toBe(0n)
       const depositLog = receipt.logs.find((log) => log.address.toLowerCase() === DEPOSITORY)
       expect(depositLog?.topics).toEqual([keccak256(toUtf8Bytes('RelayErc20Deposit(address,address,uint256,bytes32)'))])
       expect(depositLog?.data.endsWith(quote.relay.protocol.v2.orderId.slice(2))).toBe(true)
-      expect(receipt.gasUsed.toNumber()).toBeLessThan(1_200_000)
+      expect(receipt.gasUsed.toNumber()).toBeLessThan(GAS_LIMIT)
       await expect((await owner.sendTransaction(tx)).wait()).rejects.toThrow()
     } finally {
       await provider.send('evm_revert', [snapshot])
