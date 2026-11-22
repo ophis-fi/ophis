@@ -25,6 +25,7 @@ export async function relayQuote(api: RelayApi, request: QuoteBridgeRequest, she
   const relay = verifyRelayQuote(response, request, quoteTimestamp)
   const buyAmount = BigInt(relay.details.currencyOut.amount)
   const minimum = BigInt(relay.details.currencyOut.minimumAmount)
+  // shortcut: estimates cost at stablecoin parity, use Relay's price and fee breakdown before widening cross-asset support.
   const grossBuy = (request.amount * 10n ** BigInt(request.buyTokenDecimals)) / 10n ** BigInt(request.sellTokenDecimals)
   const feeBuy = grossBuy > buyAmount ? grossBuy - buyAmount : 0n
   const feeSell = (feeBuy * 10n ** BigInt(request.sellTokenDecimals)) / 10n ** BigInt(request.buyTokenDecimals)

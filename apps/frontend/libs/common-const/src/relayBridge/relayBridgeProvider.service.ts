@@ -18,7 +18,7 @@ import { relayBridgingParams } from './relayHistory.service'
 import { relayProgram } from './relayProgram.service'
 import { relayQuote, sameRelayRequest } from './relayQuote.service'
 import { relayStatus } from './relayStatus.service'
-import { relayTokens } from './relayTokens.service'
+import { relayTokens, relayTokensMatch } from './relayTokens.service'
 
 import { ARC_ENABLED } from '../arc.const'
 import { toBridgeChainInfo } from '../bridgeChainInfo'
@@ -79,10 +79,10 @@ export class RelayBridgeProvider implements HookBridgeProvider<RelayQuote> {
     if (!destination) return { tokens: [], isRouteAvailable: false }
     const source = chains.find((chain) => chain.id === sellChainId)
     const trusted = await this.trustedTokens()
-    const sourceAssets = new Set(source ? relayTokens(source, trusted, true).map((token) => token.asset) : [])
-    const tokens = destination
-      ? relayTokens(destination, trusted).filter((token) => sellChainId === undefined || sourceAssets.has(token.asset))
-      : []
+    const sourceTokens = source ? relayTokens(source, trusted, true) : []
+    const tokens = relayTokens(destination, trusted).filter(
+      (token) => sellChainId === undefined || sourceTokens.some((sourceToken) => relayTokensMatch(sourceToken, token)),
+    )
     return { tokens, isRouteAvailable: tokens.length > 0 && sellChainId !== buyChainId }
   }
 
@@ -97,7 +97,7 @@ export class RelayBridgeProvider implements HookBridgeProvider<RelayQuote> {
       (token) => token.address && sameToken(token, request.buyTokenAddress),
     )
     return buy && buy.decimals === request.buyTokenDecimals
-      ? relayTokens(source, trusted, true).filter((token) => token.asset === buy.asset)
+      ? relayTokens(source, trusted, true).filter((token) => relayTokensMatch(token, buy))
       : []
   }
 

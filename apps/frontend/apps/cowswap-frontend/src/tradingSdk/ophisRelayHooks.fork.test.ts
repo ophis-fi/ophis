@@ -1,6 +1,7 @@
 /** @jest-environment node */
-import { RELAY_DAPP_ID, RelayBridgeProvider } from '@cowprotocol/common-const'
-import { OrderKind, setGlobalAdapter, SupportedChainId, TokenInfo } from '@cowprotocol/cow-sdk'
+import { RELAY_DAPP_ID, RelayBridgeProvider, USDC_BASE, USDT_PLASMA, WETH_PLASMA } from '@cowprotocol/common-const'
+import { OrderKind, setGlobalAdapter, SupportedChainId } from '@cowprotocol/cow-sdk'
+import { CoWSwapEthFlow__factory } from '@cowprotocol/cowswap-abis'
 import { BridgeHook, QuoteBridgeRequest } from '@cowprotocol/sdk-bridging'
 import { ContractsSigningScheme, InteractionStage, SettlementEncoder } from '@cowprotocol/sdk-contracts-ts'
 import { CowShedHooks, CowShedSdk } from '@cowprotocol/sdk-cow-shed'
@@ -11,7 +12,7 @@ import { JsonRpcProvider } from '@ethersproject/providers'
 import { toUtf8Bytes } from '@ethersproject/strings'
 import { Wallet } from '@ethersproject/wallet'
 
-import { Contract } from 'ethers'
+import { Contract, utils } from 'ethers'
 
 import { readFileSync } from 'fs'
 import { join } from 'path'
@@ -29,15 +30,14 @@ const sample = JSON.parse(readFileSync(join(fixtureRoot, 'weth-optimism-base.jso
 const forkTest = process.env.OPHIS_RELAY_FORK_RPC ? it : it.skip
 // shortcut: the signed quote expires 2026-11-20; refresh the fixture before a later fork rehearsal.
 const WETH = '0x4200000000000000000000000000000000000006'
-const USDT0 = '0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb'
-const BASE_USDT = '0xfde4c96c8593536e31f229ea8f37b2ada2699bb2'
+const USDT0 = utils.getAddress(USDT_PLASMA.address)
 const DEPOSITORY = '0x4cd00e387622c35bddb9b4c962c136462338bc31'
+const PLASMA_ETH_FLOW = '0x04501b9b1d52e67f6862d157e00d13419d2d6e95'
 const PLASMA_SETTLEMENT = '0x9008D19f58AAbD9eD0D60971565AA8510560ab41'
 const HOOKS_TRAMPOLINE = '0x60Bf78233f48eC42eE3F101b9a05eC7878728006'
 const GAS_LIMIT = 1_200_000
 const erc20 = new Interface([
   'function balanceOf(address) view returns (uint256)',
-  'function approve(address,uint256) returns (bool)',
   'function transfer(address,uint256) returns (bool)',
   'function allowance(address,address) view returns (uint256)',
 ])
@@ -48,14 +48,13 @@ async function settlePlasma(
   adapter: EthersV5Adapter,
   hook: BridgeHook,
   amount: bigint,
-  sellAmount: bigint,
+  settledBuyAmount: bigint,
   validTo: number,
 ): Promise<Awaited<ReturnType<JsonRpcProvider['getTransactionReceipt']>>> {
   const settlement = new Contract(
     PLASMA_SETTLEMENT,
     [
       'function authenticator() view returns (address)',
-      'function vaultRelayer() view returns (address)',
       'function settle(address[],uint256[],(uint256 sellTokenIndex,uint256 buyTokenIndex,address receiver,uint256 sellAmount,uint256 buyAmount,uint32 validTo,bytes32 appData,uint256 feeAmount,uint256 flags,uint256 executedAmount,bytes signature)[],(address target,uint256 value,bytes callData)[][3])',
     ],
     owner,
@@ -71,28 +70,39 @@ async function settlePlasma(
     await provider.send('anvil_setBalance', [address, '0x56bc75e2d63100000'])
   }
   await (await authenticator.connect(provider.getUncheckedSigner(manager)).addSolver(owner.address)).wait()
-  const token = new Contract(USDT0, erc20, owner)
-  await (await token.connect(provider.getUncheckedSigner(DEPOSITORY)).transfer(owner.address, sellAmount)).wait()
-  await (await token.approve(await settlement.vaultRelayer(), sellAmount)).wait()
-
+  const token = new Contract(USDT0, erc20, provider.getUncheckedSigner(DEPOSITORY))
+  await (await token.transfer(PLASMA_SETTLEMENT, settledBuyAmount)).wait()
+  const ethFlow = CoWSwapEthFlow__factory.connect(PLASMA_ETH_FLOW, owner)
+  const wrappedXpl = utils.getAddress(WETH_PLASMA.address)
+  const sellAmount = 50n * 10n ** 18n
+  const order = {
+    buyToken: USDT0,
+    receiver: hook.recipient,
+    sellAmount,
+    buyAmount: amount,
+    validTo,
+    appData: `0x${'00'.repeat(32)}`,
+    feeAmount: 0,
+    partiallyFillable: false,
+    quoteId: 0,
+  }
+  await (await ethFlow.createOrder(order, { value: sellAmount })).wait()
   const encoder = new SettlementEncoder(
     { name: 'Gnosis Protocol', version: 'v2', chainId: SupportedChainId.PLASMA, verifyingContract: PLASMA_SETTLEMENT },
     adapter,
   )
-  await encoder.signEncodeTrade(
+  encoder.encodeTrade(
     {
-      sellToken: USDT0,
-      buyToken: USDT0,
-      receiver: hook.recipient,
-      sellAmount,
-      buyAmount: amount,
-      validTo,
-      appData: `0x${'00'.repeat(32)}`,
-      feeAmount: 0,
+      ...order,
+      sellToken: wrappedXpl,
+      validTo: 2 ** 32 - 1,
       kind: OrderKind.SELL,
-      partiallyFillable: false,
     },
-    ContractsSigningScheme.EIP712,
+    { scheme: ContractsSigningScheme.EIP1271, data: { verifier: ethFlow.address, signature: '0x' } },
+  )
+  encoder.encodeInteraction(
+    { target: ethFlow.address, callData: utils.id('wrapAll()').slice(0, 10), value: 0 },
+    InteractionStage.PRE,
   )
   const trampoline = new Interface(['function execute((address,bytes,uint256)[])'])
   const { target, callData, gasLimit } = hook.postHook
@@ -104,7 +114,8 @@ async function settlePlasma(
     },
     InteractionStage.POST,
   )
-  return (await settlement.settle(...encoder.encodedSettlement({ [USDT0]: 1 }), { gasLimit: 2_000_000 })).wait()
+  const settlementData = encoder.encodedSettlement({ [wrappedXpl]: settledBuyAmount, [USDT0]: sellAmount })
+  return (await settlement.settle(...settlementData, { gasLimit: 2_000_000 })).wait()
 }
 
 forkTest(
@@ -160,26 +171,22 @@ forkTest(
       })) as jest.Mock
     }
     try {
-      const trustedTokens: TokenInfo[] = [
-        { chainId: SupportedChainId.PLASMA, address: USDT0, decimals: 6, symbol: 'USDT0' },
-        { chainId: SupportedChainId.BASE, address: BASE_USDT, decimals: 6, symbol: 'USDT' },
-      ]
       const relay = new RelayBridgeProvider({
         enabled: true,
         apiUrl: plasma ? 'https://swap.ophis.fi/api/relay' : undefined,
         isSourceRouteEnabled: (origin, destination) => origin === source && destination === SupportedChainId.BASE,
-        trustedTokens: async () => (plasma ? trustedTokens : []),
+        trustedTokens: async () => (plasma ? [USDT_PLASMA, USDC_BASE] : []),
         signHook: (terms, ...args) => signRelayHook(async () => [], terms, ...args),
       })
       const request: QuoteBridgeRequest = {
         kind: OrderKind.SELL,
         account: owner.address,
-        amount: plasma ? 10_000_000n : 10n ** 16n,
+        amount: plasma ? 2_100_000n : 10n ** 16n,
         sellTokenChainId: source,
         sellTokenAddress: token,
         sellTokenDecimals: plasma ? 6 : 18,
         buyTokenChainId: SupportedChainId.BASE,
-        buyTokenAddress: plasma ? BASE_USDT : token,
+        buyTokenAddress: plasma ? USDC_BASE.address : token,
         buyTokenDecimals: plasma ? 6 : 18,
       }
       const quote = await relay.getQuote(request)

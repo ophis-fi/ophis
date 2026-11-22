@@ -61,6 +61,25 @@
           "supportsBridging": true
         }
       ]
+    },
+    {
+      "id": 9745,
+      "disabled": false,
+      "depositEnabled": true,
+      "currency": {
+        "id": "xpl",
+        "address": "0x0000000000000000000000000000000000000000",
+        "decimals": 18,
+        "supportsBridging": true
+      },
+      "erc20Currencies": [
+        {
+          "id": "usdt",
+          "address": "0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb",
+          "decimals": 6,
+          "supportsBridging": true
+        }
+      ]
     }
   ]
 }
