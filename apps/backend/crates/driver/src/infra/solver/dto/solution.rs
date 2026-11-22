@@ -89,8 +89,8 @@ fn required_custom_amounts(
         None
     };
     // Metric is the only protected route that fills BUY orders. They run the
-    // same exact-input router call as SELL orders, never an exact-output
-    // call that pulls less than its approval.
+    // same exact-input router call as SELL orders; the exact-output calls,
+    // which pull less than their approval by design, never decode.
     let buy_side = order.side == competition::order::Side::Buy;
     if (buy_side && protected_interactions[0] != shared::metric::ROUTER)
         || (protected_interactions[0] == FXUSD && sell != FXUSD)

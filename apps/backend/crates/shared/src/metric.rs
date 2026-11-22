@@ -130,20 +130,14 @@ pub const POOLS: &[(Address, Address, Address)] = &[
     ),
     // WETH/USDG
     (
-        address!("1f2BF38b4Afdb9A234d9bf052806ec94c0d8f357"),
+        address!("f39feFf7096Fe97eddE6ac0F398641b540be1d41"),
         address!("0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"),
         USDG,
     ),
     // WETH/USDG
     (
-        address!("f39feFf7096Fe97eddE6ac0F398641b540be1d41"),
+        address!("B89Fd35eBc48B791339520af812b70F71D823cc5"),
         address!("0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"),
-        USDG,
-    ),
-    // ANT/USDG
-    (
-        address!("6FAd54a8Aba3cB0D67b4607B3D1418973305D5E8"),
-        address!("bbB6c29bCc3a1028A2B54310DF73F4F7A3bcB373"),
         USDG,
     ),
     // NVDA/USDG
@@ -168,12 +162,6 @@ pub const POOLS: &[(Address, Address, Address)] = &[
     (
         address!("769847CB712Af540429842aF45E2E4d4Df5f3993"),
         address!("39dBED3a2bd333467115dE45665cC57F813C4571"),
-        USDG,
-    ),
-    // GOOGL/USDG
-    (
-        address!("38761054D2739AF2AA173ef5528fd46254c97b4b"),
-        address!("2e0847E8910a9732eB3fb1bb4b70a580ADAD4FE3"),
         USDG,
     ),
     // NVDA/USDG
@@ -392,16 +380,16 @@ pub const POOLS: &[(Address, Address, Address)] = &[
         address!("4a0E65A3EcceC6dBe60AE065F2e7bb85Fae35eEa"),
         USDG,
     ),
-    // AI/USDG
-    (
-        address!("eA8c1D810a5d446d330e172593CE7a5A42b6366E"),
-        address!("2E8c31162b855A2ffa90F6F8634643Ad6F111e18"),
-        USDG,
-    ),
     // PONS/USDG
     (
         address!("2Df441aE4b63E7fF342216BEEA704A7ABBeD25aE"),
         address!("39dBED3a2bd333467115dE45665cC57F813C4571"),
+        USDG,
+    ),
+    // AI/USDG
+    (
+        address!("eA8c1D810a5d446d330e172593CE7a5A42b6366E"),
+        address!("2E8c31162b855A2ffa90F6F8634643Ad6F111e18"),
         USDG,
     ),
     // VRAX/USDG

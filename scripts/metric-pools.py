@@ -2,7 +2,8 @@
 """Regenerate (or check) the generated part of the pinned Metric pool table.
 
   python3 scripts/metric-pools.py           rewrite the table in place
-  python3 scripts/metric-pools.py --check   exit 1 if the table needs a refresh
+  python3 scripts/metric-pools.py --check   exit 1 if the table is broken
+  python3 scripts/metric-pools.py --check --strict   also if it is behind
 
 Rule: Metric v1 pools on Robinhood (4663) under the pinned factory and quoter
 that are unpaused and traded at least 10,000 USD in the prior 7 days, at most
@@ -14,12 +15,15 @@ down outside market hours and flap within them, and the solver already skips
 any pool whose live quote reverts.
 
 The check is looser than the rule so that it does not fail on noise: weekly
-volume crosses the 10,000 USD line daily. It fails only when a generated pool
-is paused or gone from the API, or when a pool the rule would add trades at
-least twice the line. Everything else is printed as a note.
+volume crosses the 10,000 USD line daily, and Metric replaces its WETH/USDG
+pools within hours. It fails when a pinned pool (reviewed or generated) is
+paused or gone from the API, or when any row of the table, reviewed ones
+included, disagrees with the chain. With --strict (the weekly run) it also
+fails when a pool the rule would add trades at least twice the line.
+Everything else is printed as a note.
 
 The Metric API only proposes pools. Each one is then read onchain (factory
-isPool, pool getImmutables) and dropped with an error if the chain disagrees.
+isPool, pool getImmutables); the run aborts if the chain disagrees.
 """
 import json
 import os
@@ -95,8 +99,9 @@ def main():
     while offset is not None:
         page = fetch(API % offset)
         # Offset paging is not a snapshot: keep the first copy of each pool.
-        seen = {p.get("poolAddress") for p in pools}
-        pools += [p for p in page["data"] if p.get("poolAddress") not in seen]
+        for p in page["data"]:
+            if str(p.get("poolAddress")).lower() not in {str(q.get("poolAddress")).lower() for q in pools}:
+                pools.append(p)
         offset = page.get("nextOffset")
 
     def volume(pool):
@@ -130,12 +135,16 @@ def main():
 
     wanted = {row(p) for p in chosen}
     if "--check" in sys.argv:
-        for p in pools:
-            if str(p.get("poolAddress", ""))[2:].lower() in reviewed_pools and p.get("pauseLevel") != 0:
-                print("reviewed pool is paused (edit by hand): %s" % p["poolAddress"])
-        dead = current - {row(p) for p in live}
+        # The driver trusts every row's tokens and direction; the router
+        # checks neither.
+        for pool, token0, token1 in reviewed + sorted(current):
+            if not onchain("0x" + pool, "0x" + token0, "0x" + token1):
+                sys.exit("chain disagrees with the table about pool 0x%s" % pool)
+        for entry in sorted(set(reviewed) - {row(p) for p in live}):
+            print("reviewed pool is paused or gone (edit by hand): 0x%s (tokens 0x%s, 0x%s)" % entry)
+        dead = (current | set(reviewed)) - {row(p) for p in live}
         busy = {row(p) for p in chosen if volume(p) >= 2 * MIN_VOLUME_USD} - current
-        for entry in sorted(dead):
+        for entry in sorted(dead - set(reviewed)):
             print("paused or gone: 0x%s (tokens 0x%s, 0x%s)" % entry)
         for entry in sorted(busy):
             print("active pool missing from the table: 0x%s (tokens 0x%s, 0x%s)" % entry)
@@ -143,7 +152,7 @@ def main():
             print("note, newly over the volume line: 0x%s (tokens 0x%s, 0x%s)" % entry)
         for entry in sorted(current - wanted - dead):
             print("note, under the volume line or outside its pair's six: 0x%s (tokens 0x%s, 0x%s)" % entry)
-        if dead or busy:
+        if dead or (busy and "--strict" in sys.argv):
             sys.exit("pinned Metric pools need a refresh; run: python3 scripts/metric-pools.py")
         print("pinned Metric pools need no refresh (%d generated)" % len(current))
         return
