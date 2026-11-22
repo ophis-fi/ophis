@@ -12,7 +12,7 @@ The standalone app supports externally funded NEAR swaps: select the source unde
 - Bridge and conversion routes have separate provider costs and wallet gas requirements. NEAR quotes include a 3 bps app fee; do not apply batch-auction pricing to direct Circle routes.
 - Arc price-improvement policy: the backend applies the same capture to in-market orders as the other operated chains (80%/99 bps for volatile pairs; 50%/20 bps for recognized stablecoin pairs including USDC/EURC), plus the separate 1 bp base. Historical base-only trades retain their original fees. Arc settled trades are indexed for routed volume and referral attribution. For Arc referrals, MCP clients pass `referrerCode` to `build_order`; direct SDK integrations use v0.4.4 or later. See https://docs.ophis.fi/fees#arc-price-improvement-policy.
 - CoW-hosted pricing: the Ophis base is 1 bp, with CoW Protocol fees applying separately upstream.
-- Integrator own-fees: on CoW-hosted chains, registered integrators may stack their own fee of up to 90 bps on top; CoW pays it weekly after its service fee, and Ophis takes 0% of that markup. See https://docs.ophis.fi/partners.
+- Integrator own-fees: on CoW-hosted chains, registered integrators may stack their own fee of up to 90 bps on top; CoW pays it weekly after its service fee when the weekly amount reaches 0.001 WETH, and Ophis takes 0% of that markup. See https://docs.ophis.fi/partners.
 - Surplus: traders receive the price improvement remaining after the applicable capped protocol capture.
 - APIs: the public MCP server and the Intent API are free. The Intent API is rate-limited to 30 requests per minute per IP.
 - Worked example: a $100,000 volatile trade with 20 bps of improvement pays a $10 base plus $160 of captured improvement on Optimism, Robinhood Chain or Arc. A stablecoin trade with the same improvement pays $10 plus $100.
@@ -54,7 +54,7 @@ curl -X POST https://swap.ophis.fi/api/intent \
 - [SDK](https://github.com/ophis-fi/ophis/tree/main/packages/sdk): `@ophis/sdk`: agent-safety helpers for building bounded CoW orders on Ophis (correct per-chain settlement domain, base plus capped improvement fee policy, receiver pinning).
 
 - [Networks and assets](https://docs.ophis.fi/networks-assets): Arc venue lanes, Circle and NEAR route boundaries, stock-provider labels (including bStocks on BNB and Reality on Arbitrum), and confidentiality scope. Badges are metadata attribution, not issuer authentication or eligibility.
-- Confidentiality: the app requests NEAR quotes with basic confidentiality and rejects a quote that does not echo it.
+- Confidentiality: the app requests NEAR quotes with basic confidentiality and rejects a quote that does not echo it. It covers the NEAR leg only: transfers on external chains and a source swap leg stay public.
 - Custody: native-token orders and bridges can deposit or burn assets before delivery. Expiry, refund and recovery differ from standard ERC-20 orders.
 
 ## Optional

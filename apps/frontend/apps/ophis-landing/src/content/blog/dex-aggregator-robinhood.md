@@ -61,7 +61,7 @@ Ophis's [Robinhood deployment guide](https://ophis.fi/blog/swap-on-robinhood-cha
 
 KyberSwap and LI.FI are route providers in this setup, not separate operators of Ophis's solver services. A configured source does not guarantee an executable quote for every pair or amount.
 
-**Routing status reviewed 22 November 2026:** the Robinhood backend also runs solver lanes for pons, Ekubo, UP33, pools.trade, PancakeSwap, RamsesX, Fables, Metric and ElfomoFi.
+**Routing status reviewed 22 November 2026:** the Robinhood backend also runs solver lanes for Ekubo, UP33, pools.trade, PancakeSwap, RamsesX, Fables, Metric and ElfomoFi.
 
 Ophis combines route selection with a signed minimum output and batch settlement designed to mitigate front-running and sandwich attacks. Read the [security model](https://ophis.fi/security/) for the protection and its limits. The live quote is the practical check for your trade.
 

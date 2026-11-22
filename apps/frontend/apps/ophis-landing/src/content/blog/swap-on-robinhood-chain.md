@@ -74,7 +74,7 @@ If you swap through the app, none of this is visible and none of it needs to be.
 
 ## Solver lanes
 
-A sovereign deployment is only as good as the liquidity its solvers can reach. Much of Robinhood Chain's liquidity sits in protocols the CoW baseline solver cannot read, so on this chain baseline ships empty. Three lanes did the work at launch, described below; Ophis has since added lanes for pons, Ekubo, UP33, pools.trade, PancakeSwap, RamsesX, Fables, Metric and ElfomoFi.
+A sovereign deployment is only as good as the liquidity its solvers can reach. Much of Robinhood Chain's liquidity sits in protocols the CoW baseline solver cannot read, so on this chain baseline ships empty. Three lanes did the work at launch, described below; Ophis has since added lanes for Ekubo, UP33, pools.trade, PancakeSwap, RamsesX, Fables, Metric and ElfomoFi.
 
 - **LI.FI.** A same-chain aggregator lane. One chain-specific catch: on 4663 the LI.FI router is `0xB477751B76CF82d00a686A1232f5fCD772414Af3`, not the LiFiDiamond address used elsewhere. It has to be allowlisted in both the solver and the driver, or every quote fails the same-chain safety check.
 - **KyberSwap.** A second independent aggregator lane whose route builder reaches the deployed Robinhood DEX liquidity. The solver and driver pin its router through a static allowlist.
@@ -83,8 +83,6 @@ A sovereign deployment is only as good as the liquidity its solvers can reach. M
 That narrowness is the point, because the adapter is where the security posture of the lane lives. It is immutable and pair-specific: it serves the canonical native ETH/USDG V4 pool and nothing else. It cannot route arbitrary tokens, cannot call arbitrary hooks, cannot be repointed at a different pool, and cannot send output anywhere except the Ophis settlement contract. Ophis orders trade wrapped tokens while the V4 pool is native, so the adapter performs the wrap and unwrap atomically around the swap.
 
 One Arbitrum-specific quirk surfaced while making that lane safe to simulate. Robinhood's canonical wrapper is upgradeable aeWETH, not WETH9, and its `balanceOf` mapping sits at storage slot 51 rather than WETH9's slot 3. Simulating a settlement against the WETH9 default reads the wrong slot and produces balances that do not exist. The solver now overrides the verified slot.
-
-Every lane runs under the same bounds: 1% relative slippage and an absolute cap of 0.04 ETH, tightened from the 10% default because this chain's trades are small and loose bounds are what MEV feeds on.
 
 ## Stock Tokens: what Ophis checks before you sign
 
