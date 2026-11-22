@@ -39,6 +39,23 @@ const launch = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+// The upstream catalog request: host and path both pinned, so a wrong path cannot pass.
+const isCatalog = (input: unknown): boolean => {
+  const url = new URL(String(input));
+  return url.hostname === 'ponsfamily.com' && url.pathname === '/api/launches';
+};
+
+// The upstream /api/launches item shape for a launch fixture.
+const catalogItem = (entry: ReturnType<typeof launch>) => ({
+  factory: entry.factory,
+  address: entry.token,
+  quote: { address: entry.pairToken, symbol: 'WETH', decimals: 18 },
+  name: entry.name,
+  symbol: entry.symbol,
+  artwork: entry.logo,
+  stage: 'graduated',
+});
+
 test('adapts active and graduated Pons launches to a token list', () => {
   const now = new Date('2026-08-03T17:00:00.000Z');
   const result = ponsTokenListFromResponse(
@@ -108,8 +125,9 @@ test('accepts only an onchain launch tuple matching token, WETH, and exists', ()
 
 test('rejects malformed successful Pons catalog envelopes', () => {
   assert.throws(() => parsePonsCatalog({ error: 'soft failure' }), /malformed response/);
-  assert.throws(() => parsePonsCatalog({ active: { items: null } }), /malformed response/);
-  assert.deepEqual(parsePonsCatalog({ active: { items: [null, 'bad', [], launch()] } }), [
+  assert.throws(() => parsePonsCatalog({ items: null }), /malformed response/);
+  assert.throws(() => parsePonsCatalog({ active: { items: [catalogItem(launch())] } }), /malformed response/);
+  assert.deepEqual(parsePonsCatalog({ items: [null, 'bad', [], catalogItem(launch())] }), [
     launch(),
   ]);
 });
@@ -270,7 +288,7 @@ test('keeps reference PONS discoverable during catalog outages only after onchai
   let verified = true;
   let catalogResponse: Response | undefined;
   t.mock.method(globalThis, 'fetch', async (input, init) => {
-    if (new URL(String(input)).hostname === 'www.ponsfamily.com') {
+    if (isCatalog(input)) {
       if (!catalogResponse) throw new Error('Network failure');
       return catalogResponse.clone();
     }
@@ -312,7 +330,7 @@ test('verifies reference PONS after the catalog deadline expires', async (t) => 
     return catalog.signal;
   });
   t.mock.method(globalThis, 'fetch', async (input, init) => {
-    if (new URL(String(input)).hostname === 'www.ponsfamily.com') {
+    if (isCatalog(input)) {
       return new Promise<Response>((_resolve, reject) => {
         init?.signal?.addEventListener('abort', () => reject(new Error('Catalog timeout')), {
           once: true,
@@ -360,16 +378,13 @@ test('discovers bounded v2 launches and requires their exact on-chain tuple', as
   }
   assert.equal(isVerifiedLaunchResult({ ...v2, token: TOKEN }, tuple()), false);
   assert.equal(isVerifiedLaunchResult({ ...v2, pairToken: WETH }, tuple()), false);
-  const catalog = {
-    active: { items: Array.from({ length: 100 }, () => v2) },
-    graduated: { items: [launch()] },
-  };
+  const catalog = { items: [catalogItem(launch()), ...Array.from({ length: 100 }, () => catalogItem(v2))] };
   const parsed = parsePonsCatalog(catalog);
   assert.equal(parsed.length, 75);
   assert.deepEqual(parsed[0], launch());
   t.mock.method(globalThis, 'fetch', async (input, init) => {
-    if (new URL(String(input)).hostname === 'www.ponsfamily.com') {
-      return Response.json({ active: { items: [v2] } });
+    if (isCatalog(input)) {
+      return Response.json({ items: [catalogItem(v2)] });
     }
     const requests = JSON.parse(String(init?.body)) as { id: number; params: { to: string }[] }[];
     return Response.json(
@@ -439,4 +454,82 @@ test('starts discovery within small edge RPC budgets without exceeding five batc
   });
   assert.equal((await verifyLaunchesOnchain(launches, new AbortController().signal)).length, 76);
   assert.deepEqual(sizes, [5, 20, 20, 20, 11]);
+});
+
+test('fills the candidate budget from a second catalog page and keeps page one if it fails', async (t) => {
+  const factory = '0x7eD598BcEf8bd9Edd8C97A195C6d13f40801EC7e';
+  const pairToken = `0x${'0'.repeat(40)}`;
+  const v2 = (token: string, symbol: string) => launch({ factory, token, pairToken, symbol });
+  const tuple = (token: string): string =>
+    `0x${[
+      addressWord(token),
+      ...Array.from({ length: 3 }, () => uintWord(0n)),
+      addressWord(pairToken),
+      ...Array.from({ length: 5 }, () => uintWord(0n)),
+      uintWord(0n),
+      ...Array.from({ length: 3 }, () => uintWord(0n)),
+      uintWord(1n),
+    ].join('')}`;
+  const pageOne = v2(`0x${'1'.repeat(40)}`, 'ONE');
+  const pageTwo = v2(`0x${'2'.repeat(40)}`, 'TWO');
+  let secondPage: 'ok' | 'fail' | 'malformed' | 'badCursor' = 'ok';
+  const cursors: (string | null)[] = [];
+  t.mock.method(globalThis, 'fetch', async (input, init) => {
+    if (isCatalog(input)) {
+      const cursor = new URL(String(input)).searchParams.get('cursor');
+      cursors.push(cursor);
+      if (cursor === null) return Response.json({ items: [catalogItem(pageOne)], nextCursor: secondPage === 'badCursor' ? [40] : 40 });
+      if (cursor === '40' && secondPage === 'ok') return Response.json({ items: [catalogItem(pageTwo)], nextCursor: 80 });
+      if (cursor === '40' && secondPage === 'malformed') return Response.json({ error: 'upstream failure' });
+      return new Response('Unavailable', { status: 503 });
+    }
+    const requests = JSON.parse(String(init?.body)) as { id: number; params: { to: string; data: string }[] }[];
+    return Response.json(
+      requests.map(({ id, params }) => {
+        const token = `0x${params[0]!.data.slice(-40)}`;
+        return { jsonrpc: '2.0', id, result: params[0]?.to.toLowerCase() === factory.toLowerCase() ? tuple(token) : verifiedResult() };
+      }),
+    );
+  });
+  const pending: Promise<unknown>[] = [];
+  const context = {
+    request: new Request('https://swap.ophis.fi/api/pons-token-list'),
+    waitUntil: (promise: Promise<unknown>) => void pending.push(promise),
+  } as Parameters<typeof onRequestGet>[0];
+  const symbols = async () =>
+    (await (await onRequestGet(context)).json()).tokens.map(({ symbol }: { symbol: string }) => symbol);
+  // A last-known-good copy exists; record which cache keys each response writes.
+  const stale = Response.json({ name: 'stale', tokens: [{ symbol: 'STALE' }] });
+  const puts: string[] = [];
+  const store = globalThis as { caches?: unknown };
+  const saved = store.caches;
+  store.caches = {
+    default: {
+      match: async (request: Request) => (request.url.endsWith('.__last_known_good') ? stale.clone() : undefined),
+      put: async (request: Request, response: Response) =>
+        void puts.push(`${new URL(request.url).pathname} ${response.headers.get('cache-control')}`),
+    },
+  };
+  const FIVE_MINUTES = '/api/pons-token-list public, max-age=300';
+  const LAST_KNOWN_GOOD = '/api/pons-token-list.__last_known_good public, max-age=86400';
+  const cacheWrites = async () => {
+    await Promise.all(pending.splice(0));
+    return puts.splice(0).sort();
+  };
+  try {
+    assert.deepEqual(await symbols(), ['PONS', 'ONE', 'TWO']);
+    assert.deepEqual(cursors, [null, '40']);
+    assert.deepEqual(await cacheWrites(), [FIVE_MINUTES, LAST_KNOWN_GOOD], 'a complete read refreshes both copies');
+    for (const failure of ['fail', 'malformed', 'badCursor'] as const) {
+      secondPage = failure;
+      cursors.length = 0;
+      // An incomplete read still serves fresh page one, not the older copy, and never overwrites that copy.
+      assert.deepEqual(await symbols(), ['PONS', 'ONE'], failure);
+      assert.deepEqual(await cacheWrites(), [FIVE_MINUTES], failure);
+      // A failing page two was requested; a malformed cursor is never coerced into a request.
+      assert.deepEqual(cursors, failure === 'badCursor' ? [null] : [null, '40'], failure);
+    }
+  } finally {
+    store.caches = saved;
+  }
 });

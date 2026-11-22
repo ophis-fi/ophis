@@ -340,7 +340,19 @@ describe('POST /sor/quote/v3', () => {
     expect(res.status).toBe(400);
     const body = (await res.json()) as Record<string, any>;
     expect(body.error.code).toBe('UNSUPPORTED_CHAIN');
-    expect(body.error.message).toContain('10, 130, 4663');
+    expect(body.error.message).toContain('10, 4663');
+  });
+
+  it('rejects the retired Unichain (130) as unsupported', async () => {
+    const res = await handleRequest(
+      post('/sor/quote/v3', quoteBody({ chainId: 130 })),
+      ENV,
+      deps(stubFetch()),
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as Record<string, any>;
+    expect(body.error.code).toBe('UNSUPPORTED_CHAIN');
+    expect(body.error.message).toContain('10, 4663');
   });
 
   it('fails loudly when the pathId key is missing and a draft is needed', async () => {
@@ -1001,7 +1013,7 @@ describe('worker plumbing', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, any>;
     expect(body.status).toBe('ok');
-    expect(body.chains).toEqual([10, 130, 4663]);
+    expect(body.chains).toEqual([10, 4663]);
   });
 
   it('applies the per-IP rate limit on /sor/*', async () => {

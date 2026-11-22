@@ -55,7 +55,7 @@ export async function submitOrder(
     const enrollment = await enrollTrackedWallet(owner);
     if (!enrollment.enrolled) {
       const reason = enrollment.status !== undefined ? `HTTP ${enrollment.status}` : 'indexer unreachable';
-      enrollmentWarning = `rebate-indexer enrollment failed (order still submits; rebate may not index): ${reason}`;
+      enrollmentWarning = `trade indexing enrollment failed (order still submits): ${reason}`;
     }
   } catch (e) {
     enrollmentWarning = (e as Error).message;

@@ -5,6 +5,7 @@ import { logger } from '../logger.js';
 import { allocationCommitment, buildRewardAllocation, parseAllocationSeed } from './allocation.js';
 import {
   TRADE_REWARDS_CAMPAIGN_ID,
+  TRADE_REWARDS_ADVERTISED_CHAIN_IDS,
   TRADE_REWARDS_ELIGIBLE_CHAIN_IDS,
   TRADE_REWARDS_MAX_TICKETS,
   TRADE_REWARDS_MINIMUM_SWAP_USD,
@@ -277,7 +278,7 @@ export async function getTradeRewardCampaign(): Promise<{
   const campaignEnabled = enabledFromEnv() && campaign?.enabled === true;
   const ticketsRemaining = campaign?.tickets_remaining ?? 0;
   const campaignAvailable = campaignEnabled && ticketsRemaining > 0;
-  return { campaignEnabled, campaignAvailable, ticketsRemaining, eligibleChainIds: TRADE_REWARDS_ELIGIBLE_CHAIN_IDS };
+  return { campaignEnabled, campaignAvailable, ticketsRemaining, eligibleChainIds: TRADE_REWARDS_ADVERTISED_CHAIN_IDS };
 }
 
 export async function getTradeRewardStatus(wallet: `0x${string}`): Promise<TradeRewardStatus> {
