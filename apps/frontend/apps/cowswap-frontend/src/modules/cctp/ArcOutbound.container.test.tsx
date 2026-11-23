@@ -5,8 +5,8 @@ import { BridgeStatus } from '@cowprotocol/sdk-bridging'
 
 import { fireEvent, render, screen } from '@testing-library/react'
 
-import { arcReceiptAtom } from './arcReceipt.atoms'
 import { ArcOutboundRecovery } from './ArcOutboundRecovery.container'
+import { arcReceiptAtom } from './arcReceipt.atoms'
 
 jest.mock('legacy/state/application/hooks', () => ({ useToggleWalletModal: jest.fn() }))
 jest.mock('common/constants/featureFlags', () => ({ CCTP_ENABLED: false }))
