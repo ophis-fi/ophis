@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { sql, db, schema } from './db/index.js';
 import { getWalletStatus } from './tierer.js';
 import { renderTierPage } from './tier-page.js';
-import { renderStatsPage, CHAIN_ICON, PRODUCTION_CHAIN_IDS, EXECUTION_FACTS, type PublicStats } from './stats-page.js';
+import { renderStatsPage, CHAIN_ICON, PRODUCTION_CHAIN_IDS, RETIRED_CHAIN_IDS, EXECUTION_FACTS, type PublicStats } from './stats-page.js';
 import { isDefiLlamaBackfillComplete } from './defillamaBackfill.js';
 import { computeDefiLlamaDay, computeDefiLlamaDayUsers, computePublicStats } from './stats.js';
 import { readPublicDataFreshness, type PublicDataFreshness } from './freshness.js';
@@ -723,7 +723,8 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       if (scope.some(id => {
         const source = dataSources?.find(s => s.chainId === id);
         return !source || (source.status !== 'fresh' && source.status !== 'stale')
-          || !source.lastSuccessAt || !(Date.parse(source.lastSuccessAt) >= Date.now() - 26 * 60 * 60_000)
+          || !source.lastSuccessAt
+          || (!RETIRED_CHAIN_IDS.includes(id) && !(Date.parse(source.lastSuccessAt) >= Date.now() - 26 * 60 * 60_000))
           || !source.coveredThrough
           || !(Date.parse(source.coveredThrough) >= parsed.getTime() + 86_400_000);
       })) {

@@ -34,6 +34,12 @@ async function reportingIsReady(requestedChainIds?: readonly number[]): Promise<
         )
       )
       AND NOT EXISTS (
+        SELECT 1 FROM retired_chain_backfills r WHERE r.chain_id = ANY(${chainIds})
+          AND NOT EXISTS (SELECT 1 FROM wallet_chain_fetches f
+            WHERE f.wallet = r.wallet AND f.chain_id = r.chain_id AND NOT f.failed
+              AND f.last_success_at IS NOT NULL AND f.covered_through >= r.required_through)
+      )
+      AND NOT EXISTS (
         SELECT 1 FROM defillama_fills
         WHERE chain_id = ANY(${chainIds})
           AND (fee_verified = false

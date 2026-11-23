@@ -38,7 +38,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   mocks.decoder.mockReset().mockResolvedValue(0);
-  await sql`TRUNCATE tracked_wallets, trades, defillama_fills, defillama_backfill_wallets, non_ophis_orders, chain_source_fetches, chain_scan_coverage CASCADE`;
+  await sql`TRUNCATE tracked_wallets, trades, defillama_fills, defillama_backfill_wallets, non_ophis_orders, chain_source_fetches, chain_scan_coverage, retired_chain_backfills CASCADE`;
   await sql`INSERT INTO tracked_wallets (wallet) VALUES (decode(${owner.slice(2)}, 'hex'))`;
   mocks.trades.mockReset().mockImplementation(async ({ chainId, owner: account }) => {
     if (chainId === 4663) throw new Error('Robinhood orderbook unavailable');
@@ -216,6 +216,13 @@ it('does not dequeue a wallet until all production chain pairs cover the repair 
     ON CONFLICT (wallet, chain_id) DO UPDATE SET last_success_at = now(), covered_through = now(), failed = false`;
   await runFetcher(deps, { staleBefore: boundary });
   expect((await sql`SELECT count(*)::int AS n FROM defillama_backfill_wallets`)[0]!.n).toBe(0);
+  const { isDefiLlamaBackfillComplete } = await import('../src/defillamaBackfill.js');
+  expect(await isDefiLlamaBackfillComplete([130])).toBe(false);
+  const [archived] = await sql`SELECT chain_id, required_through FROM retired_chain_backfills`;
+  expect(archived!.chain_id).toBe(130);
+  await sql`INSERT INTO wallet_chain_fetches (wallet, chain_id, last_success_at, covered_through)
+    VALUES (decode(${owner.slice(2)}, 'hex'), 130, now(), now())`;
+  expect(await isDefiLlamaBackfillComplete([130])).toBe(true);
 });
 
 it('requires Arc discovery coverage even when the decoder flag is absent', async () => {

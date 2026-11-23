@@ -1,5 +1,5 @@
 import type { Sql } from 'postgres';
-import { ACTIVE_PRODUCTION_CHAIN_IDS } from './stats-page.js';
+import { ACTIVE_PRODUCTION_CHAIN_IDS, PRODUCTION_CHAIN_IDS } from './stats-page.js';
 import { DECODER_ETHFLOW_OWNERS, OPHIS_ETHFLOW_OWNER_BY_CHAIN } from './fetcher.js';
 import { settleDecoderChains } from './cow/onchain.js';
 import { ARC_CHAIN_ID } from './affiliate/rates.js';
@@ -69,10 +69,10 @@ export function assessPublicDataFreshness(
   };
 }
 
-function requiredSources(sql: Sql, enrolledThrough: string | null) {
+function requiredSources(sql: Sql, chainIds: readonly number[], enrolledThrough: string | null) {
   return sql`
     SELECT c.chain_id, 'wallet' AS source, f.wallet IS NOT NULL AS checked, f.failed, f.last_success_at, f.covered_through
-    FROM unnest(${[...ACTIVE_PRODUCTION_CHAIN_IDS]}::int[]) c(chain_id)
+    FROM unnest(${[...chainIds]}::int[]) c(chain_id)
     CROSS JOIN tracked_wallets w
     LEFT JOIN wallet_chain_fetches f ON f.wallet = w.wallet AND f.chain_id = c.chain_id
     WHERE w.first_seen <= COALESCE(${enrolledThrough}::timestamptz, 'infinity'::timestamptz)
@@ -89,14 +89,14 @@ function requiredSources(sql: Sql, enrolledThrough: string | null) {
       WHERE source = 'decoder'
     ) c
     LEFT JOIN chain_source_fetches f ON f.chain_id = c.chain_id AND f.source = c.source
-    WHERE c.chain_id = ANY(${[...ACTIVE_PRODUCTION_CHAIN_IDS]}::int[])
+    WHERE c.chain_id = ANY(${[...chainIds]}::int[])
   `;
 }
 
 /** Only a completed fetch may publish proof for the wallet cohort enrolled when it started. */
 export async function recordCompletedCoverage(sql: Sql, startedAt: string): Promise<void> {
   await sql`
-    WITH sources AS (${requiredSources(sql, startedAt)})
+    WITH sources AS (${requiredSources(sql, ACTIVE_PRODUCTION_CHAIN_IDS, startedAt)})
     INSERT INTO chain_scan_coverage (chain_id, covered_through)
     SELECT chain_id, LEAST(min(covered_through), ${startedAt}::timestamptz)
     FROM sources GROUP BY chain_id
@@ -112,6 +112,7 @@ export async function readPublicDataFreshness(
   nowMs = Date.now(),
   coverage: 'completed-scan' | 'current-sources' = 'completed-scan',
 ): Promise<PublicDataFreshness> {
+  const chainIds = coverage === 'current-sources' ? PRODUCTION_CHAIN_IDS : ACTIVE_PRODUCTION_CHAIN_IDS;
   const [row] = await sql<{ refreshed_at: string | null }[]>`
     SELECT refreshed_at::text
     FROM public_data_refresh_state
@@ -122,7 +123,7 @@ export async function readPublicDataFreshness(
     last_success_at: string | null; covered_through: string | null; completed_through: string | null; unpriced: number;
     pending_wallets: number; incomplete_sources: string[];
   }[]>`
-    WITH sources AS (${requiredSources(sql, null)})
+    WITH sources AS (${requiredSources(sql, chainIds, null)})
     SELECT a.chain_id, count(c.source)::int AS total, count(*) FILTER (WHERE c.checked)::int AS checked,
       count(*) FILTER (WHERE c.failed)::int AS failed,
       count(*) FILTER (WHERE c.failed AND c.source = 'wallet')::int AS failed_wallets,
@@ -136,7 +137,7 @@ export async function readPublicDataFreshness(
       CASE WHEN count(*) FILTER (WHERE c.covered_through IS NULL) = 0
         THEN min(c.covered_through)::text END AS covered_through,
       (SELECT count(*)::int FROM trades t WHERE t.chain_id = a.chain_id AND t.value_usd IS NULL) AS unpriced
-    FROM unnest(${[...ACTIVE_PRODUCTION_CHAIN_IDS]}::int[]) a(chain_id)
+    FROM unnest(${[...chainIds]}::int[]) a(chain_id)
     LEFT JOIN sources c ON c.chain_id = a.chain_id
     LEFT JOIN chain_scan_coverage sc ON sc.chain_id = a.chain_id
     GROUP BY a.chain_id, sc.covered_through ORDER BY a.chain_id

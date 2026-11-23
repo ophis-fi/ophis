@@ -67,7 +67,8 @@ export const PRODUCTION_CHAIN_IDS: readonly number[] = Object.freeze(
   Object.keys(CHAIN_NAME).map(Number),
 );
 
-export const ACTIVE_PRODUCTION_CHAIN_IDS = Object.freeze(PRODUCTION_CHAIN_IDS.filter(id => id !== 130));
+export const RETIRED_CHAIN_IDS: readonly number[] = Object.freeze([130]);
+export const ACTIVE_PRODUCTION_CHAIN_IDS = Object.freeze(PRODUCTION_CHAIN_IDS.filter(id => !RETIRED_CHAIN_IDS.includes(id)));
 
 /**
  * Static execution-model facts served alongside the cumulative figures on the
@@ -142,7 +143,7 @@ export function renderStatsPage(s: PublicStats, query = new URLSearchParams()): 
     const source = s.dataSources?.find(source => source.chainId === c.chainId);
     const state = source && { fresh: '', pending: 'Catching up', unavailable: 'Unavailable', partial: 'Partial', stale: 'Delayed' }[source.status];
     const date = source?.coveredThrough && esc(source.coveredThrough.slice(0, 16).replace('T', ' ')) + ' UTC';
-    const retired = PRODUCTION_CHAIN_IDS.includes(c.chainId) && !ACTIVE_PRODUCTION_CHAIN_IDS.includes(c.chainId);
+    const retired = RETIRED_CHAIN_IDS.includes(c.chainId);
     const covered = retired ? 'Retired'
       : [date || 'First scan pending', state === 'Catching up' && !date ? '' : state].filter(Boolean).join(' · ');
     return `<tr><th scope="row"><span class="chain">${icon ? `<img src="/chain-icons/${c.chainId}" width="24" height="24" alt="" decoding="async">` : ''}${esc(name)}</span></th><td class="num">${fmtUsd(c.volumeUsd)}</td><td class="num">${fmtInt(c.trades)}</td><td class="num">${covered}</td></tr>`;
