@@ -18,7 +18,7 @@ import { getAddress, type Address, type Hex } from 'viem'
 
 import { arcReceiptAtom, arcReceiptKey, readArcReceipt, receiptSchema, type Receipt } from './arcReceipt.atoms'
 import { cctpClient } from './cctp.service'
-import { Card } from './Cctp.styled'
+import * as styledEl from './Cctp.styled'
 
 const relay = new RelayBridgeProvider()
 interface DeliveryStatus {
@@ -69,14 +69,14 @@ export function ArcOutboundRecovery(): ReactNode {
   const record = useMemo(() => receiptSchema.safeParse(raw).data, [raw])
   if (raw === null || !account) return null
   return (
-    <Card aria-label="Saved Arc bridge">
+    <styledEl.Card aria-label="Saved Arc bridge">
       {record && arcDestinationUsdc(record.destination) ? (
         <ArcReceipt key={JSON.stringify(raw)} record={record} owner={getAddress(account)} />
       ) : (
         <p role="alert">Saved Arc bridge details could not be read. Check your wallet history.</p>
       )}
       <DismissTracking key={JSON.stringify([owner, raw])} owner={owner} saved={raw} />
-    </Card>
+    </styledEl.Card>
   )
 }
 

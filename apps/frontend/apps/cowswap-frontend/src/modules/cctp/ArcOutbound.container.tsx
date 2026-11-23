@@ -19,7 +19,7 @@ import {
 } from './arcOutbound.service'
 import { arcReceiptAtom, arcReceiptKey, readArcReceipt, type Receipt } from './arcReceipt.atoms'
 import { cctpClient } from './cctp.service'
-import { Card } from './Cctp.styled'
+import * as styledEl from './Cctp.styled'
 import { switchCctpChain } from './cctpWallet.service'
 import { useCctpWallet } from './useCctpWallet'
 
@@ -36,7 +36,7 @@ export function ArcBridgeSelector({
   onChange: (value: ArcBridgeProvider | 'Circle') => void
 }): ReactNode {
   return (
-    <Card>
+    <styledEl.Card>
       <label>
         Bridge provider
         <select value={value} onChange={(event) => onChange(event.target.value as typeof value)}>
@@ -45,7 +45,7 @@ export function ArcBridgeSelector({
           {RELAY_ENABLED && <option>Relay</option>}
         </select>
       </label>
-    </Card>
+    </styledEl.Card>
   )
 }
 async function submit(
@@ -133,7 +133,7 @@ export function ArcOutboundForm({
   }
   if (!account) return <button onClick={connect}>Connect wallet</button>
   return (
-    <Card aria-label="Arc bridge quote">
+    <styledEl.Card aria-label="Arc bridge quote">
       {chainId !== ARC_CHAIN_ID ? (
         <button
           disabled={busy || !wallet}
@@ -172,6 +172,6 @@ export function ArcOutboundForm({
       )}
       {busy && <p role="status">Waiting for the bridge or wallet…</p>}
       {error && <p role="alert">{error}</p>}
-    </Card>
+    </styledEl.Card>
   )
 }

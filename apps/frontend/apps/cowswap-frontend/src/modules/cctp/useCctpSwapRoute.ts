@@ -1,36 +1,24 @@
-import { useState } from 'react'
-
 import { useIsBridgingEnabled } from '@cowprotocol/common-hooks'
-import { areAddressesEqual, OrderKind } from '@cowprotocol/cow-sdk'
+import { areAddressesEqual } from '@cowprotocol/cow-sdk'
 import { Currency, CurrencyAmount } from '@cowprotocol/currency'
 import { AccountType } from '@cowprotocol/types'
 import { useAccountType, useIsSmartContractWallet, useWalletInfo } from '@cowprotocol/wallet'
 
-import { cctpRouteAsset, isArcOutboundPair, isBtcCctpSwap } from 'entities/cctp'
+import { type cctpRouteAsset } from 'entities/cctp'
 
 import { type TradeWidgetParams } from 'modules/trade'
 
-import { type ArcBridgeProvider } from './arcOutbound.service'
 import { type BtcSwapPending } from './btcSwapState'
 import { type CctpQuote } from './cctp.service'
+import { type CctpSelection, useBridgeSelection } from './useBridgeSelection'
 import { useBtcCctpSwap } from './useBtcCctpSwap'
 import { useCctpTransfer } from './useCctpTransfer'
-
-interface CctpSelection {
-  enabled: boolean
-  input: Currency | null | undefined
-  output: Currency | null | undefined
-  amount: CurrencyAmount<Currency> | null | undefined
-  recipient: string | null | undefined
-  recipientAddress: string | null | undefined
-  orderKind: OrderKind
-}
 
 export function useCctpSwapRoute(selection: CctpSelection): {
   params: Partial<TradeWidgetParams>
   active: boolean
   arcPair: boolean
-  outbound?: { provider: ArcBridgeProvider | 'Circle'; choose(value: ArcBridgeProvider | 'Circle'): void; key: string }
+  outbound?: ReturnType<typeof useBridgeSelection>['outbound']
   asset: ReturnType<typeof cctpRouteAsset>
   flow: ReturnType<typeof useCctpTransfer>
   output: CurrencyAmount<Currency> | null
@@ -65,42 +53,19 @@ export function useCctpSwapRoute(selection: CctpSelection): {
     asset,
     flow: { ...flow, quote: validQuote },
     blocked,
-    output: cctpOutputAmount(validQuote || btc.quote?.bridge, input, output, active && circle),
+    output: cctpOutputAmount(validQuote || btc.quote?.bridge, input, output, asset, active && circle),
   }
-}
-
-function useBridgeSelection(
-  selection: CctpSelection,
-  enabled: boolean,
-  blocked: string | null,
-  wallet: unknown[],
-): {
-  arcPair: boolean
-  asset: ReturnType<typeof cctpRouteAsset>
-  conversion: boolean
-  key: string
-  circle: boolean
-  outbound: ReturnType<typeof useCctpSwapRoute>['outbound']
-} {
-  const { input, output, orderKind } = selection
-  const sell = orderKind === OrderKind.SELL
-  const arcPair = enabled && isArcOutboundPair(input, output)
-  const { asset, conversion } = cctpSelectionAsset(enabled && sell, input, output)
-  const [preferred, choose] = useState<ArcBridgeProvider | 'Circle'>('Circle')
-  const provider = preferred === 'Circle' && !asset ? 'Across' : preferred
-  const key = cctpSelectionKey(selection, [...wallet, asset, provider])
-  const outbound = arcPair && sell && !blocked ? { provider, choose, key } : undefined
-  return { arcPair, asset, conversion, key, outbound, circle: !outbound || provider === 'Circle' }
 }
 
 function cctpOutputAmount(
   quote: CctpQuote | null | undefined,
   input: Currency | null | undefined,
   output: Currency | null | undefined,
-  active: boolean,
+  asset: ReturnType<typeof cctpRouteAsset>,
+  visible: boolean,
 ): CurrencyAmount<Currency> | null {
-  const { asset } = cctpSelectionAsset(active, input, output)
   if (
+    !visible ||
     !quote ||
     !input ||
     !output ||
@@ -125,22 +90,6 @@ function cctpBlockedReason(
   if (recipient && !areAddressesEqual(recipientAddress || recipient, account))
     return 'This bridge delivers to your connected wallet. Clear the custom recipient to continue.'
   return null
-}
-
-function cctpSelectionKey(selection: CctpSelection, wallet: unknown[]): string {
-  const { enabled, input, output, amount, recipient, recipientAddress, orderKind } = selection
-  return JSON.stringify([
-    enabled,
-    input?.chainId,
-    output?.chainId,
-    input?.wrapped.address,
-    output?.wrapped.address,
-    amount?.quotient.toString(),
-    recipient,
-    recipientAddress,
-    orderKind,
-    ...wallet,
-  ])
 }
 
 function cctpVisibleQuote(
@@ -175,19 +124,4 @@ function cctpWidgetParams(active: boolean, busy: string): Partial<TradeWidgetPar
         disableTokenSwitch: true,
       }
     : {}
-}
-
-function cctpSelectionAsset(
-  enabled: boolean,
-  input: CctpSelection['input'],
-  output: CctpSelection['output'],
-): {
-  conversion: boolean
-  asset: ReturnType<typeof cctpRouteAsset>
-} {
-  const conversion = enabled && isBtcCctpSwap(input, output)
-  return {
-    conversion,
-    asset: enabled ? (cctpRouteAsset(input, output) ?? (conversion ? 'cirBTC' : undefined)) : undefined,
-  }
 }
