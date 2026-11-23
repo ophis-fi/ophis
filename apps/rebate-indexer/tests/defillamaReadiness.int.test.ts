@@ -209,4 +209,13 @@ describe('DefiLlama readiness', () => {
       expect((await app.inject({ url: '/defillama?date=2026-08-20&chainIds=1,56' })).statusCode).toBe(503);
     } finally { await app.close(); }
   });
+  it('completes the active backfill independently of unverified archived fills', async () => {
+    await sql`UPDATE defillama_reporting_state SET arc_reconciled_through_block = 23345455`;
+    await sql`DELETE FROM defillama_backfill_wallets`;
+    const { completeDefiLlamaBackfillIfReady } = await import('../src/defillamaBackfill.js');
+    expect(await completeDefiLlamaBackfillIfReady()).toBe(true);
+    expect(await isDefiLlamaBackfillComplete([130])).toBe(false);
+    expect(await isDefiLlamaBackfillComplete()).toBe(false);
+  });
+
 });

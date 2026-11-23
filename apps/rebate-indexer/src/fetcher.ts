@@ -12,7 +12,7 @@ import {
 import { OPHIS_SAFE_ADDRESS } from './safe/addresses.js';
 import { logger } from './logger.js';
 import { getRpcClient } from './rpc/client.js';
-import { PRODUCTION_CHAIN_IDS } from './stats-page.js';
+import { ACTIVE_PRODUCTION_CHAIN_IDS, PRODUCTION_CHAIN_IDS } from './stats-page.js';
 import { resolveAppData } from './cow/appDataResolver.js';
 
 // The Ophis partner-fee recipient (the Safe). A fee only counts toward the rebate
@@ -1126,7 +1126,9 @@ export async function runFetcher(
   const lockConn = await sql.reserve();
   let locked = false;
   try {
-    const [lockRow] = await lockConn<{ locked: boolean }[]>`SELECT pg_try_advisory_lock(${FETCHER_LOCK_KEY}) AS locked`;
+    const [lockRow] = await lockConn<{ locked: boolean; started_at: string }[]>`
+      SELECT pg_try_advisory_lock(${FETCHER_LOCK_KEY}) AS locked, statement_timestamp()::text AS started_at
+    `;
     locked = lockRow?.locked === true;
     if (!locked) {
       log.info('fetcher already running (advisory lock held); skipping');
@@ -1369,7 +1371,7 @@ export async function runFetcher(
       if (reportingOk) {
         await sql`DELETE FROM defillama_backfill_wallets q WHERE q.wallet = decode(${owner.slice(2)}, 'hex')
           AND NOT EXISTS (
-            SELECT 1 FROM unnest(${[...PRODUCTION_CHAIN_IDS]}::int[]) c(chain_id)
+            SELECT 1 FROM unnest(${[...ACTIVE_PRODUCTION_CHAIN_IDS]}::int[]) c(chain_id)
             LEFT JOIN wallet_chain_fetches f ON f.wallet = q.wallet AND f.chain_id = c.chain_id
             WHERE f.failed OR f.last_success_at IS NULL OR (f.covered_through >= (
               SELECT backfill_started_at FROM defillama_reporting_state WHERE singleton = true
@@ -1453,6 +1455,8 @@ export async function runFetcher(
     // runFetcher is invoked in a LOOP by replay-from-genesis; pruning inside it
     // would delete aged, not-yet-refetched wallets before later iterations reach
     // them, silently rebuilding an incomplete ledger.
+    const { recordCompletedCoverage } = await import('./freshness.js');
+    await recordCompletedCoverage(sql, lockRow!.started_at);
     log.info({ owners: owners.length, inserted }, 'fetcher complete');
     return { inserted, owners: owners.length };
   } finally {

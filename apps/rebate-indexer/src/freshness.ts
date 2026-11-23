@@ -1,5 +1,5 @@
 import type { Sql } from 'postgres';
-import { PRODUCTION_CHAIN_IDS } from './stats-page.js';
+import { ACTIVE_PRODUCTION_CHAIN_IDS } from './stats-page.js';
 import { DECODER_ETHFLOW_OWNERS, OPHIS_ETHFLOW_OWNER_BY_CHAIN } from './fetcher.js';
 import { settleDecoderChains } from './cow/onchain.js';
 import { ARC_CHAIN_ID } from './affiliate/rates.js';
@@ -21,6 +21,8 @@ export interface PublicDataSource {
   lastSuccessAt: string | null;
   coveredThrough: string | null;
   failedWallets: number;
+  pendingWallets: number;
+  incompleteSources: string[];
   unpricedTrades: number;
 }
 
@@ -67,10 +69,48 @@ export function assessPublicDataFreshness(
   };
 }
 
+function requiredSources(sql: Sql, enrolledThrough: string | null) {
+  return sql`
+    SELECT c.chain_id, 'wallet' AS source, f.wallet IS NOT NULL AS checked, f.failed, f.last_success_at, f.covered_through
+    FROM unnest(${[...ACTIVE_PRODUCTION_CHAIN_IDS]}::int[]) c(chain_id)
+    CROSS JOIN tracked_wallets w
+    LEFT JOIN wallet_chain_fetches f ON f.wallet = w.wallet AND f.chain_id = c.chain_id
+    WHERE w.first_seen <= COALESCE(${enrolledThrough}::timestamptz, 'infinity'::timestamptz)
+      AND ('0x' || encode(w.wallet, 'hex')) <> ALL(${[...DECODER_ETHFLOW_OWNERS]})
+    UNION ALL
+    SELECT c.chain_id, c.source, f.chain_id IS NOT NULL AS checked, f.failed, f.last_success_at, f.covered_through
+    FROM (
+      SELECT 'ethflow' AS source, unnest(${Object.keys(OPHIS_ETHFLOW_OWNER_BY_CHAIN).map(Number)}::int[]) AS chain_id
+      UNION
+      -- Arc needs forward discovery after its reconciliation snapshot.
+      SELECT 'decoder', unnest(${[...new Set([...settleDecoderChains(), ARC_CHAIN_ID])]}::int[])
+      UNION
+      SELECT source, chain_id FROM chain_source_fetches
+      WHERE source = 'decoder'
+    ) c
+    LEFT JOIN chain_source_fetches f ON f.chain_id = c.chain_id AND f.source = c.source
+    WHERE c.chain_id = ANY(${[...ACTIVE_PRODUCTION_CHAIN_IDS]}::int[])
+  `;
+}
+
+/** Only a completed fetch may publish proof for the wallet cohort enrolled when it started. */
+export async function recordCompletedCoverage(sql: Sql, startedAt: string): Promise<void> {
+  await sql`
+    WITH sources AS (${requiredSources(sql, startedAt)})
+    INSERT INTO chain_scan_coverage (chain_id, covered_through)
+    SELECT chain_id, LEAST(min(covered_through), ${startedAt}::timestamptz)
+    FROM sources GROUP BY chain_id
+    HAVING bool_and(failed IS FALSE AND last_success_at IS NOT NULL AND covered_through IS NOT NULL)
+    ON CONFLICT (chain_id) DO UPDATE SET covered_through = EXCLUDED.covered_through
+    WHERE chain_scan_coverage.covered_through < EXCLUDED.covered_through
+  `;
+}
+
 /** Read the durable scorer publication heartbeat. */
 export async function readPublicDataFreshness(
   sql: Sql,
   nowMs = Date.now(),
+  coverage: 'completed-scan' | 'current-sources' = 'completed-scan',
 ): Promise<PublicDataFreshness> {
   const [row] = await sql<{ refreshed_at: string | null }[]>`
     SELECT refreshed_at::text
@@ -79,48 +119,43 @@ export async function readPublicDataFreshness(
   `;
   const sources = await sql<{
     chain_id: number; total: number; checked: number; failed: number; failed_wallets: number; overdue: number;
-    last_success_at: string | null; covered_through: string | null; unpriced: number;
+    last_success_at: string | null; covered_through: string | null; completed_through: string | null; unpriced: number;
+    pending_wallets: number; incomplete_sources: string[];
   }[]>`
-    WITH sources AS (
-      SELECT c.chain_id, true AS is_wallet, f.wallet IS NOT NULL AS checked, f.failed, f.last_success_at, f.covered_through
-      FROM unnest(${[...PRODUCTION_CHAIN_IDS]}::int[]) c(chain_id)
-      CROSS JOIN tracked_wallets w
-      LEFT JOIN wallet_chain_fetches f ON f.wallet = w.wallet AND f.chain_id = c.chain_id
-      WHERE ('0x' || encode(w.wallet, 'hex')) <> ALL(${[...DECODER_ETHFLOW_OWNERS]})
-      UNION ALL
-      SELECT c.chain_id, false AS is_wallet, f.chain_id IS NOT NULL AS checked, f.failed, f.last_success_at, f.covered_through
-      FROM (
-        SELECT 'ethflow' AS source, unnest(${Object.keys(OPHIS_ETHFLOW_OWNER_BY_CHAIN).map(Number)}::int[]) AS chain_id
-        UNION
-        -- Arc needs forward discovery after its reconciliation snapshot.
-        SELECT 'decoder', unnest(${[...new Set([...settleDecoderChains(), ARC_CHAIN_ID])]}::int[])
-        UNION
-        SELECT source, chain_id FROM chain_source_fetches
-        WHERE source = 'decoder' AND chain_id = ANY(${[...PRODUCTION_CHAIN_IDS]})
-      ) c
-      LEFT JOIN chain_source_fetches f ON f.chain_id = c.chain_id AND f.source = c.source
-    )
-    SELECT c.chain_id, count(*)::int AS total, count(*) FILTER (WHERE c.checked)::int AS checked,
+    WITH sources AS (${requiredSources(sql, null)})
+    SELECT a.chain_id, count(c.source)::int AS total, count(*) FILTER (WHERE c.checked)::int AS checked,
       count(*) FILTER (WHERE c.failed)::int AS failed,
-      count(*) FILTER (WHERE c.failed AND c.is_wallet)::int AS failed_wallets,
+      count(*) FILTER (WHERE c.failed AND c.source = 'wallet')::int AS failed_wallets,
       count(*) FILTER (WHERE c.covered_through IS NULL OR c.covered_through <
         ${new Date(nowMs - 2 * refreshIntervalMs()).toISOString()}::timestamptz)::int AS overdue,
+      count(*) FILTER (WHERE c.source = 'wallet' AND c.failed IS NOT TRUE AND c.covered_through IS NULL)::int AS pending_wallets,
+      COALESCE(array_agg(c.source ORDER BY c.source) FILTER (WHERE c.source <> 'wallet'
+        AND (c.failed IS NOT FALSE OR c.covered_through IS NULL)), '{}'::text[]) AS incomplete_sources,
+      sc.covered_through::text AS completed_through,
       min(c.last_success_at)::text AS last_success_at,
       CASE WHEN count(*) FILTER (WHERE c.covered_through IS NULL) = 0
         THEN min(c.covered_through)::text END AS covered_through,
-      (SELECT count(*)::int FROM trades t WHERE t.chain_id = c.chain_id AND t.value_usd IS NULL) AS unpriced
-    FROM sources c
-    GROUP BY c.chain_id ORDER BY c.chain_id
+      (SELECT count(*)::int FROM trades t WHERE t.chain_id = a.chain_id AND t.value_usd IS NULL) AS unpriced
+    FROM unnest(${[...ACTIVE_PRODUCTION_CHAIN_IDS]}::int[]) a(chain_id)
+    LEFT JOIN sources c ON c.chain_id = a.chain_id
+    LEFT JOIN chain_scan_coverage sc ON sc.chain_id = a.chain_id
+    GROUP BY a.chain_id, sc.covered_through ORDER BY a.chain_id
   `;
-  const dataSources: PublicDataSource[] = sources.map((s) => ({
-    chainId: s.chain_id,
-    status: s.checked < s.total ? 'pending' : s.failed === s.total ? 'unavailable'
-      : s.failed > 0 || s.unpriced > 0 ? 'partial' : s.overdue > 0 ? 'stale' : 'fresh',
-    lastSuccessAt: s.last_success_at,
-    coveredThrough: s.covered_through ?? null,
-    failedWallets: s.failed_wallets,
-    unpricedTrades: s.unpriced,
-  }));
+  const dataSources: PublicDataSource[] = sources.map((s) => {
+    const through = coverage === 'current-sources' ? s.covered_through : s.completed_through;
+    return {
+      chainId: s.chain_id,
+      status: s.total === 0 ? 'pending' : s.failed === s.total ? 'unavailable' : s.failed > 0 || s.unpriced > 0 ? 'partial'
+        : s.checked < s.total || !s.covered_through || !through ? 'pending'
+        : s.overdue > 0 || Date.parse(through) < nowMs - 2 * refreshIntervalMs() ? 'stale' : 'fresh',
+      lastSuccessAt: s.last_success_at,
+      coveredThrough: through ?? null,
+      failedWallets: s.failed_wallets,
+      pendingWallets: s.pending_wallets,
+      incompleteSources: s.incomplete_sources,
+      unpricedTrades: s.unpriced,
+    };
+  });
   const freshness = assessPublicDataFreshness(row?.refreshed_at ?? null, nowMs);
   if (freshness.dataFresh && dataSources.some((s) => s.status !== 'fresh')) {
     return { ...freshness, dataFresh: false, dataStatus: 'degraded', dataStaleReason: 'ingestion_incomplete', dataSources };

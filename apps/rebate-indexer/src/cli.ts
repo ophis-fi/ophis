@@ -70,7 +70,7 @@ const cmds: Record<string, (args: string[]) => Promise<void>> = {
   async ['replay-from-genesis']() {
     await runMigrations();
     log.info('clearing derived state');
-    await sql`TRUNCATE rebate_batch_entries, rebate_batches, defillama_fills, trades, wallet_chain_fetches, settle_scan_cursor RESTART IDENTITY CASCADE`;
+    await sql`TRUNCATE rebate_batch_entries, rebate_batches, defillama_fills, trades, wallet_chain_fetches, chain_scan_coverage, settle_scan_cursor RESTART IDENTITY CASCADE`;
     // Retain required source identities while invalidating their old coverage.
     await sql`UPDATE chain_source_fetches SET last_attempt_at = now(), last_success_at = NULL, covered_through = NULL, failed = true`;
     await sql`UPDATE defillama_reporting_state SET backfill_started_at = now(), completed_at = NULL, arc_reconciled_through_block = NULL WHERE singleton = true`;

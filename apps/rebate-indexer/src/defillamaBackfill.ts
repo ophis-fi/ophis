@@ -1,5 +1,5 @@
 import { sql } from './db/index.js';
-import { PRODUCTION_CHAIN_IDS } from './stats-page.js';
+import { ACTIVE_PRODUCTION_CHAIN_IDS, PRODUCTION_CHAIN_IDS } from './stats-page.js';
 import { DECODER_ETHFLOW_OWNERS } from './fetcher.js';
 import { ARC_CHAIN_ID } from './affiliate/rates.js';
 
@@ -63,11 +63,10 @@ async function reportingIsReady(requestedChainIds?: readonly number[]): Promise<
 }
 
 /**
- * Keep the durable completion timestamp in sync with live readiness. Any later
- * unverified, unpriced, identity-less, or fill-less row reopens reporting.
+ * Track completion for the active fetcher. Historical reports still validate every requested chain.
  */
 export async function completeDefiLlamaBackfillIfReady(): Promise<boolean> {
-  const ready = await reportingIsReady();
+  const ready = await reportingIsReady(ACTIVE_PRODUCTION_CHAIN_IDS);
   await sql`
     UPDATE defillama_reporting_state
     SET completed_at = CASE

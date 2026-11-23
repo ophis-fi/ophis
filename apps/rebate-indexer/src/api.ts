@@ -717,7 +717,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       return reply.code(503).send({ error: 'DefiLlama settlement history backfill in progress' });
     }
     if (scope !== undefined) {
-      const { dataSources } = await readPublicDataFreshness(sql);
+      const { dataSources } = await readPublicDataFreshness(sql, Date.now(), 'current-sources');
       // Historical days need day-end coverage and a recent successful check,
       // even when that coverage is too old for the live stats freshness window.
       if (scope.some(id => {

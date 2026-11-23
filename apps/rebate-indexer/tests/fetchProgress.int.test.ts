@@ -9,7 +9,7 @@ vi.mock('../src/cow/onchain.js', async (importOriginal) => ({
   runSettleDecoder: mocks.decoder,
 }));
 vi.mock('../src/cow/client.js', () => ({
-  SUPPORTED_CHAIN_IDS: [100, 130],
+  SUPPORTED_CHAIN_IDS: [100, 4663],
   listTrades: mocks.trades,
   getOrder: mocks.order,
   hasAccountOrders: vi.fn(async () => false),
@@ -38,10 +38,10 @@ afterAll(async () => {
 
 beforeEach(async () => {
   mocks.decoder.mockReset().mockResolvedValue(0);
-  await sql`TRUNCATE tracked_wallets, trades, defillama_fills, defillama_backfill_wallets, non_ophis_orders, chain_source_fetches CASCADE`;
+  await sql`TRUNCATE tracked_wallets, trades, defillama_fills, defillama_backfill_wallets, non_ophis_orders, chain_source_fetches, chain_scan_coverage CASCADE`;
   await sql`INSERT INTO tracked_wallets (wallet) VALUES (decode(${owner.slice(2)}, 'hex'))`;
   mocks.trades.mockReset().mockImplementation(async ({ chainId, owner: account }) => {
-    if (chainId === 130) throw new Error('Unichain VM unavailable');
+    if (chainId === 4663) throw new Error('Robinhood orderbook unavailable');
     if (account !== owner) return [];
     return [{ blockNumber: 100, logIndex: 1, orderUid: uid, owner, sellToken: token, buyToken: token,
       sellAmount: '1000000', buyAmount: '1000000', txHash: `0x${'dd'.repeat(32)}` }];
@@ -62,7 +62,7 @@ it('records success independently and retries only the failed chain within a bou
   const boundary = new Date(Date.now() - 1_000);
   expect((await runFetcher(deps, { staleBefore: boundary })).inserted).toBe(1);
   const first = await sql`SELECT chain_id, last_success_at, covered_through, failed FROM wallet_chain_fetches ORDER BY chain_id`;
-  expect(first.map(r => [r.chain_id, r.failed])).toEqual([[100, false], [130, true]]);
+  expect(first.map(r => [r.chain_id, r.failed])).toEqual([[100, false], [4663, true]]);
   expect(first[0]!.last_success_at).not.toBeNull();
   expect(first[1]!.last_success_at).toBeNull();
   expect(first[0]!.covered_through).not.toBeNull();
@@ -70,11 +70,11 @@ it('records success independently and retries only the failed chain within a bou
   expect(first[1]!.covered_through).toBeNull();
   expect((await runFetcher(deps, { staleBefore: boundary })).inserted).toBe(0);
   expect(mocks.trades.mock.calls.filter(([p]) => p.chainId === 100)).toHaveLength(1);
-  expect(mocks.trades.mock.calls.filter(([p]) => p.chainId === 130 && p.owner === owner)).toHaveLength(2);
+  expect(mocks.trades.mock.calls.filter(([p]) => p.chainId === 4663 && p.owner === owner)).toHaveLength(2);
   await (await import('../src/scorer.js')).runScorer();
   const coverage = await (await import('../src/freshness.js')).readPublicDataFreshness(sql);
   expect(coverage.dataFresh).toBe(false);
-  expect(coverage.dataSources?.find(source => source.chainId === 130)?.status).toBe('unavailable');
+  expect(coverage.dataSources?.find(source => source.chainId === 4663)?.status).toBe('unavailable');
 });
 
 it('counts actual inserts when a completed trade is encountered again', async () => {
@@ -135,18 +135,18 @@ it('excludes historical router enrollments before filling a bounded wallet batch
 
 it('reports a synthetic-owner failure even when the tracked wallet succeeds', async () => {
   mocks.trades.mockImplementation(async ({ chainId, owner: account }) => {
-    if (chainId === 130 && account !== owner) throw new Error('router metadata unavailable');
+    if (chainId === 4663 && account !== owner) throw new Error('router metadata unavailable');
     return [];
   });
   await runFetcher(deps);
-  const [tracked] = await sql`SELECT failed FROM wallet_chain_fetches WHERE chain_id = 130`;
-  const [synthetic] = await sql`SELECT failed FROM chain_source_fetches WHERE chain_id = 130 AND source = 'ethflow'`;
+  const [tracked] = await sql`SELECT failed FROM wallet_chain_fetches WHERE chain_id = 4663`;
+  const [synthetic] = await sql`SELECT failed FROM chain_source_fetches WHERE chain_id = 4663 AND source = 'ethflow'`;
   expect(tracked!.failed).toBe(false);
   expect(synthetic!.failed).toBe(true);
   await (await import('../src/scorer.js')).runScorer();
   const coverage = await (await import('../src/freshness.js')).readPublicDataFreshness(sql);
-  expect(coverage.dataSources?.find(source => source.chainId === 130)?.status).toBe('partial');
-  expect(coverage.dataSources?.find(source => source.chainId === 130)?.failedWallets).toBe(0);
+  expect(coverage.dataSources?.find(source => source.chainId === 4663)?.status).toBe('partial');
+  expect(coverage.dataSources?.find(source => source.chainId === 4663)?.failedWallets).toBe(0);
   expect(coverage.dataFresh).toBe(false);
 });
 
@@ -207,12 +207,12 @@ it('does not dequeue a wallet until all production chain pairs cover the repair 
   await sql`UPDATE defillama_reporting_state SET backfill_started_at = now()`;
   await sql`INSERT INTO defillama_backfill_wallets (wallet) VALUES (decode(${owner.slice(2)}, 'hex'))`;
   await sql`INSERT INTO wallet_chain_fetches (wallet, chain_id, last_success_at, covered_through)
-    SELECT decode(${owner.slice(2)}, 'hex'), c, now(), now() FROM unnest(ARRAY[100,130]) c`;
+    SELECT decode(${owner.slice(2)}, 'hex'), c, now(), now() FROM unnest(ARRAY[100,4663]) c`;
   await runFetcher(deps, { staleBefore: boundary });
   expect((await sql`SELECT count(*)::int AS n FROM defillama_backfill_wallets`)[0]!.n).toBe(1);
-  const { PRODUCTION_CHAIN_IDS } = await import('../src/stats-page.js');
+  const { ACTIVE_PRODUCTION_CHAIN_IDS } = await import('../src/stats-page.js');
   await sql`INSERT INTO wallet_chain_fetches (wallet, chain_id, last_success_at, covered_through)
-    SELECT decode(${owner.slice(2)}, 'hex'), c, now(), now() FROM unnest(${[...PRODUCTION_CHAIN_IDS]}::int[]) c
+    SELECT decode(${owner.slice(2)}, 'hex'), c, now(), now() FROM unnest(${[...ACTIVE_PRODUCTION_CHAIN_IDS]}::int[]) c
     ON CONFLICT (wallet, chain_id) DO UPDATE SET last_success_at = now(), covered_through = now(), failed = false`;
   await runFetcher(deps, { staleBefore: boundary });
   expect((await sql`SELECT count(*)::int AS n FROM defillama_backfill_wallets`)[0]!.n).toBe(0);
@@ -228,9 +228,15 @@ it('requires Arc discovery coverage even when the decoder flag is absent', async
   expect((await readPublicDataFreshness(sql)).dataSources?.find(s => s.chainId === 5042)?.status).toBe('pending');
   await sql`INSERT INTO chain_source_fetches (source, chain_id, last_success_at, covered_through)
     VALUES ('decoder', 5042, now(), now())`;
-  expect((await readPublicDataFreshness(sql)).dataSources?.find(s => s.chainId === 5042)?.status).toBe('fresh');
+  const { recordCompletedCoverage } = await import('../src/freshness.js');
+  const [scan] = await sql`SELECT now()::text AS cutoff`;
+  await recordCompletedCoverage(sql, scan!.cutoff);
+  const proof = (await readPublicDataFreshness(sql)).dataSources?.find(s => s.chainId === 5042);
+  expect(proof?.status).toBe('fresh');
   await sql`UPDATE chain_source_fetches SET covered_through = NULL WHERE source = 'decoder'`;
-  expect((await readPublicDataFreshness(sql)).dataSources?.find(s => s.chainId === 5042)?.coveredThrough).toBeNull();
+  expect((await readPublicDataFreshness(sql)).dataSources?.find(s => s.chainId === 5042)).toMatchObject({
+    status: 'pending', coveredThrough: proof!.coveredThrough, incompleteSources: ['decoder'],
+  });
 });
 
 it('keeps a previously recorded decoder required after its configuration is removed', async () => {
@@ -250,18 +256,53 @@ it('a recent publication cannot make old or missing source coverage fresh', asyn
   await sql`INSERT INTO wallet_chain_fetches (wallet, chain_id, last_success_at, covered_through)
     VALUES (decode(${owner.slice(2)}, 'hex'), 100, now(), now() - INTERVAL '3 hours')`;
   const { readPublicDataFreshness } = await import('../src/freshness.js');
-  const status = async () => (await readPublicDataFreshness(sql)).dataSources?.find(s => s.chainId === 100)?.status;
-  expect(await status()).toBe('stale');
+  const { recordCompletedCoverage } = await import('../src/freshness.js');
+  const scan = async () => {
+    const [row] = await sql`SELECT now()::text AS cutoff`;
+    await recordCompletedCoverage(sql, row!.cutoff);
+    return (await readPublicDataFreshness(sql)).dataSources?.find(s => s.chainId === 100)?.status;
+  };
+  expect(await scan()).toBe('stale');
   await sql`UPDATE wallet_chain_fetches SET covered_through = NULL WHERE chain_id = 100`;
-  expect(await status()).toBe('stale');
+  expect(await scan()).toBe('pending');
   await sql`UPDATE wallet_chain_fetches SET covered_through = now() WHERE chain_id = 100`;
-  expect(await status()).toBe('fresh');
+  expect(await scan()).toBe('fresh');
+});
+
+it('seals the starting cohort and retains its proof during enrollment and failed retries', async () => {
+  const newWallet = '22'.repeat(20);
+  const { readPublicDataFreshness } = await import('../src/freshness.js');
+  const source = async () => (await readPublicDataFreshness(sql)).dataSources!.find(s => s.chainId === 100)!;
+  mocks.trades.mockImplementationOnce(async () => {
+    await sql`INSERT INTO tracked_wallets (wallet) VALUES (decode(${newWallet}, 'hex'))`;
+    return [];
+  }).mockResolvedValue([]);
+  await runFetcher(deps);
+  const first = await source();
+  expect(first).toMatchObject({ status: 'pending', pendingWallets: 1 });
+  expect(first.coveredThrough).toBeTruthy();
+  mocks.trades.mockImplementation(async ({ owner: account, chainId }) => {
+    if (account === '0x' + newWallet && chainId === 100) throw new Error('wallet fetch failed');
+    return [];
+  });
+  await runFetcher(deps);
+  expect(await source()).toMatchObject({ status: 'partial', coveredThrough: first.coveredThrough, failedWallets: 1 });
+  mocks.trades.mockResolvedValue([]);
+  await runFetcher(deps, { staleBefore: new Date() });
+  const recovered = await source();
+  expect(recovered.status).toBe('fresh');
+  expect(Date.parse(recovered.coveredThrough!)).toBeGreaterThan(Date.parse(first.coveredThrough!));
+  await sql`INSERT INTO chain_source_fetches (source, chain_id, failed) VALUES ('decoder', 130, true)`;
+  const { dataSources } = await readPublicDataFreshness(sql);
+  expect(dataSources).toHaveLength(13);
+  expect(dataSources!.map(s => s.chainId)).not.toContain(130);
 });
 
 it('retains decoder identities and invalidates coverage and cursors during a full replay', async () => {
   await sql`INSERT INTO chain_source_fetches (source, chain_id, last_success_at, covered_through)
     VALUES ('decoder', 100, now(), now())`;
   await sql`INSERT INTO settle_scan_cursor (chain_id, last_block) VALUES (100, 20)`;
+  await sql`INSERT INTO chain_scan_coverage VALUES (100, now())`;
   // Exercise the actual reset statements only, against this disposable database.
   const source = readFileSync(new URL('../src/cli.ts', import.meta.url), 'utf8');
   const reset = source.split("async ['replay-from-genesis']()", 2)[1]!.split('for (let i = 0;', 1)[0]!;
@@ -271,6 +312,7 @@ it('retains decoder identities and invalidates coverage and cursors during a ful
     expect(statement).not.toContain('${');
     await sql.unsafe(statement!);
   }
+  expect(await sql`SELECT * FROM chain_scan_coverage`).toHaveLength(0);
   const [decoder] = await sql`SELECT chain_id, last_success_at, covered_through, failed FROM chain_source_fetches`;
   expect(decoder).toMatchObject({ chain_id: 100, last_success_at: null, covered_through: null, failed: true });
   expect((await sql`SELECT count(*)::int AS n FROM settle_scan_cursor`)[0]!.n).toBe(0);

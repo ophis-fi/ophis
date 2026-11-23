@@ -60,20 +60,22 @@ describe('assessPublicDataFreshness', () => {
 
 
 describe('ingestion coverage', () => {
-  it('keeps a recent scorer publication degraded while Unichain is unavailable', async () => {
+  it('keeps a recent scorer publication degraded while Optimism is unavailable', async () => {
     const now = Date.now();
     const sql = vi.fn().mockResolvedValueOnce([{ refreshed_at: new Date(now).toISOString() }])
+      .mockReturnValueOnce(undefined) // SQL fragment for required sources
       .mockResolvedValueOnce([
-        { chain_id: 1, total: 2, checked: 2, failed: 0, failed_wallets: 0, overdue: 0, last_success_at: new Date(now).toISOString(), unpriced: 0 },
-        { chain_id: 130, total: 2, checked: 2, failed: 2, failed_wallets: 2, overdue: 2, last_success_at: null, unpriced: 0 },
+        { chain_id: 1, total: 2, checked: 2, failed: 0, failed_wallets: 0, overdue: 0, last_success_at: new Date(now).toISOString(), covered_through: new Date(now).toISOString(), completed_through: new Date(now).toISOString(), unpriced: 0 },
+        { chain_id: 10, total: 2, checked: 2, failed: 2, failed_wallets: 2, overdue: 2, last_success_at: null, unpriced: 0 },
       ]);
     const data = await readPublicDataFreshness(sql as unknown as import('postgres').Sql, now);
     expect(data).toMatchObject({ dataFresh: false, dataStatus: 'degraded', dataStaleReason: 'ingestion_incomplete' });
-    expect(data.dataSources).toMatchObject([{ chainId: 1, status: 'fresh' }, { chainId: 130, status: 'unavailable' }]);
+    expect(data.dataSources).toMatchObject([{ chainId: 1, status: 'fresh' }, { chainId: 10, status: 'unavailable' }]);
   });
 
   it('does not declare a newly enrolled, unattempted wallet covered', async () => {
     const sql = vi.fn().mockResolvedValueOnce([{ refreshed_at: new Date().toISOString() }])
+      .mockReturnValueOnce(undefined)
       .mockResolvedValueOnce([{ chain_id: 1, total: 2, checked: 1, failed: 0, failed_wallets: 0, overdue: 1, last_success_at: new Date().toISOString(), unpriced: 0 }]);
     expect(await readPublicDataFreshness(sql as unknown as import('postgres').Sql)).toMatchObject({
       dataFresh: false, dataSources: [{ chainId: 1, status: 'pending' }],

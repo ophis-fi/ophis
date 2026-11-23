@@ -67,6 +67,8 @@ export const PRODUCTION_CHAIN_IDS: readonly number[] = Object.freeze(
   Object.keys(CHAIN_NAME).map(Number),
 );
 
+export const ACTIVE_PRODUCTION_CHAIN_IDS = Object.freeze(PRODUCTION_CHAIN_IDS.filter(id => id !== 130));
+
 /**
  * Static execution-model facts served alongside the cumulative figures on the
  * public /stats JSON surface. Configuration facts only, no indexed data and no
@@ -138,9 +140,11 @@ export function renderStatsPage(s: PublicStats, query = new URLSearchParams()): 
     const name = CHAIN_NAME[c.chainId] ?? `Chain ${c.chainId}`;
     const icon = CHAIN_ICON[c.chainId];
     const source = s.dataSources?.find(source => source.chainId === c.chainId);
-    const covered = source?.coveredThrough
-      ? esc(source.coveredThrough.slice(0, 16).replace('T', ' ')) + ' UTC'
-      : source?.status === 'unavailable' ? 'Unavailable' : 'Not yet verified';
+    const state = source && { fresh: '', pending: 'Catching up', unavailable: 'Unavailable', partial: 'Partial', stale: 'Delayed' }[source.status];
+    const date = source?.coveredThrough && esc(source.coveredThrough.slice(0, 16).replace('T', ' ')) + ' UTC';
+    const retired = PRODUCTION_CHAIN_IDS.includes(c.chainId) && !ACTIVE_PRODUCTION_CHAIN_IDS.includes(c.chainId);
+    const covered = retired ? 'Retired'
+      : [date || 'First scan pending', state === 'Catching up' && !date ? '' : state].filter(Boolean).join(' · ');
     return `<tr><th scope="row"><span class="chain">${icon ? `<img src="/chain-icons/${c.chainId}" width="24" height="24" alt="" decoding="async">` : ''}${esc(name)}</span></th><td class="num">${fmtUsd(c.volumeUsd)}</td><td class="num">${fmtInt(c.trades)}</td><td class="num">${covered}</td></tr>`;
   }).join('');
   const heading = (key: string, label: string): string => {
@@ -244,7 +248,7 @@ ${freshnessWarning}
 <div class="actions"><button name="sort" value="${activeSort}">Apply filters</button><a href="/stats#chains">Reset</a><p>Showing ${filtered.length} of ${s.byChain.length} chains with indexed records. Lifetime totals below include all reporting chains.</p></div>
 <div class="table-scroll" role="region" aria-label="Settled volume by chain" tabindex="0">
 <table>
-  <caption>Lifetime indexed volume by chain. Data through is the oldest verified source coverage; publication time can be newer. Select a column heading to sort.</caption>
+  <caption>Lifetime indexed volume by chain. Data through shows the last completed scan for the wallets tracked when it began. Publication time can be newer. Select a column heading to sort.</caption>
   <thead><tr>${heading('chain', 'Chain')}${heading('volume', 'Volume settled')}${heading('trades', 'Trades')}<th scope="col" class="num">Data through</th></tr></thead>
   <tbody>${rows || `<tr><td colspan="4">${s.byChain.length ? 'No chains match these filters.' : 'No settled volume indexed yet.'}</td></tr>`}</tbody>
 </table>
