@@ -12,8 +12,6 @@ on:
       - 'apps/railgun/pnpm-lock.yaml'
       - 'apps/railgun/patches/**'
       - 'patches/elliptic@6.6.1.patch'
-      - 'patches/zod@3.25.76.patch'
-      - 'scripts/test-zod3-security.cjs'
       - 'patches/picomatch@*.patch'
       - 'scripts/test-picomatch-security.cjs'
       - 'scripts/test-deployment-boundaries.py'

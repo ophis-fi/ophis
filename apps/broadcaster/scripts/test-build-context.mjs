@@ -6,11 +6,14 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 const allowed = ['apps/broadcaster/package.json', 'apps/broadcaster/pnpm-lock.yaml',
-  'apps/broadcaster/.npmrc', 'apps/broadcaster/dist/main.mjs', 'apps/railgun/patches/allowed.patch',
-  'patches/zod@3.25.76.patch', 'patches/picomatch@2.3.2.patch', 'patches/picomatch@4.0.7.patch']
+  'apps/broadcaster/.npmrc', 'apps/broadcaster/dist/main.mjs',
+  'apps/broadcaster/patches/@graphql-tools__utils@12.1.0.patch',
+  'apps/railgun/patches/@railgun-community__engine@9.9.1.patch',
+  'apps/railgun/patches/@railgun-community__wallet@11.2.0.patch',
+  'patches/picomatch@2.3.2.patch', 'patches/picomatch@4.0.7.patch']
 const denied = ['apps/broadcaster/.env.context-canary', 'apps/broadcaster/data/context-canary',
   'apps/broadcaster/node_modules/context-canary', 'apps/broadcaster/dist/main.mjs.map',
-  'apps/railgun/patches/context-canary', 'apps/unrelated/context-canary', 'patches/context-canary']
+  'apps/railgun/patches/context-canary.patch', 'apps/unrelated/context-canary', 'patches/zod@3.25.76.patch']
 const docker = args => execFileSync('docker', args, { encoding: 'utf8', timeout: 60_000, stdio: ['ignore', 'pipe', 'pipe'] })
 
 // A second bundled SDK instance splits cryptographic/POI state from the installed wallet SDK.
