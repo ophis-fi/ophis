@@ -1,5 +1,6 @@
+import { SUPPORTED_CHAIN_IDS } from '../src/cow/client.js';
 import { describe, it, expect } from 'vitest';
-import { renderStatsPage, PRODUCTION_CHAIN_IDS, EXECUTION_FACTS, type PublicStats } from '../src/stats-page.js';
+import { renderStatsPage, ACTIVE_PRODUCTION_CHAIN_IDS, PRODUCTION_CHAIN_IDS, EXECUTION_FACTS, type PublicStats } from '../src/stats-page.js';
 
 const sample: PublicStats = {
   totalVolumeUsd: 1234567.89,
@@ -32,18 +33,23 @@ describe('renderStatsPage', () => {
 
   it('shows actual chain coverage separately from a newer publication', () => {
     const html = renderStatsPage({ ...sample, dataFresh: false, dataStatus: 'degraded', dataStaleReason: 'ingestion_incomplete', dataSources: [
-      { chainId: 10, status: 'stale', lastSuccessAt: sample.dataAsOf, coveredThrough: '2026-06-21T13:00:00.000Z', failedWallets: 0, unpricedTrades: 0 },
-      { chainId: 8453, status: 'unavailable', lastSuccessAt: null, coveredThrough: null, failedWallets: 1, unpricedTrades: 0 },
+      { chainId: 10, status: 'stale', lastSuccessAt: sample.dataAsOf, coveredThrough: '2026-06-21T13:00:00.000Z', pendingWallets: 0, incompleteSources: [], failedWallets: 0, unpricedTrades: 0 },
+      { chainId: 8453, status: 'unavailable', lastSuccessAt: null, coveredThrough: null, pendingWallets: 0, incompleteSources: [], failedWallets: 1, unpricedTrades: 0 },
     ] });
     const table = html.slice(html.indexOf('<tbody>'), html.indexOf('</tbody>'));
     expect(html).toContain('Data through');
-    expect(table).toContain('2026-06-21 13:00 UTC');
+    expect(table).toContain('2026-06-21 13:00 UTC · Delayed');
     expect(table).toContain('Unavailable');
-    expect(table).toContain('Not yet verified');
+    expect(table).toContain('First scan pending');
     expect(table).not.toContain('2026-06-21 14:58 UTC');
     expect(html).toContain('Published 2026-06-21 14:58 UTC');
     expect(html).toContain('Updates continue for available chains. Last published at 2026-06-21 14:58 UTC.');
     expect(html).not.toMatch(/Optimism: stale|Base: unavailable/);
+  });
+
+  it('retains Unichain volume and labels the historical row retired', () => {
+    const html = renderStatsPage({ ...sample, byChain: [{ chainId: 130, volumeUsd: 55.57, trades: 7 }] });
+    expect(html.slice(html.indexOf('<tbody>'), html.indexOf('</tbody>'))).toMatch(/Unichain.*55\.57.*>7<.*Retired/);
   });
 
   it('filters each column, sorts numerically, and leaves lifetime totals unchanged', () => {
@@ -193,6 +199,10 @@ describe('EXECUTION_FACTS (static execution-model facts on the public JSON)', ()
 });
 
 describe('PRODUCTION_CHAIN_IDS (public /stats allow-list)', () => {
+  it('uses the fetcher’s supported production chains for live coverage', () => {
+    expect(new Set(ACTIVE_PRODUCTION_CHAIN_IDS)).toEqual(new Set(SUPPORTED_CHAIN_IDS.filter(id => id !== 11155111)));
+  });
+
   it('retains retired Unichain in historical mainnet reporting', () => {
     expect([...PRODUCTION_CHAIN_IDS].sort((a, b) => a - b)).toEqual([
       1, 10, 56, 100, 130, 137, 4663, 5042, 8453, 9745, 42161, 43114, 57073, 59144,

@@ -29,8 +29,11 @@ unpriced trades per chain; source failures keep `data_fresh=false` even when
 scoring succeeds. Healthy chains continue updating while a source is unavailable.
 Coverage includes dedicated ETH-flow owners and configured settlement decoders;
 a bounded decoder pass stays incomplete until its cursor reaches the safe head.
-Unichain remains unavailable while its Aleph Cloud VM is down; its history retries
-when the VM returns. Inspect `data_sources` before restarting for a known outage.
+Unichain is retired and contributes only to historical totals. Each active chain's
+`coveredThrough` is the oldest verified source date from a completed scan of the
+wallets enrolled when it began. Later enrollments and failures retain that date.
+Use `pendingWallets`, `failedWallets`, `incompleteSources` and `unpricedTrades` in
+`data_sources` to diagnose outstanding work after a refresh.
 1. Check the durable heartbeats:
    `curl -fsS https://rebates.ophis.fi/health | jq '{data_status,data_as_of,data_stale_reason,last_fetch_attempt,last_pipeline_run_at}'`.
 2. Inspect `docker compose ps` and `docker compose logs --since=30h indexer`.

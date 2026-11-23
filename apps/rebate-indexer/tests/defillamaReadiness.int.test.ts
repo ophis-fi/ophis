@@ -209,4 +209,27 @@ describe('DefiLlama readiness', () => {
       expect((await app.inject({ url: '/defillama?date=2026-08-20&chainIds=1,56' })).statusCode).toBe(503);
     } finally { await app.close(); }
   });
+  it('completes the active backfill independently of unverified archived fills', async () => {
+    await sql`UPDATE defillama_reporting_state SET arc_reconciled_through_block = 23345455`;
+    await sql`DELETE FROM defillama_backfill_wallets`;
+    const { completeDefiLlamaBackfillIfReady } = await import('../src/defillamaBackfill.js');
+    expect(await completeDefiLlamaBackfillIfReady()).toBe(true);
+    expect(await isDefiLlamaBackfillComplete([130])).toBe(false);
+    expect(await isDefiLlamaBackfillComplete()).toBe(false);
+  });
+
+  it('serves a verified retired chain only through its archived coverage date', async () => {
+    await sql`UPDATE defillama_fills SET assessed_fee_bps = 1 WHERE chain_id = 130`;
+    await sql`UPDATE trades SET defillama_expected_fill_count = 1, value_usd = 30 WHERE chain_id = 130`;
+    await sql`INSERT INTO wallet_chain_fetches (wallet, chain_id, last_success_at, covered_through)
+      SELECT wallet, 130, '2026-08-22', '2026-08-22' FROM tracked_wallets`;
+    await sql`INSERT INTO chain_source_fetches (source, chain_id, last_success_at, covered_through)
+      VALUES ('ethflow', 130, '2026-08-22', '2026-08-22')`;
+    const app = await (await import('../src/api.js')).buildApiServer();
+    try {
+      expect((await app.inject({ url: '/defillama?date=2026-08-21&chainIds=130' })).statusCode).toBe(200);
+      expect((await app.inject({ url: '/defillama?date=2026-08-22&chainIds=130' })).statusCode).toBe(503);
+    } finally { await app.close(); }
+  });
+
 });

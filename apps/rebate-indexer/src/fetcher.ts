@@ -12,7 +12,7 @@ import {
 import { OPHIS_SAFE_ADDRESS } from './safe/addresses.js';
 import { logger } from './logger.js';
 import { getRpcClient } from './rpc/client.js';
-import { PRODUCTION_CHAIN_IDS } from './stats-page.js';
+import { ACTIVE_PRODUCTION_CHAIN_IDS, PRODUCTION_CHAIN_IDS, RETIRED_CHAIN_IDS } from './stats-page.js';
 import { resolveAppData } from './cow/appDataResolver.js';
 
 // The Ophis partner-fee recipient (the Safe). A fee only counts toward the rebate
@@ -1126,7 +1126,9 @@ export async function runFetcher(
   const lockConn = await sql.reserve();
   let locked = false;
   try {
-    const [lockRow] = await lockConn<{ locked: boolean }[]>`SELECT pg_try_advisory_lock(${FETCHER_LOCK_KEY}) AS locked`;
+    const [lockRow] = await lockConn<{ locked: boolean; started_at: string }[]>`
+      SELECT pg_try_advisory_lock(${FETCHER_LOCK_KEY}) AS locked, statement_timestamp()::text AS started_at
+    `;
     locked = lockRow?.locked === true;
     if (!locked) {
       log.info('fetcher already running (advisory lock held); skipping');
@@ -1367,14 +1369,27 @@ export async function runFetcher(
       // orderbook outage must not hold the public mainnet history closed forever.
       // Conversely, any production-chain failure keeps this wallet queued for retry.
       if (reportingOk) {
-        await sql`DELETE FROM defillama_backfill_wallets q WHERE q.wallet = decode(${owner.slice(2)}, 'hex')
-          AND NOT EXISTS (
-            SELECT 1 FROM unnest(${[...PRODUCTION_CHAIN_IDS]}::int[]) c(chain_id)
-            LEFT JOIN wallet_chain_fetches f ON f.wallet = q.wallet AND f.chain_id = c.chain_id
-            WHERE f.failed OR f.last_success_at IS NULL OR (f.covered_through >= (
-              SELECT backfill_started_at FROM defillama_reporting_state WHERE singleton = true
-            )) IS NOT TRUE
-          )`;
+        await sql`
+          WITH boundary AS (SELECT backfill_started_at FROM defillama_reporting_state WHERE singleton),
+          dequeued AS (
+            DELETE FROM defillama_backfill_wallets q WHERE q.wallet = decode(${owner.slice(2)}, 'hex')
+              AND NOT EXISTS (
+                SELECT 1 FROM unnest(${[...ACTIVE_PRODUCTION_CHAIN_IDS]}::int[]) c(chain_id)
+                LEFT JOIN wallet_chain_fetches f ON f.wallet = q.wallet AND f.chain_id = c.chain_id
+                WHERE f.failed OR f.last_success_at IS NULL OR (f.covered_through >= (
+                  SELECT backfill_started_at FROM boundary
+                )) IS NOT TRUE
+              )
+            RETURNING wallet
+          )
+          INSERT INTO retired_chain_backfills (chain_id, wallet, required_through)
+          SELECT c.chain_id, d.wallet, b.backfill_started_at
+          FROM dequeued d CROSS JOIN boundary b CROSS JOIN unnest(${[...RETIRED_CHAIN_IDS]}::int[]) c(chain_id)
+          WHERE NOT EXISTS (SELECT 1 FROM wallet_chain_fetches f WHERE f.wallet = d.wallet AND f.chain_id = c.chain_id
+            AND NOT f.failed AND f.last_success_at IS NOT NULL AND f.covered_through >= b.backfill_started_at)
+          ON CONFLICT (chain_id, wallet) DO UPDATE
+            SET required_through = GREATEST(retired_chain_backfills.required_through, EXCLUDED.required_through)
+        `;
       }
       // Always record the attempt; advance last_fetched only when EVERY chain
       // succeeded. A transient CoW outage must not mark the wallet fully fetched
@@ -1453,6 +1468,8 @@ export async function runFetcher(
     // runFetcher is invoked in a LOOP by replay-from-genesis; pruning inside it
     // would delete aged, not-yet-refetched wallets before later iterations reach
     // them, silently rebuilding an incomplete ledger.
+    const { recordCompletedCoverage } = await import('./freshness.js');
+    await recordCompletedCoverage(sql, lockRow!.started_at);
     log.info({ owners: owners.length, inserted }, 'fetcher complete');
     return { inserted, owners: owners.length };
   } finally {
