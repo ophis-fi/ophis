@@ -42,7 +42,7 @@ export function useBridgeSelection(
   return useMemo(() => {
     const outbound = arcPair && sell && !blocked ? { provider, choose, key } : undefined
     return { arcPair, asset, conversion, key, outbound, circle: !outbound || provider === 'Circle' }
-  }, [arcPair, asset, blocked, conversion, key, provider, sell])
+  }, [arcPair, asset, blocked, choose, conversion, key, provider, sell])
 }
 
 function cctpSelectionKey(selection: CctpSelection, wallet: unknown[]): string {
