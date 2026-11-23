@@ -1740,7 +1740,7 @@ try {
   await pat.page.setViewportSize({ width: 390, height: 844 })
   check('at phone width the table of the alert needs no sideways scroll: the address wraps', await flagged.locator('.table-wrap').evaluate((box) => box.scrollWidth <= box.clientWidth))
   await pat.page.setViewportSize({ width: 1440, height: 900 })
-  check('the payouts fit a phone', await both(pat.page, '62-overview-partner-payouts', '.pw section:has-text("Payouts")'))
+  check('the payouts fit a phone', await both(pat.page, '62-overview-partner-payouts', '.pw section:has(h2:text-is("Payouts"))'))
   check('the daily volume and its table fit a phone', await both(pat.page, '63-overview-partner-daily', '.pw section:has-text("Daily volume")'))
   check('by chain and by fee token fit a phone', await both(pat.page, '64-overview-partner-chains-tokens', '.pw .g.even'))
   await pat.page.setViewportSize({ width: 390, height: 844 })
