@@ -1,4 +1,4 @@
-import { ReactNode, useCallback } from 'react'
+import { ReactNode, useCallback, useEffect } from 'react'
 
 import { AutoRow, ButtonPrimary, MEDIA_WIDTHS } from '@cowprotocol/ui'
 
@@ -12,6 +12,8 @@ import CopyHelper from 'legacy/components/Copy'
 
 // eslint-disable-next-line import/no-internal-modules -- Direct import to avoid circular dependency (barrel re-exports App which imports ErrorBoundary)
 import { Title } from 'modules/application/pure/Page'
+
+import { shouldRetryChunkLoad } from './chunkLoadRecovery.utils'
 
 /**
  * Preload the no-connection image as a data URL so it still renders if the
@@ -100,6 +102,10 @@ export const ChunkLoadError = ({ eventId }: ChunkLoadErrorProps): ReactNode => {
   const reloadPage = useCallback(() => {
     window.location.reload()
   }, [])
+
+  useEffect(() => {
+    if (shouldRetryChunkLoad()) reloadPage()
+  }, [reloadPage])
 
   return (
     <>
