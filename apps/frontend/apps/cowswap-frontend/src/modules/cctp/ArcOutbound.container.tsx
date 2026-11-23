@@ -22,7 +22,7 @@ import { type SupportedChainId } from '@cowprotocol/cow-sdk'
 import { BridgeStatus } from '@cowprotocol/sdk-bridging'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
-import { arcOutboundToken, cctpNetwork } from 'entities/cctp'
+import { arcDestinationUsdc, cctpNetwork } from 'entities/cctp'
 import { formatUnits, getAddress, type Address, type Hex } from 'viem'
 import { z } from 'zod'
 
@@ -226,7 +226,7 @@ function matchesDelivery(
   return (
     !!delivery &&
     delivery.chainId === record.destination &&
-    delivery.token.toLowerCase() === arcOutboundToken(ARC_CHAIN_ID, record.destination)?.address.toLowerCase() &&
+    delivery.token.toLowerCase() === arcDestinationUsdc(record.destination)?.address.toLowerCase() &&
     delivery.recipient.toLowerCase() === account.toLowerCase() &&
     BigInt(delivery.amount) >= BigInt(record.minimum)
   )
@@ -254,9 +254,9 @@ async function deliveryStatus(record: Receipt, account: Address): Promise<Delive
   return { text: 'Delivery has not been confirmed.' }
 }
 
-export function ArcOutboundRecovery({ enabled }: { enabled?: boolean }): ReactNode {
+export function ArcOutboundRecovery(): ReactNode {
   const { account } = useWalletInfo()
-  const key = enabled && account ? storageKey(account) : ''
+  const key = account ? storageKey(account) : ''
   const getSnapshot = useCallback(() => {
     try {
       return key ? localStorage.getItem(key) : null
@@ -274,13 +274,41 @@ export function ArcOutboundRecovery({ enabled }: { enabled?: boolean }): ReactNo
     }
   }, [raw])
   if (!raw || !account) return null
-  if (!record || !arcOutboundToken(ARC_CHAIN_ID, record.destination))
-    return <p role="alert">Saved Arc bridge details could not be read. Check your wallet history.</p>
-  return <ArcReceipt key={raw} record={record} owner={getAddress(account)} saved={raw} />
+  return (
+    <Card aria-label="Saved Arc bridge">
+      {record && arcDestinationUsdc(record.destination) ? (
+        <ArcReceipt key={raw} record={record} owner={getAddress(account)} />
+      ) : (
+        <p role="alert">Saved Arc bridge details could not be read. Check your wallet history.</p>
+      )}
+      <DismissTracking key={raw + key} storage={key} saved={raw} />
+    </Card>
+  )
 }
-function ArcReceipt({ record, owner, saved }: { record: Receipt; owner: Address; saved: string }): ReactNode {
-  const [status, setStatus] = useState('Checking delivery…')
+
+function DismissTracking({ storage, saved }: { storage: string; saved: string }): ReactNode {
   const [confirm, setConfirm] = useState(false)
+  async function dismiss(): Promise<void> {
+    await navigator.locks.request(storage, { ifAvailable: true }, (lock) => {
+      if (lock && localStorage.getItem(storage) === saved) save(storage, null)
+    })
+  }
+  return (
+    <>
+      {confirm && (
+        <p>
+          Check your wallet history first. Clearing this record removes tracking and leaves any transfer in progress.
+        </p>
+      )}
+      <button disabled={!navigator.locks} onClick={() => (confirm ? void dismiss() : setConfirm(true))}>
+        {confirm ? 'Clear saved record' : 'Dismiss tracking'}
+      </button>
+    </>
+  )
+}
+
+function ArcReceipt({ record, owner }: { record: Receipt; owner: Address }): ReactNode {
+  const [status, setStatus] = useState('Checking delivery…')
   useEffect(() => {
     let active = true
     let timer: ReturnType<typeof setTimeout>
@@ -301,14 +329,8 @@ function ArcReceipt({ record, owner, saved }: { record: Receipt; owner: Address;
       clearTimeout(timer)
     }
   }, [record, owner])
-  async function dismiss(): Promise<void> {
-    const key = storageKey(owner)
-    await navigator.locks.request(key, { ifAvailable: true }, (lock) => {
-      if (lock && localStorage.getItem(key) === saved) save(key, null)
-    })
-  }
   return (
-    <Card aria-label="Saved Arc bridge">
+    <>
       <p>
         {record.provider} transfer to {getChainInfo(record.destination as SupportedChainId).label}. {status}
       </p>
@@ -321,10 +343,6 @@ function ArcReceipt({ record, owner, saved }: { record: Receipt; owner: Address;
       ) : (
         <p>Check wallet activity for Arc transaction nonce {record.nonce} before trying again.</p>
       )}
-      {confirm && <p>Clearing this record removes tracking from this browser. It does not cancel a transfer.</p>}
-      <button onClick={() => (confirm ? void dismiss() : setConfirm(true))}>
-        {confirm ? 'Clear saved record' : 'Dismiss tracking'}
-      </button>
-    </Card>
+    </>
   )
 }

@@ -10,6 +10,10 @@ import { hasCctpRoute } from './cctpRouting.utils'
 // Direct wallet deposits share the standalone bridge surface. Each provider still has to quote the pair.
 export function arcOutboundToken(source?: number, destination?: number): TokenWithLogo | undefined {
   if (!CCTP_ENABLED || source !== ARC_CHAIN_ID || !destination || source === destination) return undefined
+  return arcDestinationUsdc(destination)
+}
+
+export function arcDestinationUsdc(destination: number): TokenWithLogo | undefined {
   const token = USDC[destination as SupportedChainId]
   return token?.symbol === 'USDC' && token.decimals === 6 && isCircleToken(token) ? token : undefined
 }

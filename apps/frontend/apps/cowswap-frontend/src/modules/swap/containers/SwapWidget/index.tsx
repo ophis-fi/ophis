@@ -13,7 +13,7 @@ import { AssetSwapFields } from 'ophis/components/AssetSwap/AssetSwapFields'
 import { Field } from 'legacy/state/types'
 import { useHooksEnabledManager } from 'legacy/state/user/hooks'
 
-import { ArcOutboundRecovery, CctpSwapDetails, CctpSwapRecovery, useCctpSwapRoute } from 'modules/cctp'
+import { CctpSwapDetails, CctpSwapRecovery, useCctpSwapRoute } from 'modules/cctp'
 import { TradeApproveWithAffectedOrderList } from 'modules/erc20Approve'
 import { EthFlowModal, EthFlowProps } from 'modules/ethFlow'
 import { NearDirectSwap, NearSwapRecovery, useNearSwapEntry } from 'modules/nearDirect'
@@ -314,7 +314,6 @@ function StandardSwapWidget({
       <>
         {topContent}
         <CctpSwapRecovery route={cctp} />
-        <ArcOutboundRecovery enabled={enableCctp} />
       </>
     ),
     lockScreen: shouldShowLockScreen ? <CrossChainUnlockScreen handleUnlock={handleUnlock} /> : undefined,

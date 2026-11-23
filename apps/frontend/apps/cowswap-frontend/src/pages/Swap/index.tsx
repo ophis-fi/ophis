@@ -14,6 +14,7 @@ import { Navigate, NavLink, useLocation, useParams } from 'react-router'
 import styled from 'styled-components/macro'
 
 import { NetworkSelector, PageTitle } from 'modules/application'
+import { ArcOutboundRecovery } from 'modules/cctp'
 import { swapDerivedStateAtom, SwapUpdaters, SwapWidget, useSwapDerivedStateToFill } from 'modules/swap'
 import { parameterizeTradeRoute, getDefaultTradeRawState } from 'modules/trade'
 
@@ -54,7 +55,7 @@ export function SwapPage(): ReactNode {
       enableCctp={cctpEnabled}
       standardUpdaters={<SwapUpdaters />}
       headerContent={isOphisSwap ? <NetworkSelector /> : undefined}
-      topContent={isInjectedWidget() ? DcaCta : undefined}
+      topContent={isInjectedWidget() ? DcaCta : <ArcOutboundRecovery />}
     />
   )
 
