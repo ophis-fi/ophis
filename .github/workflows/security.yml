@@ -531,9 +531,9 @@ jobs:
           # @libp2p/peer-store 11.2.7 GHSA-vrf4-mx87-p53w: peer-record identity backport.
           # Review: docs/audits/dependency-review-2026-11-03.md, apps/railgun/DEPENDENCIES.md
           # picomatch GHSA-fc5q-39xc-vjpf: docs/audits/picomatch-GHSA-fc5q-2026-11-17.md (local backport; every installed copy is regression-tested in project CI).
-          exceptions=(--ignore GHSA-mrhx-c7xc-m3w5:2026-12-03 --ignore GHSA-7mx3-vvmw-hjmv:2026-12-03 --ignore GHSA-fc5q-39xc-vjpf:2026-12-17)
+          exceptions=(--ignore GHSA-fc5q-39xc-vjpf:2026-12-17)
           if [ "$PROJECT_DIR" = apps/railgun ]; then
-            exceptions+=(--ignore GHSA-vrf4-mx87-p53w:2026-12-03)
+            exceptions+=(--ignore GHSA-mrhx-c7xc-m3w5:2026-12-03 --ignore GHSA-7mx3-vvmw-hjmv:2026-12-03 --ignore GHSA-vrf4-mx87-p53w:2026-12-03)
           fi
           python3 scripts/osv-gate.py /tmp/osv-private.json --mode advisories \
             --osv-rc "$rc" "${exceptions[@]}"
@@ -543,8 +543,8 @@ jobs:
           python3 - <<'PY'
           import json, os
           project = os.environ["PROJECT_DIR"]
-          ign = {"GHSA-mrhx-c7xc-m3w5", "GHSA-7mx3-vvmw-hjmv", "GHSA-fc5q-39xc-vjpf"}
-          if project == "apps/railgun": ign.add("GHSA-vrf4-mx87-p53w")
+          ign = {"GHSA-fc5q-39xc-vjpf"}
+          if project == "apps/railgun": ign.update({"GHSA-mrhx-c7xc-m3w5", "GHSA-7mx3-vvmw-hjmv", "GHSA-vrf4-mx87-p53w"})
           patched = set(json.load(open(project + "/package.json"))["pnpm"]["patchedDependencies"])
           bad = sorted({f"{p['package']['name']}@{p['package']['version']}"
                         for r in json.load(open("/tmp/osv-private.json")).get("results", [])
