@@ -1661,7 +1661,7 @@ try {
   await pat.page.goto(`${ORIGIN}/#/`)
   await pat.page.getByText('Figures from the Ophis rebate service, read at').waitFor()
   const partnerMain = pat.page.locator('main')
-  const feeSection = pat.page.locator('.pw section', { has: pat.page.getByRole('heading', { name: 'Partner fee' }) })
+  const feeSection = pat.page.locator('.pw section', { has: pat.page.getByRole('heading', { name: 'Partner fee via Ophis' }) })
   const tradedSection = pat.page.locator('.pw section', { has: pat.page.getByRole('heading', { name: 'Wallets that traded through your integration' }) })
   const monthRows = feeSection.locator('tbody tr')
   const partnerTile = (caption, within = feeSection) => within.locator('.stats .c', { has: pat.page.locator('.cap', { hasText: new RegExp(`^${caption.replace(/[()]/g, '\\$&')}$`) }) }).locator('.num').textContent()
@@ -1693,7 +1693,16 @@ try {
   const CHAIN_NAMES = { 10: 'OP Mainnet', 100: 'Gnosis', 130: 'Unichain' }
   const shortTx = (tx) => `${tx.slice(0, 6)}...${tx.slice(-4)}`
   const nTrades = (n) => `${n} ${n === 1 ? 'trade' : 'trades'}`
-  const payoutsSection = sectionOf('Payouts')
+  const statementPanel = sectionOf('Fee statement').first()
+  await statementPanel.getByLabel('From', {exact:true}).fill('2026-11-19')
+  await statementPanel.getByLabel('To', {exact:true}).fill('2026-11-19')
+  await statementPanel.getByRole('button',{name:'Apply dates'}).click()
+  const [dated] = await Promise.all([pat.page.waitForEvent('download'),statementPanel.getByRole('button',{name:'Download statement CSV'}).click()])
+  const datedCsv = readFileSync(await dated.path(),'utf8')
+  check('a one-day statement downloads the confirmed payment with exact native units and its own UTC date',
+    dated.suggestedFilename().endsWith('2026-11-19-2026-11-19.csv') && datedCsv.includes('"CoW","2026-11-19T00:06:35.000Z"')
+    && datedCsv.includes('"0.005111896574959584","5111896574959584"'))
+  const payoutsSection = sectionOf('Ophis payouts')
   const txLink = payoutsSection.getByRole('link', { name: shortTx(B.payouts[0].txHash) })
   check('the payouts of the contract file, newest first: date and chain, WETH, Paid with the transaction linked to the chain\'s explorer in a new tab',
     JSON.stringify(await cellsOf(payoutsSection)) === JSON.stringify(B.payouts.map((x) => [`${x.date}\n${CHAIN_NAMES[x.chainId]}`, weth(x.weth), `Paid\n${shortTx(x.txHash)}`]))
@@ -1774,10 +1783,10 @@ try {
   const [tradedFile] = await Promise.all([pat.page.waitForEvent('download'), pat.page.getByRole('button', { name: 'Trading wallets CSV' }).click()])
   const tradedLines = readFileSync(await tradedFile.path(), 'utf8').split('\r\n').filter(Boolean)
   const tradedRow = (wallet, w, list = '') => `"${P.wallet}","demo wallet","${wallet}","${list}","${w.trades}","${w.volumeUsd}","${w.unpriced}","live"`
-  check('the export of the wallets that traded downloads: named ophis-partner-traders-, every wallet of the contract file beside the partner wallet with its trades not priced yet, the trades of no known wallet, the total, source = live; the overview offers its nine exports',
+  check('the export of the wallets that traded downloads: named ophis-partner-traders-, every wallet of the contract file beside the partner wallet with its trades not priced yet, the trades of no known wallet, the total, source = live; the overview includes the date-range statement export',
     /^ophis-partner-traders-\d{4}-\d\d-\d\d\.csv$/.test(tradedFile.suggestedFilename()) && tradedLines[0] === '"Partner wallet","Wallet name","Wallet","Sanctions list","Trades","Volume (USD)","Trades not priced yet","source"'
     && JSON.stringify(tradedLines.slice(1).map((row) => row.toLowerCase())) === JSON.stringify([...P.traders.wallets.map((w) => tradedRow(w.wallet, w, w.wallet === S.wallet ? 'ofac sdn list; un security council consolidated list' : '')), tradedRow(UNKNOWN_ROW, P.traders.unknown), tradedRow('total, 3 wallets', P.traders.totals)])
-    && (await pat.page.getByRole('button', { name: /CSV/ }).count()) === 9) // and the statement's (owner, 2026-11-19)
+    && (await pat.page.getByRole('button', { name: /CSV/ }).count()) === 9 + (await pat.page.getByRole('button', { name: 'Download statement CSV' }).count())) // and the statement's (owner, 2026-11-19)
   const [listedFile] = await Promise.all([pat.page.waitForEvent('download'), pat.page.getByRole('button', { name: 'Sanctioned wallets CSV' }).click()])
   const listedLines = readFileSync(await listedFile.path(), 'utf8').split('\r\n').filter(Boolean)
   check('the export of the wallets on a sanctions list downloads: named ophis-partner-sanctioned-, the wallet with its list, trades, volume, trades not priced yet, first and last trade, source = live',

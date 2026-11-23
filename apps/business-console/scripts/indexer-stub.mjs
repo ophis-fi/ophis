@@ -38,9 +38,9 @@ export function start() {
     let text = ''
     request.on('data', (chunk) => (text.length < 3_000_000 ? (text += chunk) : request.destroy())) // the real route's body limit
     request.on('end', () => {
-      let wallets, listed
+      let wallets, listed, statement
       try {
-        ({ wallets, listed } = JSON.parse(text))
+        ({ wallets, listed, statement } = JSON.parse(text))
       } catch {
         return send(400, { error: 'bad json' })
       }
@@ -49,6 +49,12 @@ export function start() {
       if (!addresses(listed, 0, 60_000)) return send(400, { error: 'listed' })
       if (mode === '500') return send(500, { error: 'internal' })
       const contract = JSON.parse(readFileSync(CONTRACT, 'utf8'))
+      if (statement) {
+        const row = {id:'p:CoW:1:69',kind:'Payout',source:'CoW',status:'Received',at:'2026-11-19T00:06:35.000Z',chain:1,tx:'0x'+'ab'.repeat(32),
+          uid:null,block:null,log:null,volume:null,bps:null,asset:'ETH',atoms:'5111896574959584',decimals:18,usd:'10.26'}
+        const inside = wallets[0] === contract.wallets[0].wallet && statement.from <= row.at.slice(0,10) && statement.to >= row.at.slice(0,10)
+        return send(200,{wallet:wallets[0],rows:inside ? [row] : [],next:null,coverage:[],revision:"1"})
+      }
       const [, empty] = contract.wallets
       const answer = {
         asOf: contract.asOf, // the file's own: its daily figures are the 90 days up to that day
