@@ -69,15 +69,17 @@ it.each(['commonjs', 'module'])('uses a TLS-verified executor with separate auth
   expect((await alice.next()).value).toEqual({ data: { tick: 'alice' } })
 })
 
-it.each(['@graphql-mesh/cross-helpers', '@envelop/extended-validation'])('%s uses patched GraphQL merge utilities', async (consumer) => {
+it.each(['@graphql-mesh/cross-helpers', '@envelop/extended-validation'])('%s uses fixed GraphQL merge utilities', async (consumer) => {
   const loader = consumer === '@graphql-mesh/cross-helpers'
     ? createRequire(wallet.resolve(consumer))
     : createRequire(createRequire(wallet.resolve('@graphql-mesh/runtime')).resolve(consumer))
-  const common = loader('@graphql-tools/utils').mergeDeep
-  const version = JSON.parse(readFileSync(join(dirname(loader.resolve('@graphql-tools/utils')), '../package.json'), 'utf8')).version
-  expect(version).toBe(consumer === '@graphql-mesh/cross-helpers' ? '9.2.1' : '8.13.1')
-  const esm = (await import(pathToFileURL(join(dirname(loader.resolve('@graphql-tools/utils')), '../esm/mergeDeep.js')).href)).mergeDeep
-  for (const mergeDeep of [common, esm]) {
+  const utils = '@graphql-tools/utils'
+  const entry = dirname(loader.resolve(utils))
+  const version = JSON.parse(readFileSync(join(entry, '../package.json'), 'utf8')).version
+  expect(version).toBe('12.1.0')
+  const esm = await import(pathToFileURL(join(entry, '../esm/index.js')).href)
+  for (const { mergeDeep, AggregateError: MeshAggregateError } of [loader(utils), esm]) {
+    expect(MeshAggregateError).toBe(AggregateError)
     const payload = JSON.parse('{"nested":{"__proto__":{"polluted":true},"constructor":{"prototype":{"polluted":true}},"prototype":{"polluted":true}}}')
     const merged = mergeDeep([{ nested: { kept: true } }, payload])
     expect(merged.nested.kept).toBe(true)
@@ -88,12 +90,37 @@ it.each(['@graphql-mesh/cross-helpers', '@envelop/extended-validation'])('%s use
   }
 })
 
-it('loads the real Node SDK zod backport in both CJS and ESM', async () => {
-  const http = createRequire(wallet.resolve('@graphql-mesh/http'))
-  const fets = createRequire(http.resolve('fets'))
-  const schema = createRequire(fets.resolve('zod-to-json-schema'))
-  const testZod = require('../../../scripts/test-zod3-security.cjs')
-  expect(await testZod(schema)).toBe('3.25.76')
-  const esm = await import(pathToFileURL(join(dirname(schema.resolve('zod')), 'index.js')).href)
-  expect(await testZod((name: string) => name === 'zod' ? esm : schema(name))).toBe('3.25.76')
+it.each(['commonjs', 'module'])('serves Mesh HTTP routes without the Zod dependency chain (%s)', async (format) => {
+  const lock = readFileSync(new URL('../pnpm-lock.yaml', import.meta.url), 'utf8')
+  expect(lock).not.toMatch(/^  (?:zod|zod-to-json-schema)@/m)
+
+  const http = '@graphql-mesh/http'
+  const { createMeshHTTPHandler } = format === 'commonjs'
+    ? wallet(http)
+    : await import(pathToFileURL(join(dirname(wallet.resolve(http)), '../esm/index.js')).href)
+  const schema = wallet('graphql').buildSchema('type Query { status: String! }')
+  schema.getQueryType().getFields().status.resolve = () => 'ready'
+  const logger = { child() { return this }, debug() {}, info() {}, warn() {}, error() {} }
+  let initializations = 0
+  const router = createMeshHTTPHandler({
+    baseDir: process.cwd(),
+    getBuiltMesh: async () => {
+      initializations++
+      return {
+        plugins: [{ onPluginInit({ setSchema }: { setSchema: (value: typeof schema) => void }) { setSchema(schema) } }],
+        logger,
+        pubsub: { getEventNames: () => [] },
+      }
+    },
+  })
+
+  expect((await router.fetch('http://example.invalid/healthcheck')).status).toBe(200)
+  expect((await router.fetch('http://example.invalid/readiness')).status).toBe(204)
+  const redirect = await router.fetch('http://example.invalid/')
+  expect(redirect.status).toBe(302)
+  expect(redirect.headers.get('location')).toBe('/graphql')
+  const query = await router.fetch('http://example.invalid/graphql?query=%7Bstatus%7D')
+  expect(query.status).toBe(200)
+  expect(await query.json()).toEqual({ data: { status: 'ready' } })
+  expect(initializations).toBe(1)
 })

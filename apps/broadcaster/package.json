@@ -15,7 +15,7 @@
     "start": "node --max-old-space-size=2560 dist/main.mjs"
   },
   "dependencies": {
-    "@graphql-tools/utils": "9.2.1",
+    "@graphql-tools/utils": "12.1.0",
     "@noble/ed25519": "1.7.5",
     "@railgun-community/engine": "9.9.1",
     "@railgun-community/shared-models": "8.2.1",
@@ -38,15 +38,14 @@
       "axios": "^1.20.0", "ws": "^8.21.0", "bn.js@4.11.6": "4.12.5", "chai": "5.3.3",
       "underscore": "1.13.8", "@railgun-community/circomlibjs@0.0.8>web3": "-",
       "@railgun-community/wallet@11.2.0>crypto-browserify": "-",
+      "@graphql-tools/utils": "12.1.0", "@graphql-mesh/http>fets": "0.5.0",
       "@graphql-tools/executor-legacy-ws": "1.1.39", "follow-redirects": "1.16.2"
     },
     "patchedDependencies": {
+      "@graphql-tools/utils@12.1.0": "patches/@graphql-tools__utils@12.1.0.patch",
       "picomatch@2.3.2": "../../patches/picomatch@2.3.2.patch",
       "picomatch@4.0.7": "../../patches/picomatch@4.0.7.patch",
-      "@graphql-tools/utils@8.13.1": "../railgun/patches/@graphql-tools__utils@8.13.1.patch",
-      "@graphql-tools/utils@9.2.1": "../railgun/patches/@graphql-tools__utils@9.2.1.patch",
       "@railgun-community/engine@9.9.1": "../railgun/patches/@railgun-community__engine@9.9.1.patch",
-      "zod@3.25.76": "../../patches/zod@3.25.76.patch",
       "@railgun-community/wallet@11.2.0": "../railgun/patches/@railgun-community__wallet@11.2.0.patch"
     }
   }

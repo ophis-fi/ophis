@@ -8,8 +8,10 @@ RUN apt-get -o Acquire::Retries=0 update \
 
 WORKDIR /opt/ophis/apps/broadcaster
 COPY apps/broadcaster/package.json apps/broadcaster/pnpm-lock.yaml apps/broadcaster/.npmrc ./
-COPY patches/zod@3.25.76.patch patches/picomatch@2.3.2.patch patches/picomatch@4.0.7.patch /opt/ophis/patches/
-COPY apps/railgun/patches/ /opt/ophis/apps/railgun/patches/
+COPY patches/picomatch@2.3.2.patch patches/picomatch@4.0.7.patch /opt/ophis/patches/
+COPY apps/broadcaster/patches/@graphql-tools__utils@12.1.0.patch ./patches/
+COPY apps/railgun/patches/@railgun-community__engine@9.9.1.patch \
+    apps/railgun/patches/@railgun-community__wallet@11.2.0.patch /opt/ophis/apps/railgun/patches/
 RUN corepack pnpm install --prod --frozen-lockfile --ignore-scripts --store-dir /tmp/pnpm-store \
     && rm -rf /tmp/pnpm-store /root/.cache \
         /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /opt/yarn-v1.22.22 \

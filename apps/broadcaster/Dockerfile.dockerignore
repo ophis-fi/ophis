@@ -3,7 +3,8 @@
 !apps/broadcaster/pnpm-lock.yaml
 !apps/broadcaster/.npmrc
 !apps/broadcaster/dist/main.mjs
-!apps/railgun/patches/*.patch
-!patches/zod@3.25.76.patch
+!apps/broadcaster/patches/@graphql-tools__utils@12.1.0.patch
+!apps/railgun/patches/@railgun-community__engine@9.9.1.patch
+!apps/railgun/patches/@railgun-community__wallet@11.2.0.patch
 !patches/picomatch@2.3.2.patch
 !patches/picomatch@4.0.7.patch
