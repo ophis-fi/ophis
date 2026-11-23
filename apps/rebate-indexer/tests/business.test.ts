@@ -59,9 +59,10 @@ const breakdown = (full: boolean): PartnerBreakdown => (full
         { chainId: 130, token: '0x4200000000000000000000000000000000000006', trades: 112, shareUsd: 74.9202, unpriced: 1 },
         { chainId: 10, token: '0x0b2c639c533813f4aa9d7837caf62653d097ff85', trades: 120, shareUsd: 74, unpriced: 1 },
       ],
+      transactions: [{ chainId: 10, txHash: '0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a', settledAt: '2026-11-09T14:00:00.000Z', trades: 2, volumeUsd: 150, unpriced: 0 }],
       payouts: [{ date: '2026-11-03', weth: 0.0625, chainId: 100, txHash: `0x${'9e'.repeat(32)}`, status: 'executed' }],
     }
-  : { daily: [], byChain: [], byToken: [], payouts: [] });
+  : { daily: [], byChain: [], byToken: [], transactions: [], payouts: [] });
 
 // As the query: only the wallets of `listed` that traded.
 const sanctioned = (full: boolean, listed: readonly string[]): PartnerSanctioned => (full ? [{ wallet: LISTED_TRADER, trades: 181, volumeUsd: 118400.5, unpriced: 1, firstAt: '2026-08-20T14:02:11.000Z', lastAt: '2026-11-07T09:41:05.000Z' }] : [])

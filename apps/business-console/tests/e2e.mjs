@@ -1713,6 +1713,12 @@ try {
   await dailySection.getByText('Each day as a table').click()
   check('the table under the chart, shut until asked: every day with its trades, volume (trades not priced yet under it) and share',
     shut && await dayTable.isVisible() && JSON.stringify(await cellsOf(dailySection)) === JSON.stringify(B.daily.map((d) => [`${d.day}\n${nTrades(d.trades)}`, usd(d.volumeUsd) + notPriced(d.unpriced), usd(d.shareUsd)])))
+  const txSection = sectionOf('Recent transactions')
+  await txSection.locator('summary').click()
+  const settlement = B.transactions[0]
+  check('opens the settlement transaction on its chain and shows its priced volume',
+    (await txSection.locator('tbody a').getAttribute('href')) === 'https://optimistic.etherscan.io/tx/' + settlement.txHash
+    && await txSection.getByText(usd(settlement.volumeUsd), { exact: true }).isVisible())
   const [chainSection, tokenSection] = [sectionOf('By chain'), sectionOf('By fee token')]
   check('by chain and by fee token, read from the contract file: the chain by its name, the token whole, trades not priced yet under the volume or the share',
     JSON.stringify(await cellsOf(chainSection)) === JSON.stringify(B.byChain.map((c) => [`${CHAIN_NAMES[c.chainId]}\n${nTrades(c.trades)}`, usd(c.volumeUsd) + notPriced(c.unpriced), usd(c.shareUsd)]))
@@ -1879,7 +1885,7 @@ try {
   check('at phone width the payout waiting for signatures needs no sideways scroll: its status wraps', await payoutsSection.locator('.table-wrap').evaluate((box) => box.scrollWidth <= box.clientWidth))
   await pat.page.setViewportSize({ width: 1440, height: 900 })
   await tradedWith({ daily: [], byChain: [], byToken: [], payouts: [] }, 'breakdown')
-  check('no payout yet: one line says so, with no table', await payoutsSection.getByText('No payout yet.').isVisible() && !(await payoutsSection.locator('table').count()))
+  check('no payout yet: one line says so, with no table', await payoutsSection.getByText('No payout recorded by Ophis.').isVisible() && !(await payoutsSection.locator('table').count()))
   await patOverview()
   await pat.page.getByText('Figures from the Ophis rebate service, read at').waitFor()
 

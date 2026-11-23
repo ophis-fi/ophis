@@ -91,6 +91,9 @@ function breakdownOf(v: unknown, asOf: string) {
     daily: days,
     byChain: list(b.byChain, INDEXER.maxRows).map(obj).map((c) => ({ ...chainOf(c.chainId), ...flowOf(c) })),
     byToken: list(b.byToken, INDEXER.maxRows).map(obj).map((t) => ({ ...chainOf(t.chainId), token: checksum(text(t.token, /^0x[0-9a-f]{40}$/)), trades: int(t.trades), shareUsd: num(t.shareUsd), unpriced: int(t.unpriced) })),
+    transactions: list(b.transactions === undefined ? [] : b.transactions, INDEXER.maxRows).map(obj).map((t) => ({
+      ...chainOf(t.chainId), tx: text(t.txHash, /^0x[0-9a-f]{64}$/), settledAt: t.settledAt === null ? null : iso(t.settledAt), ...figuresOf(t),
+    })),
     payouts: list(b.payouts, INDEXER.maxPayouts).map(obj).map((p) => ({
       date: text(p.date, DAY), weth: num(p.weth), ...chainOf(p.chainId), tx: p.txHash === null ? null : text(p.txHash, /^0x[0-9a-f]{64}$/), status: text(p.status, /^[a-z][a-z_-]{0,23}$/),
     })),
@@ -195,12 +198,14 @@ export const tables = (f: Extract<Figures, { state: 'live' }>): Record<string, [
     })],
   sanctioned: [['Partner wallet', 'Wallet name', 'Wallet', 'Sanctions list', 'Trades', 'Volume (USD)', 'Trades not priced yet', 'First trade', 'Last trade'],
     f.wallets.flatMap((w) => (w.sanctioned ?? []).map((s) => [w.wallet, w.label, s.wallet, s.lists.join('; '), s.trades, s.volumeUsd, s.unpriced, s.firstAt, s.lastAt]))],
-  daily: [['Partner wallet', 'Wallet name', 'Day', 'Trades', 'Volume (USD)', 'Your share (USD)', 'Trades not priced yet'],
+  daily: [['Partner wallet', 'Wallet name', 'Day', 'Trades', 'Volume (USD)', 'Your share via Ophis (USD)', 'Trades not priced yet'],
     f.wallets.flatMap((w) => (w.breakdown?.daily ?? []).map((d) => [w.wallet, w.label, d.day, d.trades, d.volumeUsd, d.shareUsd, d.unpriced]))],
-  chains: [['Partner wallet', 'Wallet name', 'Chain', 'Trades', 'Volume (USD)', 'Your share (USD)', 'Trades not priced yet'],
+  chains: [['Partner wallet', 'Wallet name', 'Chain', 'Trades', 'Volume (USD)', 'Your share via Ophis (USD)', 'Trades not priced yet'],
     f.wallets.flatMap((w) => (w.breakdown?.byChain ?? []).map((c) => [w.wallet, w.label, c.chain, c.trades, c.volumeUsd, c.shareUsd, c.unpriced]))],
-  tokens: [['Partner wallet', 'Wallet name', 'Chain', 'Fee token', 'Trades', 'Your share (USD)', 'Trades not priced yet'],
+  tokens: [['Partner wallet', 'Wallet name', 'Chain', 'Fee token', 'Trades', 'Your share via Ophis (USD)', 'Trades not priced yet'],
     f.wallets.flatMap((w) => (w.breakdown?.byToken ?? []).map((t) => [w.wallet, w.label, t.chain, t.token, t.trades, t.shareUsd, t.unpriced]))],
+  transactions: [['Partner wallet', 'Wallet name', 'Chain', 'Transaction', 'Settled at (UTC)', 'Trades', 'Volume (USD)', 'Trades not priced yet'],
+    f.wallets.flatMap((w) => (w.breakdown?.transactions ?? []).map((t) => [w.wallet, w.label, t.chain, t.tx, t.settledAt ?? '', t.trades, t.volumeUsd, t.unpriced]))],
   payouts: [['Partner wallet', 'Wallet name', 'Date', 'Amount (WETH)', 'Chain', 'Transaction', 'Status'],
     f.wallets.flatMap((w) => (w.breakdown?.payouts ?? []).map((p) => [w.wallet, w.label, p.date, p.weth, p.chain, p.tx, p.status]))],
 })

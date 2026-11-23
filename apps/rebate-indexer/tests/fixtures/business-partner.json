@@ -53,6 +53,7 @@
           { "chainId": 130, "token": "0x4200000000000000000000000000000000000006", "trades": 112, "shareUsd": 74.9202, "unpriced": 1 },
           { "chainId": 10, "token": "0x0b2c639c533813f4aa9d7837caf62653d097ff85", "trades": 120, "shareUsd": 74, "unpriced": 1 }
         ],
+        "transactions": [{ "chainId": 10, "txHash": "0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a", "settledAt": "2026-11-09T14:00:00.000Z", "trades": 2, "volumeUsd": 150, "unpriced": 0 }],
         "payouts": [
           { "date": "2026-11-03", "weth": 0.0625, "chainId": 100, "txHash": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e", "status": "executed" }
         ]
@@ -83,7 +84,7 @@
         "unknown": { "trades": 0, "volumeUsd": 0, "unpriced": 0 },
         "totals": { "walletCount": 0, "trades": 0, "volumeUsd": 0, "unpriced": 0 }
       },
-      "breakdown": { "daily": [], "byChain": [], "byToken": [], "payouts": [] },
+      "breakdown": { "daily": [], "byChain": [], "byToken": [], "transactions": [], "payouts": [] },
       "sanctioned": []
     }
   ]
