@@ -1,13 +1,14 @@
+import { useAtomValue } from 'jotai'
 import { useMemo } from 'react'
 
-import { SWR_NO_REFRESH_OPTIONS, TokenWithLogo } from '@cowprotocol/common-const'
+import { TokenWithLogo } from '@cowprotocol/common-const'
 import { useIsBridgingEnabled } from '@cowprotocol/common-hooks'
 import { getAddressKey, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { BuyTokensParams } from '@cowprotocol/sdk-bridging'
 import { useTokensByAddressMapForChain } from '@cowprotocol/tokens'
 
 import { arcOutboundBuyTokens, cctpBuyTokens, useIsCctpEnabled } from 'entities/cctp'
-import useSWR, { SWRResponse } from 'swr'
+import { atomWithQuery } from 'jotai-tanstack-query'
 import { bridgingSdk } from 'tradingSdk/bridgingSdk'
 
 import { isDeprecatedBridgeToken } from './deprecatedBridgeToken'
@@ -15,9 +16,10 @@ import { useBridgeProvidersIds } from './useBridgeProvidersIds'
 
 export type BridgeSupportedToken = { tokens: TokenWithLogo[]; isRouteAvailable: boolean }
 
-export function useBridgeSupportedTokens(
-  params: BuyTokensParams | undefined,
-): SWRResponse<BridgeSupportedToken | null> {
+export function useBridgeSupportedTokens(params: BuyTokensParams | undefined): {
+  data: BridgeSupportedToken | undefined
+  isLoading: boolean
+} {
   const isBridgingEnabled = useIsBridgingEnabled()
   const cctpEnabled = useIsCctpEnabled()
   const providerIds = useBridgeProvidersIds()
@@ -25,6 +27,7 @@ export function useBridgeSupportedTokens(
 
   // Get token map from token lists for the destination chain to fallback for missing logos
   const tokensByAddress = useTokensByAddressMapForChain(params?.buyChainId as SupportedChainId | undefined)
+  const { sellChainId, buyChainId, sellTokenAddress } = params ?? {}
   const tokenListSize = Object.keys(tokensByAddress).length
 
   const cctpTokens = useMemo(
@@ -40,73 +43,67 @@ export function useBridgeSupportedTokens(
       ),
     [params, tokensByAddress, isBridgingEnabled, cctpEnabled],
   )
-  const response = useSWR(
-    isBridgingEnabled
-      ? [
-          params,
-          params?.sellChainId,
-          params?.buyChainId,
-          params?.sellTokenAddress,
-          key,
-          tokenListSize,
-          'useBridgeSupportedTokens',
-        ]
-      : null,
-    async ([params]) => {
-      if (typeof params === 'undefined') return null
-
-      try {
-        const result = await bridgingSdk.getBuyTokens(params)
-
-        const tokens = result.tokens.reduce<TokenWithLogo[]>((acc, token) => {
-          if (!token || token.chainId === undefined || !token.address) {
-            console.warn('[bridgeTokens] Ignoring malformed token', token)
-            return acc
+  const queryAtom = useMemo(
+    () =>
+      atomWithQuery(() => ({
+        queryKey: ['bridgeBuyTokens', sellChainId, buyChainId, sellTokenAddress, key, tokenListSize],
+        enabled: isBridgingEnabled && buyChainId !== undefined,
+        refetchOnWindowFocus: false,
+        refetchOnReconnect: false,
+        queryFn: async () => {
+          if (buyChainId === undefined) return null
+          try {
+            return await bridgingSdk.getBuyTokens({ sellChainId, buyChainId, sellTokenAddress })
+          } catch (error) {
+            console.warn('[bridgeTokens] Failed to fetch buy tokens', error)
+            return { isRouteAvailable: false, tokens: [] }
           }
-
-          // Hide aggregator-deprecated duplicates (NEAR Intents tags superseded
-          // routes with a "(DEPRECATED)" symbol, e.g. "XPL_(DEPRECATED)"); the
-          // current asset is always present alongside. See deprecatedBridgeToken.ts.
-          if (isDeprecatedBridgeToken(token)) {
-            return acc
-          }
-
-          // Fallback to token list logo if bridge doesn't provide one
-          const listToken = tokensByAddress[getAddressKey(token.address)]
-          const logoUrl = listToken?.logoURI || token.logoUrl
-
-          acc.push(
-            TokenWithLogo.fromToken(
-              {
-                ...token,
-                name: token.name || '',
-                symbol: token.symbol || '',
-              },
-              logoUrl,
-            ),
-          )
-
-          return acc
-        }, [])
-        const isRouteAvailable = tokens.length > 0 ? result.isRouteAvailable : false
-
-        return { isRouteAvailable, tokens }
-      } catch (error) {
-        // Treat failures as "no route" to avoid leaving the UI in an inconsistent cross-chain state
-        // (e.g. stale targetChainId + output token from a previous selection).
-        console.warn('[bridgeTokens] Failed to fetch buy tokens', error)
-        return { isRouteAvailable: false, tokens: [] }
-      }
-    },
-    SWR_NO_REFRESH_OPTIONS,
+        },
+      })),
+    [isBridgingEnabled, sellChainId, buyChainId, sellTokenAddress, key, tokenListSize],
   )
+  const query = useAtomValue(queryAtom)
+  const result = isBridgingEnabled ? query.data : undefined
   const data = useMemo(() => {
-    if (!cctpTokens.length) return response.data
-    const tokens = [...(response.data?.tokens || []), ...cctpTokens]
+    if (!result && !cctpTokens.length) return undefined
+    const tokens = (result?.tokens ?? []).reduce<TokenWithLogo[]>((acc, token) => {
+      if (!token || token.chainId === undefined || !token.address) {
+        console.warn('[bridgeTokens] Ignoring malformed token', token)
+        return acc
+      }
+
+      // Hide aggregator-deprecated duplicates (NEAR Intents tags superseded
+      // routes with a "(DEPRECATED)" symbol, e.g. "XPL_(DEPRECATED)"); the
+      // current asset is always present alongside. See deprecatedBridgeToken.ts.
+      if (isDeprecatedBridgeToken(token)) {
+        return acc
+      }
+
+      // Fallback to token list logo if bridge doesn't provide one
+      const listToken = tokensByAddress[getAddressKey(token.address)]
+      const logoUrl = listToken?.logoURI || token.logoUrl
+
+      acc.push(
+        TokenWithLogo.fromToken(
+          {
+            ...token,
+            name: token.name || '',
+            symbol: token.symbol || '',
+          },
+          logoUrl,
+        ),
+      )
+
+      return acc
+    }, [])
+    const tokensById = new Map([...tokens, ...cctpTokens].map((token) => [getAddressKey(token.address), token]))
     return {
-      tokens: [...new Map(tokens.map((token) => [getAddressKey(token.address), token])).values()],
-      isRouteAvailable: true,
+      tokens: [...tokensById.values()],
+      isRouteAvailable: cctpTokens.length > 0 || (!!result?.isRouteAvailable && tokens.length > 0),
     }
-  }, [response.data, cctpTokens])
-  return { ...response, data }
+  }, [result, cctpTokens, tokensByAddress])
+  return useMemo(
+    () => ({ data, isLoading: isBridgingEnabled && query.isLoading }),
+    [data, isBridgingEnabled, query.isLoading],
+  )
 }

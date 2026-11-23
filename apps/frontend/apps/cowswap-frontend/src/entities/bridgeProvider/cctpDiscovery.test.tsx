@@ -11,7 +11,7 @@ jest.mock('entities/cctp/useIsCctpEnabled', () => ({ useIsCctpEnabled: jest.fn((
 jest.mock('@cowprotocol/common-hooks', () => ({ useIsBridgingEnabled: () => true }))
 jest.mock('common/constants/featureFlags', () => ({ CCTP_ENABLED: true }))
 jest.mock('./useBridgeProvidersIds', () => ({ useBridgeProvidersIds: () => [] }))
-jest.mock('tradingSdk/bridgingSdk', () => ({ bridgingSdk: {} }))
+jest.mock('tradingSdk/bridgingSdk', () => ({ bridgingSdk: { getBuyTokens: () => new Promise(() => {}) } }))
 const mockTokens = {
   '0x7de283100d916cfc7822a7664bcd7e9371e78d32': {
     chainId: 5042,

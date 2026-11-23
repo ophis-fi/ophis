@@ -1,9 +1,12 @@
+import { createStore } from 'jotai'
+
 import { RelayBridgeProvider } from '@cowprotocol/common-const'
 import { BridgeStatus } from '@cowprotocol/sdk-bridging'
 
 import { fireEvent, render, screen } from '@testing-library/react'
 
-import { ArcOutboundRecovery } from './ArcOutbound.container'
+import { arcReceiptAtom } from './arcReceipt.atoms'
+import { ArcOutboundRecovery } from './ArcOutboundRecovery.container'
 
 jest.mock('legacy/state/application/hooks', () => ({ useToggleWalletModal: jest.fn() }))
 jest.mock('common/constants/featureFlags', () => ({ CCTP_ENABLED: false }))
@@ -11,7 +14,7 @@ jest.mock('@cowprotocol/wallet', () => ({
   useWalletInfo: () => ({ account: '0x1111111111111111111111111111111111111111' }),
 }))
 
-const key = 'ophisArcBridge:0x1111111111111111111111111111111111111111'
+const key = 'ophisArcBridge:0x1111111111111111111111111111111111111111:v0'
 
 afterEach(() => {
   localStorage.clear()
@@ -47,4 +50,16 @@ it('requires confirmation to discard unreadable tracking and preserves a newer r
   localStorage.setItem(key, 'newer')
   fireEvent.click(screen.getByRole('button', { name: 'Clear saved record' }))
   expect(localStorage.getItem(key)).toBe('newer')
+})
+
+it('uses a single record across address spellings and fails if the browser cannot persist it', () => {
+  const owner = '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd'
+  const atom = arcReceiptAtom(owner)
+  expect(arcReceiptAtom(owner.toUpperCase().replace('0X', '0x'))).toBe(atom)
+  const store = createStore()
+  const record = { provider: 'Relay', id: '0x' + '12'.repeat(32), destination: 8453, minimum: '999', nonce: 5 }
+  store.set(atom, record)
+  expect(JSON.parse(localStorage.getItem('ophisArcBridge:' + owner + ':v0') || 'null')).toEqual(record)
+  jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {})
+  expect(() => store.set(atom, { ...record, nonce: 6 })).toThrow('Unable to save Arc bridge tracking')
 })
