@@ -1774,27 +1774,28 @@ try {
   const [tradedFile] = await Promise.all([pat.page.waitForEvent('download'), pat.page.getByRole('button', { name: 'Trading wallets CSV' }).click()])
   const tradedLines = readFileSync(await tradedFile.path(), 'utf8').split('\r\n').filter(Boolean)
   const tradedRow = (wallet, w, list = '') => `"${P.wallet}","demo wallet","${wallet}","${list}","${w.trades}","${w.volumeUsd}","${w.unpriced}","live"`
-  check('the export of the wallets that traded downloads: named ophis-partner-traders-, every wallet of the contract file beside the partner wallet with its trades not priced yet, the trades of no known wallet, the total, source = live; the two are the only CSV',
+  check('the export of the wallets that traded downloads: named ophis-partner-traders-, every wallet of the contract file beside the partner wallet with its trades not priced yet, the trades of no known wallet, the total, source = live; the overview offers its nine exports',
     /^ophis-partner-traders-\d{4}-\d\d-\d\d\.csv$/.test(tradedFile.suggestedFilename()) && tradedLines[0] === '"Partner wallet","Wallet name","Wallet","Sanctions list","Trades","Volume (USD)","Trades not priced yet","source"'
     && JSON.stringify(tradedLines.slice(1).map((row) => row.toLowerCase())) === JSON.stringify([...P.traders.wallets.map((w) => tradedRow(w.wallet, w, w.wallet === S.wallet ? 'ofac sdn list; un security council consolidated list' : '')), tradedRow(UNKNOWN_ROW, P.traders.unknown), tradedRow('total, 3 wallets', P.traders.totals)])
-    && (await pat.page.getByRole('button', { name: /CSV/ }).count()) === 8) // and the statement's (owner, 2026-11-19)
+    && (await pat.page.getByRole('button', { name: /CSV/ }).count()) === 9) // and the statement's (owner, 2026-11-19)
   const [listedFile] = await Promise.all([pat.page.waitForEvent('download'), pat.page.getByRole('button', { name: 'Sanctioned wallets CSV' }).click()])
   const listedLines = readFileSync(await listedFile.path(), 'utf8').split('\r\n').filter(Boolean)
   check('the export of the wallets on a sanctions list downloads: named ophis-partner-sanctioned-, the wallet with its list, trades, volume, trades not priced yet, first and last trade, source = live',
     /^ophis-partner-sanctioned-\d{4}-\d\d-\d\d\.csv$/.test(listedFile.suggestedFilename()) && listedLines[0] === '"Partner wallet","Wallet name","Wallet","Sanctions list","Trades","Volume (USD)","Trades not priced yet","First trade","Last trade","source"'
     && JSON.stringify(listedLines.slice(1).map((row) => row.toLowerCase())) === JSON.stringify([`"${P.wallet}","demo wallet","${S.wallet}","ofac sdn list; un security council consolidated list","${S.trades}","${S.volumeUsd}","${S.unpriced}","${S.firstAt}","${S.lastAt}","live"`.toLowerCase()]))
-  // The four CSV of the breakdown, downloaded and read back.
+  // The five CSV of the breakdown, downloaded and read back.
   const breakdownFile = async (label) => {
     const [file] = await Promise.all([pat.page.waitForEvent('download'), pat.page.getByRole('button', { name: label }).click()])
     return { name: file.suggestedFilename(), lines: readFileSync(await file.path(), 'utf8').split('\r\n').filter(Boolean).map((row) => row.toLowerCase()) }
   }
   const csvLine = (...cells) => [P.wallet, 'demo wallet', ...cells, 'live'].map((cell) => `"${String(cell).toLowerCase()}"`).join(',')
-  const [dailyFile, chainsFile, tokensFile, payoutsFile] = [await breakdownFile('Daily CSV'), await breakdownFile('Chains CSV'), await breakdownFile('Fee tokens CSV'), await breakdownFile('Payouts CSV')]
-  check('the four CSV of the breakdown download, named ophis-partner-, with every row of the contract file beside the partner wallet, source = live',
-    [[dailyFile, 'daily'], [chainsFile, 'chains'], [tokensFile, 'tokens'], [payoutsFile, 'payouts']].every(([file, table]) => new RegExp(`^ophis-partner-${table}-\\d{4}-\\d\\d-\\d\\d\\.csv$`).test(file.name))
+  const [dailyFile, chainsFile, tokensFile, transactionsFile, payoutsFile] = [await breakdownFile('Daily CSV'), await breakdownFile('Chains CSV'), await breakdownFile('Fee tokens CSV'), await breakdownFile('Transactions CSV'), await breakdownFile('Payouts CSV')]
+  check('the five CSV of the breakdown download, named ophis-partner-, with every row of the contract file beside the partner wallet, source = live',
+    [[dailyFile, 'daily'], [chainsFile, 'chains'], [tokensFile, 'tokens'], [transactionsFile, 'transactions'], [payoutsFile, 'payouts']].every(([file, table]) => new RegExp(`^ophis-partner-${table}-\\d{4}-\\d\\d-\\d\\d\\.csv$`).test(file.name))
     && JSON.stringify(dailyFile.lines.slice(1)) === JSON.stringify(B.daily.map((d) => csvLine(d.day, d.trades, d.volumeUsd, d.shareUsd, d.unpriced)))
     && JSON.stringify(chainsFile.lines.slice(1)) === JSON.stringify(B.byChain.map((c) => csvLine(CHAIN_NAMES[c.chainId], c.trades, c.volumeUsd, c.shareUsd, c.unpriced)))
     && JSON.stringify(tokensFile.lines.slice(1)) === JSON.stringify(B.byToken.map((t) => csvLine(CHAIN_NAMES[t.chainId], t.token, t.trades, t.shareUsd, t.unpriced)))
+    && JSON.stringify(transactionsFile.lines.slice(1)) === JSON.stringify(B.transactions.map((t) => csvLine(CHAIN_NAMES[t.chainId], t.txHash, t.settledAt, t.trades, t.volumeUsd, t.unpriced)))
     && JSON.stringify(payoutsFile.lines.slice(1)) === JSON.stringify(B.payouts.map((x) => csvLine(x.date, x.weth, CHAIN_NAMES[x.chainId], x.txHash, x.status)))
     && payoutsFile.lines[0] === '"partner wallet","wallet name","date","amount (weth)","chain","transaction","status","source"')
 
