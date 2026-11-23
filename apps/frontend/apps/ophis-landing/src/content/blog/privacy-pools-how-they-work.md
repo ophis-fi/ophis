@@ -40,6 +40,7 @@ Ophis private mode uses **RAILGUN** on Ethereum, Arbitrum One and BNB Chain. RAI
 
 - **Public deposits and withdrawals.** The public addresses, assets, amounts and timing are visible. Those details can sometimes be matched even when the proof hides the direct link.
 - **Public parts of a swap.** If an app uses a public exchange pool, the pool trade can be visible even when the trader’s shielded balance stays private.
+- **Ophis fee-credit activity.** Top-ups and refunds are public transfers. The operator can link requests that use the same fee-credit account. [Ophis private swap privacy limits](https://docs.ophis.fi/privacy-pools/#what-remains-visible)
 - **App and network activity.** Services involved in sending the transaction may see network information such as your IP address. What each service sees depends on the app and route.
 
 ## FAQ
