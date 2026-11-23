@@ -182,7 +182,11 @@ it('keeps Circle selectable on Base and offers the wallet-funded bridges on Poly
     },
   )
   expect(result.current.outbound?.provider).toBe('Circle')
+  const initial = result.current.outbound
+  rerender({ output: USDC_BASE, enabled: true })
+  expect(result.current.outbound).toBe(initial)
   rerender({ output: USDC_POLYGON, enabled: true })
+  expect(result.current.outbound).not.toBe(initial)
   expect(result.current.outbound?.provider).toBe('Across')
   expect(result.current.active).toBe(true)
   act(() => result.current.outbound?.choose('Relay'))

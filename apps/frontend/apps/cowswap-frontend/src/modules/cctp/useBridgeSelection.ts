@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import { OrderKind } from '@cowprotocol/cow-sdk'
 import { type Currency, type CurrencyAmount } from '@cowprotocol/currency'
@@ -39,8 +39,10 @@ export function useBridgeSelection(
   const [preferred, choose] = useState<ArcBridgeProvider | 'Circle'>('Circle')
   const provider = preferred === 'Circle' && !asset ? 'Across' : preferred
   const key = cctpSelectionKey(selection, [...wallet, asset, provider])
-  const outbound = arcPair && sell && !blocked ? { provider, choose, key } : undefined
-  return { arcPair, asset, conversion, key, outbound, circle: !outbound || provider === 'Circle' }
+  return useMemo(() => {
+    const outbound = arcPair && sell && !blocked ? { provider, choose, key } : undefined
+    return { arcPair, asset, conversion, key, outbound, circle: !outbound || provider === 'Circle' }
+  }, [arcPair, asset, blocked, conversion, key, provider, sell])
 }
 
 function cctpSelectionKey(selection: CctpSelection, wallet: unknown[]): string {
