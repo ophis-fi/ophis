@@ -16,7 +16,7 @@ let mockCctpEnabled = false
 const mockHasCctpRoute = jest.fn<boolean, [number, number]>()
 jest.mock('entities/cctp', () => ({
   useIsCctpEnabled: () => mockCctpEnabled,
-  hasCctpRoute: (source: number, destination: number) => mockHasCctpRoute(source, destination),
+  hasWalletBridgeRoute: (source: number, destination: number) => mockHasCctpRoute(source, destination),
 }))
 jest.mock('modules/trade', () => ({
   useSwitchTokensPlaces: () => mockSameChainSwitch,

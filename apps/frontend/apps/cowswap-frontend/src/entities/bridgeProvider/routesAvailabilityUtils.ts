@@ -25,31 +25,6 @@ export function filterDestinationChains(destinationChainIds: number[], sourceCha
 
 export type RoutesAvailabilityKey = [SupportedChainId, string, string, string]
 
-export interface RoutesAvailabilityKeyParams {
-  isBridgingEnabled: boolean
-  sourceChainId: SupportedChainId | undefined
-  chainsToCheck: number[]
-  providersKey: string
-}
-
-export function createAvailabilitySwrKey(params: RoutesAvailabilityKeyParams): RoutesAvailabilityKey | null {
-  const { isBridgingEnabled, sourceChainId, chainsToCheck, providersKey } = params
-
-  if (!isBridgingEnabled || !sourceChainId || chainsToCheck.length === 0) {
-    return null
-  }
-
-  return [
-    sourceChainId,
-    chainsToCheck
-      .slice()
-      .sort((a, b) => a - b)
-      .join(','),
-    providersKey,
-    'routesAvailability',
-  ]
-}
-
 export async function fetchRoutesAvailability(key: RoutesAvailabilityKey): Promise<RouteCheckResult[]> {
   const [sellChainId, chainIdsString] = key
   const chainIds = chainIdsString.split(',').map(Number)
@@ -74,16 +49,16 @@ async function checkSingleRouteAvailability(
 }
 
 export interface BuildResultParams {
-  swrKey: RoutesAvailabilityKey | null
+  queryKey: RoutesAvailabilityKey | null
   isLoading: boolean
   data: RouteCheckResult[] | undefined
   chainsToCheck: number[]
 }
 
 export function buildRoutesAvailabilityResult(params: BuildResultParams): RoutesAvailabilityResult {
-  const { swrKey, isLoading, data, chainsToCheck } = params
+  const { queryKey, isLoading, data, chainsToCheck } = params
 
-  if (!swrKey) {
+  if (!queryKey) {
     return EMPTY_ROUTES_RESULT
   }
 

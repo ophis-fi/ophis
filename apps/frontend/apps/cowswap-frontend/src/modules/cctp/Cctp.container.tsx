@@ -3,8 +3,11 @@ import { ReactNode } from 'react'
 import { useWalletInfo } from '@cowprotocol/wallet'
 import { useWalletChainId } from '@cowprotocol/wallet-provider'
 
+import { parseUnits } from 'viem'
+
 import { useToggleWalletModal } from 'legacy/state/application/hooks'
 
+import { ArcBridgeSelector, ArcOutboundForm } from './ArcOutbound.container'
 import { BtcCctpSwap } from './BtcCctpSwap.container'
 import { cctpNetwork } from './cctp.const'
 import { isCctpOwner } from './cctp.service'
@@ -19,25 +22,43 @@ export function CctpSwapRecovery({ route }: { route: ReturnType<typeof useCctpSw
   if (route.btc?.pending) return <BtcCctpSwap route={route} />
   if (route.flow.transfer)
     return <CctpSwapDetails route={route} source={undefined} destination={undefined} amount={undefined} />
-  return route.asset && route.blocked ? <p role="status">{route.blocked}</p> : null
+  return (route.asset || route.arcPair) && route.blocked ? <p role="status">{route.blocked}</p> : null
 }
 
-export function CctpSwapDetails({
-  route,
-  source,
-  destination,
-  amount,
-}: {
+interface BridgeDetailsProps {
   route: ReturnType<typeof useCctpSwapRoute>
   source: number | undefined
   destination: number | undefined
   amount: string | undefined
-}): ReactNode {
+}
+
+export function CctpSwapDetails(props: BridgeDetailsProps): ReactNode {
+  const { route, destination, amount } = props
+  const { flow, outbound } = route
+  if (flow.recoveryError) return <p role="alert">{flow.recoveryError}</p>
+  if (!flow.transfer && (route.conversion || route.btc?.pending)) return <BtcCctpSwap route={route} />
+  if (flow.transfer || !outbound) return <CircleSwapDetails {...props} />
+  return (
+    <>
+      <ArcBridgeSelector value={outbound.provider} circle={!!route.asset} onChange={outbound.choose} />
+      {outbound.provider === 'Circle' || !destination ? (
+        <CircleSwapDetails {...props} />
+      ) : (
+        <ArcOutboundForm
+          key={outbound.key}
+          provider={outbound.provider}
+          destination={destination}
+          amount={amount ? parseUnits(amount, 6) : undefined}
+        />
+      )}
+    </>
+  )
+}
+
+function CircleSwapDetails({ route, source, destination, amount }: BridgeDetailsProps): ReactNode {
   const { account, chainId } = useWalletInfo()
   const connect = useToggleWalletModal()
   const { flow, asset, blocked } = route
-  if (flow.recoveryError) return <p role="alert">{flow.recoveryError}</p>
-  if (!flow.transfer && (route.conversion || route.btc?.pending)) return <BtcCctpSwap route={route} />
   return (
     <styledEl.Card aria-label="Bridge details">
       {flow.transfer ? (

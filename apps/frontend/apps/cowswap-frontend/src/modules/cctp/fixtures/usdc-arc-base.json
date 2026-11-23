@@ -1,0 +1,85 @@
+{
+  "requestId": "0x179546262660230034791e1f2cc885873e7a06fa0b709e3916b803434089ede6",
+  "protocol": {
+    "v2": {
+      "orderId": "0x17ae46f71c9087de9c8322c721d0e239a9aa4f2f80fcb42da4fdfc2cdb9de3a5",
+      "hubType": "onchain",
+      "orderData": {
+        "version": "v1",
+        "solverChainId": "base",
+        "solver": "0xf70da97812cb96acdf810712aa562db8dfa3dbef",
+        "salt": "0x0cef81b6a6c85b33ef067cd81df7e1a9c40440380bc853792b66a6d7d7f04d22",
+        "inputs": [
+          {
+            "payment": {
+              "chainId": "arc",
+              "currency": "0x3600000000000000000000000000000000000000",
+              "amount": "100000000",
+              "weight": "1"
+            },
+            "refunds": [
+              {
+                "chainId": "arc",
+                "recipient": "0x1111111111111111111111111111111111111111",
+                "currency": "0x3600000000000000000000000000000000000000",
+                "minimumAmount": "0",
+                "deadline": 1796067426,
+                "extraData": "0x0000000000000000000000000729e2a4716d9f7dd17858d5d504426d228697f7"
+              },
+              {
+                "chainId": "base",
+                "recipient": "0x1111111111111111111111111111111111111111",
+                "currency": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                "minimumAmount": "0",
+                "deadline": 1796067426,
+                "extraData": "0x0000000000000000000000000729e2a4716d9f7dd17858d5d504426d228697f7"
+              }
+            ]
+          }
+        ],
+        "output": {
+          "chainId": "base",
+          "payments": [
+            {
+              "recipient": "0x1111111111111111111111111111111111111111",
+              "currency": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              "minimumAmount": "99809373",
+              "expectedAmount": "99899282"
+            }
+          ],
+          "calls": [],
+          "deadline": 1796067426,
+          "extraData": "0x0000000000000000000000000729e2a4716d9f7dd17858d5d504426d228697f7"
+        },
+        "fees": []
+      },
+      "orderSignature": "0xd46a3163a94b0f220a36df0dffb42ec3dc67841b5f5d59c5455f20b66267277e00383ff08fef4885b900d647da8deee311ee391a020fe4569c3bd359ce1bcff71c",
+      "paymentDetails": {
+        "chainId": "arc",
+        "depository": "0x4cD00E387622C35bDDB9b4c962C136462338BC31",
+        "currency": "0x3600000000000000000000000000000000000000",
+        "amount": "100000000"
+      }
+    }
+  },
+  "details": {
+    "currencyOut": {
+      "currency": {
+        "chainId": 8453,
+        "address": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+        "symbol": "USDC",
+        "name": "USD Coin",
+        "decimals": 6,
+        "metadata": {
+          "logoURI": "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png?1696506694",
+          "verified": true
+        }
+      },
+      "amount": "99899282",
+      "amountFormatted": "99.899282",
+      "amountUsd": "99.889592",
+      "minimumAmount": "99809373"
+    },
+    "timeEstimate": 1
+  }
+}

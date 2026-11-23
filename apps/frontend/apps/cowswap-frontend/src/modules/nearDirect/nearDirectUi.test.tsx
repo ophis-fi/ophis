@@ -51,6 +51,7 @@ jest.mock('modules/nearDirect', () => ({
     <p>{recoveryOnly ? 'NEAR recovery' : 'Direct NEAR form'}</p>
   ),
 }))
+jest.mock('modules/cctp', () => ({ ArcOutboundRecovery: () => null }))
 jest.mock('modules/swap', () => ({
   useSwapDerivedStateToFill: jest.fn(),
   SwapUpdaters: () => null,

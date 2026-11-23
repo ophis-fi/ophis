@@ -2,7 +2,7 @@ import { BRIDGE_SOURCE_CHAIN_IDS, isBridgeOnlyDestinationChain } from '@cowproto
 import { isSupportedChainId } from '@cowprotocol/common-utils'
 import { AdditionalTargetChainId, ChainInfo, SupportedChainId } from '@cowprotocol/cow-sdk'
 
-import { hasCctpRoute } from 'entities/cctp'
+import { hasWalletBridgeRoute } from 'entities/cctp'
 
 import { sortChainsByDisplayOrder } from './sortChainsByDisplayOrder'
 
@@ -76,7 +76,7 @@ export function createOutputChainsState({
   // would offer bridging FROM destination-only chains (Ink/Linea before
   // their source flags are enabled) where every quote fails.
   const sourceSupported =
-    BRIDGE_SOURCE_CHAIN_IDS.has(chainId) || (cctpEnabled && [...destinationIds].some((id) => hasCctpRoute(chainId, id)))
+    BRIDGE_SOURCE_CHAIN_IDS.has(chainId) || (cctpEnabled && [...destinationIds].some((id) => hasWalletBridgeRoute(chainId, id)))
 
   const baseDisabledChainIds = computeDisabledChainIds(
     orderedChains,

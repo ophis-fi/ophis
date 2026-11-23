@@ -2,8 +2,8 @@
 export const ACROSS_V5_ADAPTER = '0x794dbdbdbfd3f8a3b887f4513bf5ff29edd04a94'
 export const ACROSS_V5_STORE = 'function store(bytes32 witness,address token,uint256 amount)'
 export const ACROSS_V5_STORED = 'event PrefundingStored(bytes32 indexed witness,address token,uint256 amount)'
-export const ACROSS_V5_ORIGINS = [1, 10, 137, 4663, 8453, 42161, 57073, 59144]
-export const ACROSS_V5_DESTINATIONS = [...ACROSS_V5_ORIGINS, 56, 5042, 9745, 43114]
+export const ACROSS_V5_ORIGINS = [1, 10, 137, 4663, 5042, 8453, 42161, 57073, 59144]
+export const ACROSS_V5_DESTINATIONS = [...ACROSS_V5_ORIGINS, 56, 9745, 43114]
 export const ACROSS_V5_DEADLINE_MARGIN = 300
 
 export const acrossAddress = (value: unknown): value is string =>

@@ -1,18 +1,16 @@
+import { useAtomValue } from 'jotai'
 import { useMemo } from 'react'
 
-import { SWR_NO_REFRESH_OPTIONS } from '@cowprotocol/common-const'
 import { useIsBridgingEnabled } from '@cowprotocol/common-hooks'
 import { SupportedChainId, TargetChainId } from '@cowprotocol/cow-sdk'
 
-import { hasCctpRoute, useIsCctpEnabled } from 'entities/cctp'
-import useSWR from 'swr'
+import { hasWalletBridgeRoute, useIsCctpEnabled } from 'entities/cctp'
+import { atomWithQuery } from 'jotai-tanstack-query'
 
 import {
   buildRoutesAvailabilityResult,
-  createAvailabilitySwrKey,
   fetchRoutesAvailability,
   filterDestinationChains,
-  RouteCheckResult,
   RoutesAvailabilityKey,
   RoutesAvailabilityResult,
 } from './routesAvailabilityUtils'
@@ -36,24 +34,37 @@ export function useRoutesAvailability(
   const chainsToCheck = useMemo(
     () =>
       filterDestinationChains(destinationChainIds, sourceChainId).filter(
-        (id) => !cctpEnabled || !sourceChainId || !hasCctpRoute(sourceChainId, id),
+        (id) => !cctpEnabled || !sourceChainId || !hasWalletBridgeRoute(sourceChainId, id),
       ),
     [destinationChainIds, sourceChainId, cctpEnabled],
   )
 
-  const swrKey = useMemo(
-    () => createAvailabilitySwrKey({ isBridgingEnabled, sourceChainId, chainsToCheck, providersKey }),
-    [isBridgingEnabled, sourceChainId, chainsToCheck, providersKey],
+  const destinations = chainsToCheck
+    .slice()
+    .sort((a, b) => a - b)
+    .join(',')
+  const queryKey = useMemo<RoutesAvailabilityKey | null>(
+    () =>
+      isBridgingEnabled && sourceChainId && destinations
+        ? [sourceChainId, destinations, providersKey, 'routesAvailability']
+        : null,
+    [isBridgingEnabled, sourceChainId, destinations, providersKey],
   )
-
-  const { data, isLoading } = useSWR<RouteCheckResult[], Error, RoutesAvailabilityKey | null>(
-    swrKey,
-    fetchRoutesAvailability,
-    SWR_NO_REFRESH_OPTIONS,
+  const queryAtom = useMemo(
+    () =>
+      atomWithQuery(() => ({
+        queryKey: queryKey ?? ['routesAvailability', 'disabled'],
+        enabled: !!queryKey,
+        queryFn: () => (queryKey ? fetchRoutesAvailability(queryKey) : []),
+        refetchOnWindowFocus: false,
+        refetchOnReconnect: false,
+      })),
+    [queryKey],
   )
+  const { data, isLoading } = useAtomValue(queryAtom)
 
   return useMemo(
-    () => buildRoutesAvailabilityResult({ swrKey, isLoading, data, chainsToCheck }),
-    [swrKey, isLoading, data, chainsToCheck],
+    () => buildRoutesAvailabilityResult({ queryKey, isLoading, data, chainsToCheck }),
+    [queryKey, isLoading, data, chainsToCheck],
   )
 }

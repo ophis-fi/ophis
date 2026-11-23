@@ -217,6 +217,14 @@ const SOLANA_USDC: NearToken = {
 }
 
 describe('NEAR destination tokens', () => {
+  it('keeps a destination off the picker when NEAR has no source network', async () => {
+    const provider = new TestableNearProvider({})
+    const tokens = jest.spyOn(provider.testApi, 'getTokens')
+    expect(await provider.getBuyTokens({ sellChainId: 5042 as SupportedChainId, buyChainId: SupportedChainId.BASE }))
+      .toEqual({ tokens: [], isRouteAvailable: false })
+    expect(tokens).not.toHaveBeenCalled()
+  })
+
   it('offers the quotable native BTC route without the unsupported OMNI placeholder', async () => {
     const provider = new TestableNearProvider({})
     jest.spyOn(provider.testApi, 'getTokens').mockResolvedValue([OMNI_BTC, SOLANA_USDC, NATIVE_BTC])
