@@ -10,7 +10,7 @@ import { logger } from '../logger.js';
 import { priceDefiLlamaFill } from '../pricer.js';
 import { getRpcClient } from '../rpc/client.js';
 import { WETH_GNOSIS, WXDAI_GNOSIS } from '../safe/addresses.js';
-import { hostedChains } from './report.js';
+import { hostedChains, hostedPartnerRecipients, pendingStatementPayouts } from './report.js';
 import { PARTNER_FEE_CHAIN } from './split.js';
 
 // CoW's accounting registry: github.com/cowprotocol/dune-queries/blob/main/cowprotocol/lookup_tables/payout_safe_addresses_5454283.sql
@@ -118,17 +118,19 @@ async function syncReceipts(recipient: Buffer, chain: number, startNonce: number
 }
 
 async function syncOphisReceipts() {
-  const pending = await sql`SELECT e.recipient,e.paid_wei,b.safe_tx_hash,b.id FROM partner_fee_batch_entries e
-    JOIN partner_fee_batches b ON b.id=e.batch_id WHERE b.status='executed' AND e.paid_wei>0 AND b.safe_tx_hash IS NOT NULL
-    AND NOT EXISTS (SELECT 1 FROM partner_statement_receipts r WHERE r.recipient=e.recipient AND r.source='Ophis' AND r.transfer_id=b.id::text)`;
+  const pending = await sql`SELECT * FROM (${pendingStatementPayouts()}) p WHERE safe_tx_hash IS NOT NULL`;
   for (const p of pending) {
-    const rpc = getRpcClient(PARTNER_FEE_CHAIN);
-    const receipt = await rpc.getTransactionReceipt({ hash: hex(p.safe_tx_hash) });
-    if (receipt.status !== 'success') continue;
-    const block = await rpc.getBlock({ blockHash: receipt.blockHash });
-    await sql`INSERT INTO partner_statement_receipts (recipient,chain_id,source,transfer_id,tx,paid_at,asset,atoms)
+    try {
+      const rpc = getRpcClient(PARTNER_FEE_CHAIN);
+      const receipt = await rpc.getTransactionReceipt({ hash: hex(p.safe_tx_hash) });
+      if (receipt.status !== 'success') continue;
+      const block = await rpc.getBlock({ blockHash: receipt.blockHash });
+      await sql`INSERT INTO partner_statement_receipts (recipient,chain_id,source,transfer_id,tx,paid_at,asset,atoms)
       VALUES (${p.recipient},${PARTNER_FEE_CHAIN},'Ophis',${String(p.id)},${p.safe_tx_hash},${new Date(Number(block.timestamp) * 1000)},'WETH',${p.paid_wei})
       ON CONFLICT DO NOTHING`;
+    } catch (err) {
+      logger.warn({ err, batch: p.id }, 'Ophis statement payout pending');
+    }
   }
 }
 
@@ -228,11 +230,10 @@ async function syncTokenUnits() {
 
 export async function syncPartnerStatements() {
   const due =
-    await sql`SELECT r.recipient,c.chain,COALESCE(s.next_nonce,0) AS next_nonce FROM (SELECT DISTINCT own_fee_recipient AS recipient FROM trades WHERE fee_verified
-    AND own_fee_bps>0 AND own_fee_recipient IS NOT NULL AND chain_id=ANY(${hostedChains}::int[])) r
-    CROSS JOIN unnest(${Object.keys(payoutChains).map(Number)}::int[]) AS c(chain)
-    LEFT JOIN partner_statement_sync s ON s.recipient=r.recipient AND s.chain_id=c.chain
-    WHERE s.checked_at IS NULL OR s.checked_at < now()-interval '4 hours' ORDER BY s.checked_at NULLS FIRST, c.chain`;
+    await sql`SELECT r.recipient,r.chain_id AS chain,COALESCE(s.next_nonce,0) AS next_nonce FROM (${hostedPartnerRecipients()}) r
+    LEFT JOIN partner_statement_sync s USING (recipient,chain_id)
+    WHERE r.chain_id=ANY(${Object.keys(payoutChains).map(Number)}::int[])
+      AND (s.checked_at IS NULL OR s.checked_at < now()-interval '4 hours') ORDER BY s.checked_at NULLS FIRST,r.chain_id`;
   for (const r of due) {
     try {
       await syncReceipts(r.recipient, r.chain, r.next_nonce);

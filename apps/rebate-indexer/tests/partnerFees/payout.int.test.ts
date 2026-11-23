@@ -598,6 +598,9 @@ describe('getPartnerTraders: the wallets that traded through a partner integrati
     await sql`INSERT INTO partner_statement_receipts (recipient,chain_id,source,transfer_id,tx,paid_at,asset,atoms)
       SELECT ${Buffer.from(A,'hex')},1,'CoW',n::text,${Buffer.alloc(32,9)},'2026-11-09 23:59:59.999Z','ETH',5111896574959584
       FROM generate_series(1,501) n`;
+    // A distribution to the same address on a chain with no attributed hosted fill is outside this integration.
+    await sql`INSERT INTO partner_statement_receipts (recipient,chain_id,source,transfer_id,tx,paid_at,asset,atoms)
+      VALUES (${Buffer.from(A,'hex')},8453,'CoW','unrelated',${Buffer.alloc(32,9)},'2026-11-09 00:30Z','ETH',7)`;
     const range = {from:'2026-11-09',to:'2026-11-09'};
     const first=await getPartnerStatement(partner,range);
     expect(first.rows).toHaveLength(500);

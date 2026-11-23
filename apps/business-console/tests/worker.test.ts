@@ -9709,12 +9709,12 @@ async function loadList(list: string, addresses: string[], published: string | n
 
 isolation['GET /api/partner-statement'] = async (a,b) => {
   const wallet = someAddress()
-  await walletRow(a.orgId,wallet)
+  await walletRow(a.orgId,wallet,{chainId:1})
   const path = `/api/partner-statement?wallet=${wallet}&from=2026-11-19&to=2026-11-19`
   const receipt = {id:'p:CoW:1:6964',kind:'Payout',status:'Received',source:'CoW',at:'2026-11-19T00:06:35.000Z',
     chain:1,asset:'ETH',atoms:'5111896574959584',decimals:18,tx:'0x'+'aa'.repeat(32),uid:null,block:null,log:null,bps:null,volume:null,usd:null}
   const asked = indexer((_answer,init) => {
-    expect(JSON.parse(String(init.body))).toMatchObject({wallets:[wallet],contract:{[wallet]:[10]},listed:[],statement:{from:'2026-11-19',to:'2026-11-19'}})
+    expect(JSON.parse(String(init.body))).toMatchObject({wallets:[wallet],contract:{[wallet]:[1]},listed:[],statement:{from:'2026-11-19',to:'2026-11-19'}})
     return {wallet,rows:[receipt],next:null,revision:"1",coverage:[{chain:1,checked:'2026-11-20T00:00:00Z'}]}
   })
   expect((await call('GET',path,{cookie:b.cookie,env:liveEnv})).status).toBe(403)
@@ -9831,6 +9831,14 @@ describe('I. partner figures: live', () => {
   })
 
   beforeEach(() => db.batch([db.prepare('DELETE FROM sanctioned_addresses'), db.prepare('DELETE FROM sanctions_lists')])) // the tests share one database
+  it('retains incomplete payout coverage in an empty statement CSV', async () => {
+    const {statementCsv}=await import('../src/app/statementCsv.ts')
+    const rows=cells(statementCsv(P.wallet,[],['Ethereum']))
+    expect(rows[1]).toHaveLength(rows[0].length)
+    expect([rows[1][0],rows[1][1],rows[1].at(-1)]).toEqual([P.wallet,'Coverage','Ethereum'])
+    expect(cells(statementCsv(P.wallet,[],[]))).toHaveLength(1)
+  })
+
   it('limits the fee statement and CSV rows to the linked wallet and its proved chain', async () => isolation['GET /api/partner-statement'](await member(),await member()))
 
   it('GET /api/overview: the isolation case', async () => isolation['GET /api/overview'](await member('Alder Asset Management'), await member('Birchfield Capital')))
