@@ -189,46 +189,86 @@ export async function figures(env: Settings, orgId: string, now: number): Promis
   }
 }
 
-const moneyValue = (v: unknown) => v === null ? null : text(v, /^\d{1,90}(\.\d{1,30})?$/)
+const moneyValue = (v: unknown) => (v === null ? null : text(v, /^\d{1,90}(\.\d{1,30})?$/))
 const cursorPattern = /^[a-zA-Z0-9:-]{1,700}$/
-const validDay = (v: string) => DAY.test(v) && !Number.isNaN(Date.parse(v)) && new Date(v).toISOString().slice(0,10) === v
+const validDay = (v: string) =>
+  DAY.test(v) && !Number.isNaN(Date.parse(v)) && new Date(v).toISOString().slice(0, 10) === v
 
 export async function statementPage(env: Settings, orgId: string, now: number, params: URLSearchParams) {
   const wallet = (params.get('wallet') ?? '').toLowerCase()
-  const from = params.get('from') ?? '', to = params.get('to') ?? '', after = params.get('after') ?? ''
-  if (!/^0x[0-9a-f]{40}$/.test(wallet) || !validDay(from) || !validDay(to) || from > to || (after && !cursorPattern.test(after))) return Response.json({error:'invalid_statement'}, { status: 400 })
+  const from = params.get('from') ?? '',
+    to = params.get('to') ?? '',
+    after = params.get('after') ?? ''
+  if (
+    !/^0x[0-9a-f]{40}$/.test(wallet) ||
+    !validDay(from) ||
+    !validDay(to) ||
+    from > to ||
+    (after && !cursorPattern.test(after))
+  )
+    return Response.json({ error: 'invalid_statement' }, { status: 400 })
   const base = indexerBase(env)
-  if (!base || !env.INDEXER_TOKEN) return Response.json({error:'not_connected'}, { status: 503 })
+  if (!base || !env.INDEXER_TOKEN) return Response.json({ error: 'not_connected' }, { status: 503 })
   const rows = await reportingWallets(env.DB, orgId)
   const proof = rows.get(wallet)
-  if (!proof || ![...rows.keys()].slice(0,INDEXER.maxWallets).includes(wallet)) return Response.json({error:'wallet_unknown'}, { status: 403 })
-  if (!(await data.countHour(env.DB, `statement:${orgId}`, now, 600))) return Response.json({error:'figures_rate'}, {status:429})
+  if (!proof || ![...rows.keys()].slice(0, INDEXER.maxWallets).includes(wallet))
+    return Response.json({ error: 'wallet_unknown' }, { status: 403 })
+  if (!(await data.countHour(env.DB, `statement:${orgId}`, now, 600)))
+    return Response.json({ error: 'figures_rate' }, { status: 429 })
   try {
-    const answer = await readPartner(env,base,{ wallets:[wallet], contract:proof.key ? {} : {[wallet]:proof.chains}, listed:[], statement:{ from,to,...(after ? {after} : {}) } })
+    const answer = await readPartner(env, base, {
+      wallets: [wallet],
+      contract: proof.key ? {} : { [wallet]: proof.chains },
+      listed: [],
+      statement: { from, to, ...(after ? { after } : {}) },
+    })
     if (answer.wallet !== wallet) no()
     let previous = after
-    const result = list(answer.rows,500).map(obj).map(r => {
-      const id = text(r.id,cursorPattern), at = iso(r.at)
-      if (id <= previous || at.slice(0,10) < from || at.slice(0,10) > to) no()
-      previous = id
-      const kind = text(r.kind,/^(Trade|Payout)$/), status = text(r.status,kind === 'Trade' ? /^(Assessed|Estimated)$/ : /^Received$/)
-      const atoms = r.atoms === null ? null : text(r.atoms,/^\d{1,78}$/)
-      const decimals = r.decimals === null ? null : int(r.decimals)
-      const asset = r.asset === null ? null : text(r.asset,/^(0x[0-9a-f]{40}|[A-Za-z]{2,8})$/)
-      if (decimals !== null && decimals > 255) no()
-      const tx = r.tx === null ? null : text(r.tx,/^0x[0-9a-f]{64}$/)
-      const uid = r.uid === null ? null : text(r.uid,/^0x[0-9a-f]{112}$/)
-      if ((kind === 'Trade' && !uid) || (kind === 'Payout' && (!tx || !asset || atoms === null || decimals !== 18))) no()
-      return {id,kind,status,at,tx,uid,source:text(r.source,/^(Ophis|CoW)$/),...chainOf(r.chain),asset,atoms,decimals, symbol:r.symbol == null ? null : text(r.symbol,/^[a-z0-9._-]{1,24}$/i),
-        block:r.block === null ? null : text(r.block,/^\d{1,20}$/),log:r.log === null ? null : int(r.log),
-        bps:r.bps === null ? null : int(r.bps), volume:moneyValue(r.volume),usd:moneyValue(r.usd)}
-    })
-    const next = answer.next === null ? null : text(answer.next,cursorPattern)
+    const result = list(answer.rows, 500)
+      .map(obj)
+      .map((r) => {
+        const id = text(r.id, cursorPattern),
+          at = iso(r.at)
+        if (id <= previous || at.slice(0, 10) < from || at.slice(0, 10) > to) no()
+        previous = id
+        const kind = text(r.kind, /^(Trade|Payout)$/),
+          status = text(r.status, kind === 'Trade' ? /^(Assessed|Estimated)$/ : /^Received$/)
+        const atoms = r.atoms === null ? null : text(r.atoms, /^\d{1,78}$/)
+        const decimals = r.decimals === null ? null : int(r.decimals)
+        const asset = r.asset === null ? null : text(r.asset, /^(0x[0-9a-f]{40}|[A-Za-z]{2,8})$/)
+        if (decimals !== null && decimals > 255) no()
+        const tx = r.tx === null ? null : text(r.tx, /^0x[0-9a-f]{64}$/)
+        const uid = r.uid === null ? null : text(r.uid, /^0x[0-9a-f]{112}$/)
+        if ((kind === 'Trade' && !uid) || (kind === 'Payout' && (!tx || !asset || atoms === null || decimals !== 18)))
+          no()
+        return {
+          id,
+          kind,
+          status,
+          at,
+          tx,
+          uid,
+          source: text(r.source, /^(Ophis|CoW)$/),
+          ...chainOf(r.chain),
+          asset,
+          atoms,
+          decimals,
+          symbol: r.symbol == null ? null : text(r.symbol, /^[a-z0-9._-]{1,24}$/i),
+          block: r.block === null ? null : text(r.block, /^\d{1,20}$/),
+          log: r.log === null ? null : int(r.log),
+          bps: r.bps === null ? null : int(r.bps),
+          volume: moneyValue(r.volume),
+          usd: moneyValue(r.usd),
+        }
+      })
+    const next = answer.next === null ? null : text(answer.next, cursorPattern)
     if (next !== null && (!result.length || next !== previous)) no()
-    const coverage = list(answer.coverage,100).map(obj).map(c => ({...chainOf(c.chain),checked:c.checked===null ? null : iso(c.checked)}))
-    return Response.json({rows:result,next,coverage,revision:text(answer.revision,/^-?\d{1,80}$/)})
+    const coverage = list(answer.coverage, 100)
+      .map(obj)
+      .map((c) => ({ ...chainOf(c.chain), checked: c.checked === null ? null : iso(c.checked) }))
+    return Response.json({ rows: result, next, coverage, revision: text(answer.revision, /^-?\d{1,80}$/) })
   } catch {
-    return Response.json({error:'figures_unavailable'}, {status:503})
+    return Response.json({ error: 'figures_unavailable' }, { status: 503 })
   }
 }
 

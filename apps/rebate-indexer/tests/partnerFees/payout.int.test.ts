@@ -605,6 +605,7 @@ describe('getPartnerTraders: the wallets that traded through a partner integrati
     expect(second.next).toBeNull();
     const rows=[...first.rows,...second.rows];
     expect(new Set(rows.map(r=>r.id)).size).toBe(503);
+    expect(rows.filter(r=>r.kind==='Trade').every(r=>Number.isSafeInteger(r.log))).toBe(true);
     expect(rows.filter(r=>r.kind==='Trade').map(r=>r.status).sort()).toEqual(['Assessed','Estimated']);
     expect(rows.find(r=>r.kind==='Payout')).toMatchObject({atoms:'5111896574959584',usd:null,volume:null,status:'Received'});
     expect((await getPartnerStatement(partner,{from:'2026-11-10',to:'2026-11-10'})).rows).toHaveLength(1);

@@ -13,7 +13,7 @@ export const hostedChains = PRODUCTION_CHAIN_IDS.filter((chain) => !SOVEREIGN_CH
 // Hosted fills identify the partner from the verified order; their fees are disbursed by CoW.
 export function partnerFlow(recipient: Buffer) {
   return sql`
-    SELECT p.chain_id, p.block_timestamp, p.value_usd, p.fee_usd, p.trade_uid,
+    SELECT p.chain_id, COALESCE(p.block_timestamp, f.settlement_timestamp) AS block_timestamp, p.value_usd, p.fee_usd, p.trade_uid,
       p.block_number, p.log_index, p.volume_bps, p.fee_token, p.fee_amount, 'Ophis'::text AS source,
       f.sell_token, f.sell_amount, f.buy_token, f.buy_amount,
       f.transaction_hash, CASE WHEN f.user_source = 'onchain_user' THEN f.user_address END AS payer

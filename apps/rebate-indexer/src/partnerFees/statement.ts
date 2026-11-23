@@ -30,7 +30,7 @@ export async function getPartnerStatement(wallet: string, q: StatementQuery) {
         AND at < ((${q.to}::date+1)::timestamp AT TIME ZONE 'UTC')
     )
     SELECT revision,id,kind,source,chain,to_char(at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at,
-      '0x'||encode(tx,'hex') AS tx,'0x'||encode(uid,'hex') AS uid,block::text,log,volume::text,bps,asset,atoms::text,decimals,symbol,status,
+      '0x'||encode(tx,'hex') AS tx,'0x'||encode(uid,'hex') AS uid,block::text,log::integer AS log,volume::text,bps,asset,atoms::text,decimals,symbol,status,
       round(usd,12)::text AS usd
     FROM dated WHERE id COLLATE "C" > ${q.after ?? ''}
     ORDER BY id COLLATE "C" LIMIT 501`;
