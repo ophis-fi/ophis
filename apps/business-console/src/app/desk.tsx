@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { api, CANCELLED, capital, Icon, ROLE, save, say, sensitive, Section, stamp, SignNow, Status, Tile, Ways } from './ui.tsx'
 import { ASSET_LOGO, CHAIN_LOGO } from './logos.ts'
+import { FeeStatement } from './feeStatement.tsx'
 import { money } from './money.ts'
 
 // What an approval binds (the server's terms; amounts in atoms) and the same in words, made by the server.
@@ -237,8 +238,9 @@ function PartnerWalletFigures({ w, asOf }: { w: PartnerWallet; asOf: string }) {
   return (
     <section className="pw sec" aria-label={`Wallet ${w.label}`}>
       <h2 className="pw-head"><Icon name="wallet" /><b>{w.label}</b><span className="mono muted">{w.wallet}</span><span className="muted">{w.chain}</span></h2>
+      {w.fees && <FeeStatement wallet={w.wallet} asOf={asOf} explorers={EXPLORER} />}
       {w.fees ? (
-        <Section icon="hand-coins" title="Partner fee" hint="Trades include CoW-hosted chains. Ophis reports the fees it accounts for here. CoW handles hosted-chain fee payouts.">
+        <Section icon="hand-coins" title="Partner fee via Ophis" hint="The current Ophis payout cycle and lifetime figures for this wallet.">
           <div className="stats">
             <div className="c"><span className="num">${usd(w.fees.owedUsd)}</span><span className="cap"><Icon name="hand-coins" size={16} />Owed this cycle</span><span className="sub">Your share ${usd(w.fees.shareUsd)} plus ${usd(w.fees.carriedUsd)} carried. {ESTIMATE}</span></div>
             <div className="c"><span className="num">{count(w.fees.pendingTrades)}</span><span className="cap"><Icon name="clock" size={16} />Trades waiting for a price</span></div>
@@ -251,7 +253,7 @@ function PartnerWalletFigures({ w, asOf }: { w: PartnerWallet; asOf: string }) {
       ) : <p className="note warn" role="note"><Icon name="info" /><span className="grow"><b>The figures of this wallet are not shown.</b> It is a contract wallet, and Ophis has not confirmed the chain it is controlled on. <a className="link" href="/#/support">Ask Support</a>.</span></p>}
       {b && (
         <>
-          <Section icon="receipt" title="Payouts" hint="Payouts recorded by Ophis, newest first, at most 24.">
+          <Section icon="receipt" title="Ophis payouts" hint="Payouts recorded by Ophis, newest first, at most 24.">
             {b.payouts.length ? <Table head={['Date', 'Amount (WETH)', 'Status']} rows={b.payouts.map((p) => [
               <>{p.date}<small>{p.chain}</small></>, weth(p.weth),
               <><Status>{PAYOUT[p.status] ?? capital(p.status)}</Status>
@@ -277,7 +279,7 @@ function PartnerWalletFigures({ w, asOf }: { w: PartnerWallet; asOf: string }) {
               <Section icon="globe" title="By chain" hint="Every trade, by the chain it settled on.">
                 <Table head={['Chain', 'Volume (USD)', 'Your share via Ophis (USD)']} rows={b.byChain.map((c) => [<>{c.chain}{trades(c.trades)}</>, volume(c), usd(c.shareUsd)])} />
               </Section>
-              <Section icon="hand-coins" title="By fee token" hint="The token your fee was taken in, on its chain.">
+              <Section icon="hand-coins" title="By fee token" hint="Fee tokens accounted for by Ophis, by chain.">
                 {b.byToken.length ? <Table head={['Fee token', 'Your share via Ophis (USD)']} rows={b.byToken.map((x) => [<><span className="mono">{x.token}</span><small>{x.chain}, {count(x.trades)} {x.trades === 1 ? 'trade' : 'trades'}</small></>, volume(x, x.shareUsd)])} /> : <p className="muted">No fee tokens recorded by Ophis.</p>}
               </Section>
             </div>

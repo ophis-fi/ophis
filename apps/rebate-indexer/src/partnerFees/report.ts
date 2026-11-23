@@ -7,13 +7,26 @@ import { PARTNER_FEE_CHAIN, PARTNER_FEE_PARTNER_SHARE_BPS, MIN_PARTNER_PAYOUT_US
 // Read-only reporting for the signature-gated partner dashboard (POST /partner-fees) and the
 // optional public GET /partner-fees/stats (partner-fees Phase B). No money movement here.
 
-const hostedChains = PRODUCTION_CHAIN_IDS.filter((chain) => !SOVEREIGN_CHAIN_IDS.has(chain));
+export const hostedChains = PRODUCTION_CHAIN_IDS.filter((chain) => !SOVEREIGN_CHAIN_IDS.has(chain));
+
+// CoW pays native fees on the settlement chain. A matching hex address on another network is insufficient.
+export const hostedPartnerRecipients = () => sql`
+  SELECT DISTINCT t.own_fee_recipient AS recipient,t.chain_id FROM trades t
+  WHERE t.own_fee_recipient IS NOT NULL AND t.own_fee_bps>0 AND t.fee_verified AND t.chain_id=ANY(${hostedChains}::int[])
+    AND EXISTS (SELECT 1 FROM defillama_fills f WHERE (f.chain_id,f.trade_uid)=(t.chain_id,t.trade_uid) AND f.fee_verified)`;
+
+export const pendingStatementPayouts = () => sql`
+  SELECT e.recipient,e.paid_wei,b.safe_tx_hash,b.id FROM partner_fee_batch_entries e
+  JOIN partner_fee_batches b ON b.id=e.batch_id WHERE b.status='executed' AND e.paid_wei>0
+  AND NOT EXISTS (SELECT 1 FROM partner_statement_receipts r WHERE r.recipient=e.recipient AND r.source='Ophis' AND r.transfer_id=b.id::text)`;
 
 // Reporting only. The fee ledger takes precedence if both sources recorded the same settlement.
 // Hosted fills identify the partner from the verified order; their fees are disbursed by CoW.
-function partnerFlow(recipient: Buffer) {
+export function partnerFlow(recipient: Buffer) {
   return sql`
-    SELECT p.chain_id, p.block_timestamp, p.value_usd, p.fee_usd, p.trade_uid,
+    SELECT p.chain_id, COALESCE(p.block_timestamp, f.settlement_timestamp) AS block_timestamp, p.value_usd, p.fee_usd, p.trade_uid,
+      p.block_number, p.log_index, p.volume_bps, p.fee_token, p.fee_amount, 'Ophis'::text AS source,
+      f.sell_token, f.sell_amount, f.buy_token, f.buy_amount,
       f.transaction_hash, CASE WHEN f.user_source = 'onchain_user' THEN f.user_address END AS payer
     FROM partner_fee_trades p
     LEFT JOIN defillama_fills f ON f.chain_id = p.chain_id AND f.block_number = p.block_number
@@ -21,6 +34,8 @@ function partnerFlow(recipient: Buffer) {
     WHERE p.recipient = ${recipient}
     UNION ALL
     SELECT f.chain_id, f.settlement_timestamp, f.value_usd, NULL, f.trade_uid,
+      f.block_number, f.log_index, t.own_fee_bps, NULL, NULL, 'CoW',
+      f.sell_token, f.sell_amount, f.buy_token, f.buy_amount,
       f.transaction_hash, CASE WHEN f.user_source = 'onchain_user' THEN f.user_address END
     FROM trades t JOIN defillama_fills f USING (chain_id, trade_uid)
     WHERE t.own_fee_recipient = ${recipient} AND t.own_fee_bps > 0 AND t.fee_verified AND f.fee_verified

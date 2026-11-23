@@ -1,6 +1,8 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import type { PartnerBreakdown, PartnerFeeDashboard, PartnerSanctioned, PartnerTraders } from './partnerFees/report.js';
+import { z } from 'zod';
+import type { getPartnerStatement } from './partnerFees/statement.js';
 import { logger } from './logger.js';
 
 // One token-gated read route for the Ophis Business console. A company wallet (a
@@ -13,7 +15,13 @@ import { logger } from './logger.js';
 // BUSINESS_API_TOKEN reads EVERY partner's fee dashboard and traders: it is a secret, and the
 // feature is OFF (404) unless it is set, long, and different from the admin token.
 
+export const statementQuery = z.object({
+  from: z.iso.date(), to: z.iso.date(), after: z.string().regex(/^[A-Za-z0-9:-]{1,700}$/).optional(),
+}).refine(q => q.from <= q.to);
+export type StatementQuery = z.infer<typeof statementQuery>;
+
 export interface BusinessDeps {
+  getPartnerStatement?: typeof getPartnerStatement;
   getPartnerFeeDashboard: (recipient: `0x${string}`, now?: Date) => Promise<PartnerFeeDashboard>;
   getPartnerTraders: (recipient: `0x${string}`) => Promise<PartnerTraders>;
   getPartnerBreakdown: (recipient: `0x${string}`, now?: Date) => Promise<PartnerBreakdown>;
@@ -47,9 +55,9 @@ function businessToken(): string | null {
 }
 
 export function registerBusinessRoutes(app: FastifyInstance, deps: BusinessDeps): void {
-  app.post<{ Body: { wallets?: unknown; contract?: unknown; listed?: unknown } }>('/business/partner', {
+  app.post<{ Body: { wallets?: unknown; contract?: unknown; listed?: unknown; statement?: unknown } }>('/business/partner', {
     config: { rateLimit: { max: 120, timeWindow: '1 minute' } }, bodyLimit: 3_000_000,
-  }, async (req, reply): Promise<BusinessPartnerAnswer | undefined> => {
+  }, async (req, reply) => {
     const expected = businessToken();
     if (!expected) return reply.code(404).send({ error: 'not found' });
     const header = req.headers['authorization'];
@@ -84,6 +92,14 @@ export function registerBusinessRoutes(app: FastifyInstance, deps: BusinessDeps)
     const pinned = pinnedChains();
     // Chains are integers above zero, so an unpinned wallet (undefined) and a pin that is no number never match.
     const readable = (w: string) => !proved.has(w) || (proved.get(w) as unknown[]).includes(pinned[w]);
+
+    if (req.body?.statement !== undefined) {
+      const query = statementQuery.safeParse(req.body.statement);
+      if (!query.success || wallets.length !== 1) return reply.code(400).send({ error: 'invalid statement range or wallet' });
+      if (!readable(wallets[0]!)) return reply.code(403).send({ error: 'wallet proof required' });
+      if (!deps.getPartnerStatement) return reply.code(503).send({ error: 'statement unavailable' });
+      return { wallet: wallets[0], ...await deps.getPartnerStatement(wallets[0]!, query.data) };
+    }
 
     const now = new Date();
     logger.info({ wallets: wallets.length, refused: wallets.filter((w) => !readable(w)).length }, 'business partner read');

@@ -19,6 +19,7 @@ import { affiliatePayoutStatus } from './affiliate/payoutPlan.js';
 import { findReward } from './rewards.js';
 import { getPartnerBreakdown, getPartnerFeeDashboard, getPartnerFeeStats, getPartnerSanctioned, getPartnerTraders } from './partnerFees/report.js';
 import { registerTradeRewardRoutes } from './tradeRewards/routes.js';
+import { getPartnerStatement } from './partnerFees/statement.js';
 import { registerBusinessRoutes } from './business.js';
 import {
   FEE_SHARE_BPS,
@@ -395,7 +396,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   });
   app.options('*', async (_req, reply) => reply.code(204).send());
   registerTradeRewardRoutes(app);
-  registerBusinessRoutes(app, { getPartnerFeeDashboard, getPartnerTraders, getPartnerBreakdown, getPartnerSanctioned });
+  registerBusinessRoutes(app, { getPartnerStatement, getPartnerFeeDashboard, getPartnerTraders, getPartnerBreakdown, getPartnerSanctioned });
 
   // GET / is registered next to /stats below: the bare host root serves the
   // same public stats surface on this host (no redirect, no 404).

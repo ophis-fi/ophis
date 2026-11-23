@@ -846,7 +846,7 @@ describe('d. request checks', () => {
   it('a state change is a JSON POST: no other method, no other content type', async () => {
     const m = await member()
     expect(routes.filter((route) => route.method !== 'GET').every((route) => route.method === 'POST')).toBe(true)
-    expect(routes.filter((route) => route.method === 'GET').map((route) => route.path).sort()).toEqual(['/api/audit', '/api/desk', '/api/desk/routes/:id', '/api/export/:id', '/api/me', '/api/onboarding', '/api/org', '/api/overview', '/api/readiness', '/api/screening'])
+    expect(routes.filter((route) => route.method === 'GET').map((route) => route.path).sort()).toEqual(['/api/audit', '/api/desk', '/api/desk/routes/:id', '/api/export/:id', '/api/me', '/api/onboarding', '/api/org', '/api/overview', '/api/partner-statement', '/api/readiness', '/api/screening'])
     expect((await call('GET', '/api/signout', { cookie: m.cookie })).status).toBe(404)
     for (const type of ['text/plain', 'application/x-www-form-urlencoded', 'multipart/form-data', null]) {
       expect((await call('POST', '/api/signout', { cookie: m.cookie, headers: { 'content-type': type } })).status).toBe(415)
@@ -2634,7 +2634,7 @@ describe('r. the role table', () => {
       'POST /api/recover/intent': 'public', 'POST /api/recover/cancel-intent': 'public', 'POST /api/recover/continue/start': 'public', 'POST /api/recover/continue/finish': 'public',
       'POST /api/recovery/:id/cancel': 'owner fresh', 'POST /api/recovery/:id/object': 'admin,approver,compliance fresh',
       'POST /api/support/ask': any,
-      'GET /api/overview': any, 'GET /api/desk': any, 'GET /api/desk/routes/:id': any, 'POST /api/desk/orders': 'owner,admin,trader settled', 'GET /api/export/:id': any,
+      'GET /api/overview': any, 'GET /api/partner-statement': any, 'GET /api/desk': any, 'GET /api/desk/routes/:id': any, 'POST /api/desk/orders': 'owner,admin,trader settled', 'GET /api/export/:id': any,
       'POST /api/desk/orders/:id/link': 'owner,admin,trader,approver,compliance fresh settled', 'POST /api/desk/orders/:id/withdraw': 'owner,admin,trader,approver,compliance fresh settled',
       'POST /api/order': 'public', 'POST /api/order/send': 'public',
       'POST /api/apply': 'public', 'POST /api/apply/check': 'public',
@@ -5599,13 +5599,11 @@ describe('D. Support: the model selects, the server decides', () => {
     // Review of P4: a partner's Overview shows its fee figures and exports one table, so the two texts say so. No text
     // speaks of a referral share, referred wallets, codes or earnings: the console's partners get none (2026-11-13).
     const text = (id: string) => ANSWERS.find((a) => a.id === id)!.text
-    expect(text('KB-13')).toContain('Overview shows partner fees owed (an estimate), payouts, volume by day, chain and token, and trading wallets, flagging those on a sanctions list.')
+    expect(text('KB-13')).toContain('Fee statement shows fees charged on settled trades and transfers received from the CoW payouts Safe or Ophis.')
     expect(text('KB-13')).toContain('These reports cover linked fee recipient addresses included in reporting. Ask Support to exclude a recovery or personal wallet from reporting while keeping it linked')
-    expect(text('KB-16')).toMatch(/A partner also: the partner-fee months, payouts, daily volume, the split by chain and by fee token, the wallets that traded, and those on a sanctions list\./)
-    // Every organisation trades on the desk (owner, 2026-11-19): its two tables are every organisation's.
-    expect(text('KB-16')).toMatch(/Desk \(every organisation\): the orders with every term and what was executed\. Support: the permitted assets\./)
-    // The institution's exports are real since 2026-11-14: balances read on the chain, its orders, the statement of its filled orders.
-    expect(text('KB-16')).toMatch(/Overview \(every organisation\): the monthly statement of its filled orders, volume and fees in the asset sold\. An institution also: the balances of its linked wallets and its orders\./)
+    expect(text('KB-16')).toContain('From and To (inclusive UTC), choose Apply dates, then Download statement CSV')
+    expect(text('KB-16')).toContain('monthly statements, partner breakdowns and institutional balances')
+    expect(text('KB-16')).toContain('Desk exports orders, Compliance exports the audit log, and Support exports permitted assets')
     expect(text('KB-16')).not.toMatch(/Not available|example/i)
     expect(text('KB-13') + text('KB-16')).not.toMatch(/no fees view|does not show|one export that exists/)
     for (const a of ANSWERS) expect(a.title + a.about + a.text, a.id).not.toMatch(/referr|affiliate|partner code|earning/i)
@@ -9709,6 +9707,25 @@ async function loadList(list: string, addresses: string[], published: string | n
   ])
 }
 
+isolation['GET /api/partner-statement'] = async (a,b) => {
+  const wallet = someAddress()
+  await walletRow(a.orgId,wallet,{chainId:1})
+  const path = `/api/partner-statement?wallet=${wallet}&from=2026-11-19&to=2026-11-19`
+  const receipt = {id:'p:CoW:1:6964',kind:'Payout',status:'Received',source:'CoW',at:'2026-11-19T00:06:35.000Z',
+    chain:1,asset:'ETH',atoms:'5111896574959584',decimals:18,tx:'0x'+'aa'.repeat(32),uid:null,block:null,log:null,bps:null,volume:null,usd:null}
+  const asked = indexer((_answer,init) => {
+    expect(JSON.parse(String(init.body))).toMatchObject({wallets:[wallet],contract:{[wallet]:[1]},listed:[],statement:{from:'2026-11-19',to:'2026-11-19'}})
+    return {wallet,rows:[receipt],next:null,revision:"1",coverage:[{chain:1,checked:'2026-11-20T00:00:00Z'}]}
+  })
+  expect((await call('GET',path,{cookie:b.cookie,env:liveEnv})).status).toBe(403)
+  expect((await call('GET',path.replace('from=2026-11-19','from=2026-02-30'),{cookie:a.cookie,env:liveEnv})).status).toBe(400)
+  expect(asked).toHaveLength(0)
+  const read=await call('GET',path,{cookie:a.cookie,env:liveEnv})
+  expect(read.status).toBe(200)
+  expect(read.body.rows[0]).toMatchObject({atoms:receipt.atoms,chainId:1,usd:null})
+  expect(asked).toHaveLength(1)
+}
+
 isolation['GET /api/overview'] = async (a, b) => {
   // Two partners, each with a linked wallet. A's read asks the indexer for A's wallet and never for B's.
   const [mine, theirs] = [someAddress(), someAddress()]
@@ -9814,6 +9831,16 @@ describe('I. partner figures: live', () => {
   })
 
   beforeEach(() => db.batch([db.prepare('DELETE FROM sanctioned_addresses'), db.prepare('DELETE FROM sanctions_lists')])) // the tests share one database
+  it('retains incomplete payout coverage in an empty statement CSV', async () => {
+    const {statementCsv}=await import('../src/app/statementCsv.ts')
+    const rows=cells(statementCsv(P.wallet,[],['Ethereum']))
+    expect(rows[1]).toHaveLength(rows[0].length)
+    expect([rows[1][0],rows[1][1],rows[1].at(-1)]).toEqual([P.wallet,'Coverage','Ethereum'])
+    expect(cells(statementCsv(P.wallet,[],[]))).toHaveLength(1)
+  })
+
+  it('limits the fee statement and CSV rows to the linked wallet and its proved chain', async () => isolation['GET /api/partner-statement'](await member(),await member()))
+
   it('GET /api/overview: the isolation case', async () => isolation['GET /api/overview'](await member('Alder Asset Management'), await member('Birchfield Capital')))
 
   // The Free plan: about 1 ms of CPU per recovered signature, 10 ms per request (tests/cpu.mjs).
@@ -10285,16 +10312,16 @@ describe('I. partner figures: live', () => {
     for (const sentence of [
       'Figures from the Ophis rebate service, read at {stamp(Date.parse(f.asOf))}. Amounts in USD.', "const ESTIMATE = 'Estimate. The amount is fixed when a payout is made.'", '<b>Your figures are not connected yet.</b>', '<b>No wallet is included in partner reporting.</b>',
       '<a className="link" href="/#/organisation">Link a wallet under Organisation</a>', '<b>The figures are not available right now.</b>', '<Icon name="history" size={16} />Retry</button>',
-      'title="Partner fee" hint="Trades include CoW-hosted chains. Ophis reports the fees it accounts for here. CoW handles hosted-chain fee payouts."', 'Owed this cycle', 'Your share ${usd(w.fees.shareUsd)} plus ${usd(w.fees.carriedUsd)} carried.', 'Trades waiting for a price', 'Paid to date (WETH)', "['Month', 'Status', 'Owed (USD)', 'Owed (WETH)', 'Carried (USD)']", '<Export table="months" size="md" label="Fee months CSV" />',
+      'title="Partner fee via Ophis" hint="The current Ophis payout cycle and lifetime figures for this wallet."', 'Owed this cycle', 'Your share ${usd(w.fees.shareUsd)} plus ${usd(w.fees.carriedUsd)} carried.', 'Trades waiting for a price', 'Paid to date (WETH)', "['Month', 'Status', 'Owed (USD)', 'Owed (WETH)', 'Carried (USD)']", '<Export table="months" size="md" label="Fee months CSV" />',
       'title="Wallets that traded through your integration" hint="The wallets whose orders carried the reported fee, since the first trade. Volume is an estimate."', "['Wallet', 'Trades', 'Volume (USD)']", 'The table shows the {t.wallets.length} largest wallets by volume.',
       "Volume is priced each night. {count(t.totals.unpriced)} {t.totals.unpriced === 1 ? 'trade is' : 'trades are'} not priced yet.", 'No wallet has traded through your integration yet.', '<Export table="traders" size="md" label="Trading wallets CSV" />',
       '[<span className="muted">Not known (native ETH sales)</span>, count(t.unknown.trades), volume(t.unknown)]', "<small>{count(x.unpriced)} {x.unpriced === 1 ? 'trade' : 'trades'} not priced yet</small>",
       // The breakdown: the payouts, the daily volume with its table, by chain and by fee token, and their four CSV.
-      'title="Payouts" hint="Payouts recorded by Ophis, newest first, at most 24."', "['Date', 'Amount (WETH)', 'Status']", '<p className="muted">No payout recorded by Ophis.</p>', "'No transaction yet'",
+      'title="Ophis payouts" hint="Payouts recorded by Ophis, newest first, at most 24."', "['Date', 'Amount (WETH)', 'Status']", '<p className="muted">No payout recorded by Ophis.</p>', "'No transaction yet'",
       "{ executed: 'Paid', proposed: 'Waiting for signatures', proposing: 'Waiting for signatures', computed: 'Not sent yet' }",
       'title="Daily volume" hint="The last 90 days, by the day the trade settled (UTC). Volume is an estimate."', '<p className="muted">No trade in the last 90 days.</p>', 'role="img" aria-label={`Daily volume in USD from ${first} to ${last}.',
       "not priced yet: in the table, not in the bars.", '<summary>Each day as a table<Icon name="chevron-down" /></summary>', "['Day', 'Volume (USD)', 'Your share via Ophis (USD)']",
-      'title="By chain" hint="Every trade, by the chain it settled on."', "['Chain', 'Volume (USD)', 'Your share via Ophis (USD)']", 'title="By fee token" hint="The token your fee was taken in, on its chain."', "['Fee token', 'Your share via Ophis (USD)']",
+      'title="By chain" hint="Every trade, by the chain it settled on."', "['Chain', 'Volume (USD)', 'Your share via Ophis (USD)']", 'title="By fee token" hint="Fee tokens accounted for by Ophis, by chain."', "['Fee token', 'Your share via Ophis (USD)']",
       '<Export table="payouts" size="md" label="Payouts CSV" />', '<Export table="daily" size="md" label="Daily CSV" />', '<Export table="chains" size="md" label="Chains CSV" />', '<Export table="tokens" size="md" label="Fee tokens CSV" />',
       // The wallets on a sanctions list that traded: a red alert with its table and its CSV, a tag in the wallets that traded, the lists checked.
       "<div className=\"note bad flagged\" role=\"alert\">", "{count(rows.length)} {rows.length === 1 ? 'wallet' : 'wallets'} on a sanctions list traded through your integration: {count(n)} {n === 1 ? 'trade' : 'trades'}, ${usd(rows.reduce((sum, s) => sum + s.volumeUsd, 0))}{u > 0 && `, ${count(u)} ${u === 1 ? 'trade' : 'trades'} not priced yet`}.",

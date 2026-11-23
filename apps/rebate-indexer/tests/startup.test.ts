@@ -2,10 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn(), price: vi.fn(), ready: vi.fn(), score: vi.fn(),
-  repair: vi.fn(), archive: vi.fn(), rewards: vi.fn(), released: false,
+  repair: vi.fn(), archive: vi.fn(), statements: vi.fn(), rewards: vi.fn(), released: false,
 }));
 vi.mock('../src/db/migrate.js', () => ({ runMigrations: vi.fn() }));
 vi.mock('../src/api.js', () => ({ startApi: vi.fn() }));
+vi.mock('../src/partnerFees/statementSync.js', () => ({ startPartnerStatementSync: mocks.statements }));
 vi.mock('../src/cron.js', () => ({ startCron: vi.fn() }));
 vi.mock('../src/fetcher.js', () => ({
   FETCHER_MAX_OWNERS_PER_RUN: 500,
@@ -40,6 +41,7 @@ describe('startup refresh', () => {
     mocks.rewards.mockImplementation(async () => { expect(mocks.released).toBe(true); });
     await import('../src/index.js');
     await vi.waitFor(() => expect(mocks.rewards).toHaveBeenCalledWith('startup'));
+    expect(mocks.statements).toHaveBeenCalledOnce();
     expect(mocks.archive).not.toHaveBeenCalled();
     expect(mocks.fetch).toHaveBeenCalledTimes(2);
     const cutoff = mocks.fetch.mock.calls[0]![1]?.staleBefore;

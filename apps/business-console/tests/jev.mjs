@@ -11,6 +11,8 @@ if (!key) {
   process.exit(1)
 }
 const CASES = [
+  ["J'aimerais faire un export CSV avec les tx, le volume et les frais perçus pour une fourchette de dates.", 'KB-16'],
+  ['Where can I see the fees CoW paid to our wallet?', 'KB-13'],
   ['How do I add a second passkey on my new laptop?', 'KB-03'],
   ['What does the status Expired mean on my order?', 'KB-19'],
   ['who can approve a payout address change', 'KB-13', 'KB-08', '-'],

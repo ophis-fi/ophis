@@ -1,3 +1,5 @@
+import { csvCell } from '../csv.ts'
+export { csvCell } from '../csv.ts'
 // Worker entry: answers /api/* and leaves every other path to the static assets.
 import * as data from './data.ts'
 import { balancesOf, checksum, colour, parseAddress, readBytes, readCapped, safeState, verify, verifyDigest, type SafeState } from './chain.ts'
@@ -715,11 +717,6 @@ async function audit(c: Context) {
   const last = rows.at(-1)?.seq ?? 1
   return json(200, { rows: rows.map(line), next: rows.length === PAGE && last > 1 ? last : null, chain })
 }
-/** Every cell is quoted. One that a spreadsheet would run as a formula (it starts with = + - @, a tab or a return) gets an apostrophe in front. */
-export const csvCell = (value: unknown) => {
-  const text = String(value ?? '')
-  return `"${(/^[=+\-@\t\r]/.test(text) ? `'${text}` : text).replace(/"/g, '""')}"`
-}
 // The export in pages (data.exportAudit): the first call writes its row and answers the file's name, its heading and the
 // first rows; each later call, with `after` and `upto` from the one before, the next rows. The page joins them in one file.
 async function auditExport(c: Context) {
@@ -1114,6 +1111,8 @@ export const routes: Route[] = [
   { method: 'GET', path: '/api/audit', roles: READERS, can: 'Read the audit log', handler: audit },
   { method: 'POST', path: '/api/audit/export', roles: READERS, fresh: true, can: 'Export the audit log', handler: auditExport },
   { method: 'GET', path: '/api/screening', roles: READERS, can: 'See the sanctions screening Ophis recorded for the organisation, and the address lists its linked wallets are compared with', handler: screening },
+  { method: 'GET', path: '/api/partner-statement', roles: ANY, can: 'Read a fee statement for an included partner wallet', handler: async c => c.session.org_kind === 'partner'
+      ? partner.statementPage(c.env,c.actor.orgId,c.now,new URL(c.request.url).searchParams) : fail(404,'not_found') },
   { method: 'GET', path: '/api/overview', roles: ANY, can: 'See the overview of the organisation (an institution: the balances of its linked wallets, its orders and its statement; a partner: its figures from the Ophis rebate service)', handler: overview },
   { method: 'GET', path: '/api/desk', roles: ANY, can: 'See the desk: permitted assets, orders and their records', handler: desk },
   { method: 'GET', path: '/api/desk/routes/:id', roles: ANY, can: 'See the routes of the desk and how deep each is, from live quotes', handler: deskRoutes },

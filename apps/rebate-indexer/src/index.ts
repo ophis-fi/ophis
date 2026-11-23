@@ -1,5 +1,6 @@
 import { runMigrations } from './db/migrate.js';
 import { startApi } from './api.js';
+import { startPartnerStatementSync } from './partnerFees/statementSync.js';
 import { startCron } from './cron.js';
 import { FETCHER_MAX_OWNERS_PER_RUN, runFetcher, withPipelineLock } from './fetcher.js';
 import { runPricer } from './pricer.js';
@@ -13,6 +14,7 @@ async function main() {
   await runMigrations();
   await startApi();
   startCron();
+  startPartnerStatementSync();
   startTradeRewardsScheduler();
   logger.info('rebate-indexer ready');
 

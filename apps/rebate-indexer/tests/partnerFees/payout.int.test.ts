@@ -531,6 +531,21 @@ describe('getPartnerTraders: the wallets that traded through a partner integrati
   const w = (owner: string, trades: number, volumeUsd: number, unpriced: number) => ({ wallet: `0x${owner}`, trades, volumeUsd, unpriced });
   const sanctioned = async (recipient: string, listed: string[]) => (await import('../../src/partnerFees/report.js')).getPartnerSanctioned(`0x${recipient}`, listed.map((a) => `0x${a}`));
 
+  it('reads only successful native payouts to the recipient from a known multisend', async () => {
+    const {nativeDistributions} = await import('../../src/partnerFees/statementSync.js');
+    const {encodeMultiSend,encodeMultiSendCalldata} = await import('../../src/batch/multisend.js');
+    const recipient = `0x${A}` as const, other = `0x${B}` as const;
+    const data = encodeMultiSendCalldata(encodeMultiSend([
+      {to:other,value:99n,data:'0x'}, {to:recipient,value:9007199254740999n,data:'0x'}, {to:recipient,value:10n,data:'0x'},
+    ]));
+    const tx = {operation:1,to:other,executionDate:'2026-11-19T00:06:35Z',nonce:3,transactionHash:'0x'+'ff'.repeat(32),
+      value:'0',data,isSuccessful:true,isExecuted:true as const,safe:other};
+    expect(nativeDistributions(tx,recipient,new Set([other]))).toEqual([{i:1,atoms:9007199254740999n},{i:2,atoms:10n}]);
+    expect(nativeDistributions(tx,recipient,new Set())).toEqual([]);
+    expect(nativeDistributions({...tx,isSuccessful:false},recipient,new Set([other]))).toEqual([]);
+    expect(()=>nativeDistributions({...tx,isSuccessful:null},recipient,new Set([other]))).toThrow();
+  });
+
   it('reports verified hosted fills once, including partial fills and their transactions, without accruing hosted payouts', async () => {
     const sql = await getSql();
     const { getPartnerFeeDashboard, getPartnerBreakdown } = await import('../../src/partnerFees/report.js');
@@ -577,6 +592,27 @@ describe('getPartnerTraders: the wallets that traded through a partner integrati
       { chainId: 1, settledAt: day, txHash: `0x${'09'.repeat(32)}`, trades: 2, volumeUsd: 40, unpriced: 0 },
       { chainId: 1, settledAt: day, txHash: `0x${'0a'.repeat(32)}`, trades: 1, volumeUsd: 0, unpriced: 1 },
     ]);
+
+    const { getPartnerStatement } = await import('../../src/partnerFees/statement.js');
+    await sql`UPDATE defillama_fills SET settlement_timestamp='2026-11-10 00:00:00Z' WHERE trade_uid=${u} AND block_number=11`;
+    await sql`INSERT INTO partner_statement_receipts (recipient,chain_id,source,transfer_id,tx,paid_at,asset,atoms)
+      SELECT ${Buffer.from(A,'hex')},1,'CoW',n::text,${Buffer.alloc(32,9)},'2026-11-09 23:59:59.999Z','ETH',5111896574959584
+      FROM generate_series(1,501) n`;
+    // A distribution to the same address on a chain with no attributed hosted fill is outside this integration.
+    await sql`INSERT INTO partner_statement_receipts (recipient,chain_id,source,transfer_id,tx,paid_at,asset,atoms)
+      VALUES (${Buffer.from(A,'hex')},8453,'CoW','unrelated',${Buffer.alloc(32,9)},'2026-11-09 00:30Z','ETH',7)`;
+    const range = {from:'2026-11-09',to:'2026-11-09'};
+    const first=await getPartnerStatement(partner,range);
+    expect(first.rows).toHaveLength(500);
+    const second=await getPartnerStatement(partner,{...range,after:first.next!});
+    expect(second.next).toBeNull();
+    const rows=[...first.rows,...second.rows];
+    expect(new Set(rows.map(r=>r.id)).size).toBe(503);
+    expect(rows.filter(r=>r.kind==='Trade').every(r=>Number.isSafeInteger(r.log))).toBe(true);
+    expect(rows.filter(r=>r.kind==='Trade').map(r=>r.status).sort()).toEqual(['Assessed','Estimated']);
+    expect(rows.find(r=>r.kind==='Payout')).toMatchObject({atoms:'5111896574959584',usd:null,volume:null,status:'Received'});
+    expect((await getPartnerStatement(partner,{from:'2026-11-10',to:'2026-11-10'})).rows).toHaveLength(1);
+    expect((await getPartnerStatement('0x'+B,range)).rows.some(r=>r.kind==='Payout')).toBe(false);
   });
 
   it('lists the owners largest first, the payer of a native-ETH sale when known, and never an eth-flow contract', async () => {

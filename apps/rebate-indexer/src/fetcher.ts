@@ -390,6 +390,27 @@ function appDataMatchesExecutedFee(
     && approxFactor(policy.priceImprovement.maxVolumeFactor, fee.maxVolumeBps);
 }
 
+export function executedRecipientFees(
+  appFees: Array<{ recipient?: unknown }>,
+  executed: NonNullable<CowTrade['executedProtocolFees']>,
+  recipient: string,
+) {
+  if (executed.length < appFees.length) return null;
+  const offset = executed.length - appFees.length;
+  for (let i = 0; i < appFees.length; i += 1) {
+    const expected = appDataFeeKind(appFees[i]);
+    if (expected === null
+      || executedFeeKind(executed[offset + i]!.policy) !== expected
+      || !appDataMatchesExecutedFee(appFees[i], executed[offset + i]!.policy)) return null;
+  }
+
+  return appFees.flatMap((entry, i) =>
+    typeof entry.recipient === 'string' && entry.recipient.toLowerCase() === recipient
+      ? [executed[offset + i]!]
+      : [],
+  );
+}
+
 function isCanonicalOphisImprovement(
   chainId: number,
   policy: NonNullable<CowTrade['executedProtocolFees']>[number]['policy'],
@@ -454,19 +475,8 @@ export function readAssessedOphisFeeBps(
     }
   }
 
-  const offset = executed.length - appFees.length;
-  for (let i = 0; i < appFees.length; i += 1) {
-    const expected = appDataFeeKind(appFees[i]);
-    if (expected === null
-      || executedFeeKind(executed[offset + i]!.policy) !== expected
-      || !appDataMatchesExecutedFee(appFees[i], executed[offset + i]!.policy)) return null;
-  }
-
-  const ophisFees = appFees.flatMap((entry, i) =>
-    typeof entry.recipient === 'string' && entry.recipient.toLowerCase() === OPHIS_FEE_RECIPIENT
-      ? [executed[offset + i]!]
-      : [],
-  );
+  const ophisFees = executedRecipientFees(appFees, executed, OPHIS_FEE_RECIPIENT);
+  if (!ophisFees) return null;
   if (hasSovereignImprovement) ophisFees.unshift(executed[0]!);
   if (ophisFees.length === 0) return chainId === ARC_CHAIN_ID ? '0.00000000' : null;
   const token = ophisFees[0]!.token.toLowerCase();
