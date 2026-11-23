@@ -1747,7 +1747,7 @@ try {
   await pat.page.waitForTimeout(200)
   check('at phone width the bars span the width and the tables of the breakdown need no sideways scroll',
     (await dailySection.locator('svg[role="img"]').evaluate((svg) => svg.getBoundingClientRect().width)) > 300
-    && (await Promise.all([payoutsSection, dailySection, chainSection, tokenSection].map((x) => x.locator('.table-wrap').evaluate((box) => box.scrollWidth <= box.clientWidth)))).every(Boolean))
+    && (await Promise.all([payoutsSection, dailySection, txSection, chainSection, tokenSection].map((x) => x.locator('.table-wrap').evaluate((box) => box.scrollWidth <= box.clientWidth)))).every(Boolean))
   await pat.page.setViewportSize({ width: 1440, height: 900 })
 
   // The statement of its desk orders (owner, 2026-11-19) names what an order paid, "the Ophis fee among them", word for
