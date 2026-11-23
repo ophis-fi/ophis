@@ -82,12 +82,20 @@ export function ArcOutboundRecovery(): ReactNode {
 
 function DismissTracking({ owner, saved }: { owner: string; saved: unknown }): ReactNode {
   const [confirm, setConfirm] = useState(false)
+  const [error, setError] = useState('')
   const setRecord = useSetAtom(arcReceiptAtom(owner))
   const storage = arcReceiptKey(owner)
   async function dismiss(): Promise<void> {
-    await navigator.locks.request(storage, { ifAvailable: true }, (lock) => {
-      if (lock && JSON.stringify(readArcReceipt(storage)) === JSON.stringify(saved)) setRecord(null)
-    })
+    try {
+      await navigator.locks.request(storage, { ifAvailable: true }, (lock) => {
+        if (!lock) throw new Error('Another tab is updating this transfer. Try again.')
+        if (JSON.stringify(readArcReceipt(storage)) !== JSON.stringify(saved))
+          throw new Error('The saved transfer changed. Refresh before clearing it.')
+        setRecord(null)
+      })
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to clear saved tracking. Try again.')
+    }
   }
   return (
     <>
@@ -96,6 +104,7 @@ function DismissTracking({ owner, saved }: { owner: string; saved: unknown }): R
           Check your wallet history first. Clearing this record removes tracking and leaves any transfer in progress.
         </p>
       )}
+      {error && <p role="alert">{error}</p>}
       <button disabled={!navigator.locks} onClick={() => (confirm ? void dismiss() : setConfirm(true))}>
         {confirm ? 'Clear saved record' : 'Dismiss tracking'}
       </button>

@@ -1,3 +1,4 @@
+import { atom } from 'jotai'
 import { atomFamily, atomWithStorage, createJSONStorage } from 'jotai/utils'
 
 import { getAddressKey } from '@cowprotocol/cow-sdk'
@@ -35,15 +36,22 @@ const storage: typeof json = {
       return null
     }
   },
-  setItem(key, value) {
-    json.setItem(key, value)
-    if (JSON.stringify(readArcReceipt(key)) !== JSON.stringify(value))
-      throw new Error('Unable to save Arc bridge tracking.')
-  },
   subscribe: (key, callback) => json.subscribe?.(key, () => callback(readArcReceipt(key)), null) ?? (() => undefined),
 }
 
-const receipts = atomFamily((key: string) => atomWithStorage<unknown>(key, null, storage, { getOnInit: true }))
+const receipts = atomFamily((key: string) => {
+  // The public atom commits to storage before publishing a new value to the UI.
+  const view = atomWithStorage<unknown>(key, null, { ...storage, setItem: () => {} }, { getOnInit: true })
+  return atom(
+    (get) => get(view),
+    (_get, set, next: Receipt | null) => {
+      json.setItem(key, next)
+      if (JSON.stringify(readArcReceipt(key)) !== JSON.stringify(next))
+        throw new Error('Unable to save Arc bridge tracking.')
+      set(view, next)
+    },
+  )
+})
 export function arcReceiptAtom(owner: string): ReturnType<typeof receipts> {
   return receipts(arcReceiptKey(owner))
 }

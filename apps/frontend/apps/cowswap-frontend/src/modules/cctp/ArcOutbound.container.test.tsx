@@ -6,7 +6,7 @@ import { BridgeStatus } from '@cowprotocol/sdk-bridging'
 import { fireEvent, render, screen } from '@testing-library/react'
 
 import { ArcOutboundRecovery } from './ArcOutboundRecovery.container'
-import { arcReceiptAtom } from './arcReceipt.atoms'
+import { arcReceiptAtom, type Receipt } from './arcReceipt.atoms'
 
 jest.mock('legacy/state/application/hooks', () => ({ useToggleWalletModal: jest.fn() }))
 jest.mock('common/constants/featureFlags', () => ({ CCTP_ENABLED: false }))
@@ -35,7 +35,7 @@ it('resumes Relay tracking by request ID and shows the nonce of an ambiguous sen
   expect(screen.getByRole('link', { name: 'Track on Relay' }).getAttribute('href')).toContain(id)
 })
 
-it('requires confirmation to discard unreadable tracking and preserves a newer record', () => {
+it('requires confirmation to discard unreadable tracking and preserves a newer record', async () => {
   Object.defineProperty(navigator, 'locks', {
     configurable: true,
     value: {
@@ -49,6 +49,7 @@ it('requires confirmation to discard unreadable tracking and preserves a newer r
   expect(localStorage.getItem(key)).toBe('invalid')
   localStorage.setItem(key, 'newer')
   fireEvent.click(screen.getByRole('button', { name: 'Clear saved record' }))
+  expect(await screen.findByText(/The saved transfer changed/)).toBeTruthy()
   expect(localStorage.getItem(key)).toBe('newer')
 })
 
@@ -57,9 +58,30 @@ it('uses a single record across address spellings and fails if the browser canno
   const atom = arcReceiptAtom(owner)
   expect(arcReceiptAtom(owner.toUpperCase().replace('0X', '0x'))).toBe(atom)
   const store = createStore()
-  const record = { provider: 'Relay', id: '0x' + '12'.repeat(32), destination: 8453, minimum: '999', nonce: 5 }
+  const record: Receipt = { provider: 'Relay', id: '0x' + '12'.repeat(32), destination: 8453, minimum: '999', nonce: 5 }
   store.set(atom, record)
   expect(JSON.parse(localStorage.getItem('ophisArcBridge:' + owner + ':v0') || 'null')).toEqual(record)
   jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {})
   expect(() => store.set(atom, { ...record, nonce: 6 })).toThrow('Unable to save Arc bridge tracking')
+  expect(store.get(atom)).toEqual(record)
+})
+
+it('reports a busy tab and a storage failure, then allows clearing the same record on retry', async () => {
+  const request = jest.fn((_key: string, _options: unknown, callback: (lock: object | null) => void) => callback({}))
+  request.mockImplementationOnce((_key, _options, callback) => callback(null))
+  Object.defineProperty(navigator, 'locks', { configurable: true, value: { request } })
+  localStorage.setItem(key, 'unreadable')
+  render(<ArcOutboundRecovery />)
+  fireEvent.click(screen.getByRole('button', { name: 'Dismiss tracking' }))
+  const clear = screen.getByRole('button', { name: 'Clear saved record' })
+  fireEvent.click(clear)
+  expect(await screen.findByText(/Another tab is updating/)).toBeTruthy()
+  const write = jest.spyOn(Storage.prototype, 'setItem').mockImplementationOnce(() => {})
+  fireEvent.click(clear)
+  expect(await screen.findByText(/Unable to save Arc bridge tracking/)).toBeTruthy()
+  expect(localStorage.getItem(key)).toBe('unreadable')
+  write.mockRestore()
+  fireEvent.click(clear)
+  expect(screen.queryByRole('button', { name: 'Clear saved record' })).toBeNull()
+  expect(localStorage.getItem(key)).toBe('null')
 })
