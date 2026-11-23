@@ -141,6 +141,9 @@ export class OphisNearIntentsBridgeProvider extends NearIntentsBridgeProvider {
   async getBuyTokens(
     params: Parameters<NearIntentsBridgeProvider['getBuyTokens']>[0],
   ): ReturnType<NearIntentsBridgeProvider['getBuyTokens']> {
+    if (params.sellChainId !== undefined && !(await this.getNetworks()).some(({ id }) => id === params.sellChainId)) {
+      return { tokens: [], isRouteAvailable: false }
+    }
     const response = await super.getBuyTokens(params)
     const result = {
       ...response,

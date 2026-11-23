@@ -182,7 +182,7 @@ Availability follows live Relay chain/token discovery, Ophis's trusted token
 list, and existing source execution gates. Destination coverage does not prove
 source execution. Non-EVM routes, including Starknet, continue through NEAR.
 The existing SDK also excludes an intermediate identical to the sell token;
-this adapter does not introduce a separate direct-deposit UI for that case.
+the Ophis swap form handles outbound Arc USDC with a direct wallet deposit.
 
 Ophis limits placement and the signed deposit hook to five minutes; Relay's
 signed fill/refund deadline is separate and can be much longer. Do not describe
@@ -212,6 +212,14 @@ hook returns any remainder to the order owner on the source chain. The explorer
 tracks the V5 order ID after matching its `PrefundingStored` event and token pull.
 V4 status reads remain available for pre-migration orders while the legacy
 endpoint serves them.
+
+For outbound Arc USDC, the swap form can fund Across or Relay directly from a
+personal wallet. Select USDC on Arc and USDC on the destination, choose the
+provider, and review the quoted minimum. The wallet approves the exact amount
+and sends the deposit on Arc. Both providers deliver to the same wallet address.
+On reload, Ophis resumes tracking the order from this browser. To verify a funded
+transfer, match the Arc deposit receipt to the provider order and check the
+destination receipt for the recipient, token and amount.
 
 ### Intent parser
 

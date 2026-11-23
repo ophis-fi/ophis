@@ -13,7 +13,7 @@ import { AssetSwapFields } from 'ophis/components/AssetSwap/AssetSwapFields'
 import { Field } from 'legacy/state/types'
 import { useHooksEnabledManager } from 'legacy/state/user/hooks'
 
-import { CctpSwapDetails, CctpSwapRecovery, useCctpSwapRoute } from 'modules/cctp'
+import { ArcOutboundRecovery, CctpSwapDetails, CctpSwapRecovery, useCctpSwapRoute } from 'modules/cctp'
 import { TradeApproveWithAffectedOrderList } from 'modules/erc20Approve'
 import { EthFlowModal, EthFlowProps } from 'modules/ethFlow'
 import { NearDirectSwap, NearSwapRecovery, useNearSwapEntry } from 'modules/nearDirect'
@@ -204,12 +204,12 @@ function StandardSwapWidget({
       inputCurrency &&
       outputCurrency &&
       inputCurrency.chainId !== outputCurrency.chainId &&
-      (getIsNativeToken(inputCurrency) || cctp.active) &&
+      (getIsNativeToken(inputCurrency) || cctp.arcPair) &&
       !isSmartContractWallet &&
       orderKind === OrderKind.BUY
     )
       updateSwapState({ orderKind: OrderKind.SELL, inputCurrencyAmount: null, outputCurrencyAmount: null })
-  }, [inputCurrency, outputCurrency, isSmartContractWallet, orderKind, updateSwapState, cctp.active])
+  }, [inputCurrency, outputCurrency, isSmartContractWallet, orderKind, updateSwapState, cctp.arcPair])
 
   const isSellTrade = isSellOrder(orderKind)
 
@@ -314,6 +314,7 @@ function StandardSwapWidget({
       <>
         {topContent}
         <CctpSwapRecovery route={cctp} />
+        <ArcOutboundRecovery enabled={enableCctp} />
       </>
     ),
     lockScreen: shouldShowLockScreen ? <CrossChainUnlockScreen handleUnlock={handleUnlock} /> : undefined,

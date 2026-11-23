@@ -1,11 +1,11 @@
-import { ARC_CHAIN_ID } from '@cowprotocol/common-const'
+import { ARC_CHAIN_ID, ARC_USDC, USDC_BASE, USDC_POLYGON } from '@cowprotocol/common-const'
 import { useIsBridgingEnabled } from '@cowprotocol/common-hooks'
 import { OrderKind } from '@cowprotocol/cow-sdk'
 import { CurrencyAmount, Token } from '@cowprotocol/currency'
 import { AccountType } from '@cowprotocol/types'
 import { useAccountType, useIsSmartContractWallet } from '@cowprotocol/wallet'
 
-import { renderHook } from '@testing-library/react'
+import { act, renderHook } from '@testing-library/react'
 import { cctpBuyTokens, WBTC_ETHEREUM } from 'entities/cctp'
 
 import { type BtcSwapPending } from './btcSwapState'
@@ -172,4 +172,22 @@ it('leaves exact-buy quoting to the generic flow and restores the BTC route when
   rerender({ orderKind: OrderKind.SELL })
   expect(result.current.active).toBe(true)
   expect(result.current.conversion).toBe(true)
+})
+
+it('keeps Circle selectable on Base and offers the wallet-funded bridges on Polygon', () => {
+  const { result, rerender } = renderHook(
+    ({ output, enabled }) => useCctpSwapRoute({ ...params, input: ARC_USDC, output, enabled }),
+    {
+      initialProps: { output: USDC_BASE, enabled: true },
+    },
+  )
+  expect(result.current.outbound?.provider).toBe('Circle')
+  rerender({ output: USDC_POLYGON, enabled: true })
+  expect(result.current.outbound?.provider).toBe('Across')
+  expect(result.current.active).toBe(true)
+  act(() => result.current.outbound?.choose('Relay'))
+  expect(result.current.outbound?.provider).toBe('Relay')
+  rerender({ output: USDC_POLYGON, enabled: false })
+  expect(result.current.outbound).toBeUndefined()
+  expect(result.current.active).toBe(false)
 })

@@ -4,7 +4,7 @@ import { BRIDGE_SOURCE_CHAIN_IDS } from '@cowprotocol/common-const'
 import { getCurrencyAddress, isSupportedChainId } from '@cowprotocol/common-utils'
 import { OrderKind } from '@cowprotocol/cow-sdk'
 
-import { hasCctpRoute, useIsCctpEnabled } from 'entities/cctp'
+import { hasWalletBridgeRoute, useIsCctpEnabled } from 'entities/cctp'
 
 import { useSwitchTokensPlaces, useTradeNavigate } from 'modules/trade'
 
@@ -28,7 +28,7 @@ export function useOnSwitchTokens(): () => boolean {
     if (!isSupportedChainId(outputCurrency.chainId)) return false
     const isSourceSupported =
       BRIDGE_SOURCE_CHAIN_IDS.has(outputCurrency.chainId) ||
-      (cctpEnabled && hasCctpRoute(outputCurrency.chainId, inputCurrency.chainId))
+      (cctpEnabled && hasWalletBridgeRoute(outputCurrency.chainId, inputCurrency.chainId))
     if (!isSourceSupported) return false
 
     updateState({

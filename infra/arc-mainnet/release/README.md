@@ -361,9 +361,9 @@ LI.FI is not required. The protocol routes existing DEX liquidity.
 USDC ERC20 orders use six decimals; native USDC gas uses eighteen and shares the
 same balance. Native-sentinel orders, WUSDC wrapping and Balancer balance modes
 are unavailable. Arc TWAP is hidden because its helper contracts are not deployed.
-The supported bridge corridor is inbound USDC through Across's existing direct
-SpokePool/CoWShed path, with executable source-chain checks. Arc is not advertised
-as a bridge source. Across's legacy suggested-fees API is not actively maintained;
+Inbound bridge orders use the source-chain execution checks. For outbound USDC,
+the Ophis swap form offers direct wallet deposits through Across and Relay.
+See the [bridge verification procedure](../../../docs/operations/e2e-swap-verification.md#across-v5). Across's legacy suggested-fees API is not actively maintained;
 the existing direct deposit path remains documented, and unavailable routes fail
 closed. No unvalidated `/swap/approval` calldata is executed. A requested slow fill
 remains pending until an actual fill status arrives.
