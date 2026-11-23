@@ -39,6 +39,7 @@ interface PartnerWallet {
   // share. tx: null until the payout is executed. null with fees.
   breakdown: null | {
     daily: (Flow & { day: string })[]; byChain: (Flow & OnChain)[]; byToken: (OnChain & { token: string; trades: number; shareUsd: number; unpriced: number })[]
+    transactions?: (OnChain & Traded & { tx: string; settledAt: string | null })[]
     payouts: (OnChain & { date: string; weth: number; tx: string | null; status: string })[]
   }
   // The wallets on a sanctions list that traded through the integration, over every trade. null with fees.
@@ -162,7 +163,7 @@ const volume = (x: { unpriced: number; volumeUsd?: number }, n = x.volumeUsd ?? 
 
 // The block explorer of a payout's transaction, by chain: the indexer's own links (EXPLORER_TX_URL there).
 // The desk's chains too: an order's transaction.
-const EXPLORER: Record<number, string> = { 1: 'https://etherscan.io/tx/', 10: 'https://optimistic.etherscan.io/tx/', 100: 'https://gnosisscan.io/tx/', 130: 'https://uniscan.xyz/tx/', 8453: 'https://basescan.org/tx/', 42161: 'https://arbiscan.io/tx/' }
+const EXPLORER: Record<number, string> = { 1: 'https://etherscan.io/tx/', 10: 'https://optimistic.etherscan.io/tx/', 100: 'https://gnosisscan.io/tx/', 130: 'https://uniscan.xyz/tx/', 8453: 'https://basescan.org/tx/', 42161: 'https://arbiscan.io/tx/', 56: 'https://bscscan.com/tx/', 137: 'https://polygonscan.com/tx/' }
 const PAYOUT: Record<string, string> = { executed: 'Paid', proposed: 'Waiting for signatures', proposing: 'Waiting for signatures', computed: 'Not sent yet' }
 const DAY_MS = 86_400_000
 // The trades of a row, under its first cell: three columns fit a phone.
@@ -189,7 +190,7 @@ function DailyVolume({ days, asOf }: { days: (Flow & { day: string })[]; asOf: s
       {unpriced > 0 && <p className="fine"><Icon name="clock" size={16} />{count(unpriced)} {unpriced === 1 ? 'trade is' : 'trades are'} not priced yet: in the table, not in the bars.</p>}
       <details className="disclose">
         <summary>Each day as a table<Icon name="chevron-down" /></summary>
-        <div className="body"><Table head={['Day', 'Volume (USD)', 'Your share (USD)']} rows={days.map((d) => [<>{d.day}{trades(d.trades)}</>, volume(d), usd(d.shareUsd)])} /></div>
+        <div className="body"><Table head={['Day', 'Volume (USD)', 'Your share via Ophis (USD)']} rows={days.map((d) => [<>{d.day}{trades(d.trades)}</>, volume(d), usd(d.shareUsd)])} /></div>
       </details>
     </>
   )
@@ -237,7 +238,7 @@ function PartnerWalletFigures({ w, asOf }: { w: PartnerWallet; asOf: string }) {
     <section className="pw sec" aria-label={`Wallet ${w.label}`}>
       <h2 className="pw-head"><Icon name="wallet" /><b>{w.label}</b><span className="mono muted">{w.wallet}</span><span className="muted">{w.chain}</span></h2>
       {w.fees ? (
-        <Section icon="hand-coins" title="Partner fee" hint="The fee you set on the orders of your integration.">
+        <Section icon="hand-coins" title="Partner fee" hint="Trades include CoW-hosted chains. Ophis reports the fees it accounts for here. CoW handles hosted-chain fee payouts.">
           <div className="stats">
             <div className="c"><span className="num">${usd(w.fees.owedUsd)}</span><span className="cap"><Icon name="hand-coins" size={16} />Owed this cycle</span><span className="sub">Your share ${usd(w.fees.shareUsd)} plus ${usd(w.fees.carriedUsd)} carried. {ESTIMATE}</span></div>
             <div className="c"><span className="num">{count(w.fees.pendingTrades)}</span><span className="cap"><Icon name="clock" size={16} />Trades waiting for a price</span></div>
@@ -245,28 +246,39 @@ function PartnerWalletFigures({ w, asOf }: { w: PartnerWallet; asOf: string }) {
             <div className="c"><span className="num">{count(w.fees.trades)}</span><span className="cap"><Icon name="arrow-left-right" size={16} />Trades</span></div>
           </div>
           {w.fees.months.length ? <Table head={['Month', 'Status', 'Owed (USD)', 'Owed (WETH)', 'Carried (USD)']} rows={w.fees.months.map((m) => [m.month, <Status>{capital(m.status)}</Status>, usd(m.owedUsd), weth(m.owedWeth), usd(m.carriedUsd)])} />
-            : <p className="muted">No month has been accounted yet.</p>}
+            : <p className="muted">No monthly fee statement from Ophis yet.</p>}
         </Section>
       ) : <p className="note warn" role="note"><Icon name="info" /><span className="grow"><b>The figures of this wallet are not shown.</b> It is a contract wallet, and Ophis has not confirmed the chain it is controlled on. <a className="link" href="/#/support">Ask Support</a>.</span></p>}
       {b && (
         <>
-          <Section icon="receipt" title="Payouts" hint="The payouts to this wallet, newest first, at most 24.">
+          <Section icon="receipt" title="Payouts" hint="Payouts recorded by Ophis, newest first, at most 24.">
             {b.payouts.length ? <Table head={['Date', 'Amount (WETH)', 'Status']} rows={b.payouts.map((p) => [
               <>{p.date}<small>{p.chain}</small></>, weth(p.weth),
               <><Status>{PAYOUT[p.status] ?? capital(p.status)}</Status>
                 <small>{p.tx ? (EXPLORER[p.chainId] ? <a className="link mono" href={EXPLORER[p.chainId] + p.tx} target="_blank" rel="noopener" title={p.tx}>{short(p.tx)}</a> : <span className="mono">{p.tx}</span>) : 'No transaction yet'}</small></>,
-            ])} /> : <p className="muted">No payout yet.</p>}
+            ])} /> : <p className="muted">No payout recorded by Ophis.</p>}
           </Section>
           <Section icon="calendar" title="Daily volume" hint="The last 90 days, by the day the trade settled (UTC). Volume is an estimate.">
             {b.daily.length ? <DailyVolume days={b.daily} asOf={asOf} /> : <p className="muted">No trade in the last 90 days.</p>}
           </Section>
+          {!!b.transactions?.length && (
+            <Section icon="arrow-left-right" title="Recent transactions" hint="The 100 most recent identified settlement transactions per wallet, newest first. A transaction can settle several trades." action={<Export table="transactions" label="Transactions CSV" />}>
+              <details className="disclose">
+                <summary>View {b.transactions.length} {b.transactions.length === 1 ? 'transaction' : 'transactions'}<Icon name="chevron-down" /></summary>
+                <div className="body"><Table head={['Transaction', 'Settled at (UTC)', 'Volume (USD)']} rows={b.transactions.map((t) => [
+                <>{EXPLORER[t.chainId] ? <a className="link mono" href={EXPLORER[t.chainId] + t.tx} target="_blank" rel="noopener" title={t.tx}>{short(t.tx)}</a> : <span className="mono">{t.tx}</span>}<small>{t.chain}</small></>,
+                <>{t.settledAt?.replace('T', ' ').slice(0, 19) ?? 'Unknown'}{trades(t.trades)}</>, volume(t),
+                ])} /></div>
+              </details>
+            </Section>
+          )}
           {b.byChain.length > 0 && (
             <div className="g even sec">
               <Section icon="globe" title="By chain" hint="Every trade, by the chain it settled on.">
-                <Table head={['Chain', 'Volume (USD)', 'Your share (USD)']} rows={b.byChain.map((c) => [<>{c.chain}{trades(c.trades)}</>, volume(c), usd(c.shareUsd)])} />
+                <Table head={['Chain', 'Volume (USD)', 'Your share via Ophis (USD)']} rows={b.byChain.map((c) => [<>{c.chain}{trades(c.trades)}</>, volume(c), usd(c.shareUsd)])} />
               </Section>
               <Section icon="hand-coins" title="By fee token" hint="The token your fee was taken in, on its chain.">
-                <Table head={['Fee token', 'Your share (USD)']} rows={b.byToken.map((x) => [<><span className="mono">{x.token}</span><small>{x.chain}, {count(x.trades)} {x.trades === 1 ? 'trade' : 'trades'}</small></>, volume(x, x.shareUsd)])} />
+                {b.byToken.length ? <Table head={['Fee token', 'Your share via Ophis (USD)']} rows={b.byToken.map((x) => [<><span className="mono">{x.token}</span><small>{x.chain}, {count(x.trades)} {x.trades === 1 ? 'trade' : 'trades'}</small></>, volume(x, x.shareUsd)])} /> : <p className="muted">No fee tokens recorded by Ophis.</p>}
               </Section>
             </div>
           )}

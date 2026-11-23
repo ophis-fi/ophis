@@ -10,7 +10,7 @@ export interface Typed {
 }
 export const LINK_ACTION = 'Link this wallet to this organisation'
 // Includes retired chains so historical reports retain their names.
-export const CHAIN_NAME: Record<number, string> = { 1: 'Ethereum', 10: 'OP Mainnet', 100: 'Gnosis', 130: 'Unichain', 8453: 'Base', 42161: 'Arbitrum One', 4663: 'Robinhood Chain', 5042: 'Arc' }
+export const CHAIN_NAME: Record<number, string> = { 1: 'Ethereum', 10: 'OP Mainnet', 100: 'Gnosis', 130: 'Unichain', 8453: 'Base', 42161: 'Arbitrum One', 4663: 'Robinhood Chain', 5042: 'Arc', 56: 'BNB Chain', 137: 'Polygon', 9745: 'Plasma', 43114: 'Avalanche', 57073: 'Ink', 59144: 'Linea' }
 // What a wallet that does not know a chain needs to add it (wallet_addEthereumChain, after error 4902 on a switch): the
 // chains most wallets lack (owner, 2026-11-19). The RPC is the first endpoint of passkeys.ts; tests/worker.test.ts compares.
 export const NETWORKS: Record<number, { chainName: string; nativeCurrency: { name: string; symbol: string; decimals: number }; rpcUrls: string[]; blockExplorerUrls: string[] }> = {

@@ -1,9 +1,38 @@
 import { sql } from '../db/index.js';
+import { SOVEREIGN_CHAIN_IDS } from '../affiliate/rates.js';
+import { PRODUCTION_CHAIN_IDS } from '../stats-page.js';
 import { DECODER_ETHFLOW_OWNERS } from '../fetcher.js';
 import { PARTNER_FEE_CHAIN, PARTNER_FEE_PARTNER_SHARE_BPS, MIN_PARTNER_PAYOUT_USD } from './split.js';
 
 // Read-only reporting for the signature-gated partner dashboard (POST /partner-fees) and the
 // optional public GET /partner-fees/stats (partner-fees Phase B). No money movement here.
+
+const hostedChains = PRODUCTION_CHAIN_IDS.filter((chain) => !SOVEREIGN_CHAIN_IDS.has(chain));
+
+// Reporting only. The fee ledger takes precedence if both sources recorded the same settlement.
+// Hosted fills identify the partner from the verified order; their fees are disbursed by CoW.
+function partnerFlow(recipient: Buffer) {
+  return sql`
+    SELECT p.chain_id, p.block_timestamp, p.value_usd, p.fee_usd, p.trade_uid,
+      f.transaction_hash, CASE WHEN f.user_source = 'onchain_user' THEN f.user_address END AS payer
+    FROM partner_fee_trades p
+    LEFT JOIN defillama_fills f ON f.chain_id = p.chain_id AND f.block_number = p.block_number
+      AND f.log_index = p.log_index AND f.trade_uid = p.trade_uid AND f.fee_verified
+    WHERE p.recipient = ${recipient}
+    UNION ALL
+    SELECT f.chain_id, f.settlement_timestamp, f.value_usd, NULL, f.trade_uid,
+      f.transaction_hash, CASE WHEN f.user_source = 'onchain_user' THEN f.user_address END
+    FROM trades t JOIN defillama_fills f USING (chain_id, trade_uid)
+    WHERE t.own_fee_recipient = ${recipient} AND t.own_fee_bps > 0 AND t.fee_verified AND f.fee_verified
+      AND t.chain_id = ANY(${hostedChains}::int[])
+      AND NOT EXISTS (SELECT 1 FROM partner_fee_trades p WHERE p.recipient = ${recipient}
+        AND (p.chain_id, p.block_number, p.log_index, p.trade_uid) = (f.chain_id, f.block_number, f.log_index, f.trade_uid))
+  `;
+}
+
+function flowOwner() {
+  return sql`COALESCE(p.payer, substring(p.trade_uid from 33 for 20))`;
+}
 
 /**
  * The next monthly partner batcher run: the 1st at 02:00 UTC. On the 1st BETWEEN 00:00 and
@@ -83,7 +112,7 @@ export async function getPartnerFeeDashboard(recipient: `0x${string}`, now: Date
   const [life] = await sql<{ paid_weth: string; trade_count: string }[]>`
     SELECT
       COALESCE((SELECT SUM(paid_wei::numeric) / 1e18 FROM partner_fee_batch_entries WHERE recipient = ${buf} AND paid_wei IS NOT NULL), 0)::text AS paid_weth,
-      (SELECT COUNT(*) FROM partner_fee_trades WHERE recipient = ${buf})::text AS trade_count
+      (SELECT COUNT(*) FROM (${partnerFlow(buf)}) p)::text AS trade_count
   `;
 
   const recent = await sql<{ cycle_month: string; status: string; owed_usd: string; owed_wei: string; carried_usd: string }[]>`
@@ -169,11 +198,8 @@ export async function getPartnerTraders(recipient: `0x${string}`): Promise<Partn
     FROM (
       SELECT CASE WHEN ('0x' || encode(o.owner, 'hex')) <> ALL(${[...DECODER_ETHFLOW_OWNERS]}) THEN o.owner END AS owner,
         COUNT(*) AS trades, COALESCE(SUM(p.value_usd), 0) AS volume_usd, COUNT(*) FILTER (WHERE p.value_usd IS NULL) AS unpriced
-      FROM partner_fee_trades p
-      LEFT JOIN defillama_fills f ON f.chain_id = p.chain_id AND f.block_number = p.block_number
-        AND f.log_index = p.log_index AND f.trade_uid = p.trade_uid AND f.fee_verified AND f.user_source = 'onchain_user'
-      CROSS JOIN LATERAL (SELECT COALESCE(f.user_address, substring(p.trade_uid from 33 for 20)) AS owner) o
-      WHERE p.recipient = ${buf}
+      FROM (${partnerFlow(buf)}) p
+      CROSS JOIN LATERAL (SELECT ${flowOwner()} AS owner) o
       GROUP BY 1
     ) w
     ORDER BY w.owner IS NULL, w.volume_usd DESC, w.owner
@@ -212,12 +238,9 @@ export async function getPartnerSanctioned(recipient: `0x${string}`, listed: rea
     SELECT w.wallet, COUNT(*)::text AS trades, COALESCE(SUM(p.value_usd), 0)::text AS volume_usd, COUNT(*) FILTER (WHERE p.value_usd IS NULL)::text AS unpriced,
       to_char(MIN(p.block_timestamp) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS first_at,
       to_char(MAX(p.block_timestamp) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS last_at
-    FROM partner_fee_trades p
-    LEFT JOIN defillama_fills f ON f.chain_id = p.chain_id AND f.block_number = p.block_number
-      AND f.log_index = p.log_index AND f.trade_uid = p.trade_uid AND f.fee_verified AND f.user_source = 'onchain_user'
-    CROSS JOIN LATERAL (SELECT COALESCE(f.user_address, substring(p.trade_uid from 33 for 20)) AS owner) o
-    CROSS JOIN LATERAL (SELECT '0x' || encode(o.owner, 'hex') AS wallet) w
-    WHERE p.recipient = ${buf} AND w.wallet = ANY(${[...listed]}) AND w.wallet <> ALL(${[...DECODER_ETHFLOW_OWNERS]})
+    FROM (${partnerFlow(buf)}) p
+    CROSS JOIN LATERAL (SELECT '0x' || encode(${flowOwner()}, 'hex') AS wallet) w
+    WHERE w.wallet = ANY(${[...listed]}) AND w.wallet <> ALL(${[...DECODER_ETHFLOW_OWNERS]})
     GROUP BY w.wallet
     ORDER BY COALESCE(SUM(p.value_usd), 0) DESC, w.wallet
   `;
@@ -241,6 +264,8 @@ export interface PartnerBreakdown {
   readonly byChain: (PartnerFlowFigures & { readonly chainId: number })[];
   /** By the token the fee was taken in, on its chain: the 100 with the largest share. unpriced here: fee_usd NULL. */
   readonly byToken: { readonly chainId: number; readonly token: `0x${string}`; readonly trades: number; readonly shareUsd: number; readonly unpriced: number }[];
+  /** The newest 100 identified settlement transactions, grouped on their chain. */
+  readonly transactions: { chainId: number; txHash: `0x${string}`; settledAt: string | null; trades: number; volumeUsd: number; unpriced: number }[];
   /** The batches that pay this recipient (its entry 'paid'), newest first, at most 24. date: the day the batch reached its
    *  status (executed: the day the payment was recorded). txHash: the onchain transaction, once executed. */
   readonly payouts: { readonly date: string; readonly weth: number; readonly chainId: number; readonly txHash: `0x${string}` | null; readonly status: string }[];
@@ -248,7 +273,7 @@ export interface PartnerBreakdown {
 
 /**
  * The partner's flow by day, by chain and by fee token, and the payouts made to it: one statement per figure set. The
- * same rows as getPartnerFeeDashboard (partner_fee_trades of this recipient; the share as the dashboard's 80%). A trade
+ * daily and chain totals include hosted fills. Only recorded fee-ledger amounts contribute to the share. A trade
  * not priced yet is counted in unpriced, never summed as 0.
  */
 export async function getPartnerBreakdown(recipient: `0x${string}`, now: Date = new Date()): Promise<PartnerBreakdown> {
@@ -258,16 +283,16 @@ export async function getPartnerBreakdown(recipient: `0x${string}`, now: Date = 
   const daily = await sql<(Flow & { day: string })[]>`
     SELECT d.day::text AS day, COUNT(*)::text AS trades, COALESCE(SUM(p.value_usd), 0)::text AS volume_usd,
       COALESCE(SUM(p.fee_usd) * ${PARTNER_FEE_PARTNER_SHARE_BPS} / 10000, 0)::text AS share_usd, COUNT(*) FILTER (WHERE p.value_usd IS NULL)::text AS unpriced
-    FROM partner_fee_trades p
+    FROM (${partnerFlow(buf)}) p
     CROSS JOIN LATERAL (SELECT (p.block_timestamp AT TIME ZONE 'UTC')::date AS day) d
     CROSS JOIN (SELECT (${now.toISOString()}::timestamptz AT TIME ZONE 'UTC')::date AS today) n
-    WHERE p.recipient = ${buf} AND d.day BETWEEN n.today - 89 AND n.today
+    WHERE d.day BETWEEN n.today - 89 AND n.today
     GROUP BY d.day ORDER BY d.day
   `;
   const byChain = await sql<(Flow & { chain_id: number })[]>`
     SELECT chain_id, COUNT(*)::text AS trades, COALESCE(SUM(value_usd), 0)::text AS volume_usd,
       COALESCE(SUM(fee_usd) * ${PARTNER_FEE_PARTNER_SHARE_BPS} / 10000, 0)::text AS share_usd, COUNT(*) FILTER (WHERE value_usd IS NULL)::text AS unpriced
-    FROM partner_fee_trades WHERE recipient = ${buf}
+    FROM (${partnerFlow(buf)}) p
     GROUP BY chain_id ORDER BY chain_id
   `;
   // ORDER BY the sum itself: share_usd is text. ponytail: the 100 largest tokens; a paged read if a partner needs them all.
@@ -277,6 +302,12 @@ export async function getPartnerBreakdown(recipient: `0x${string}`, now: Date = 
     FROM partner_fee_trades WHERE recipient = ${buf}
     GROUP BY chain_id, fee_token ORDER BY SUM(fee_usd) DESC NULLS LAST, chain_id, fee_token
     LIMIT 100
+  `;
+  const transactions = await sql<{ chain_id: number; tx: `0x${string}`; settled_at: string | null; trades: number; volume: string; unpriced: number }[]>`
+    SELECT chain_id, '0x' || encode(transaction_hash, 'hex') AS tx, to_char(MAX(block_timestamp) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS settled_at,
+      COUNT(*)::int AS trades, COALESCE(SUM(value_usd), 0)::text AS volume, COUNT(*) FILTER (WHERE value_usd IS NULL)::int AS unpriced
+    FROM (${partnerFlow(buf)}) p WHERE transaction_hash IS NOT NULL
+    GROUP BY chain_id, transaction_hash ORDER BY MAX(block_timestamp) DESC NULLS LAST, chain_id, transaction_hash LIMIT 100
   `;
   // paid_wei once executed, else the owed_wei the batch will pay. A failed batch turned its entries to 'carried': not listed.
   const payouts = await sql<{ date: string; weth: string; tx_hash: string | null; status: string }[]>`
@@ -292,6 +323,7 @@ export async function getPartnerBreakdown(recipient: `0x${string}`, now: Date = 
     daily: daily.map((r) => ({ day: r.day, ...flow(r) })),
     byChain: byChain.map((r) => ({ chainId: r.chain_id, ...flow(r) })),
     byToken: byToken.map((r) => ({ chainId: r.chain_id, token: r.token as `0x${string}`, trades: Number(r.trades), shareUsd: Number(r.share_usd), unpriced: Number(r.unpriced) })),
+    transactions: transactions.map((r) => ({ chainId: r.chain_id, txHash: r.tx, settledAt: r.settled_at, trades: r.trades, volumeUsd: Number(r.volume), unpriced: r.unpriced })),
     payouts: payouts.map((r) => ({ date: r.date, weth: Number(r.weth), chainId: PARTNER_FEE_CHAIN, txHash: r.tx_hash as `0x${string}` | null, status: r.status })),
   };
 }

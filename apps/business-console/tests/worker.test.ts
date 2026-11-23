@@ -9692,11 +9692,12 @@ const shownPartner = {
   breakdown: {
     daily: P.breakdown.daily, byChain: P.breakdown.byChain.map((c) => ({ chain: { 10: 'OP Mainnet', 130: 'Unichain' }[c.chainId], ...c })),
     byToken: P.breakdown.byToken.map((t) => ({ ...t, chain: { 10: 'OP Mainnet', 130: 'Unichain' }[t.chainId], token: checksum(t.token) })),
+    transactions: P.breakdown.transactions.map(({ txHash, ...t }) => ({ ...t, chain: 'OP Mainnet', tx: txHash })),
     payouts: P.breakdown.payouts.map(({ txHash, ...p }) => ({ ...p, chain: 'Gnosis', tx: txHash })),
   },
   sanctioned: [], // no list is loaded (section I empties them before each test)
 }
-const NO_BREAKDOWN = { daily: [], byChain: [], byToken: [], payouts: [] }
+const NO_BREAKDOWN = { daily: [], byChain: [], byToken: [], transactions: [], payouts: [] }
 const UNAVAILABLE = { kind: 'partner', waiting: 0, months: [], figures: { state: 'figures_unavailable' } }
 const LISTED_TRADER = P.sanctioned[0].wallet // the contract's wallet that traded and is on a list
 const ON_LIST = `0x${'a11ce'.padStart(40, '0')}` // on a list, and never traded
@@ -9757,7 +9758,7 @@ describe('I. partner figures: live', () => {
     expect(await data.walletLive(db, o.orgId, 10, Z.wallet, now)).toBe(true)
     const asked = indexer()
     expect((await overviewOf(o)).body.figures.wallets).toEqual([shownPartner])
-    for (const table of ['months', 'traders', 'sanctioned', 'daily', 'chains', 'tokens', 'payouts']) {
+    for (const table of ['months', 'traders', 'sanctioned', 'daily', 'chains', 'tokens', 'transactions', 'payouts']) {
       const exported = await exportOf(o, table)
       expect(exported.status).toBe(200)
       expect(exported.body.csv.toLowerCase()).not.toContain(Z.wallet.toLowerCase())
@@ -10070,6 +10071,8 @@ describe('I. partner figures: live', () => {
       ['a breakdown that is no object', set('wallets.1.breakdown', [])],
       ['days that are no list', set('wallets.0.breakdown.daily', { 0: P.breakdown.daily[0] })],
       ['91 days', set('wallets.0.breakdown.daily', Array.from({ length: 91 }, (_, i) => ({ ...P.breakdown.daily[0], day: new Date(Date.UTC(2026, 7, 15) + i * DAY).toISOString().slice(0, 10) })))],
+      ['a settlement with a malformed hash', set('wallets.0.breakdown.transactions.0.txHash', '0xabc')],
+      ['too many settlement transactions', set('wallets.0.breakdown.transactions', Array(101).fill(P.breakdown.transactions[0]))],
       ['a day in another form', set('wallets.0.breakdown.daily.0.day', '20/08/2026')],
       ['a day that does not exist', set('wallets.0.breakdown.daily.3.day', '2026-09-31')], // between 09-15 and 10-05: only its being no day refuses it
       ['a day before the 90', set('wallets.0.breakdown.daily.0.day', '2026-08-14')],
@@ -10176,7 +10179,7 @@ describe('I. partner figures: live', () => {
     const sent = JSON.stringify(body)
     for (const value of ['96.5', '7654', '2027-01-01', 'marker', '19.3', ':25,', ':25}']) expect(sent, value).not.toContain(value)
     let file = ''
-    for (const table of ['months', 'traders', 'daily', 'chains', 'tokens', 'payouts']) file += (await exportOf(o, table)).body.csv
+    for (const table of ['months', 'traders', 'daily', 'chains', 'tokens', 'transactions', 'payouts']) file += (await exportOf(o, table)).body.csv
     for (const value of ['96.5', '7654', '2027-01-01', 'marker', '"25"']) expect(file, value).not.toContain(value)
     // The source names them once, in the note that says they are not read.
     for (const field of [...WITHHELD, 'fees.nextPayoutAt']) expect(partnerSource.split(field).length, field).toBe(2)
@@ -10250,13 +10253,14 @@ describe('I. partner figures: live', () => {
     const b = P.breakdown
     // One after the other: the meter of the Free plan counts each invocation alone.
     const files: Record<string, Awaited<ReturnType<typeof exportOf>>> = {}
-    for (const table of ['daily', 'chains', 'tokens', 'payouts']) files[table] = await exportOf(viewer, table)
-    expect(Object.values(files).map((f) => [f.status, f.body.name])).toEqual(['daily', 'chains', 'tokens', 'payouts'].map((t) => [200, `ophis-partner-${t}-2026-11-10.csv`]))
+    for (const table of ['daily', 'chains', 'tokens', 'transactions', 'payouts']) files[table] = await exportOf(viewer, table)
+    expect(Object.values(files).map((f) => [f.status, f.body.name])).toEqual(['daily', 'chains', 'tokens', 'transactions', 'payouts'].map((t) => [200, `ophis-partner-${t}-2026-11-10.csv`]))
     const line = (...cells: unknown[]) => [checksum(P.wallet), "'=2+3 (cmd)", ...cells.map(String), 'live']
     const chainName = (id: number) => ({ 10: 'OP Mainnet', 100: 'Gnosis', 130: 'Unichain' })[id]
-    expect(files.daily.rows).toEqual([['Partner wallet', 'Wallet name', 'Day', 'Trades', 'Volume (USD)', 'Your share (USD)', 'Trades not priced yet', 'source'], ...b.daily.map((d) => line(d.day, d.trades, d.volumeUsd, d.shareUsd, d.unpriced))])
-    expect(files.chains.rows).toEqual([['Partner wallet', 'Wallet name', 'Chain', 'Trades', 'Volume (USD)', 'Your share (USD)', 'Trades not priced yet', 'source'], ...b.byChain.map((c) => line(chainName(c.chainId), c.trades, c.volumeUsd, c.shareUsd, c.unpriced))])
-    expect(files.tokens.rows).toEqual([['Partner wallet', 'Wallet name', 'Chain', 'Fee token', 'Trades', 'Your share (USD)', 'Trades not priced yet', 'source'], ...b.byToken.map((t) => line(chainName(t.chainId), checksum(t.token), t.trades, t.shareUsd, t.unpriced))])
+    expect(files.daily.rows).toEqual([['Partner wallet', 'Wallet name', 'Day', 'Trades', 'Volume (USD)', 'Your share via Ophis (USD)', 'Trades not priced yet', 'source'], ...b.daily.map((d) => line(d.day, d.trades, d.volumeUsd, d.shareUsd, d.unpriced))])
+    expect(files.chains.rows).toEqual([['Partner wallet', 'Wallet name', 'Chain', 'Trades', 'Volume (USD)', 'Your share via Ophis (USD)', 'Trades not priced yet', 'source'], ...b.byChain.map((c) => line(chainName(c.chainId), c.trades, c.volumeUsd, c.shareUsd, c.unpriced))])
+    expect(files.tokens.rows).toEqual([['Partner wallet', 'Wallet name', 'Chain', 'Fee token', 'Trades', 'Your share via Ophis (USD)', 'Trades not priced yet', 'source'], ...b.byToken.map((t) => line(chainName(t.chainId), checksum(t.token), t.trades, t.shareUsd, t.unpriced))])
+    expect(files.transactions.rows).toEqual([['Partner wallet', 'Wallet name', 'Chain', 'Transaction', 'Settled at (UTC)', 'Trades', 'Volume (USD)', 'Trades not priced yet', 'source'], ...b.transactions.map((t) => line(chainName(t.chainId), t.txHash, t.settledAt, t.trades, t.volumeUsd, t.unpriced))])
     expect(files.payouts.rows).toEqual([['Partner wallet', 'Wallet name', 'Date', 'Amount (WETH)', 'Chain', 'Transaction', 'Status', 'source'], ...b.payouts.map((p) => line(p.date, p.weth, 'Gnosis', p.txHash, p.status))])
     // A payout not executed yet: no transaction, an empty cell.
     indexer((answer) => ((answer.wallets[0].breakdown.payouts = [{ ...b.payouts[0], txHash: null, status: 'proposed' }]), answer))
@@ -10281,16 +10285,16 @@ describe('I. partner figures: live', () => {
     for (const sentence of [
       'Figures from the Ophis rebate service, read at {stamp(Date.parse(f.asOf))}. Amounts in USD.', "const ESTIMATE = 'Estimate. The amount is fixed when a payout is made.'", '<b>Your figures are not connected yet.</b>', '<b>No wallet is included in partner reporting.</b>',
       '<a className="link" href="/#/organisation">Link a wallet under Organisation</a>', '<b>The figures are not available right now.</b>', '<Icon name="history" size={16} />Retry</button>',
-      'title="Partner fee" hint="The fee you set on the orders of your integration."', 'Owed this cycle', 'Your share ${usd(w.fees.shareUsd)} plus ${usd(w.fees.carriedUsd)} carried.', 'Trades waiting for a price', 'Paid to date (WETH)', "['Month', 'Status', 'Owed (USD)', 'Owed (WETH)', 'Carried (USD)']", '<Export table="months" size="md" label="Fee months CSV" />',
+      'title="Partner fee" hint="Trades include CoW-hosted chains. Ophis reports the fees it accounts for here. CoW handles hosted-chain fee payouts."', 'Owed this cycle', 'Your share ${usd(w.fees.shareUsd)} plus ${usd(w.fees.carriedUsd)} carried.', 'Trades waiting for a price', 'Paid to date (WETH)', "['Month', 'Status', 'Owed (USD)', 'Owed (WETH)', 'Carried (USD)']", '<Export table="months" size="md" label="Fee months CSV" />',
       'title="Wallets that traded through your integration" hint="The wallets whose orders carried the reported fee, since the first trade. Volume is an estimate."', "['Wallet', 'Trades', 'Volume (USD)']", 'The table shows the {t.wallets.length} largest wallets by volume.',
       "Volume is priced each night. {count(t.totals.unpriced)} {t.totals.unpriced === 1 ? 'trade is' : 'trades are'} not priced yet.", 'No wallet has traded through your integration yet.', '<Export table="traders" size="md" label="Trading wallets CSV" />',
       '[<span className="muted">Not known (native ETH sales)</span>, count(t.unknown.trades), volume(t.unknown)]', "<small>{count(x.unpriced)} {x.unpriced === 1 ? 'trade' : 'trades'} not priced yet</small>",
       // The breakdown: the payouts, the daily volume with its table, by chain and by fee token, and their four CSV.
-      'title="Payouts" hint="The payouts to this wallet, newest first, at most 24."', "['Date', 'Amount (WETH)', 'Status']", '<p className="muted">No payout yet.</p>', "'No transaction yet'",
+      'title="Payouts" hint="Payouts recorded by Ophis, newest first, at most 24."', "['Date', 'Amount (WETH)', 'Status']", '<p className="muted">No payout recorded by Ophis.</p>', "'No transaction yet'",
       "{ executed: 'Paid', proposed: 'Waiting for signatures', proposing: 'Waiting for signatures', computed: 'Not sent yet' }",
       'title="Daily volume" hint="The last 90 days, by the day the trade settled (UTC). Volume is an estimate."', '<p className="muted">No trade in the last 90 days.</p>', 'role="img" aria-label={`Daily volume in USD from ${first} to ${last}.',
-      "not priced yet: in the table, not in the bars.", '<summary>Each day as a table<Icon name="chevron-down" /></summary>', "['Day', 'Volume (USD)', 'Your share (USD)']",
-      'title="By chain" hint="Every trade, by the chain it settled on."', "['Chain', 'Volume (USD)', 'Your share (USD)']", 'title="By fee token" hint="The token your fee was taken in, on its chain."', "['Fee token', 'Your share (USD)']",
+      "not priced yet: in the table, not in the bars.", '<summary>Each day as a table<Icon name="chevron-down" /></summary>', "['Day', 'Volume (USD)', 'Your share via Ophis (USD)']",
+      'title="By chain" hint="Every trade, by the chain it settled on."', "['Chain', 'Volume (USD)', 'Your share via Ophis (USD)']", 'title="By fee token" hint="The token your fee was taken in, on its chain."', "['Fee token', 'Your share via Ophis (USD)']",
       '<Export table="payouts" size="md" label="Payouts CSV" />', '<Export table="daily" size="md" label="Daily CSV" />', '<Export table="chains" size="md" label="Chains CSV" />', '<Export table="tokens" size="md" label="Fee tokens CSV" />',
       // The wallets on a sanctions list that traded: a red alert with its table and its CSV, a tag in the wallets that traded, the lists checked.
       "<div className=\"note bad flagged\" role=\"alert\">", "{count(rows.length)} {rows.length === 1 ? 'wallet' : 'wallets'} on a sanctions list traded through your integration: {count(n)} {n === 1 ? 'trade' : 'trades'}, ${usd(rows.reduce((sum, s) => sum + s.volumeUsd, 0))}{u > 0 && `, ${count(u)} ${u === 1 ? 'trade' : 'trades'} not priced yet`}.",
@@ -11721,7 +11725,7 @@ describe('K. the Free plan of Cloudflare Workers', () => {
     }
     indexer()
     for (const p of partners) {
-      for (const path of ['/api/me', '/api/org', '/api/overview', '/api/screening', '/api/audit', ...['months', 'traders', 'daily', 'chains', 'tokens', 'payouts', 'sanctioned'].map((t) => `/api/export/${t}`)]) {
+      for (const path of ['/api/me', '/api/org', '/api/overview', '/api/screening', '/api/audit', ...['months', 'traders', 'daily', 'chains', 'tokens', 'transactions', 'payouts', 'sanctioned'].map((t) => `/api/export/${t}`)]) {
         expect((await call('GET', path, { cookie: p.cookie, env: liveEnv })).status, path).toBe(200)
       }
     }

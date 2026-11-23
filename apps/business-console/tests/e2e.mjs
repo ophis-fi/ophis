@@ -1713,6 +1713,12 @@ try {
   await dailySection.getByText('Each day as a table').click()
   check('the table under the chart, shut until asked: every day with its trades, volume (trades not priced yet under it) and share',
     shut && await dayTable.isVisible() && JSON.stringify(await cellsOf(dailySection)) === JSON.stringify(B.daily.map((d) => [`${d.day}\n${nTrades(d.trades)}`, usd(d.volumeUsd) + notPriced(d.unpriced), usd(d.shareUsd)])))
+  const txSection = sectionOf('Recent transactions')
+  await txSection.locator('summary').click()
+  const settlement = B.transactions[0]
+  check('opens the settlement transaction on its chain and shows its priced volume',
+    (await txSection.locator('tbody a').getAttribute('href')) === 'https://optimistic.etherscan.io/tx/' + settlement.txHash
+    && await txSection.getByText(usd(settlement.volumeUsd), { exact: true }).isVisible())
   const [chainSection, tokenSection] = [sectionOf('By chain'), sectionOf('By fee token')]
   check('by chain and by fee token, read from the contract file: the chain by its name, the token whole, trades not priced yet under the volume or the share',
     JSON.stringify(await cellsOf(chainSection)) === JSON.stringify(B.byChain.map((c) => [`${CHAIN_NAMES[c.chainId]}\n${nTrades(c.trades)}`, usd(c.volumeUsd) + notPriced(c.unpriced), usd(c.shareUsd)]))
@@ -1734,14 +1740,14 @@ try {
   await pat.page.setViewportSize({ width: 390, height: 844 })
   check('at phone width the table of the alert needs no sideways scroll: the address wraps', await flagged.locator('.table-wrap').evaluate((box) => box.scrollWidth <= box.clientWidth))
   await pat.page.setViewportSize({ width: 1440, height: 900 })
-  check('the payouts fit a phone', await both(pat.page, '62-overview-partner-payouts', '.pw section:has-text("Payouts")'))
+  check('the payouts fit a phone', await both(pat.page, '62-overview-partner-payouts', '.pw section:has(h2:text-is("Payouts"))'))
   check('the daily volume and its table fit a phone', await both(pat.page, '63-overview-partner-daily', '.pw section:has-text("Daily volume")'))
   check('by chain and by fee token fit a phone', await both(pat.page, '64-overview-partner-chains-tokens', '.pw .g.even'))
   await pat.page.setViewportSize({ width: 390, height: 844 })
   await pat.page.waitForTimeout(200)
   check('at phone width the bars span the width and the tables of the breakdown need no sideways scroll',
     (await dailySection.locator('svg[role="img"]').evaluate((svg) => svg.getBoundingClientRect().width)) > 300
-    && (await Promise.all([payoutsSection, dailySection, chainSection, tokenSection].map((x) => x.locator('.table-wrap').evaluate((box) => box.scrollWidth <= box.clientWidth)))).every(Boolean))
+    && (await Promise.all([payoutsSection, dailySection, txSection, chainSection, tokenSection].map((x) => x.locator('.table-wrap').evaluate((box) => box.scrollWidth <= box.clientWidth)))).every(Boolean))
   await pat.page.setViewportSize({ width: 1440, height: 900 })
 
   // The statement of its desk orders (owner, 2026-11-19) names what an order paid, "the Ophis fee among them", word for
@@ -1768,27 +1774,28 @@ try {
   const [tradedFile] = await Promise.all([pat.page.waitForEvent('download'), pat.page.getByRole('button', { name: 'Trading wallets CSV' }).click()])
   const tradedLines = readFileSync(await tradedFile.path(), 'utf8').split('\r\n').filter(Boolean)
   const tradedRow = (wallet, w, list = '') => `"${P.wallet}","demo wallet","${wallet}","${list}","${w.trades}","${w.volumeUsd}","${w.unpriced}","live"`
-  check('the export of the wallets that traded downloads: named ophis-partner-traders-, every wallet of the contract file beside the partner wallet with its trades not priced yet, the trades of no known wallet, the total, source = live; the two are the only CSV',
+  check('the export of the wallets that traded downloads: named ophis-partner-traders-, every wallet of the contract file beside the partner wallet with its trades not priced yet, the trades of no known wallet, the total, source = live; the overview offers its nine exports',
     /^ophis-partner-traders-\d{4}-\d\d-\d\d\.csv$/.test(tradedFile.suggestedFilename()) && tradedLines[0] === '"Partner wallet","Wallet name","Wallet","Sanctions list","Trades","Volume (USD)","Trades not priced yet","source"'
     && JSON.stringify(tradedLines.slice(1).map((row) => row.toLowerCase())) === JSON.stringify([...P.traders.wallets.map((w) => tradedRow(w.wallet, w, w.wallet === S.wallet ? 'ofac sdn list; un security council consolidated list' : '')), tradedRow(UNKNOWN_ROW, P.traders.unknown), tradedRow('total, 3 wallets', P.traders.totals)])
-    && (await pat.page.getByRole('button', { name: /CSV/ }).count()) === 8) // and the statement's (owner, 2026-11-19)
+    && (await pat.page.getByRole('button', { name: /CSV/ }).count()) === 9) // and the statement's (owner, 2026-11-19)
   const [listedFile] = await Promise.all([pat.page.waitForEvent('download'), pat.page.getByRole('button', { name: 'Sanctioned wallets CSV' }).click()])
   const listedLines = readFileSync(await listedFile.path(), 'utf8').split('\r\n').filter(Boolean)
   check('the export of the wallets on a sanctions list downloads: named ophis-partner-sanctioned-, the wallet with its list, trades, volume, trades not priced yet, first and last trade, source = live',
     /^ophis-partner-sanctioned-\d{4}-\d\d-\d\d\.csv$/.test(listedFile.suggestedFilename()) && listedLines[0] === '"Partner wallet","Wallet name","Wallet","Sanctions list","Trades","Volume (USD)","Trades not priced yet","First trade","Last trade","source"'
     && JSON.stringify(listedLines.slice(1).map((row) => row.toLowerCase())) === JSON.stringify([`"${P.wallet}","demo wallet","${S.wallet}","ofac sdn list; un security council consolidated list","${S.trades}","${S.volumeUsd}","${S.unpriced}","${S.firstAt}","${S.lastAt}","live"`.toLowerCase()]))
-  // The four CSV of the breakdown, downloaded and read back.
+  // The five CSV of the breakdown, downloaded and read back.
   const breakdownFile = async (label) => {
     const [file] = await Promise.all([pat.page.waitForEvent('download'), pat.page.getByRole('button', { name: label }).click()])
     return { name: file.suggestedFilename(), lines: readFileSync(await file.path(), 'utf8').split('\r\n').filter(Boolean).map((row) => row.toLowerCase()) }
   }
   const csvLine = (...cells) => [P.wallet, 'demo wallet', ...cells, 'live'].map((cell) => `"${String(cell).toLowerCase()}"`).join(',')
-  const [dailyFile, chainsFile, tokensFile, payoutsFile] = [await breakdownFile('Daily CSV'), await breakdownFile('Chains CSV'), await breakdownFile('Fee tokens CSV'), await breakdownFile('Payouts CSV')]
-  check('the four CSV of the breakdown download, named ophis-partner-, with every row of the contract file beside the partner wallet, source = live',
-    [[dailyFile, 'daily'], [chainsFile, 'chains'], [tokensFile, 'tokens'], [payoutsFile, 'payouts']].every(([file, table]) => new RegExp(`^ophis-partner-${table}-\\d{4}-\\d\\d-\\d\\d\\.csv$`).test(file.name))
+  const [dailyFile, chainsFile, tokensFile, transactionsFile, payoutsFile] = [await breakdownFile('Daily CSV'), await breakdownFile('Chains CSV'), await breakdownFile('Fee tokens CSV'), await breakdownFile('Transactions CSV'), await breakdownFile('Payouts CSV')]
+  check('the five CSV of the breakdown download, named ophis-partner-, with every row of the contract file beside the partner wallet, source = live',
+    [[dailyFile, 'daily'], [chainsFile, 'chains'], [tokensFile, 'tokens'], [transactionsFile, 'transactions'], [payoutsFile, 'payouts']].every(([file, table]) => new RegExp(`^ophis-partner-${table}-\\d{4}-\\d\\d-\\d\\d\\.csv$`).test(file.name))
     && JSON.stringify(dailyFile.lines.slice(1)) === JSON.stringify(B.daily.map((d) => csvLine(d.day, d.trades, d.volumeUsd, d.shareUsd, d.unpriced)))
     && JSON.stringify(chainsFile.lines.slice(1)) === JSON.stringify(B.byChain.map((c) => csvLine(CHAIN_NAMES[c.chainId], c.trades, c.volumeUsd, c.shareUsd, c.unpriced)))
     && JSON.stringify(tokensFile.lines.slice(1)) === JSON.stringify(B.byToken.map((t) => csvLine(CHAIN_NAMES[t.chainId], t.token, t.trades, t.shareUsd, t.unpriced)))
+    && JSON.stringify(transactionsFile.lines.slice(1)) === JSON.stringify(B.transactions.map((t) => csvLine(CHAIN_NAMES[t.chainId], t.txHash, t.settledAt, t.trades, t.volumeUsd, t.unpriced)))
     && JSON.stringify(payoutsFile.lines.slice(1)) === JSON.stringify(B.payouts.map((x) => csvLine(x.date, x.weth, CHAIN_NAMES[x.chainId], x.txHash, x.status)))
     && payoutsFile.lines[0] === '"partner wallet","wallet name","date","amount (weth)","chain","transaction","status","source"')
 
@@ -1879,7 +1886,7 @@ try {
   check('at phone width the payout waiting for signatures needs no sideways scroll: its status wraps', await payoutsSection.locator('.table-wrap').evaluate((box) => box.scrollWidth <= box.clientWidth))
   await pat.page.setViewportSize({ width: 1440, height: 900 })
   await tradedWith({ daily: [], byChain: [], byToken: [], payouts: [] }, 'breakdown')
-  check('no payout yet: one line says so, with no table', await payoutsSection.getByText('No payout yet.').isVisible() && !(await payoutsSection.locator('table').count()))
+  check('no payout yet: one line says so, with no table', await payoutsSection.getByText('No payout recorded by Ophis.').isVisible() && !(await payoutsSection.locator('table').count()))
   await patOverview()
   await pat.page.getByText('Figures from the Ophis rebate service, read at').waitFor()
 

@@ -31,6 +31,7 @@ fee), each with its trades and USD volume. It lists the 100 largest, and its
 totals count every wallet. A sale of native ETH is listed under the wallet
 that paid, when the indexer attributed one to the settlement; while an
 eth-flow contract still owns it, it counts in `unknown`, never as a wallet.
+Hosted-chain activity joins verified settlement fills to verified orders by chain and order UID, using the order's own-fee recipient. Each partial fill contributes its settlement-day volume. The report lists up to 100 identified settlement transactions per recipient, newest first. Only Ophis fee-ledger entries contribute to fee shares, fee-token figures and payout balances.
 Each fill records where its wallet came from (`user_source`: `owner`,
 `onchain_user` or `receiver`). A native-ETH sale is named by its wallet only
 when the fill is verified and that wallet is the payer (`onchain_user`, CoW's

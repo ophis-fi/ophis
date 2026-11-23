@@ -57,7 +57,7 @@ afterAll(async () => stopPg(pg));
 
 beforeEach(async () => {
   const sql = await getSql();
-  await sql`TRUNCATE partner_fee_batch_entries, partner_fee_batches, partner_fee_trades, defillama_fills RESTART IDENTITY CASCADE`;
+  await sql`TRUNCATE partner_fee_batch_entries, partner_fee_batches, partner_fee_trades, defillama_fills, trades RESTART IDENTITY CASCADE`;
   pollState.status = { executed: false, isSuccessful: null, transactionHash: null };
   vi.restoreAllMocks();
 });
@@ -531,6 +531,54 @@ describe('getPartnerTraders: the wallets that traded through a partner integrati
   const w = (owner: string, trades: number, volumeUsd: number, unpriced: number) => ({ wallet: `0x${owner}`, trades, volumeUsd, unpriced });
   const sanctioned = async (recipient: string, listed: string[]) => (await import('../../src/partnerFees/report.js')).getPartnerSanctioned(`0x${recipient}`, listed.map((a) => `0x${a}`));
 
+  it('reports verified hosted fills once, including partial fills and their transactions, without accruing hosted payouts', async () => {
+    const sql = await getSql();
+    const { getPartnerFeeDashboard, getPartnerBreakdown } = await import('../../src/partnerFees/report.js');
+    const day = '2026-11-09T10:00:00.000Z';
+    const partner = `0x${A}` as const;
+    async function order(n: number, chain: number, recipient = A, verified = true, bps = 50) {
+      const u = Buffer.from(uid(n, COW_FLOW), 'hex');
+      await sql`INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount,
+        app_code, own_fee_recipient, own_fee_bps, fee_verified) VALUES (${u}, ${chain}, ${Buffer.from(O1, 'hex')}, 1, ${day}, decode('01', 'hex'), decode('02', 'hex'),
+        1, 2, 'ophis', ${Buffer.from(recipient, 'hex')}, ${bps}, ${verified})`;
+      return u;
+    }
+    async function hostedFill(u: Buffer, block: number, chain = 1, verified = true, value: number | null = 20, source = 'onchain_user', hash = 9) {
+      await sql`INSERT INTO defillama_fills (chain_id, block_number, log_index, trade_uid, settlement_timestamp, sell_token, sell_amount,
+        fee_verified, user_address, user_source, transaction_hash, value_usd)
+        VALUES (${chain}, ${block}, ${u.readUInt8(31)}, ${u}, ${day}, decode('01', 'hex'), 1, ${verified}, ${Buffer.from(O1, 'hex')}, ${source}, ${Buffer.alloc(32, hash)}, ${value})`;
+    }
+    const u = await order(1, 1);
+    await hostedFill(u, 10);
+    await hostedFill(u, 11, 1, true, null, 'receiver', 10);
+    await hostedFill(await order(2, 1), 10); // another order in the same transaction
+    await hostedFill(await order(3, 1, B), 13);
+    await hostedFill(await order(4, 1, A, false), 14);
+    await hostedFill(await order(5, 1), 15, 1, false);
+    await hostedFill(await order(6, 10), 16, 10); // sovereign fees come from the ledger
+    await hostedFill(await order(7, 11155111), 17, 11155111);
+    await hostedFill(await order(8, 1, A, true, 0), 18);
+    // A restricted feed can contain a hosted fill too. Its priced fee is the only payable one.
+    await sql`INSERT INTO partner_fee_trades (trade_uid, recipient, chain_id, block_number, log_index, block_timestamp, volume_bps,
+      fee_token, fee_amount, value_usd, fee_usd) VALUES (${u}, ${Buffer.from(A, 'hex')}, 1, 10, 1, ${day}, 50, decode('01', 'hex'), 1, 20, 1)`;
+    const byWallet = await traders(A);
+    expect(byWallet.totals).toEqual({ walletCount: 1, trades: 3, volumeUsd: 40, unpriced: 1 });
+    expect(byWallet.unknown).toEqual({ trades: 1, volumeUsd: 0, unpriced: 1 });
+    expect((await sanctioned(A, [O1]))[0]).toMatchObject({ wallet: `0x${O1}`, trades: 2, volumeUsd: 40 });
+    const fees = await getPartnerFeeDashboard(partner);
+    expect(fees.lifetime).toEqual({ tradeCount: 3, paidWeth: 0 });
+    expect(fees.currentCycle.owedUsd).toBe(0.8);
+    const b = await getPartnerBreakdown(partner, new Date(day));
+    expect(b.daily).toEqual([{ day: '2026-11-09', trades: 3, volumeUsd: 40, unpriced: 1, shareUsd: 0.8 }]);
+    expect(b.byChain).toEqual([{ chainId: 1, trades: 3, volumeUsd: 40, unpriced: 1, shareUsd: 0.8 }]);
+    expect(b.byToken).toHaveLength(1);
+    expect(b.payouts).toEqual([]);
+    expect(b.transactions).toEqual([
+      { chainId: 1, settledAt: day, txHash: `0x${'09'.repeat(32)}`, trades: 2, volumeUsd: 40, unpriced: 0 },
+      { chainId: 1, settledAt: day, txHash: `0x${'0a'.repeat(32)}`, trades: 1, volumeUsd: 0, unpriced: 1 },
+    ]);
+  });
+
   it('lists the owners largest first, the payer of a native-ETH sale when known, and never an eth-flow contract', async () => {
     await settle(uid(1, O1), A, 4.25);
     await settle(uid(1, O1), A, 6); // the same order filled a second time
@@ -661,6 +709,7 @@ describe('getPartnerBreakdown: the flow by day, chain and fee token, and the pay
       byChain: [{ chainId: 10, ...f(5, 127, 11.05, 2) }, { chainId: 130, ...f(3, 48, 10.3, 0) }],
       // 10.25 sorts below 9.5 as text; a token of trades not priced only is last.
       byToken: [tok(10, T1, 2, 10.25, 1), tok(130, T3, 2, 9.5, 0), tok(10, T2, 2, 0.8, 0), tok(130, T5, 1, 0.8, 0), tok(10, T4, 1, 0, 1)],
+      transactions: [],
       payouts: [
         { date: '2026-11-01', weth: 0.0625, chainId: 100, txHash: null, status: 'proposed' },
         { date: '2026-09-03', weth: 0.025, chainId: 100, txHash: `0x${'aa'.repeat(32)}`, status: 'executed' },
@@ -671,6 +720,6 @@ describe('getPartnerBreakdown: the flow by day, chain and fee token, and the pay
       100, tok(10, (101).toString(16).padStart(40, '0'), 1, 80.8, 0), tok(10, (2).toString(16).padStart(40, '0'), 1, 1.6, 0),
       24, { date: '2026-01-01', weth: 0.026, chainId: 100, txHash: `0x${'dd'.repeat(32)}`, status: 'executed' }, '2026-01-01', 0.003,
     ]);
-    expect(await breakdown(D)).toEqual({ daily: [], byChain: [], byToken: [], payouts: [] });
+    expect(await breakdown(D)).toEqual({ daily: [], byChain: [], byToken: [], transactions: [], payouts: [] });
   });
 });
