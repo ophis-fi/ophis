@@ -546,7 +546,7 @@ describe('getPartnerTraders: the wallets that traded through a partner integrati
     async function hostedFill(u: Buffer, block: number, chain = 1, verified = true, value: number | null = 20, source = 'onchain_user', hash = 9) {
       await sql`INSERT INTO defillama_fills (chain_id, block_number, log_index, trade_uid, settlement_timestamp, sell_token, sell_amount,
         fee_verified, user_address, user_source, transaction_hash, value_usd)
-        VALUES (${chain}, ${block}, ${u[31]}, ${u}, ${day}, decode('01', 'hex'), 1, ${verified}, ${Buffer.from(O1, 'hex')}, ${source}, ${Buffer.alloc(32, hash)}, ${value})`;
+        VALUES (${chain}, ${block}, ${u.readUInt8(31)}, ${u}, ${day}, decode('01', 'hex'), 1, ${verified}, ${Buffer.from(O1, 'hex')}, ${source}, ${Buffer.alloc(32, hash)}, ${value})`;
     }
     const u = await order(1, 1);
     await hostedFill(u, 10);
