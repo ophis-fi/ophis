@@ -10,32 +10,43 @@
 <body>
 <header class="bar"><span class="brand"><img src="../src/app/assets/ophis-icon-mono-dark.svg" alt="">ophis.<small>Operator</small></span></header>
 <main class="op">
-  <div>
+  <div id="detail-heading" hidden>
+    <a href="/">All organisations</a>
+    <h1 class="h-page">Application</h1>
+  </div>
+  <div data-directory>
     <span class="cap eyebrow">Ophis operator</span>
     <h1 class="h-page">Applications <em>to review</em>.</h1>
     <p class="lede">Each application waiting for a decision, with what to compare. Confirm the applicant and the domain with the company, check the company in its register, and open the signed declaration offline with the paper key.</p>
   </div>
-  <div class="acts">
+  <div class="acts" data-directory>
     <button id="invite" class="btn ghost md" type="button">New invitation code</button>
     <span id="code" class="mono" hidden></span>
   </div>
   <p id="status" class="note" role="status" hidden></p>
   <div id="apps" class="stack"></div>
-  <section class="panel">
+  <section class="panel" data-directory>
     <h2 class="h-panel">All organisations</h2>
     <ul id="all" class="stack"></ul>
   </section>
-  <section class="panel">
+  <section class="panel" data-directory>
     <h2 class="h-panel">Reviews due, and frozen organisations</h2>
     <ul id="reviews" class="stack"></ul>
   </section>
-  <section class="panel">
+  <section class="panel" data-directory>
     <h2 class="h-panel">Loaded address lists</h2>
     <ul id="lists" class="stack"></ul>
   </section>
 </main>
 <footer class="foot-line">Ophis © 2026</footer>
 
+<template id="draft">
+  <article class="panel">
+    <h2 class="h-panel"></h2>
+    <p class="mono" data-summary></p>
+    <p data-next></p>
+  </article>
+</template>
 <template id="application">
   <article class="panel">
     <h2 class="h-panel" data-f="title"></h2>

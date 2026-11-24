@@ -1223,7 +1223,7 @@ async function api(request: Request, env: Env, clock: () => number, config: Conf
 const operatorPath = (pathname: string) => pathname === '/operator' || pathname.startsWith('/operator/')
 async function operatorPage(request: Request, env: Env) {
   const { pathname } = new URL(request.url)
-  if (pathname === '/') return env.ASSETS.fetch(new Request(new URL('/operator/', request.url)))
+  if (pathname === '/' || /^\/operator\/applications\/[0-9a-f]{32}$/.test(pathname)) return env.ASSETS.fetch(new Request(new URL('/operator/', request.url)))
   return operatorPath(pathname) ? env.ASSETS.fetch(request) : new Response('Not found', { status: 404, headers: HEADERS })
 }
 

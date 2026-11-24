@@ -6073,7 +6073,7 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
     const [sent] = telegramSent
     expect(sent.url).toBe('http://127.0.0.1:8798/bottest-telegram-token/sendMessage')
     expect(sent.body).toMatchObject({ chat_id: '42', disable_web_page_preview: true })
-    expect(sent.body.text).toBe(`New application to review on pro.ophis.fi: Alder Custody S.A. (fund, LU), ${u.domain}.\nOrganisation ${u.orgId}.\nReview it: ${onboarding.OPERATOR.local}/`) // in production https://operator.ophis.fi/
+    expect(sent.body.text).toBe(`New application to review on pro.ophis.fi: Alder Custody S.A. (fund, LU), ${u.domain}.\nOrganisation ${u.orgId}.\nReview it: ${onboarding.OPERATOR.local}/operator/applications/${u.orgId}`) // in production https://operator.ophis.fi/
     // Telegram down: the application stands, under review.
     telegramTwist = () => { throw new TypeError('network') }
     try {
@@ -6843,7 +6843,7 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
   it('A8: the operator\'s routes answer on their own hostname only, locally to the token only, in production behind Cloudflare Access, and nowhere else', async () => {
     const a = await underReview()
     expect(onboarding.operatorRoutes.map((r) => `${r.method} ${r.path}`)).toEqual([
-      'GET /api/operator/organisations', 'POST /api/operator/organisations/:id/decision', 'POST /api/operator/organisations/:id/freeze', 'POST /api/operator/organisations/:id/unfreeze', 'POST /api/operator/organisations/:id/reporting', 'POST /api/operator/invites',
+      'GET /api/operator/organisations', 'GET /api/operator/organisations/:id/application', 'POST /api/operator/organisations/:id/decision', 'POST /api/operator/organisations/:id/freeze', 'POST /api/operator/organisations/:id/unfreeze', 'POST /api/operator/organisations/:id/reporting', 'POST /api/operator/invites',
       'GET /api/operator/organisations/:id/items', 'POST /api/operator/items/:id/download', // milestone 5b
       'POST /api/operator/organisations/:id/screening', 'POST /api/operator/sanctions', 'POST /api/operator/sanctions/sync', // sanctions screening; M10: the read of the list file
     ])
@@ -6973,10 +6973,10 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
     for (const OPERATOR_EMAIL of [undefined, '', 'operator']) expect((await ask(good, { env: { ...prod, OPERATOR_EMAIL } as unknown as Env, headers: { authorization: null } })).body, String(OPERATOR_EMAIL)).toEqual({ error: 'operator_identity' })
     expect((await ask(good, { env: page, headers: { authorization: 'Bearer wrong' } })).body).toEqual({ error: 'operator_token' })
     expect((await ask(good, { env: page, headers: { authorization: '' } })).body).toEqual({ error: 'operator_token' }) // an empty header is a token, a wrong one
-    // Only the page's three routes take no token (Trail of Bits, PR #1670): every other one still needs it, right email or not.
-    expect(onboarding.operatorRoutes.filter((route) => route.page).map((route) => `${route.method} ${route.path}`)).toEqual(['GET /api/operator/organisations', 'POST /api/operator/organisations/:id/decision', 'POST /api/operator/invites'])
+    // Only routes used by the operator page take no token (Trail of Bits, PR #1670): every other one still needs it, right email or not.
+    expect(onboarding.operatorRoutes.filter((route) => route.page).map((route) => `${route.method} ${route.path}`)).toEqual(['GET /api/operator/organisations', 'GET /api/operator/organisations/:id/application', 'POST /api/operator/organisations/:id/decision', 'POST /api/operator/organisations/:id/freeze', 'POST /api/operator/organisations/:id/unfreeze', 'POST /api/operator/invites'])
     const id = '0'.repeat(32)
-    for (const [method, path] of [['POST', `/api/operator/organisations/${id}/freeze`], ['POST', `/api/operator/organisations/${id}/unfreeze`], ['GET', `/api/operator/organisations/${id}/items`], ['POST', `/api/operator/items/${id}/download`], ['POST', `/api/operator/organisations/${id}/screening`], ['POST', '/api/operator/sanctions'], ['POST', '/api/operator/sanctions/sync']]) {
+    for (const [method, path] of [['POST', `/api/operator/organisations/${id}/reporting`], ['GET', `/api/operator/organisations/${id}/items`], ['POST', `/api/operator/items/${id}/download`], ['POST', `/api/operator/organisations/${id}/screening`], ['POST', '/api/operator/sanctions'], ['POST', '/api/operator/sanctions/sync']]) {
       expect((await ask(good, { env: page, body: {}, headers: { authorization: null } }, method, path)).body, path).toEqual({ error: 'operator_identity' })
     }
     // ASCII letters only are folded: the Kelvin sign is not k (Trail of Bits, PR #1670).
@@ -7007,6 +7007,9 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
       return [response.status, await response.text()]
     }
     expect(await page(OP, '/')).toEqual([200, 'file /operator/'])
+    const detailPath = '/operator/applications/' + 'a'.repeat(32)
+    expect(await page(OP, detailPath)).toEqual([200, 'file /operator/'])
+    for (const origin of [SITE.origin, SIGN]) expect((await page(origin, detailPath))[0]).toBe(404)
     for (const path of ['/operator/', '/operator/assets/index-abc.js', '/operator/assets/index-abc.css']) expect(await page(OP, path), path).toEqual([200, `file ${path}`])
     // Nothing else of the files on that host, and the page on no other host.
     for (const path of ['/index.html', '/apply', '/recover', '/sign/', '/assets/index-abc.js', '/operators', '/operator.html']) expect((await page(OP, path))[0], path).toBe(404)
@@ -7026,7 +7029,13 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
   it('A8: the list holds what is under review, with what the operator compares: the domain, the first Owner\'s passkey hash, the recovery wallet, its kind and colour', async () => {
     const a = await applicantWithTwoKeys('alder-list.example')
     const mine = async () => ((await op('GET', '/api/operator/organisations')).body.organisations as { id: string }[]).filter((o) => o.id === a.orgId)
+    const pageEnv = { ...opEnv, OPERATOR_EMAIL: 'operator@localhost' }
+    const detail = () => op('GET', `/api/operator/organisations/${a.orgId}/application`, { env: pageEnv, headers: { authorization: null } })
     expect(await mine()).toEqual([]) // not submitted
+    expect((await detail()).body).toEqual({
+      id: a.orgId, legalName: 'Alder Custody S.A.', kind: 'institution', country: 'LU', registration: 'B123456', domain: 'alder-list.example',
+      submittedAt: null, missing: 'proof_or_owner',
+    })
     const safe = safeAt(accounts[4].address)
     const asked = await nameWallet(a, accounts[4].address)
     expect((await prove(asked.body.intent, '0x')).body).toEqual({ state: 'stored' })
@@ -7038,6 +7047,7 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
       credentialHash: view.first.credentialHash, people: [], missing: null, declaration: view.sealed, refused: [],
       wallet: { chainId: CHAIN, chain: 'OP Mainnet', address: accounts[4].address, kind: 'safe', label: 'Treasury', inForce: false, recoveryEligible: true, threshold: 2, owners: 3, colour: { level: 'green', why: null } },
     }])
+    expect((await detail()).body).toEqual((await mine())[0])
     // The colour is read on the chain now: a module added since the proof shows.
     safe.modules = [accounts[3].address.toLowerCase()]
     expect((await mine())[0]).toMatchObject({ wallet: { colour: { level: 'amber' } } })
@@ -7048,6 +7058,7 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
     // An organisation that is active, frozen or archived is not under review.
     expect((await decideOn(a.orgId)).body).toEqual({ state: 'active' })
     expect(await mine()).toEqual([])
+    expect((await detail()).status).toBe(404)
     // The applicant's own name and address are not in the list: the sealed declaration names the first Owner. (The other
     // people an application names are, for the operator to check: section P.)
     const text = JSON.stringify((await op('GET', '/api/operator/organisations')).body)
