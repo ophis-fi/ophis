@@ -839,7 +839,7 @@ async function tellOperator(env: Ctx['env'], orgId: string) {
     const o = await env.DB.prepare('SELECT name, business_type AS type, kind, country, email_domain AS domain FROM organisations WHERE id = ?').bind(orgId)
       .first<{ name: string; type: string | null; kind: string; country: string | null; domain: string | null }>()
     if (!o) return
-    const text = `New application to review on pro.ophis.fi: ${o.name} (${o.type ?? o.kind}${o.country ? `, ${o.country}` : ''}), ${o.domain ?? 'no domain'}.\nOrganisation ${orgId}.\nReview it: ${OPERATOR[env.ENVIRONMENT] ?? OPERATOR.production}/`
+    const text = `New application to review on pro.ophis.fi: ${o.name} (${o.type ?? o.kind}${o.country ? `, ${o.country}` : ''}), ${o.domain ?? 'no domain'}.\nOrganisation ${orgId}.\nReview it: ${OPERATOR[env.ENVIRONMENT] ?? OPERATOR.production}/operator/applications/${orgId}`
     await fetch(`${standIn(env, env.TELEGRAM_URL) ?? 'https://api.telegram.org'}/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text, disable_web_page_preview: true }), signal: AbortSignal.timeout(5000),
     })
@@ -866,26 +866,40 @@ interface OperatorEnv { DB: D1Database; ENVIRONMENT: string; CHALLENGE_KEY: stri
 // Free plan (ARCHITECTURE.md): the oldest UNDER_REVIEW only, in full; `more` counts the others. Each costs 7 D1 queries
 // and, for a Safe, 14 reads of the chain: 50 subrequests per invocation hold 3 (in production one more reads the Access
 // keys: 43). A decision takes one off the list.
-// ponytail: no way past the oldest 3. Decide "more" on one that waits, or add an offset, if that ever blocks.
+// The directory can open any one application in a separate request.
 export const UNDER_REVIEW = 3
+async function submittedApplication(c: Ctx, o: Company) {
+  const first = (await firstOf(c.env.DB, o.id))!
+  const wallet = await walletOf(c.env.DB, o.id, c.now)
+  const endpoints = wallet?.kind === 'safe' ? c.config.chains[wallet.chainId] : undefined
+  const live = endpoints ? await safeState(endpoints, wallet!.chainId, wallet!.address) : null
+  return {
+    id: o.id, legalName: o.legalName, kind: o.kind, businessType: o.businessType, country: o.country, registration: o.registration, lei: o.lei, address: o.address, domain: o.domain, submittedAt: o.reviewAt, submission: await submissionOf(o.print, wallet),
+    applicant: { name: first.name, email: first.email, position: first.position, phone: first.phone, telegram: first.telegram },
+    credentialHash: first.hash, people: await peopleOf(c.env.DB, o.id), missing: await missing(c.env.DB, o.id),
+    // Milestone 5b: that the sealed declaration exists, and what the server knows of it. "items" and "get" are the way to the file.
+    declaration: (await sealedOf(c.env.DB, o.id)).find((item) => item.kind === 'declaration') ?? null,
+    refused: await refusedOf(c.env.DB, o.id), // sanctions screening: a wallet this application named was on a loaded list
+    wallet: wallet && { ...walletView(wallet), colour: colour({ kind: wallet.kind, snapshot: wallet.snapshot, inForce: true }, live) },
+  }
+}
+
+async function application(c: Ctx) {
+  const id = c.params.id ?? ''
+  if (!ID.test(id)) return fail(404, 'not_found')
+  const o = await c.env.DB.prepare(`SELECT ${COMPANY} WHERE id = ? AND state = 'unverified'`).bind(id).first<Company>()
+  if (!o) return fail(404, 'not_found')
+  if (o.reviewAt !== null) return json(200, await submittedApplication(c, o))
+  return json(200, {
+    id, legalName: o.legalName, kind: o.kind, country: o.country, registration: o.registration, domain: o.domain,
+    submittedAt: null, missing: await missing(c.env.DB, id),
+  })
+}
+
 async function list(c: Ctx) {
   const organisations = []
   const waiting = await underReview(c.env.DB)
-  for (const o of waiting.slice(0, UNDER_REVIEW)) {
-    const first = (await firstOf(c.env.DB, o.id))!
-    const wallet = await walletOf(c.env.DB, o.id, c.now)
-    const endpoints = wallet?.kind === 'safe' ? c.config.chains[wallet.chainId] : undefined
-    const live = endpoints ? await safeState(endpoints, wallet!.chainId, wallet!.address) : null
-    organisations.push({
-      id: o.id, legalName: o.legalName, kind: o.kind, businessType: o.businessType, country: o.country, registration: o.registration, lei: o.lei, address: o.address, domain: o.domain, submittedAt: o.reviewAt, submission: await submissionOf(o.print, wallet),
-      applicant: { name: first.name, email: first.email, position: first.position, phone: first.phone, telegram: first.telegram },
-      credentialHash: first.hash, people: await peopleOf(c.env.DB, o.id), missing: await missing(c.env.DB, o.id),
-      // Milestone 5b: that the sealed declaration exists, and what the server knows of it. "items" and "get" are the way to the file.
-      declaration: (await sealedOf(c.env.DB, o.id)).find((item) => item.kind === 'declaration') ?? null,
-      refused: await refusedOf(c.env.DB, o.id), // sanctions screening: a wallet this application named was on a loaded list
-      wallet: wallet && { ...walletView(wallet), colour: colour({ kind: wallet.kind, snapshot: wallet.snapshot, inForce: true }, live) },
-    })
-  }
+  for (const o of waiting.slice(0, UNDER_REVIEW)) organisations.push(await submittedApplication(c, o))
   return json(200, { organisations, more: waiting.length - organisations.length, reviews: await reviewsDue(c.env.DB, c.now), lists: await listsOf(c.env, c.now), all: await everyOrganisation(c.env.DB, c.now) })
 }
 
@@ -1023,9 +1037,10 @@ async function reporting(c: Ctx) {
 // sign-in cloudflared keeps in a file must not stand in for the Keychain's token on the other routes).
 export const operatorRoutes: { method: 'GET' | 'POST'; path: string; handler: (c: Ctx) => Promise<Response>; page?: true }[] = [
   { method: 'GET', path: '/api/operator/organisations', handler: list, page: true },
+  { method: 'GET', path: '/api/operator/organisations/:id/application', handler: application, page: true },
   { method: 'POST', path: '/api/operator/organisations/:id/decision', handler: decide, page: true },
-  { method: 'POST', path: '/api/operator/organisations/:id/freeze', handler: freeze(true) },
-  { method: 'POST', path: '/api/operator/organisations/:id/unfreeze', handler: freeze(false) },
+  { method: 'POST', path: '/api/operator/organisations/:id/freeze', handler: freeze(true), page: true },
+  { method: 'POST', path: '/api/operator/organisations/:id/unfreeze', handler: freeze(false), page: true },
   { method: 'POST', path: '/api/operator/organisations/:id/reporting', handler: reporting },
   { method: 'POST', path: '/api/operator/invites', handler: invite, page: true },
   { method: 'GET', path: '/api/operator/organisations/:id/items', handler: items },

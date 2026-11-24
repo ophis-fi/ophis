@@ -914,6 +914,21 @@ try {
   if (await on.getByRole('button', { name: 'I have read this' }).count()) await on.getByRole('button', { name: 'I have read this' }).click()
   await on.getByRole('heading', { name: 'From application to a verified organisation.' }).waitFor()
   const newOrg = await on.evaluate(() => fetch('/api/me').then((response) => response.json()).then((me) => me.organisation))
+  const opDesk = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' })
+  const opPage = await opDesk.newPage()
+  opPage.on('console', (message) => /content security policy|trusted ?type/i.test(message.text()) && violations.push(message.text()))
+  const opOffSite = [], opTokens = []
+  opPage.on('request', (request) => {
+    if (!request.url().startsWith(`${OPERATOR_SITE}/`)) opOffSite.push(request.url())
+    if (request.headers().authorization) opTokens.push(request.url())
+  })
+  const opAnswer = await opPage.goto(`${OPERATOR_SITE}/`)
+  const opRow = opPage.locator('#all li', { hasText: newOrg.id })
+  await opRow.getByRole('link', { name: 'View application progress' }).click()
+  await opPage.getByRole('heading', { name: 'Alder Custody S.A. · Awaiting submission' }).waitFor()
+  check('an applying organisation has a direct progress page with the next Owner step and no decision controls',
+    opPage.url().endsWith(`/operator/applications/${newOrg.id}`) && await opPage.getByText(/verified activation wallet or a second active Owner/).isVisible()
+      && await opPage.getByRole('button', { name: 'Approve', exact: true }).count() === 0)
   check('the applicant signs in to an organisation that is not yet verified, and lands on Onboarding, which names Ben and says not to invite him', newOrg.state === 'unverified' && newOrg.name === 'Alder Custody S.A.' && await on.getByText('Not submitted.').isVisible()
     && await on.getByText(`Other people named in the application: Ben Okoro, Head of Treasury (Admin, ben@${domain}). Ophis checks them with the company. When Ophis approves, each gets a seat. Do not invite them yourself.`).isVisible())
   check('an unverified organisation does not reach the audit log', (await status('/api/audit', on)) === 403)
@@ -1021,15 +1036,8 @@ try {
     && refusedBy(() => operator(...approve('--submission', submission, '--screening', 'hit', '--list', `eu=${LIST.eu}`))).includes('Refused (409): screening_not_clear'))
   // The operator's review page (owner, 2026-11-19): the same list in a browser, and the approval, with no token. Locally
   // OPERATOR_EMAIL (dev.mjs) stands for the person Cloudflare Access signs in.
-  const opDesk = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' })
-  const opPage = await opDesk.newPage()
-  opPage.on('console', (message) => /content security policy|trusted ?type/i.test(message.text()) && violations.push(message.text()))
-  const opOffSite = [], opTokens = []
-  opPage.on('request', (request) => {
-    if (!request.url().startsWith(`${OPERATOR_SITE}/`)) opOffSite.push(request.url())
-    if (request.headers().authorization) opTokens.push(request.url())
-  })
-  const opAnswer = await opPage.goto(`${OPERATOR_SITE}/`)
+  await opPage.goto(`${OPERATOR_SITE}/`)
+  await opRow.getByRole('link', { name: 'Review application' }).click()
   const opCard = opPage.locator('article', { hasText: newOrg.id })
   await opCard.waitFor()
   const opShown = await opCard.innerText()
@@ -1049,7 +1057,7 @@ try {
   check('the operator approves on the page, with a clear screening; the page sent no token and asked nothing of another site',
     await opPage.getByText('Nothing is under review.').isVisible() && opTokens.length === 0 && opOffSite.length === 0)
   check('"All organisations" lists every organisation, the one just approved too, with its state (owner, 2026-11-19)',
-    /^Alder Custody S\.A\. \(institution, LU\): active, \d+ active members?, next review 2030-01-01\. [0-9a-f]{32}$/m.test(await opPage.locator('#all').innerText()))
+    /^Alder Custody S\.A\. \(institution, LU\): active, \d+ active members?, next review 2030-01-01\. [0-9a-f]{32}/m.test(await opRow.innerText()) && await opRow.getByRole('button', { name: 'Freeze Alder Custody S.A.', exact: true }).isVisible())
   await opPage.getByRole('button', { name: 'New invitation code' }).click()
   await opPage.locator('#code').waitFor()
   check('the page makes an invitation code', /^[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}, valid until /.test(await opPage.locator('#code').innerText()))
@@ -1058,7 +1066,7 @@ try {
   await opPage.reload()
   await opPage.locator('#status', { hasText: 'The network failed' }).waitFor()
   check('a list read that never answers says so and shows no card', /could not be read/.test(await opPage.locator('#apps').innerText()))
-  await opDesk.close()
+  await opPage.unroute('**/api/operator/organisations')
   const afterApproval = operator('list')
   check('nothing is left under review, and the list names the reviews that are due: the seeded organisation, never screened; not the one just approved',
     afterApproval.includes('Nothing is under review.') && /Reviews due[^\n]*\n[0-9a-f]{32} {2}Northwind Vaults {2}active {2}last screening none {2}next review none/.test(afterApproval) && !afterApproval.includes(newOrg.id))
@@ -1122,12 +1130,23 @@ try {
     && await section.getByRole('row', { name: new RegExp(`Treasury.*Not on a loaded list.*OP Mainnet.*${key.address}`) }).isVisible() // the result comes second: it shows on a phone
     && await on.getByText('Ophis operator: sanctions screening recorded. Result: no match').isVisible() && !/\b(hit|clear)\b/.test(await section.innerText()) && await both(on, '57-screening', '.pager')) // from the end of the audit log, so that the heading of the section is in the picture
   // G4: the operator freezes the organisation: its sessions end, and a member who signs in gets the plain page.
-  check('the operator freezes the organisation', operator('freeze', newOrg.id).includes(`${newOrg.id} is now frozen`))
+  await opPage.reload()
+  const freezeOrg = opRow.getByRole('button', { name: 'Freeze Alder Custody S.A.', exact: true })
+  opPage.once('dialog', (dialog) => dialog.dismiss())
+  await freezeOrg.click()
+  check('cancelling a freeze keeps the organisation active', await freezeOrg.isVisible())
+  opPage.once('dialog', (dialog) => dialog.accept())
+  await freezeOrg.click()
+  await opPage.getByRole('status').filter({ hasText: 'Alder Custody S.A. is now frozen.' }).waitFor()
   await on.reload()
   await on.getByRole('button', { name: 'Sign in with a passkey' }).click()
   await on.getByRole('heading', { name: 'This organisation is frozen.' }).waitFor()
   check('a freeze ends the session, and a sign-in shows the plain page, not "Sign-in did not work"', (await status('/api/me', on)) === 401 && await on.locator(".foot-line", { hasText: FOOTER }).isVisible() && await both(on, '36-org-frozen'))
-  check('the operator unfreezes it', operator('unfreeze', newOrg.id).includes(`${newOrg.id} is now active`))
+  opPage.once('dialog', (dialog) => dialog.accept())
+  await opRow.getByRole('button', { name: 'Unfreeze Alder Custody S.A.', exact: true }).click()
+  await opPage.getByRole('status').filter({ hasText: 'Alder Custody S.A. is now active.' }).waitFor()
+  check('the operator can freeze and unfreeze from the directory without a token or third-party request', opTokens.length === 0 && opOffSite.length === 0)
+  await opDesk.close()
   await on.getByRole('button', { name: 'Back to sign-in' }).click()
   await on.getByRole('button', { name: 'Sign in with a passkey' }).click()
   await on.getByRole('button', { name: 'Sign out' }).first().waitFor()
