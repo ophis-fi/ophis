@@ -135,6 +135,8 @@ const invalidMintMessage = 'This mint is unavailable for swaps. Check the Solana
 const protocolErrorMessages: Record<string, string | undefined> = {
   SettlementPaused: 'New swaps are paused. You can still cancel an open order or reclaim its rent.',
   NoLiquidity: 'Ophis found no route for this pair and amount. Try a different amount or token.',
+  VerifiedExactInputRequired: 'Ophis could not verify a route for this swap. Your order has not been placed. Get a fresh quote.',
+  SellAmountDoesNotCoverFee: 'The quoted amount is too small to cover the cost of this swap.',
   FeeQuoteUnavailable: 'Ophis could not verify the costs for this pair. Request a fresh quote or choose another pair.',
   InvalidMint: invalidMintMessage,
   MintNotFound: invalidMintMessage,
