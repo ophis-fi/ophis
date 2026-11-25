@@ -13,28 +13,33 @@ jest.mock(
   { virtual: true },
 )
 
-it('pins the production wallet origin, program and genesis before enabling native swaps', () => {
-  const original = process.env
-  try {
-    process.env = {
-      ...original,
-      REACT_APP_OPHIS_SOLANA_API: 'https://swap.ophis.fi/solana-api',
-      REACT_APP_OPHIS_SOLANA_PROGRAM: 'BJZ5yma22Km3fsfrEEdZVGygdrcwoschb6uUNqQWaQ9h',
+it.each(['https://solana-mainnet.ophis.fi/solana-api', 'https://swap.ophis.fi/solana-api'])(
+  'enables %s only with the production program and genesis',
+  (api) => {
+    const original = process.env
+    try {
+      process.env = {
+        ...original,
+        REACT_APP_OPHIS_SOLANA_API: api,
+        REACT_APP_OPHIS_SOLANA_PROGRAM: 'BJZ5yma22Km3fsfrEEdZVGygdrcwoschb6uUNqQWaQ9h',
+      }
+      expect(readOphisSolanaConfig()).toMatchObject({ chain: 'solana:mainnet', api })
+      for (const [variable, value] of [
+        ['REACT_APP_OPHIS_SOLANA_PROGRAM', '11111111111111111111111111111111'],
+        ['REACT_APP_OPHIS_SOLANA_API', 'https://example.org/solana-api'],
+        ['REACT_APP_OPHIS_SOLANA_API', 'https://swap.ophis.fi/another-path'],
+        ['REACT_APP_OPHIS_SOLANA_API', 'https://solana-mainnet.ophis.fi.example.org/solana-api'],
+        ['REACT_APP_OPHIS_SOLANA_API', 'https://solana-mainnet.ophis.fi/another-path'],
+        ['REACT_APP_OPHIS_SOLANA_GENESIS', SOLANA_DEVNET_GENESIS],
+        ['REACT_APP_OPHIS_SOLANA_WALLET_CHAIN', 'solana:devnet'],
+      ]) {
+        const previous = process.env
+        process.env = { ...previous, [variable]: value }
+        expect(readOphisSolanaConfig()).toBeNull()
+        process.env = previous
+      }
+    } finally {
+      process.env = original
     }
-    expect(readOphisSolanaConfig()?.chain).toBe('solana:mainnet')
-    for (const [variable, value] of [
-      ['REACT_APP_OPHIS_SOLANA_PROGRAM', '11111111111111111111111111111111'],
-      ['REACT_APP_OPHIS_SOLANA_API', 'https://example.org/solana-api'],
-      ['REACT_APP_OPHIS_SOLANA_API', 'https://swap.ophis.fi/another-path'],
-      ['REACT_APP_OPHIS_SOLANA_GENESIS', SOLANA_DEVNET_GENESIS],
-      ['REACT_APP_OPHIS_SOLANA_WALLET_CHAIN', 'solana:devnet'],
-    ]) {
-      const previous = process.env
-      process.env = { ...previous, [variable]: value }
-      expect(readOphisSolanaConfig()).toBeNull()
-      process.env = previous
-    }
-  } finally {
-    process.env = original
-  }
-})
+  },
+)

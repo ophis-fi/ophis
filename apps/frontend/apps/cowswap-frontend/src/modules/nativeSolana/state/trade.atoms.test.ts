@@ -55,6 +55,7 @@ jest.mock(
 jest.mock('../services/privateSettlement.service', () => ({ privateWalletRpc: 'http://localhost/private/wallet-rpc' }))
 
 jest.mock('entities/solana', () => ({
+  OPHIS_SOLANA_MAINNET_API: 'https://solana-mainnet.ophis.fi/solana-api',
   OPHIS_SOLANA_CONFIG: {
     api: 'https://native.ophis.example',
     program: 'own-program',
