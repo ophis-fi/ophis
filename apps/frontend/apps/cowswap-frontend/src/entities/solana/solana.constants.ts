@@ -3,6 +3,9 @@ import { OPHIS_MAINNET_PROGRAM, solanaAddress, type OphisSolanaWalletChain } fro
 export const SOLANA_MAINNET_GENESIS = '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d'
 export const SOLANA_DEVNET_GENESIS = 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG'
 
+export const OPHIS_SOLANA_MAINNET_API = 'https://solana-mainnet.ophis.fi/solana-api'
+const productionSwapApis = new Set([OPHIS_SOLANA_MAINNET_API, 'https://swap.ophis.fi/solana-api'])
+
 const walletConnectClusters: Readonly<Partial<Record<OphisSolanaWalletChain, string>>> = {
   'solana:mainnet': SOLANA_MAINNET_GENESIS,
   'solana:devnet': SOLANA_DEVNET_GENESIS,
@@ -47,7 +50,7 @@ export function readOphisSolanaConfig(): OphisSolanaConfig | null {
     if (!isPublicApi(url) || !isExpectedChain(chain, genesis)) return null
     if (
       window.location.hostname === 'swap.ophis.fi' &&
-      (url.href.replace(/\/$/, '') !== 'https://swap.ophis.fi/solana-api' ||
+      (!productionSwapApis.has(url.href.replace(/\/$/, '')) ||
         program !== OPHIS_MAINNET_PROGRAM ||
         chain !== 'solana:mainnet')
     )

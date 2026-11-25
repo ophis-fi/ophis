@@ -5,7 +5,7 @@ import {
   solanaAddress,
   type OphisWalletHolding,
 } from '@ophis/solana-sdk'
-import { SOLANA_DEVNET_GENESIS, type OphisSolanaConfig } from 'entities/solana'
+import { OPHIS_SOLANA_MAINNET_API, SOLANA_DEVNET_GENESIS, type OphisSolanaConfig } from 'entities/solana'
 
 export const walletHoldingsKey = (genesis?: string, owner?: string) => ['solana-wallet-assets', genesis, owner] as const
 
@@ -53,7 +53,7 @@ export function walletMint(mint: string): string {
 export function mainnetWalletRpc(config: OphisSolanaConfig | null): string | undefined {
   if (config?.chain !== 'solana:mainnet') return undefined
   const api = config.api.replace(/\/$/, '')
-  if (api === 'https://solana-mainnet.ophis.fi/solana-api' || api === window.location.origin + '/solana-api') {
+  if (api === OPHIS_SOLANA_MAINNET_API || api === window.location.origin + '/solana-api') {
     return api + '/wallet-rpc'
   }
   return undefined
