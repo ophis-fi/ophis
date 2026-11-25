@@ -89,7 +89,10 @@ export function uid(value: unknown): string {
 }
 
 export class OphisSolanaHttpError extends Error {
-  constructor(readonly status: number, readonly errorType?: string) {
+  constructor(
+    readonly status: number,
+    readonly errorType?: string,
+  ) {
     super(`Ophis native API returned HTTP ${status}`);
   }
 }
@@ -161,6 +164,13 @@ export async function fetchOphisSolanaQuote(
   );
   const quote = record(value.quote);
   const costs = record(quote.costs);
+  const sellAmount = atoms(quote.sellAmount, true);
+  const buyAmount = atoms(quote.buyAmount, true);
+  const feeAmount = atoms(quote.feeAmount);
+  const quotedAmount =
+    input.side.kind === 'sell' ? BigInt(sellAmount) + BigInt(feeAmount) : BigInt(buyAmount);
+  if (quotedAmount !== amount)
+    throw Error(`Quote ${input.side.kind} amount does not match the requested trade`);
   if (key(costs.token) !== (input.side.kind === 'sell' ? buyToken : sellToken))
     throw Error('Invalid quote cost token');
   if (
@@ -210,9 +220,9 @@ export async function fetchOphisSolanaQuote(
       sellToken,
       buyToken,
       receiver: quote.receiver === null ? null : key(quote.receiver),
-      sellAmount: atoms(quote.sellAmount, true),
-      buyAmount: atoms(quote.buyAmount, true),
-      feeAmount: atoms(quote.feeAmount),
+      sellAmount,
+      buyAmount,
+      feeAmount,
       validTo: quote.validTo,
       appData: quote.appData,
       ...(feeTerms && { feeTerms }),

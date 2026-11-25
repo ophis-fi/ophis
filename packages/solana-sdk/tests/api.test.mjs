@@ -12,24 +12,47 @@ const input = {
   from: fixture.quote.from,
   sellToken: fixture.quote.quote.sellToken,
   buyToken: fixture.quote.quote.buyToken,
-  side: { kind: 'sell', sellAmountBeforeFee: 9_007_199_254_740_993n },
+  side: { kind: 'sell', sellAmountBeforeFee: 500_000n },
 };
 
 test('queries the explicit native host once, retaining exact amounts and cost units', async (t) => {
   const calls = [];
+  const amount = 9_007_199_254_740_993n;
+  const value = structuredClone(fixture.quote);
+  value.quote.sellAmount = String(amount - BigInt(value.quote.feeAmount));
   t.mock.method(globalThis, 'fetch', async (url, options) => {
     calls.push([String(url), JSON.parse(options.body)]);
-    return new Response(JSON.stringify(fixture.quote));
+    return Response.json(value);
   });
-  const quote = await fetchOphisSolanaQuote('https://native.ophis.example/solana', input);
+  const quote = await fetchOphisSolanaQuote('https://native.ophis.example/solana', {
+    ...input,
+    side: { kind: 'sell', sellAmountBeforeFee: amount },
+  });
   assert.equal(quote.verified, true);
   assert.equal(quote.from, input.from);
   assert.equal(quote.quote.costs.token, input.buyToken);
-  assert.equal(quote.quote.sellAmount, fixture.quote.quote.sellAmount);
+  assert.equal(quote.quote.sellAmount, value.quote.sellAmount);
   assert.equal(calls.length, 1);
   assert.equal(calls[0][0], 'https://native.ophis.example/solana/api/v1/quote');
   assert.equal(calls[0][1].sellAmountBeforeFee, '9007199254740993');
   assert.equal(calls[0][1].priceQuality, 'verified');
+});
+
+test('requires exact requested sell or buy amounts before accepting a quote', async (t) => {
+  const value = structuredClone(fixture.quote);
+  t.mock.method(globalThis, 'fetch', async () => Response.json(value));
+  const sell = () => fetchOphisSolanaQuote('https://native.ophis.example', input);
+  value.quote.sellAmount = String(BigInt(value.quote.sellAmount) + 1n);
+  await assert.rejects(sell(), /sell amount/);
+  value.quote.kind = 'buy';
+  value.quote.costs.token = input.sellToken;
+  const buy = (amount) =>
+    fetchOphisSolanaQuote('https://native.ophis.example', {
+      ...input,
+      side: { kind: 'buy', buyAmountAfterFee: amount },
+    });
+  await buy(BigInt(value.quote.buyAmount));
+  await assert.rejects(buy(BigInt(value.quote.buyAmount) + 1n), /buy amount/);
 });
 
 test('verified fee terms require a stored reference and the published share and caps', async (t) => {
