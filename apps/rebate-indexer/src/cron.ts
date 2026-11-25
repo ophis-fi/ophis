@@ -6,7 +6,7 @@ import { runScorer } from './scorer.js';
 import { runBatcher, isFirstOfMonth, bootstrapFeeConversion } from './batcher.js';
 import { reconcileBatches } from './batch/reconcile.js';
 import { deliverMonthlyReport } from './affiliate/deliverReport.js';
-import { runAffiliatePayout, reconcileAffiliateBatches } from './affiliate/payout.js';
+import { deferAffiliateCycle, deferredAffiliateBoundaries, runAffiliatePayout, reconcileAffiliateBatches } from './affiliate/payout.js';
 import { resolveAffiliatePayoutEnabled } from './affiliate/payoutPlan.js';
 import { OWN_FEE_GUARANTEED_CHAIN_IDS } from './affiliate/rates.js';
 import { accrueOwnFee, proposeOwnFeeBatches, reconcileOwnFeeBatches } from './ownFee/payout.js';
@@ -360,7 +360,10 @@ async function runPipelineSteps(servicedBoundary: Date): Promise<void> {
           try {
             await runAffiliatePayout({ chainId: 100, rpcUrl: gnosisRpc(), proposerPrivateKey: proposerKey as `0x${string}`, proposeEnabled, now: servicedBoundary });
           } catch (err) {
-            log.error({ err }, 'affiliate payout failed (non-fatal to the rest of the cycle)');
+            // Even if the coverage query itself failed, keep this boundary due. If its retry
+            // marker cannot be persisted either, the nightly heartbeat must not advance.
+            await deferAffiliateCycle(servicedBoundary);
+            log.error({ err }, 'affiliate payout failed and will retry next night');
           }
         }
       } else {
@@ -411,6 +414,19 @@ async function runPipelineSteps(servicedBoundary: Date): Promise<void> {
         await proposePartnerFeeBatches({ rpcUrl: gnosisRpc(), proposerPrivateKey: proposerKey as `0x${string}`, proposeEnabled: resolveBatcherProposeEnabled() });
       } catch (err) {
         log.error({ err }, 'partner-fee proposal failed (non-fatal; retried next night)');
+      }
+    }
+  }
+
+  // The rebate heartbeat can complete while affiliate data is pending. Retry only previously
+  // deferred affiliate cycles, under the same partner-liability, signer and payout gates.
+  const affiliateKey = process.env.SAFE_PROPOSER_PRIVATE_KEY;
+  if (affiliateKey && partnerFeedOk && partnerAccrualOk && resolveAffiliatePayoutEnabled()) {
+    for (const boundary of await deferredAffiliateBoundaries(servicedBoundary, monthlyDue)) {
+      try {
+        await runAffiliatePayout({ chainId: 100, rpcUrl: gnosisRpc(), proposerPrivateKey: affiliateKey as `0x${string}`, proposeEnabled: resolveBatcherProposeEnabled(), now: boundary });
+      } catch (err) {
+        log.error({ err, boundary }, 'deferred affiliate cycle will retry next night');
       }
     }
   }

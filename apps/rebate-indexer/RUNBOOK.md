@@ -405,3 +405,100 @@ are unsuitable for Arc's free 100-block RPC limit. Preserve the Arc orderbook
 history; if it is pruned, reporting must remain closed until reconciled again.
 Discovery remains fee-unverified/zero-credit until API enrichment. No payout keys,
 Safe proposal jobs, or automatic Arc own-fee payouts are enabled by this rollout.
+
+## Solana settlement reporting
+
+The rebate indexer reads the Solana orderbook from a separate PostgreSQL connection.
+Set `SOLANA_REPORTING_DATABASE_URL` in the protected rebate service environment
+to enable the worker at startup. The historical source on the Mini is the
+`ophis-private-reverse-db` container. It has no published port. The databases
+previously associated with port 19879 held partial or empty histories.
+Restore the verified source into the release database and run the packaged
+`check-history.sql` there as the database owner. The release binds PostgreSQL
+on the Mini at `127.0.0.1:19692`. Forward that socket over SSH to Cadia's
+private reporting network with a pinned Mini host key. Use the address
+reachable from the rebate container in its DSN. Verify the finalized
+watermark advances on that connection. Set `SOLANA_REPORTING_RPC_URL` to the approved
+mainnet read endpoint or use the default public Solana RPC.
+
+Provision a dedicated login on the source database and supply its password
+through the protected environment. The worker only needs the following grants
+on the existing Solana schema and fee view. On Cadia the optional
+`docker-compose.solana-reporting.yml` override mounts a private Unix socket at
+`/run/ophis-solana-reporting/.s.PGSQL.5432`. Append this override to the
+existing Compose file list, preserving the rewards override. The socket service
+authenticates to the Mini with an SSH key restricted to its local orderbook
+port. The reader DSN supplies the database name and password independently.
+Check `systemctl status ophis-solana-reporting.socket` on Cadia if the source
+connection fails. For a reporting-only release, set `REBATE_DEFER_STARTUP_REWARDS=true`
+during the restart so rewards run on their existing five-minute schedule.
+
+```sql
+ALTER ROLE ophis_rebate_reader SET default_transaction_read_only = on;
+GRANT CONNECT ON DATABASE ophis TO ophis_rebate_reader;
+GRANT USAGE ON SCHEMA solana TO ophis_rebate_reader;
+GRANT SELECT (singleton, slot, finalized_slot) ON solana.indexer_state TO ophis_rebate_reader;
+GRANT SELECT (slot, tx_signature, instruction_index, order_uid, sell_amount, buy_amount)
+  ON solana.trades TO ophis_rebate_reader;
+GRANT SELECT (uid, owner, order_pda, sell_token, buy_token, kind)
+  ON solana.orders TO ophis_rebate_reader;
+GRANT SELECT (tx_signature, instruction_index, auction_id)
+  ON solana.settlements TO ophis_rebate_reader;
+GRANT SELECT (tx_signature, instruction_index, order_uid, fee_mint, protocol_fee)
+  ON solana.executed_protocol_fees TO ophis_rebate_reader;
+GRANT SELECT (order_uid, signed_fee_reference) ON solana.order_quotes TO ophis_rebate_reader;
+GRANT SELECT (auction_id, order_uid, application_order, kind, volume_factor,
+              price_improvement_factor, price_improvement_max_volume_factor)
+  ON solana.fee_policies TO ophis_rebate_reader;
+```
+
+The worker checks the first known mainnet settlement and the RPC genesis hash.
+It verifies the order account, seller, mints and executed amounts against each
+finalized transaction. One order can have multiple fills. Each distinct fill
+counts once at its on-chain settlement time. Orders owned by the program state
+are treasury operations and are excluded. USDC and USDT amounts are valued
+at $1. Other pairs use historical DefiLlama prices at settlement. A missing
+price leaves the USD fields empty while the fill continues to count. Affiliate
+accounting uses the verified base portion of executed fees. Late prices and
+fee attribution are retried in a rotating historical pass.
+
+After restarting the indexer, compare the source and target with these read-only
+queries. Open `https://rebates.ophis.fi/stats?chain=solana` for the Solana row.
+For JSON, request `/stats` with `Accept: application/json` and check
+the `byChain` entry with `chainId: -1`, the report's key for Solana mainnet.
+The target's coverage timestamp reflects how far the source itself indexed.
+A recent worker check alongside an old coverage timestamp warrants checking
+the source Solana indexer.
+
+```sql
+-- Solana source
+SELECT least(slot, finalized_slot) AS finalized_boundary
+FROM solana.indexer_state WHERE singleton;
+
+-- Rebate target
+SELECT covered_slot, covered_block_timestamp, checked_at FROM solana_fill_sync;
+SELECT count(*) AS fills, count(DISTINCT wallet) AS traders, sum(value_usd) AS usd,
+       count(*) FILTER (WHERE value_usd IS NULL) AS unpriced,
+       count(*) FILTER (WHERE base_fee_usd IS NULL) AS unverified_fee
+FROM solana_settled_fills;
+```
+
+New fills are fetched in bounded pages. A full page schedules another after
+250 ms. Failed verification pauses that page for 60 seconds and preserves
+already verified fills. Restarts resume the saved cursor. Removing the source
+DSN and restarting disables the worker while retaining the reporting history.
+
+The November 25 release rehearsal used six mainnet test swaps from one Ophis
+team wallet. Through slot 473447655, the stats API counted all six once and
+reported $14.200796 in internal test volume, including after replay. The
+snapshot contained zero external traders. The last test swap delivered 2.746530 USDC.
+[Settlement receipt](https://explorer.solana.com/tx/2foXQBA71K3eW8j2YPr75wGz7YW5FrxheTe3sni1YELEscikeuwFsDQPjbJrfhssrmEAjDziRbFJWK4YWt5nsgEy)
+
+The November 25 restore recovered 10 orders, six fills and six fee records. The
+release indexer advanced from finalized slot 473447655 to 473663185 with zero
+dead letters. A query from the running rebate container's network on Cadia read
+all six fee-bearing fills through a temporary SSH relay. The reporting login
+had read-only transactions and lacked insert permission. Production still
+needs its persistent reporting connection. The native Linux AMD64 reporting
+image staged on Cadia is `ophis-rebate-indexer:solana-release-6a427c943af8`
+with image ID `sha256:6d7d4021f1017cd66abf7090db42a601acb81086bc7593754a9fafdd64d35177`.

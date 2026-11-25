@@ -84,6 +84,8 @@ export const OPTIMISM_CHAIN_ID = 10;
 export const UNICHAIN_CHAIN_ID = 130;
 export const ROBINHOOD_CHAIN_ID = 4663;
 export const ARC_CHAIN_ID = 5042;
+// Internal reporting key. Negative IDs cannot collide with an EVM chain ID.
+export const SOLANA_MAINNET_ID = -1;
 
 /** Ophis-SOVEREIGN chains: Ophis runs its own orderbook + settlement, so there is
  *  NO CoW DAO service-fee cut and Ophis keeps the full fee (100%). Optimism (10),
@@ -97,6 +99,7 @@ export const SOVEREIGN_CHAIN_IDS: ReadonlySet<number> = new Set([
   UNICHAIN_CHAIN_ID,
   ROBINHOOD_CHAIN_ID,
   ARC_CHAIN_ID,
+  SOLANA_MAINNET_ID,
 ]);
 
 /**

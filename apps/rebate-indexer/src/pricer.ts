@@ -34,6 +34,20 @@ interface HistoricalPriceResponse {
   coins?: Record<string, { decimals?: number; price?: number; timestamp?: number }>;
 }
 
+export async function historicalCoinUsd(coin: string, amount: bigint, requestedTimestamp: number): Promise<number | null> {
+  const url = `https://coins.llama.fi/prices/historical/${requestedTimestamp}/${coin}?searchWidth=4h`;
+  const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+  if (!response.ok) throw new Error(`DefiLlama historical price ${response.status} for ${coin}`);
+  const body = await response.json() as HistoricalPriceResponse;
+  const quote = body.coins?.[coin];
+  if (!quote || !Number.isInteger(quote.decimals) || quote.decimals! < 0 || quote.decimals! > 255 ||
+      !Number.isFinite(quote.price) || quote.price! <= 0 || !Number.isInteger(quote.timestamp) ||
+      Math.abs(quote.timestamp! - requestedTimestamp) > 4 * 60 * 60) return null;
+  const usd = Number(amount) / 10 ** quote.decimals! * quote.price!;
+  if (!Number.isFinite(usd) || usd < 0) throw new Error(`non-finite historical USD for ${coin}`);
+  return usd;
+}
+
 /** Price a reporting fill at its settlement time, never at pricer runtime. */
 export async function priceDefiLlamaFill(row: {
   chainId: number;
@@ -72,17 +86,8 @@ export async function priceDefiLlamaFill(row: {
       ? '0x0000000000000000000000000000000000001010'
       : side.token.toLowerCase();
     const coin = `${slug}:${token}`;
-    const url = `https://coins.llama.fi/prices/historical/${requestedTimestamp}/${coin}?searchWidth=4h`;
-    const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
-    if (!response.ok) throw new Error(`DefiLlama historical price ${response.status} for ${coin}`);
-    const body = await response.json() as HistoricalPriceResponse;
-    const quote = body.coins?.[coin];
-    if (!quote || !Number.isInteger(quote.decimals) || quote.decimals! < 0 || quote.decimals! > 255 ||
-        !Number.isFinite(quote.price) || quote.price! <= 0 || !Number.isInteger(quote.timestamp) ||
-        Math.abs(quote.timestamp! - requestedTimestamp) > 4 * 60 * 60) continue;
-    const usd = Number(side.amount) / 10 ** quote.decimals! * quote.price!;
-    if (!Number.isFinite(usd) || usd < 0) throw new Error(`non-finite historical USD for ${coin}`);
-    return usd;
+    const usd = await historicalCoinUsd(coin, side.amount, requestedTimestamp);
+    if (usd !== null) return usd;
   }
   throw new Error(`invalid DefiLlama historical price for either fill side at ${requestedTimestamp}`);
 }

@@ -131,7 +131,6 @@ describe('every cycle-selecting monthly helper is given the serviced boundary', 
   const CYCLE_SELECTING = [
     'accrueOwnFee',
     'accruePartnerFees',
-    'runAffiliatePayout',
     'deliverMonthlyReport',
   ];
 
@@ -146,6 +145,14 @@ describe('every cycle-selecting monthly helper is given the serviced boundary', 
     for (const [, args] of calls) {
       expect(args).toContain('now: servicedBoundary');
     }
+  });
+
+  it('affiliate payouts settle the serviced cycle or the original deferred cycle', () => {
+    const calls = [...src.matchAll(/\brunAffiliatePayout\(([^;]*?)\)\s*;/gs)].map(([, args]) => args);
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toContain('now: servicedBoundary');
+    expect(calls[1]).toContain('now: boundary');
+    expect(src).toContain('for (const boundary of await deferredAffiliateBoundaries(servicedBoundary, monthlyDue))');
   });
 
   it('runBatcher receives the serviced boundary as its cycle clock', () => {

@@ -12,6 +12,10 @@ let pg: StartedPostgreSqlContainer;
 let sql: any;
 let sumQueuedAffiliateOwedWei: typeof import('../../src/affiliate/payout.js')['sumQueuedAffiliateOwedWei'];
 
+let readAffiliatePayoutInputs: typeof import('../../src/affiliate/payout.js')['readAffiliatePayoutInputs'];
+let deferredAffiliateBoundaries: typeof import('../../src/affiliate/payout.js')['deferredAffiliateBoundaries'];
+let runAffiliatePayout: typeof import('../../src/affiliate/payout.js')['runAffiliatePayout'];
+
 // Insert one affiliate batch in a given status with a given owed amount (wei). cycle_month
 // is UNIQUE, so each seeded batch carries a distinct month.
 async function seedBatch(cycleMonth: string, status: string, owedWei: bigint): Promise<void> {
@@ -27,7 +31,7 @@ beforeAll(async () => {
   const { runMigrations } = await import('../../src/db/migrate.js');
   await runMigrations(); // applies migration 0005_affiliate.sql
   ({ sql } = await import('../../src/db/index.js'));
-  ({ sumQueuedAffiliateOwedWei } = await import('../../src/affiliate/payout.js'));
+  ({ sumQueuedAffiliateOwedWei, readAffiliatePayoutInputs, deferredAffiliateBoundaries, runAffiliatePayout } = await import('../../src/affiliate/payout.js'));
 }, 180_000);
 
 afterAll(async () => {
@@ -77,5 +81,72 @@ describe('sumQueuedAffiliateOwedWei -- over-draw reserve for queued affiliate pr
     const available = rawBalance > reserved ? rawBalance - reserved : 0n;
     expect(reserved).toBe(13n * 10n ** 17n);
     expect(available).toBe(0n); // clamped, never negative
+  });
+});
+
+
+describe('native affiliate monthly cutoff', () => {
+  const now = new Date('2026-12-01T02:00:00Z');
+  const end = '2026-12-01T00:00:00Z';
+  const trader = Buffer.alloc(32, 7);
+  const referrer = Buffer.alloc(20, 9);
+  const proof = Buffer.alloc(64, 2);
+
+  beforeEach(async () => {
+    await sql`TRUNCATE referrals, ref_codes, solana_settled_fills, affiliate_deferred_cycles`;
+    await sql`UPDATE solana_fill_sync SET covered_block_timestamp = null`;
+    await sql`INSERT INTO ref_codes(code, referrer_wallet, kind) VALUES ('solaffiliate', ${referrer}, 'regular')`;
+  });
+  const bind = (bytes: Buffer, at: string) => sql`INSERT INTO referrals(referred_wallet,code,referrer_wallet,net_new,bound_at)
+    VALUES (${bytes}, 'solaffiliate', ${referrer}, true, ${at})`;
+  const fill = (when: string, who = trader) => sql`
+    INSERT INTO solana_settled_fills(tx_signature,instruction_index,order_uid,slot,block_timestamp,wallet,
+      sell_mint,buy_mint,sell_atoms,buy_atoms)
+    VALUES (${proof},0,${trader},100,${when},${who},${trader},${trader},1,1)`;
+
+  it('defers a relevant cycle without creating a batch or querying an RPC, then retries across month rollover', async () => {
+    await bind(trader, '2026-11-01T00:00:00Z');
+    await sql`UPDATE solana_fill_sync SET covered_block_timestamp = '2026-11-30T23:59:59Z'`;
+    const result = await runAffiliatePayout({ chainId: 100, rpcUrl: 'invalid:', proposerPrivateKey: '0x00', proposeEnabled: false, now });
+    expect(result.status).toBe('awaiting_solana');
+    expect(await sql`SELECT 1 FROM affiliate_batches`).toHaveLength(0);
+    expect(await deferredAffiliateBoundaries(now, true)).toEqual([]);
+    expect(await deferredAffiliateBoundaries(now, false)).toEqual([new Date(end)]);
+    expect(await deferredAffiliateBoundaries(new Date('2027-01-01T02:00:00Z'), true)).toEqual([new Date(end)]);
+    await sql`UPDATE solana_fill_sync SET covered_block_timestamp = ${end}`;
+    expect(await readAffiliatePayoutInputs(now)).toEqual([]);
+    await seedBatch('2026-11-01', 'no_recipients', 0n);
+    expect(await deferredAffiliateBoundaries(now, false)).toEqual([]);
+  });
+
+  it('rechecks unknown fees and valuations on earlier eligible fills even after history is covered', async () => {
+    await bind(trader, '2026-11-02T00:00:00Z');
+    await fill('2026-11-20T00:00:00Z');
+    await sql`UPDATE solana_fill_sync SET covered_block_timestamp = ${end}`;
+    expect(await readAffiliatePayoutInputs(now)).toBeNull();
+    await sql`UPDATE solana_settled_fills SET base_fee_atoms = 3, base_fee_usd = 0.03`;
+    expect(await readAffiliatePayoutInputs(now)).toBeNull();
+    await sql`UPDATE solana_settled_fills SET value_usd = 300, base_fee_usd = NULL`;
+    expect(await readAffiliatePayoutInputs(now)).toBeNull();
+    await sql`UPDATE solana_settled_fills SET base_fee_usd = 0.03`;
+    expect(await readAffiliatePayoutInputs(now)).toMatchObject([{ buckets: [{ chainId: -1, volumeUsd: 300, grossBps: 1 }] }]);
+    await sql`UPDATE solana_settled_fills SET base_fee_atoms = 0, base_fee_usd = null, value_usd = null`;
+    expect(await readAffiliatePayoutInputs(now)).toEqual([]);
+  });
+
+  it('does not hold a historical EVM-only cycle or count ineligible or out-of-period native fills', async () => {
+    await bind(Buffer.alloc(20, 1), '2026-10-01T00:00:00Z');
+    await bind(Buffer.alloc(32, 1), end);
+    expect(await readAffiliatePayoutInputs(now)).toEqual([]);
+    await bind(trader, '2026-11-10T00:00:00Z');
+    await fill('2026-11-01T00:00:00Z'); // importer later discovers this was a returning trader
+    expect(await readAffiliatePayoutInputs(now)).toEqual([]);
+    await sql`TRUNCATE solana_settled_fills`;
+    await sql`UPDATE solana_fill_sync SET covered_block_timestamp = ${end}`;
+    await fill(end); // belongs to the next cycle
+    expect(await readAffiliatePayoutInputs(now)).toEqual([]);
+    await sql`TRUNCATE solana_settled_fills`;
+    await fill('2026-11-20T00:00:00Z', Buffer.alloc(32, 99)); // unrelated trader
+    expect(await readAffiliatePayoutInputs(now)).toEqual([]);
   });
 });

@@ -1,3 +1,4 @@
+import { SOLANA_MAINNET_ID } from './affiliate/rates.js';
 import type { PublicDataSource } from './freshness.js';
 /**
  * Server-rendered HTML for GET /stats when a BROWSER navigates to it
@@ -40,6 +41,7 @@ export interface PublicStats {
 }
 
 export const CHAIN_NAME: Record<number, string> = {
+  [SOLANA_MAINNET_ID]: 'Solana',
   1: 'Ethereum',
   10: 'Optimism',
   56: 'BNB Chain',
@@ -64,11 +66,12 @@ export const CHAIN_NAME: Record<number, string> = {
  * the cumulative public proof figures.
  */
 export const PRODUCTION_CHAIN_IDS: readonly number[] = Object.freeze(
-  Object.keys(CHAIN_NAME).map(Number),
+  Object.keys(CHAIN_NAME).map(Number).filter(id => id > 0),
 );
 
 export const RETIRED_CHAIN_IDS: readonly number[] = Object.freeze([130]);
 export const ACTIVE_PRODUCTION_CHAIN_IDS = Object.freeze(PRODUCTION_CHAIN_IDS.filter(id => !RETIRED_CHAIN_IDS.includes(id)));
+export const PUBLIC_STATS_CHAIN_IDS = [...PRODUCTION_CHAIN_IDS, SOLANA_MAINNET_ID];
 
 /**
  * Static execution-model facts served alongside the cumulative figures on the
@@ -105,6 +108,7 @@ const fmtUsd = (n: number): string =>
 const fmtInt = (n: number): string => Math.round(n).toLocaleString('en-US');
 
 export const CHAIN_ICON: Record<number, string> = {
+  [SOLANA_MAINNET_ID]: 'chain-solana.svg',
   1: 'chain-ethereum.png', 10: 'chain-optimism.png', 56: 'chain-bnb.png',
   100: 'chain-gnosis.png', 130: 'chain-unichain.svg', 137: 'chain-polygon.png',
   4663: 'chain-robinhood-v2.svg', 8453: 'chain-base.png', 9745: 'chain-plasma.svg',
@@ -116,8 +120,8 @@ export function renderStatsPage(s: PublicStats, query = new URLSearchParams()): 
   const sort = query.get('sort') ?? 'volume-desc';
   const activeSort = /^(chain|volume|trades)-(asc|desc)$/.test(sort) ? sort : 'volume-desc';
   const [column, direction] = activeSort.split('-');
-  const chainId = Number(query.get('chain'));
-  const chain = PRODUCTION_CHAIN_IDS.includes(chainId) ? chainId : 0;
+  const chainId = query.get('chain') === 'solana' ? SOLANA_MAINNET_ID : Number(query.get('chain'));
+  const chain = PUBLIC_STATS_CHAIN_IDS.includes(chainId) ? chainId : 0;
   const range = (key: string): number | undefined => {
     const raw = query.get(key);
     if (!raw?.trim()) return undefined;
@@ -155,7 +159,7 @@ export function renderStatsPage(s: PublicStats, query = new URLSearchParams()): 
   };
   const numberInput = (key: string, label: string, value: number | undefined): string =>
     `<label><span>${label}</span><input type="number" min="0" step="${key.endsWith('Trades') ? '1' : 'any'}" name="${key}" value="${value ?? ''}" placeholder="Any"></label>`;
-  const chainOptions = PRODUCTION_CHAIN_IDS.map(id => `<option value="${id}"${chain === id ? ' selected' : ''}>${esc(CHAIN_NAME[id] ?? `Chain ${id}`)}</option>`).join('');
+  const chainOptions = PUBLIC_STATS_CHAIN_IDS.map(id => `<option value="${id === SOLANA_MAINNET_ID ? 'solana' : id}"${chain === id ? ' selected' : ''}>${esc(CHAIN_NAME[id] ?? `Chain ${id}`)}</option>`).join('');
   const updated = s.dataAsOf
     ? esc(s.dataAsOf.slice(0, 16).replace('T', ' ')) + ' UTC'
     : null;
@@ -170,7 +174,7 @@ export function renderStatsPage(s: PublicStats, query = new URLSearchParams()): 
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="index, follow">
 <title>Ophis: execution model and indexed volume</title>
-<meta name="description" content="How Ophis batch-auction swaps work, their execution limits, and historical indexed volume across ${PRODUCTION_CHAIN_IDS.length} EVM networks, including retired Unichain.">
+<meta name="description" content="How Ophis batch-auction swaps work, their execution limits, and historical indexed volume across ${PRODUCTION_CHAIN_IDS.length} EVM networks, including retired Unichain, and Solana mainnet.">
 <meta name="theme-color" content="#ffffff">
 <style>
 :root{color-scheme:light}
@@ -231,7 +235,7 @@ caption{text-align:left;padding:12px 16px;font-size:13px;color:#5b606b;border-bo
 <nav class="brand" aria-label="Ophis"><a href="https://ophis.fi/">Ophis</a><span>Execution &amp; volume</span></nav>
 ${freshnessWarning}
 <h1>How trades settle. What we have indexed.</h1>
-<p class="lede">Ophis batch-auction swaps use solver competition and signed limits. Bridge, conversion and OTC routes have separate execution, gas and recovery rules; the model below does not apply to every route.</p>
+<p class="lede">Ophis batch-auction swaps use solver competition and signed limits. Solana trades count after their settlements finalize. Bridge, conversion and OTC routes have separate execution, gas and recovery rules.</p>
 <ul class="gl">
   <li><strong>Batch-auction MEV mitigation</strong>Offchain orders and uniform clearing prices per token pair mitigate common MEV. Settlement transactions can still be public; this is not an absolute guarantee against front-running or sandwich attacks.</li>
   <li><strong>Signed order limits</strong>The batch settlement contract enforces your signed sell amount, receiver and limit price. A source-chain fill does not guarantee destination delivery on a bridge route.</li>
@@ -239,7 +243,7 @@ ${freshnessWarning}
   <li><strong>Configured routing lanes</strong>Ophis operates its own orderbooks and routing lanes on Robinhood Chain, Optimism, and Arc. These lanes share one operator, with participation varying by token pair and auction. CoW-hosted networks use the ${esc(EXECUTION_FACTS.solverCompetition.hostedChains)}.</li>
 </ul>
 <h2 id="chains">Settled volume by chain</h2>
-<p class="note">This report covers historical records from ${PRODUCTION_CHAIN_IDS.length} EVM networks, including retired Unichain. These are indexed batch-settlement records, not a complete ledger of every swap or bridge route. A missing chain row does not prove there was no activity.</p>
+<p class="note">This report covers historical records from ${PRODUCTION_CHAIN_IDS.length} EVM networks, including retired Unichain, and Solana mainnet. These are indexed batch-settlement records, not a complete ledger of every swap or bridge route. A missing chain row does not prove there was no activity.</p>
 <form method="get" action="/stats#chains" aria-label="Filter settled volume">
 <div class="filters">
   <label><span>Chain</span><select name="chain"><option value="">All reporting chains</option>${chainOptions}</select></label>
@@ -263,7 +267,7 @@ ${freshnessWarning}
   <div class="card"><div class="n">${fmtInt(s.distinctTraders)}</div><div class="l">Traders</div></div>
   <div class="card"><div class="n">${fmtInt(s.chainsActive)}</div><div class="l">Chains with indexed trades</div></div>
 </div>
-<p class="note">Standard batch-auction fees combine a 1 bp Ophis base with capped price-improvement capture. CoW-hosted chains also apply upstream fees. Arc uses the same capped backend improvement policy for in-market orders. Bridge and conversion costs differ; check the final route quote. Volume is priced in USD at index time and refreshed periodically. Source: <a href="https://github.com/ophis-fi/ophis">github.com/ophis-fi/ophis</a>.</p>
+<p class="note">Standard EVM batch-auction fees combine a 1 bp Ophis base with capped price-improvement capture. CoW-hosted chains also apply upstream fees. Arc uses the same capped backend improvement policy for in-market orders. On Solana, the base fee is 1 bp for stablecoin pairs and SOL/stablecoin pairs, and 5 bp for other pairs. Ophis receives 50% of any improvement above the quote, up to the cap for that pair. Trades awaiting a USD valuation count toward trades and traders. Their volume enters the total once priced. <a href="https://github.com/ophis-fi/ophis">Source code</a></p>
 <div class="foot"><span><a href="https://docs.ophis.fi/fees">Fee model</a> &middot; <a href="https://docs.ophis.fi/comparison">How Ophis compares</a> &middot; <a href="https://swap.ophis.fi/">Open the app</a></span><span>${updated ? `Published ${updated}` : 'Data publication time unavailable'}</span></div>
 </main></body></html>`;
 }
