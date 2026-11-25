@@ -7,14 +7,15 @@ import { readFileSync } from 'node:fs';
 import { sql, db, schema } from './db/index.js';
 import { getWalletStatus } from './tierer.js';
 import { renderTierPage } from './tier-page.js';
-import { renderStatsPage, CHAIN_ICON, PRODUCTION_CHAIN_IDS, RETIRED_CHAIN_IDS, EXECUTION_FACTS, type PublicStats } from './stats-page.js';
+import { renderStatsPage, CHAIN_ICON, PUBLIC_STATS_CHAIN_IDS, PRODUCTION_CHAIN_IDS, RETIRED_CHAIN_IDS, EXECUTION_FACTS, type PublicStats } from './stats-page.js';
 import { isDefiLlamaBackfillComplete } from './defillamaBackfill.js';
 import { computeDefiLlamaDay, computeDefiLlamaDayUsers, computePublicStats } from './stats.js';
 import { readPublicDataFreshness, type PublicDataFreshness } from './freshness.js';
 import { getIntegratorEarnings } from './earnings.js';
 import { DECODER_ETHFLOW_OWNERS } from './fetcher.js';
 import { logger } from './logger.js';
-import { verifyPartnerAuth } from './affiliate/partnerAuth.js';
+import { formatAffiliateWallet, parseAffiliateWallet } from './affiliate/address.js';
+import { verifyAffiliateAuth, verifyPartnerAuth } from './affiliate/partnerAuth.js';
 import { affiliatePayoutStatus } from './affiliate/payoutPlan.js';
 import { findReward } from './rewards.js';
 import { getPartnerBreakdown, getPartnerFeeDashboard, getPartnerFeeStats, getPartnerSanctioned, getPartnerTraders } from './partnerFees/report.js';
@@ -40,122 +41,29 @@ function currentCycleWindow(now: Date): { start: Date; end: Date } {
 
 // Referrer's effective tier + active codes + this-cycle referred volume/count.
 // Shared by GET /affiliate/:wallet (public) and POST /partner (signature-gated).
-export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
-  const buf = Buffer.from(referrer.slice(2), 'hex');
+export async function getReferrerStats(referrer: string, now: Date) {
+  const buf = parseAffiliateWallet(referrer)?.bytes;
+  if (!buf) throw new Error('invalid referrer address');
   const codes = await sql<{ code: string; kind: string; active: boolean }[]>`
     SELECT code, kind, active FROM ref_codes WHERE referrer_wallet = ${buf} ORDER BY created_at
   `;
   const isPartner = codes.some((c) => c.active && c.kind === 'partner');
   const kind: AffiliateKind = isPartner ? 'partner' : 'regular';
   const { start, end } = currentCycleWindow(now);
-  // Referred-volume figures. Regular affiliates only ever display the
-  // current-cycle figure on the public, rate-limited /affiliate path, so for
-  // them the cycle window stays in the JOIN and the query scans only this
-  // cycle's trades. Partners display lifetime referred volume, so for them the
-  // JOIN widens to every post-bound trade and the cycle figure becomes a FILTER.
-  // Branching on kind keeps the common regular path off a full referee-history
-  // scan on every profile refresh.
-  const [agg] = isPartner
-    ? await sql<{ referred_count: string; cycle_volume_usd: string | null; cycle_net_weighted: string | null; lifetime_volume_usd: string | null }[]>`
-        SELECT
-          COUNT(DISTINCT r.referred_wallet)::text AS referred_count,
-          COALESCE(SUM(t.value_usd) FILTER (
-            WHERE t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
-          ), 0)::text AS cycle_volume_usd,
-          -- Cycle NET fee = SUM(value * actual bps * keepFraction(chain)) so the
-          -- estimate matches the per-trade, per-chain payout: sovereign chains
-          -- (OP, Unichain) keep 100%, hosted 75%. NULL uses the API-derived
-          -- order-creation policy marker; unenriched decoder rows are held out.
-          COALESCE(SUM(t.value_usd * COALESCE(t.volume_fee_bps, t.undecoded_fee_fallback_bps)
-            * (CASE WHEN t.chain_id = ANY(${[...SOVEREIGN_CHAIN_IDS]}) THEN ${keepFractionBps(OPTIMISM_CHAIN_ID)}::int ELSE ${keepFractionBps(1)}::int END)) FILTER (
-            WHERE t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
-          ), 0)::text AS cycle_net_weighted,
-          COALESCE(SUM(t.value_usd), 0)::text AS lifetime_volume_usd
-        FROM referrals r
-        LEFT JOIN trades t
-          ON t.wallet = r.referred_wallet
-          AND t.block_timestamp >= r.bound_at AND t.value_usd IS NOT NULL
-          -- Exclude explicit 0-fee trades (no settled Ophis fee): they earn nothing
-          -- in accrual (grossBps>0 filter), so they must not inflate displayed volume
-          -- or consume the regular cap here. NULL stays only after authoritative
-          -- order-creation policy enrichment; decoder-only unknowns are held.
-          AND t.volume_fee_bps IS DISTINCT FROM 0
-          AND (t.volume_fee_bps IS NOT NULL OR t.undecoded_fee_fallback_bps IS NOT NULL)
-          -- Production chains only: mirror of accrual's Sepolia exclusion.
-          AND t.chain_id <> 11155111
-          -- appData-wins (mirror of accrual): exclude trades attributed via an
-          -- ACTIVE code owned by someone other than the trader, so bind volume
-          -- here + appData volume below are disjoint (no double-count). The
-          -- LEFT JOIN still preserves the referral row, so referredCount is intact.
-          AND NOT (t.appdata_ref_code IS NOT NULL AND EXISTS (
-            SELECT 1 FROM ref_codes rc2 WHERE rc2.code = t.appdata_ref_code AND rc2.active AND rc2.referrer_wallet <> t.wallet
-          ))
-        WHERE r.referrer_wallet = ${buf}
-      `
-    : await sql<{ referred_count: string; cycle_volume_usd: string | null; cycle_net_weighted: string | null; lifetime_volume_usd: string | null }[]>`
-        SELECT
-          COUNT(DISTINCT r.referred_wallet)::text AS referred_count,
-          COALESCE(SUM(t.value_usd), 0)::text AS cycle_volume_usd,
-          COALESCE(SUM(t.value_usd * COALESCE(t.volume_fee_bps, t.undecoded_fee_fallback_bps)
-            * (CASE WHEN t.chain_id = ANY(${[...SOVEREIGN_CHAIN_IDS]}) THEN ${keepFractionBps(OPTIMISM_CHAIN_ID)}::int ELSE ${keepFractionBps(1)}::int END)), 0)::text AS cycle_net_weighted,
-          '0'::text AS lifetime_volume_usd
-        FROM referrals r
-        LEFT JOIN trades t
-          ON t.wallet = r.referred_wallet
-          AND t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
-          AND t.block_timestamp >= r.bound_at AND t.value_usd IS NOT NULL
-          AND t.volume_fee_bps IS DISTINCT FROM 0 -- exclude 0-fee trades (see partner branch)
-          AND (t.volume_fee_bps IS NOT NULL OR t.undecoded_fee_fallback_bps IS NOT NULL)
-          AND t.chain_id <> 11155111 -- production chains only (mirror of accrual)
-          -- appData-wins (mirror of accrual): see the partner branch above.
-          AND NOT (t.appdata_ref_code IS NOT NULL AND EXISTS (
-            SELECT 1 FROM ref_codes rc2 WHERE rc2.code = t.appdata_ref_code AND rc2.active AND rc2.referrer_wallet <> t.wallet
-          ))
-        WHERE r.referrer_wallet = ${buf}
-      `;
-
-  // appData-attributed volume for THIS referrer (mirrors accrual's appData path):
-  // trades carrying one of this referrer's ACTIVE codes, owner != referrer (self-
-  // referral excluded). Disjoint from the bind agg above (which now excludes these
-  // trades), so summing the two does NOT double-count, and the displayed volume
-  // matches what the monthly payout actually accrues. A tag does not create a
-  // permanent bind; reporting counts the union of bound and code-attributed wallets.
-  const [appdataAgg] = await sql<{ cycle_volume_usd: string; cycle_net_weighted: string; lifetime_volume_usd: string }[]>`
-    SELECT
-      COALESCE(SUM(t.value_usd) FILTER (
-        WHERE t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
-      ), 0)::text AS cycle_volume_usd,
-      COALESCE(SUM(t.value_usd * t.volume_fee_bps
-        * (CASE WHEN t.chain_id = ANY(${[...SOVEREIGN_CHAIN_IDS]}) THEN ${keepFractionBps(OPTIMISM_CHAIN_ID)}::int ELSE ${keepFractionBps(1)}::int END)) FILTER (
-        WHERE t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
-      ), 0)::text AS cycle_net_weighted,
-      COALESCE(SUM(t.value_usd), 0)::text AS lifetime_volume_usd
-    FROM trades t
-    JOIN ref_codes rc ON rc.code = t.appdata_ref_code AND rc.active
-    WHERE rc.referrer_wallet = ${buf}
-      AND rc.referrer_wallet <> t.wallet
-      AND t.value_usd IS NOT NULL
-      -- appData arm requires a CONFIRMED fee (> 0), mirroring accrual's appData fee gate:
-      -- it is the attacker-controllable forge surface, so NULL (surplus/PI / unconfirmed)
-      -- is excluded here, unlike the bind arms above which keep an API-enriched NULL. Display
-      -- therefore matches the monthly payout exactly. (COALESCE on the rate is now dead
-      -- since NULL is excluded.)
-      AND t.volume_fee_bps > 0
-      AND t.chain_id <> 11155111 -- production chains only (mirror of accrual)
+  // The payout and partner reports read the same attributed fills. Regular accounts
+  // only need a cycle scan, while partners also see their lifetime total.
+  const [volume] = await sql<{ cycle_usd: string; cycle_net_fee_usd: string; lifetime_usd: string }[]>`
+    SELECT COALESCE(SUM(value_usd) FILTER (WHERE block_timestamp >= ${start.toISOString()}
+             AND block_timestamp < ${end.toISOString()}), 0)::text AS cycle_usd,
+           COALESCE(SUM(value_usd * gross_bps *
+             CASE WHEN chain_id = ANY(${[...SOVEREIGN_CHAIN_IDS]}) THEN ${keepFractionBps(OPTIMISM_CHAIN_ID)}::int
+                  ELSE ${keepFractionBps(1)}::int END / 100000000) FILTER (
+             WHERE block_timestamp >= ${start.toISOString()} AND block_timestamp < ${end.toISOString()}), 0)::text AS cycle_net_fee_usd,
+           COALESCE(SUM(value_usd), 0)::text AS lifetime_usd
+    FROM affiliate_attributed_trades
+    WHERE referrer_wallet = ${buf}
+      AND (${isPartner} OR (block_timestamp >= ${start.toISOString()} AND block_timestamp < ${end.toISOString()}))
   `;
-
-  const bindCycle = agg && agg.cycle_volume_usd ? parseFloat(agg.cycle_volume_usd) : 0;
-  const bindLifetime = agg && agg.lifetime_volume_usd ? parseFloat(agg.lifetime_volume_usd) : 0;
-  const appdataCycle = appdataAgg ? parseFloat(appdataAgg.cycle_volume_usd) : 0;
-  const appdataLifetime = appdataAgg ? parseFloat(appdataAgg.lifetime_volume_usd) : 0;
-  // Cycle NET fee (USD) = SUM(value * bps * keepFractionBps(chain)) / 1e8 across
-  // bind + appData (disjoint), matching the per-trade, per-chain accrual (sovereign
-  // OP/Unichain keep 100%, hosted 75%). The /1e8 unscales both the bps (1e4) and the
-  // keep bps (1e4). Drives the fee-aware earnings estimate (no ~2x for SDK; sovereign
-  // chains not understated 25%).
-  const bindNetWeighted = agg && agg.cycle_net_weighted ? parseFloat(agg.cycle_net_weighted) : 0;
-  const appdataNetWeighted = appdataAgg ? parseFloat(appdataAgg.cycle_net_weighted) : 0;
-  const currentCycleNetFeeUsd = (bindNetWeighted + appdataNetWeighted) / 100_000_000;
   const [counts] = await sql<{ referred_count: string }[]>`
     SELECT COUNT(*)::text AS referred_count FROM affiliate_referees WHERE referrer_wallet = ${buf}
   `;
@@ -168,12 +76,12 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
     referredCount: counts ? parseInt(counts.referred_count, 10) : 0,
     // Bind + appData volume (disjoint). Drives both the display and the partner
     // earnings estimate, so the dashboard now matches the payout.
-    currentCycleVolumeUsd: bindCycle + appdataCycle,
+    currentCycleVolumeUsd: Number(volume?.cycle_usd ?? 0),
     // Actual cycle NET fee (Σ value*bps*keep/1e8) for the fee-aware earnings estimate.
-    currentCycleNetFeeUsd,
+    currentCycleNetFeeUsd: Number(volume?.cycle_net_fee_usd ?? 0),
     // Partners display lifetime referred volume (bind + appData); regular never
     // displays lifetime (stays 0, unchanged).
-    lifetimeReferredVolumeUsd: isPartner ? bindLifetime + appdataLifetime : 0,
+    lifetimeReferredVolumeUsd: isPartner ? Number(volume?.lifetime_usd ?? 0) : 0,
   };
 }
 
@@ -610,7 +518,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     // Public production proof surface: restrict to the named mainnet chains so
     // testnet settlement dust (e.g. Sepolia 11155111) never inflates or clutters
     // the cumulative figures. A plain mutable copy for postgres-js array binding.
-    const chainIds = [...PRODUCTION_CHAIN_IDS];
+    const chainIds = PUBLIC_STATS_CHAIN_IDS;
     // Aggregation (with the eth-flow-router exclusion on the distinct-trader count)
     // lives in computePublicStats so it is unit-testable against a real DB.
     let data;
@@ -831,12 +739,11 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   // self-referral; no CIRCULAR referrals (referred cannot be an ancestor of the
   // referrer); NET-NEW only (a wallet with prior Ophis trades is rejected — can't
   // farm existing volume); FIRST-BIND-WINS (ON CONFLICT DO NOTHING is idempotent +
-  // lifetime). Also registers the wallet in tracked_wallets so the fetcher indexes
-  // its future trades.
+  // lifetime). EVM binds register the wallet for polling. Solana fills come from the settlement index.
   app.post<{ Body: { referredWallet?: string; code?: string; issued?: number; signature?: string; chainId?: number } }>('/ref/bind', {
     config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
   }, async (req, reply) => {
-    const referred = String(req.body?.referredWallet ?? '').toLowerCase();
+    const referred = parseAffiliateWallet(req.body?.referredWallet);
     // Codes are canonical LOWERCASE (mint + admin-seed store lowercase). Normalize
     // here so a case-folded URL/share-link code (the frontend display-uppercases)
     // still matches the case-sensitive PK lookup AND the signed message (the client
@@ -844,27 +751,22 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     const code = String(req.body?.code ?? '').toLowerCase();
     const issued = Number(req.body?.issued);
     const signature = String(req.body?.signature ?? '');
-    if (!/^0x[0-9a-f]{40}$/.test(referred)) return reply.code(400).send({ error: 'invalid referredWallet' });
+    if (!referred) return reply.code(400).send({ error: 'invalid referredWallet' });
     if (!/^[a-z0-9_-]{3,64}$/.test(code)) return reply.code(400).send({ error: 'invalid code' });
     if (!Number.isInteger(issued)) return reply.code(400).send({ error: 'invalid issued timestamp' });
     if (!/^0x(?:[0-9a-fA-F]{2})*$/.test(signature)) return reply.code(400).send({ error: 'invalid signature' });
 
-    // Prove the caller controls `referred` before any DB work. verifyPartnerAuth
-    // rebuilds `Ophis bind referral code <code>\nAddress: <referred>\nIssued: <issued>`,
-    // recovers the signer, checks it equals `referred`, and enforces the replay window.
-    const auth = await verifyPartnerAuth({
+    const auth = await verifyAffiliateAuth({
       action: 'bind referral code ' + code,
       chainId: req.body?.chainId,
-      address: referred,
+      address: referred.address,
       issued,
       signature: signature as `0x${string}`,
       nowSec: Math.floor(Date.now() / 1000),
     });
     if (!auth.ok) return reply.code(401).send({ error: auth.reason });
 
-    // Use the recovered, verified address so the stored referred_wallet is the
-    // proven signer, not the raw body field.
-    const referredBuf = Buffer.from(auth.address.slice(2), 'hex');
+    const referredBuf = referred.bytes;
 
     return sql.begin(async (tx) => {
       // Serialize all binds with a global advisory lock so the cycle check below
@@ -878,12 +780,13 @@ export async function buildApiServer(): Promise<FastifyInstance> {
         SELECT encode(referrer_wallet, 'hex') AS referrer_hex, active FROM ref_codes WHERE code = ${code}
       `;
       if (!rc || !rc.active) return reply.code(400).send({ error: 'invalid or inactive code' });
-      if (`0x${rc.referrer_hex}` === auth.address) return reply.code(400).send({ error: 'cannot refer your own wallet' });
+      if (rc.referrer_hex === referredBuf.toString('hex')) return reply.code(400).send({ error: 'cannot refer your own wallet' });
 
       const existing = await tx`SELECT 1 FROM referrals WHERE referred_wallet = ${referredBuf} LIMIT 1`;
       if (existing.length > 0) {
-        await tx`INSERT INTO tracked_wallets (wallet) VALUES (${referredBuf})
-          ON CONFLICT (wallet) DO UPDATE SET last_registered_at = now()`;
+        if (referredBuf.length === 20) {
+          await tx`INSERT INTO tracked_wallets (wallet) VALUES (${referredBuf}) ON CONFLICT (wallet) DO UPDATE SET last_registered_at = now()`;
+        }
         return { bound: true, alreadyBound: true }; // first-bind-wins, renew enrollment
       }
 
@@ -903,7 +806,9 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       `;
       if (cycle.length > 0) return reply.code(400).send({ error: 'circular referral not allowed' });
 
-      const prior = await tx`SELECT 1 FROM trades WHERE wallet = ${referredBuf} LIMIT 1`;
+      const prior = referredBuf.length === 32
+        ? await tx`SELECT 1 FROM solana_settled_fills WHERE wallet = ${referredBuf} LIMIT 1`
+        : await tx`SELECT 1 FROM trades WHERE wallet = ${referredBuf} LIMIT 1`;
       if (prior.length > 0) return reply.code(409).send({ error: 'wallet is not net-new (has prior trade history)' });
 
       await tx`
@@ -911,7 +816,9 @@ export async function buildApiServer(): Promise<FastifyInstance> {
         VALUES (${referredBuf}, ${code}, decode(${rc.referrer_hex}, 'hex'), true)
         ON CONFLICT (referred_wallet) DO NOTHING
       `;
-      await tx`INSERT INTO tracked_wallets (wallet) VALUES (${referredBuf}) ON CONFLICT (wallet) DO UPDATE SET last_registered_at = now()`;
+      if (referredBuf.length === 20) {
+        await tx`INSERT INTO tracked_wallets (wallet) VALUES (${referredBuf}) ON CONFLICT (wallet) DO UPDATE SET last_registered_at = now()`;
+      }
       return { bound: true, alreadyBound: false };
     });
   });
@@ -933,23 +840,38 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   // ownership, so a code can only be minted for the wallet that signed). Idempotent:
   // returns the wallet's existing active regular code if any, else mints a fresh
   // RANDOM one. Partner codes are NOT self-serve (admin-seeded only).
-  app.post<{ Body: { wallet?: string; issued?: number; signature?: string; chainId?: number } }>('/ref/codes', {
+  app.post<{ Body: { wallet?: string; issued?: number; signature?: string; chainId?: number; payoutWallet?: string } }>('/ref/codes', {
     config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
   }, async (req, reply) => {
-    const wallet = String(req.body?.wallet ?? '').toLowerCase();
+    const wallet = parseAffiliateWallet(req.body?.wallet);
     const issued = Number(req.body?.issued);
     const signature = String(req.body?.signature ?? '');
-    if (!/^0x[0-9a-f]{40}$/.test(wallet)) return reply.code(400).send({ error: 'invalid wallet address' });
+    if (!wallet) return reply.code(400).send({ error: 'invalid wallet address' });
     if (!Number.isInteger(issued)) return reply.code(400).send({ error: 'invalid issued timestamp' });
     if (!/^0x(?:[0-9a-fA-F]{2})*$/.test(signature)) return reply.code(400).send({ error: 'invalid signature' });
-    const auth = await verifyPartnerAuth({ action: 'create referral code', chainId: req.body?.chainId, address: wallet, issued, signature: signature as `0x${string}`, nowSec: Math.floor(Date.now() / 1000) });
+    const payout = parseAffiliateWallet(req.body?.payoutWallet);
+    if (req.body?.payoutWallet !== undefined &&
+        (wallet.bytes.length !== 32 || payout?.bytes.length !== 20 || payout.bytes.equals(Buffer.alloc(20)))) {
+      return reply.code(400).send({ error: 'invalid payoutWallet' });
+    }
+    const action = payout ? `create referral code\nWETH payout: ${payout.address}` : 'create referral code';
+    const auth = await verifyAffiliateAuth({ action, chainId: req.body?.chainId, address: wallet.address, issued, signature: signature as `0x${string}`, nowSec: Math.floor(Date.now() / 1000) });
     if (!auth.ok) return reply.code(401).send({ error: auth.reason });
 
-    const buf = Buffer.from(auth.address.slice(2), 'hex');
-    const [existing] = await sql<{ code: string }[]>`
-      SELECT code FROM ref_codes WHERE referrer_wallet = ${buf} AND kind = 'regular' AND active = true LIMIT 1
+    const buf = wallet.bytes;
+    type ExistingCode = { code: string; payout_hex: string | null };
+    const findExisting = () => sql<ExistingCode[]>`
+      SELECT code, encode(payout_wallet, 'hex') AS payout_hex FROM ref_codes WHERE referrer_wallet = ${buf} AND kind = 'regular' AND active = true LIMIT 1
     `;
-    if (existing) return { code: existing.code, kind: 'regular', created: false };
+    const existingResponse = (row: ExistingCode) => {
+      if (payout && payout.bytes.toString('hex') !== row.payout_hex) {
+        return reply.code(409).send({ error: 'existing code has a different payoutWallet' });
+      }
+      return { code: row.code, kind: 'regular', created: false };
+    };
+    const [existing] = await findExisting();
+    if (existing) return existingResponse(existing);
+    if (buf.length === 32 && !payout) return reply.code(400).send({ error: 'A WETH payoutWallet is required for a new Solana referral code' });
     // RANDOM, unguessable code. The existing-active-code lookup above guarantees
     // idempotency, so a non-deterministic code is safe. A 48-bit random suffix makes
     // collisions negligible; the retry loop covers the astronomically rare clash. An
@@ -960,8 +882,8 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       const candidate = 'oph' + randomBytes(6).toString('hex'); // 48-bit random
       try {
         const inserted = await sql<{ code: string }[]>`
-          INSERT INTO ref_codes (code, referrer_wallet, kind, active)
-          VALUES (${candidate}, ${buf}, 'regular', true)
+          INSERT INTO ref_codes (code, referrer_wallet, payout_wallet, kind, active)
+          VALUES (${candidate}, ${buf}, ${payout?.bytes ?? null}, 'regular', true)
           ON CONFLICT (code) DO NOTHING
           RETURNING code
         `;
@@ -973,10 +895,8 @@ export async function buildApiServer(): Promise<FastifyInstance> {
         // active partial unique index (not the code PK, so ON CONFLICT (code) does
         // not catch it). Return the code the other request just created.
         if ((err as { code?: string })?.code === '23505') {
-          const [winner] = await sql<{ code: string }[]>`
-            SELECT code FROM ref_codes WHERE referrer_wallet = ${buf} AND kind = 'regular' AND active = true LIMIT 1
-          `;
-          if (winner) return { code: winner.code, kind: 'regular', created: false };
+          const [winner] = await findExisting();
+          if (winner) return existingResponse(winner);
         }
         throw err;
       }
@@ -990,10 +910,10 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   app.get<{ Params: { wallet: string } }>('/affiliate/:wallet', {
     config: { rateLimit: { max: 100, timeWindow: '1 minute' } },
   }, async (req, reply) => {
-    const raw = req.params.wallet.toLowerCase();
-    if (!/^0x[0-9a-f]{40}$/.test(raw)) return reply.code(400).send({ error: 'invalid wallet address' });
+    const wallet = parseAffiliateWallet(req.params.wallet);
+    if (!wallet) return reply.code(400).send({ error: 'invalid wallet address' });
     reply.header('vary', 'Origin');
-    return getReferrerStats(raw as `0x${string}`, new Date());
+    return getReferrerStats(wallet.address, new Date());
   });
 
   // Partner dashboard data — WHITELIST + SIGNATURE gated. POST (not GET) so the
@@ -1004,18 +924,18 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   app.post<{ Body: { wallet?: string; issued?: number; signature?: string; chainId?: number } }>('/partner', {
     config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
   }, async (req, reply) => {
-    const wallet = String(req.body?.wallet ?? '').toLowerCase();
+    const wallet = parseAffiliateWallet(req.body?.wallet);
     const issued = Number(req.body?.issued);
     const signature = String(req.body?.signature ?? '');
-    if (!/^0x[0-9a-f]{40}$/.test(wallet)) return reply.code(400).send({ error: 'invalid wallet address' });
+    if (!wallet) return reply.code(400).send({ error: 'invalid wallet address' });
     if (!Number.isInteger(issued)) return reply.code(400).send({ error: 'invalid issued timestamp' });
     if (!/^0x(?:[0-9a-fA-F]{2})*$/.test(signature)) return reply.code(400).send({ error: 'invalid signature' });
 
-    const auth = await verifyPartnerAuth({ chainId: req.body?.chainId, address: wallet, issued, signature: signature as `0x${string}`, nowSec: Math.floor(Date.now() / 1000) });
+    const auth = await verifyAffiliateAuth({ chainId: req.body?.chainId, address: wallet.address, issued, signature: signature as `0x${string}`, nowSec: Math.floor(Date.now() / 1000) });
     if (!auth.ok) return reply.code(401).send({ error: auth.reason });
 
     // Whitelist: the signer must hold an ACTIVE partner code.
-    const buf = Buffer.from(auth.address.slice(2), 'hex');
+    const buf = wallet.bytes;
     const [partner] = await sql`SELECT 1 FROM ref_codes WHERE referrer_wallet = ${buf} AND kind = 'partner' AND active = true LIMIT 1`;
     if (!partner) return reply.code(403).send({ error: 'not a whitelisted partner' });
 
@@ -1056,7 +976,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       paidToDateUsd: paid?.paid_usd ?? 0,
       payoutStatus,
       nextPayoutAt: payoutStatus === 'scheduled' ? nextFirstOfMonth().toISOString() : null,
-      referees: referees.map((x) => ({ wallet: `0x${x.wallet_hex}`, boundAt: x.bound_at, firstSeenAt: x.first_seen,
+      referees: referees.map((x) => ({ wallet: formatAffiliateWallet(Buffer.from(x.wallet_hex, 'hex')), boundAt: x.bound_at, firstSeenAt: x.first_seen,
         attribution: x.bound_at ? (x.code_tagged ? 'link-and-code' : 'link') : 'code',
         lifetimeVolumeUsd: parseFloat(x.volume_usd) })),
     };
@@ -1101,25 +1021,34 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   }, async (req, reply) => {
     if (!assertAdminAuth(req, reply)) return reply;
     const code = String(req.body?.code ?? '').toLowerCase(); // codes are canonical lowercase
-    const referrer = String(req.body?.referrerWallet ?? '').toLowerCase();
+    const referrer = parseAffiliateWallet(req.body?.referrerWallet);
     const kind = String(req.body?.kind ?? '');
     const active = req.body?.active ?? true;
     if (!/^[a-z0-9_-]{3,64}$/.test(code)) return reply.code(400).send({ error: 'invalid code' });
-    if (!/^0x[0-9a-f]{40}$/.test(referrer)) return reply.code(400).send({ error: 'invalid referrerWallet' });
+    if (!referrer) return reply.code(400).send({ error: 'invalid referrerWallet' });
     if (kind !== 'regular' && kind !== 'partner') return reply.code(400).send({ error: 'kind must be regular or partner' });
-    // Optional payout redirect (migration 0007). Absent/null => NULL column => pay to
-    // referrer_wallet. When present it is validated EXACTLY like referrerWallet and
-    // stored as a Buffer; it only moves where the WETH goes, never the identity.
     const rawPayout = req.body?.payoutWallet;
     let payoutBuf: Buffer | null = null;
-    if (rawPayout !== undefined && rawPayout !== null && rawPayout !== '') {
-      const payout = String(rawPayout).toLowerCase();
-      if (!/^0x[0-9a-f]{40}$/.test(payout)) return reply.code(400).send({ error: 'invalid payoutWallet' });
-      payoutBuf = Buffer.from(payout.slice(2), 'hex');
+    if (rawPayout != null && rawPayout !== '') {
+      const payout = parseAffiliateWallet(rawPayout);
+      if (payout?.bytes.length !== 20 || (referrer.bytes.length === 32 && payout.bytes.equals(Buffer.alloc(20)))) {
+        return reply.code(400).send({ error: 'invalid payoutWallet' });
+      }
+      payoutBuf = payout.bytes;
+    }
+    if (referrer.bytes.length === 32 && !payoutBuf) {
+      if (active !== false) return reply.code(400).send({ error: 'Solana referrers require a WETH payoutWallet' });
+      // Deactivation preserves the recipient of outstanding earnings.
+      const [row] = await sql<{ payout_wallet: Buffer }[]>`
+        UPDATE ref_codes SET active = false WHERE code = ${code} AND referrer_wallet = ${referrer.bytes}
+          AND kind = ${kind} RETURNING payout_wallet
+      `;
+      if (!row) return reply.code(404).send({ error: 'unknown referral code' });
+      return { ok: true, code, kind, active, payoutWallet: formatAffiliateWallet(row.payout_wallet) };
     }
     await sql`
       INSERT INTO ref_codes (code, referrer_wallet, payout_wallet, kind, active)
-      VALUES (${code}, decode(${referrer.slice(2)}, 'hex'), ${payoutBuf}, ${kind}, ${active})
+      VALUES (${code}, ${referrer.bytes}, ${payoutBuf}, ${kind}, ${active})
       ON CONFLICT (code) DO UPDATE SET
         referrer_wallet = EXCLUDED.referrer_wallet,
         payout_wallet = EXCLUDED.payout_wallet,

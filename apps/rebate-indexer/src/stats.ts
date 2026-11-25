@@ -1,3 +1,4 @@
+import { SOLANA_MAINNET_ID } from './affiliate/rates.js';
 import type { Sql } from 'postgres';
 import { DECODER_ETHFLOW_OWNERS } from './fetcher.js';
 
@@ -125,9 +126,9 @@ export async function computeDefiLlamaDay(
  * the given production chain ids (testnet dust never inflates the figures).
  */
 export async function computePublicStats(sql: Sql, chainIds: number[]): Promise<PublicStatsData> {
-  const totalsRows = await sql<{ vol: string | null; trades: string; traders: string; chains: string; avg_trade: string | null }[]>`
+  const rows = await sql<{ chain_id: number | null; vol: string | null; trades: string; traders: string; chains: string; avg_trade: string | null }[]>`
     WITH public_trades AS (
-      SELECT t.*, COALESCE(payer.wallet, t.wallet) AS trader_wallet
+      SELECT t.chain_id, t.value_usd, COALESCE(payer.wallet, t.wallet) AS trader_wallet
       FROM trades t
       -- Reward-backed aggregates can retain an old recipient. Reporting uses
       -- the unambiguous settlement payer without rewriting reward history.
@@ -143,8 +144,11 @@ export async function computePublicStats(sql: Sql, chainIds: number[]): Promise<
         HAVING count(DISTINCT f.user_address) = 1
       ) payer ON true
       WHERE t.chain_id = ANY(${chainIds})
+      UNION ALL
+      SELECT ${SOLANA_MAINNET_ID}::int, value_usd, wallet FROM solana_settled_fills
+      WHERE ${chainIds.includes(SOLANA_MAINNET_ID)}
     )
-    SELECT
+    SELECT chain_id,
       COALESCE(SUM(value_usd), 0)::text        AS vol,
       COUNT(*)::text                           AS trades,
       -- distinct HUMANS: exclude eth-flow routers (never a person). Volume/trades
@@ -155,21 +159,17 @@ export async function computePublicStats(sql: Sql, chainIds: number[]): Promise<
       COUNT(DISTINCT chain_id)::text           AS chains,
       ROUND(AVG(value_usd)::numeric, 2)::text  AS avg_trade
     FROM public_trades
-  `;
-  const byChainRows = await sql<{ chain_id: number; vol: string | null; n: string }[]>`
-    SELECT chain_id, COALESCE(SUM(value_usd), 0)::text AS vol, COUNT(*)::text AS n
-    FROM trades
-    WHERE chain_id = ANY(${chainIds})
-    GROUP BY chain_id
+    GROUP BY GROUPING SETS ((), (chain_id))
     ORDER BY SUM(value_usd) DESC NULLS LAST, COUNT(*) DESC
   `;
-  const t = totalsRows[0];
+  const t = rows.find(row => row.chain_id === null);
   return {
     totalVolumeUsd: Number(t?.vol ?? '0'),
     totalTrades: Number(t?.trades ?? '0'),
     distinctTraders: Number(t?.traders ?? '0'),
     chainsActive: Number(t?.chains ?? '0'),
-    byChain: byChainRows.map((r) => ({ chainId: r.chain_id, volumeUsd: Number(r.vol ?? '0'), trades: Number(r.n) })),
+    byChain: rows.flatMap(r => r.chain_id === null ? [] :
+      [{ chainId: r.chain_id, volumeUsd: Number(r.vol ?? '0'), trades: Number(r.trades) }]),
     avgTradeUsd: t?.avg_trade != null ? Number(t.avg_trade) : null,
   };
 }

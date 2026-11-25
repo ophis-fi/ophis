@@ -1,4 +1,5 @@
 import { runMigrations } from './db/migrate.js';
+import { startSolanaReporting } from './solana/fills.js';
 import { startApi } from './api.js';
 import { startPartnerStatementSync } from './partnerFees/statementSync.js';
 import { startCron } from './cron.js';
@@ -15,6 +16,7 @@ async function main() {
   await startApi();
   startCron();
   startPartnerStatementSync();
+  startSolanaReporting();
   startTradeRewardsScheduler();
   logger.info('rebate-indexer ready');
 
@@ -75,7 +77,8 @@ async function main() {
       // worker takes that same lock, so it can never select tickets from a
       // partially refreshed trade set. If a nightly refresh won the lock in the
       // meantime, the independent five-minute scheduler retries it.
-      await runScheduledTradeRewards('startup');
+      // An isolated reporting rollout can leave reward assignments to their normal five-minute tick.
+      if (process.env.REBATE_DEFER_STARTUP_REWARDS !== 'true') await runScheduledTradeRewards('startup');
     } catch (err) {
       logger.error({ err: err instanceof Error ? err.message : err }, 'initial backfill failed');
     }

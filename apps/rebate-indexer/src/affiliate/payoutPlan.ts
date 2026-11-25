@@ -73,6 +73,10 @@ export function planAffiliatePayout(
     .map((o) => ({ owed: o, to: (o.payoutWallet ?? o.referrer_wallet) as `0x${string}` }))
     .filter(({ owed: o, to }) => o.owedWei > 0n && to.toLowerCase() !== ZERO_ADDRESS);
   const totalOwedWei = valid.reduce((acc, { owed: o }) => acc + o.owedWei, 0n);
+  // The identity can be a 32-byte Solana key. A WETH recipient must be a 20-byte EVM address.
+  if (valid.some(({ to }) => to.length !== 42 || !/^0x[0-9a-f]{40}$/i.test(to))) {
+    return { transfers: [], totalOwedWei, blocked: true, reason: 'affiliate is missing a valid Gnosis WETH payout address' };
+  }
   if (rebatePoolWei + partnerLiabilityWei + totalOwedWei > safeBalanceWei) {
     return { transfers: [], totalOwedWei, blocked: true, reason: 'rebate pool + partner liability + affiliate owed exceed the Safe WETH balance' };
   }

@@ -28,6 +28,8 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-rebates}:${POSTGRES_PASSWORD}@pg:5432/${POSTGRES_DB:-rebates}
+      SOLANA_REPORTING_DATABASE_URL: ${SOLANA_REPORTING_DATABASE_URL:-}
+      SOLANA_REPORTING_RPC_URL: ${SOLANA_REPORTING_RPC_URL:-https://api.mainnet-beta.solana.com}
       COW_API_BASE: ${COW_API_BASE:-https://api.cow.fi}
       GNOSIS_RPC_URL: ${GNOSIS_RPC_URL}
       SAFE_PROPOSER_PRIVATE_KEY: ${SAFE_PROPOSER_PRIVATE_KEY}

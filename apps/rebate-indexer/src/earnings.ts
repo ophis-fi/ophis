@@ -182,7 +182,7 @@ const HOSTED_ACCRUAL_LABEL =
  * and the absence of any 30d/next-cycle leak without a database.
  */
 export function assembleEarnings(appCode: string, input: EarningsInput, now: Date): IntegratorEarnings {
-  const sovereignChains = [...SOVEREIGN_CHAIN_IDS].filter((chainId) => chainId !== 130).sort((a, b) => a - b);
+  const sovereignChains = [...SOVEREIGN_CHAIN_IDS].filter((chainId) => chainId > 0 && chainId !== 130).sort((a, b) => a - b);
 
   const byChain: EarningsChainRow[] = input.byChain
     .map((c) => {

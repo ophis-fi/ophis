@@ -1,4 +1,6 @@
 import { test, expect, afterEach, beforeEach, vi } from 'vitest';
+import { generateKeyPairSync, sign } from 'node:crypto';
+import { base58 } from '@scure/base';
 import { type FastifyInstance } from 'fastify';
 import { privateKeyToAccount } from 'viem/accounts';
 import { buildSignedActionMessage } from '../../src/affiliate/partnerAuth.js';
@@ -21,12 +23,13 @@ type State = {
   // Rows returned for the "prior trade history?" net-new check.
   priorTrades: Rows;
   // /ref/codes: existing active regular code lookup (null => none, mint new).
-  existingRegularCode: { code: string } | null;
+  existingRegularCode: { code: string; payout_hex?: string } | null;
   // /ref/codes: how many of the next INSERT...RETURNING attempts return [] (conflict)
   // before one succeeds. 0 => first insert succeeds.
   insertConflicts: number;
   // Captures every routed query text (joined template strings) for assertions.
   queries: string[];
+  values: unknown[][];
 };
 
 let state: State;
@@ -40,6 +43,7 @@ function freshState(): State {
     existingRegularCode: null,
     insertConflicts: 0,
     queries: [],
+    values: [],
   };
 }
 
@@ -47,6 +51,7 @@ function freshState(): State {
 function route(strings: readonly string[], _values: unknown[]): Rows {
   const text = strings.join('?');
   state.queries.push(text);
+  state.values.push(_values);
 
   // /ref/bind — code lookup
   if (text.includes('encode(referrer_wallet') && text.includes('FROM ref_codes WHERE code')) {
@@ -63,7 +68,7 @@ function route(strings: readonly string[], _values: unknown[]): Rows {
     return state.existingReferral;
   }
   // /ref/bind — net-new (prior trades) check
-  if (text.includes('FROM trades WHERE wallet')) {
+  if (text.includes('FROM trades WHERE wallet') || text.includes('FROM solana_settled_fills WHERE wallet')) {
     return state.priorTrades;
   }
   // /ref/bind — referrals insert + tracked_wallets insert (no return needed)
@@ -310,4 +315,79 @@ test('/ref/codes returns 500 when all 5 insert attempts collide', async () => {
   const res = await post('/ref/codes', { wallet: REFERRED, issued, signature });
   expect(res.statusCode).toBe(500);
   expect(JSON.parse(res.body)).toMatchObject({ error: 'could not allocate a referral code, please retry' });
+});
+
+
+const solanaKey = generateKeyPairSync('ed25519');
+const solanaPublicKey = Buffer.from(solanaKey.publicKey.export({ format: 'jwk' }).x!, 'base64url');
+const solanaWallet = base58.encode(solanaPublicKey);
+
+function signSolana(action: string, issued: number, namespace = 'solana:mainnet') {
+  const text = `Ophis ${action}\nAddress: ${solanaWallet}\nIssued: ${issued}\nChain: ${namespace}`;
+  return '0x' + sign(null, Buffer.from(text), solanaKey.privateKey).toString('hex');
+}
+
+test('Solana users bind case-sensitive keys, including to an EVM referrer, without enrolling in EVM polling', async () => {
+  state.refCode = { referrer_hex: REFERRER_HEX, active: true };
+  app = await buildApiServer();
+  const issued = nowSec();
+  const body = { referredWallet: solanaWallet, code: 'OPHCODE', issued, signature: signSolana('bind referral code ophcode', issued) };
+  expect((await post('/ref/bind', body)).json()).toMatchObject({ bound: true, alreadyBound: false });
+  expect(state.values[state.queries.findIndex(q => q.includes('INSERT INTO referrals'))]?.[0]).toEqual(solanaPublicKey);
+  expect(state.queries.some(q => q.includes('FROM solana_settled_fills'))).toBe(true);
+  state.existingReferral = [{}];
+  expect((await post('/ref/bind', body)).json()).toMatchObject({ bound: true, alreadyBound: true });
+  expect(state.queries.some(q => q.includes('tracked_wallets'))).toBe(false);
+  state.existingReferral = [];
+  state.priorTrades = [{}];
+  expect((await post('/ref/bind', body)).statusCode).toBe(409);
+  state.refCode.referrer_hex = solanaPublicKey.toString('hex');
+  expect((await post('/ref/bind', body)).json().error).toMatch(/own wallet/);
+});
+
+test('Solana binds reject other chains, address changes, stale signatures and other signed actions', async () => {
+  state.refCode = { referrer_hex: REFERRER_HEX, active: true };
+  app = await buildApiServer();
+  const issued = nowSec();
+  const action = 'bind referral code ophcode';
+  const body = { referredWallet: solanaWallet, code: 'ophcode', issued, signature: signSolana(action, issued) };
+  for (const overrides of [
+    { chainId: 1 }, { signature: signSolana(action, issued, 'solana:devnet') },
+    { referredWallet: base58.encode(Buffer.alloc(32, 7)) }, { signature: signSolana('Partner Dashboard access', issued) },
+    { issued: issued - 310, signature: signSolana(action, issued - 310) },
+  ]) expect((await post('/ref/bind', { ...body, ...overrides })).statusCode).toBe(401);
+  expect(state.queries).toEqual([]);
+});
+
+test('new Solana codes bind the Gnosis WETH recipient into the signature, and retries preserve it', async () => {
+  app = await buildApiServer();
+  const issued = nowSec();
+  const payoutWallet = REFERRED;
+  const body = { wallet: solanaWallet, issued, signature: signSolana('create referral code', issued) };
+  expect((await post('/ref/codes', body)).statusCode).toBe(400);
+  const signed = { ...body, payoutWallet, signature: signSolana('create referral code\nWETH payout: ' + payoutWallet, issued) };
+  expect((await post('/ref/codes', { ...signed, payoutWallet: otherAccount.address })).statusCode).toBe(401);
+  expect((await post('/ref/codes', { ...signed, payoutWallet: solanaWallet })).statusCode).toBe(400);
+  const result = await post('/ref/codes', signed);
+  expect(result.statusCode).toBe(200);
+  expect(result.json().created).toBe(true);
+  expect(state.values[state.queries.findIndex(q => q.includes('INSERT INTO ref_codes'))]).toEqual([
+    result.json().code, solanaPublicKey, Buffer.from(payoutWallet.slice(2), 'hex'),
+  ]);
+  state.existingRegularCode = { code: result.json().code, payout_hex: payoutWallet.slice(2) };
+  expect((await post('/ref/codes', signed)).json().created).toBe(false);
+  expect((await post('/ref/codes', body)).json().code).toBe(result.json().code);
+  state.existingRegularCode.payout_hex = otherAccount.address.toLowerCase().slice(2);
+  expect((await post('/ref/codes', signed)).statusCode).toBe(409);
+});
+
+test('Solana wallet lookup preserves the address and signed partner access still requires allowlisting', async () => {
+  app = await buildApiServer();
+  const stats = await app.inject({ method: 'GET', url: '/affiliate/' + solanaWallet });
+  expect(stats.statusCode).toBe(200);
+  expect(stats.json().wallet).toBe(solanaWallet);
+  const issued = nowSec();
+  const authorization = { wallet: solanaWallet, issued, signature: signSolana('Partner Dashboard access', issued) };
+  const result = await post('/partner', authorization);
+  expect(result.statusCode).toBe(403);
 });

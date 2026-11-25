@@ -1,0 +1,7 @@
+services:
+  indexer:
+    environment:
+      REBATE_DEFER_STARTUP_REWARDS: ${REBATE_DEFER_STARTUP_REWARDS:-false}
+      SOLANA_REPORTING_SOCKET: /run/ophis-solana-reporting/.s.PGSQL.5432
+    volumes:
+      - /run/ophis-solana-reporting:/run/ophis-solana-reporting:ro

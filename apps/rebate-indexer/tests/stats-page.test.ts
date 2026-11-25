@@ -20,6 +20,17 @@ const sample: PublicStats = {
 };
 
 describe('renderStatsPage', () => {
+  it('filters the chain table to Solana and retains the lifetime totals', () => {
+    const html = renderStatsPage({
+      ...sample, byChain: [...sample.byChain, { chainId: -1, trades: 6, volumeUsd: 14.200796 }],
+    }, new URLSearchParams('chain=solana'));
+    const table = html.split('<tbody>')[1]?.split('</tbody>')[0];
+    expect(table).toContain('Solana</span></th><td class="num">$14.20');
+    expect(table).not.toContain('Ethereum');
+    expect(html).toContain('value="solana" selected');
+    expect(html).toContain('$1,234,568');
+  });
+
   it('renders the cumulative totals + per-chain rows with mapped chain names', () => {
     const html = renderStatsPage(sample);
     expect(html).toContain('$1,234,568'); // volume settled (rounded, thousands separators)
