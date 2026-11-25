@@ -1,0 +1,21 @@
+# Isolated pilot: not registered in the production driver. Adding its router
+# to the driver requires independent Bitget deployment provenance and a fork
+# settlement test; a /swap response alone is not sufficient provenance.
+node-url = "http://rpc-proxy:4000/main/evm/4663"
+settlement = "0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD"
+wrapped-native = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"
+wrapped-native-balance-slot = 51
+concurrent-requests = 1
+
+[dex]
+chain-id = "4663"
+partner-code = "${BITGET_PARTNER_CODE}"
+
+[dex.request-budget]
+state-file = "/budget/requests"
+max-requests = 100
+min-interval = "10s"
+
+[dex.credentials]
+api-key = "${BITGET_API_KEY}"
+api-secret = "${BITGET_API_SECRET}"
