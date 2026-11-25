@@ -5,6 +5,7 @@ import { TargetChainId } from '@cowprotocol/cow-sdk'
 import { i18n } from '@lingui/core'
 import { I18nProvider } from '@lingui/react'
 import { fireEvent, render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
 import { ThemeProvider } from 'styled-components/macro'
 import { getCowswapTheme } from 'theme'
 
@@ -41,4 +42,33 @@ it('finds networks by name or chain ID, reports missing matches and preserves se
   expect(screen.getByRole('status').textContent).toBe('No networks found.')
   fireEvent.keyDown(search, { key: 'Escape' })
   expect(onClose).toHaveBeenCalledTimes(1)
+})
+
+it('opens native Solana without selecting it as an EVM chain', () => {
+  const onClose = jest.fn()
+  const onSelectChain = jest.fn()
+  render(
+    <MemoryRouter>
+      <I18nProvider i18n={i18n}>
+        <ThemeProvider theme={getCowswapTheme(true)}>
+          <NetworkSelectorMenu
+            menuRef={createRef<HTMLDivElement>()}
+            currentChainId={null}
+            availableChains={[1] as TargetChainId[]}
+            isDarkMode
+            onSelectChain={onSelectChain}
+            onClose={onClose}
+            nativeSolanaEnabled
+          />
+        </ThemeProvider>
+      </I18nProvider>
+    </MemoryRouter>,
+  )
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search network' }), { target: { value: 'solana' } })
+  const link = screen.getByRole('link', { name: 'Solana' })
+  expect(link.getAttribute('href')).toBe('/swap?network=solana')
+  expect(screen.queryByRole('status')).toBeNull()
+  fireEvent.click(link)
+  expect(onClose).toHaveBeenCalledTimes(1)
+  expect(onSelectChain).not.toHaveBeenCalled()
 })

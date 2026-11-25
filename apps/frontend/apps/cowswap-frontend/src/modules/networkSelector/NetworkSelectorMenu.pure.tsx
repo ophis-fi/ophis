@@ -5,6 +5,7 @@ import { TargetChainId } from '@cowprotocol/cow-sdk'
 
 import { Trans, useLingui } from '@lingui/react/macro'
 
+import { SOLANA_SWAP_URL } from 'common/constants/routes'
 import { NetworksList } from 'common/pure/NetworksList/NetworksList.pure'
 
 import * as styledEl from './NetworkSelector.styled'
@@ -15,6 +16,7 @@ interface NetworkSelectorMenuProps {
   availableChains: TargetChainId[]
   isDarkMode: boolean
   onSelectChain(chainId: TargetChainId): void
+  nativeSolanaEnabled?: boolean
   onClose(): void
 }
 
@@ -25,10 +27,12 @@ export function NetworkSelectorMenu({
   isDarkMode,
   onSelectChain,
   onClose,
+  nativeSolanaEnabled = false,
 }: NetworkSelectorMenuProps): ReactNode {
   const { t } = useLingui()
   const [query, setQuery] = useState('')
   const normalizedQuery = query.trim().toLowerCase()
+  const showNativeSolana = nativeSolanaEnabled && 'solana'.includes(normalizedQuery)
   const filteredChains = availableChains.filter(
     (id) => getChainInfo(id).label.toLowerCase().includes(normalizedQuery) || String(id).includes(normalizedQuery),
   )
@@ -70,7 +74,12 @@ export function NetworkSelectorMenu({
               onSelectChain={onSelectChain}
               availableChains={filteredChains}
             />
-            {filteredChains.length === 0 && (
+            {showNativeSolana && (
+              <styledEl.NativeSolanaLink to={SOLANA_SWAP_URL} onClick={onClose}>
+                Solana
+              </styledEl.NativeSolanaLink>
+            )}
+            {filteredChains.length === 0 && !showNativeSolana && (
               <p role="status">
                 <Trans>No networks found.</Trans>
               </p>

@@ -1,0 +1,52 @@
+{
+  "name": "@ophis/solana-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Ophis-owned native Solana orders and instruction bindings",
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./read": {
+      "types": "./dist/read.d.ts",
+      "import": "./dist/read.js"
+    },
+    "./agent": {
+      "types": "./dist/agent.d.ts",
+      "import": "./dist/agent.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "SOURCE.md",
+    "licenses"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "sync-bindings": "node scripts/sync-bindings.mjs",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.build.json",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@solana-program/system": "0.14.1",
+    "@solana-program/token": "0.16.0",
+    "@solana/kit": "8.2.0",
+    "@solana/program-client-core": "8.2.0",
+    "@solana/wallet-standard-features": "1.5.0",
+    "@wallet-standard/app": "1.1.1",
+    "@wallet-standard/features": "1.1.1"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=22.23.4"
+  }
+}

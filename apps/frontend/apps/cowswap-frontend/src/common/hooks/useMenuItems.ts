@@ -14,6 +14,7 @@ import {
   MENU_ITEMS,
   IMenuItem,
   I18nIMenuItem,
+  YIELD_AVAILABLE,
   YIELD_MENU_ITEM,
   Routes,
 } from '../constants/routes'
@@ -47,7 +48,7 @@ export function useMenuItems(): IMenuItem[] {
     items.push(extractMenuItem(HOOKS_STORE_MENU_ITEM))
   }
 
-  if (isYieldEnabled || isLocal) {
+  if (YIELD_AVAILABLE && (isYieldEnabled || isLocal)) {
     items.push(extractMenuItem(YIELD_MENU_ITEM))
   }
 

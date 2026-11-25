@@ -11,6 +11,7 @@ import { ReactNode } from 'react'
 import { ARC_CHAIN_ID, ARC_ENABLED } from '@cowprotocol/common-const'
 import { useFeatureFlags } from '@cowprotocol/common-hooks'
 
+import { OPHIS_SOLANA_CONFIG } from 'entities/solana'
 import { Link, useLocation } from 'react-router'
 import styled from 'styled-components/macro'
 
@@ -224,6 +225,11 @@ export function OphisHeader({ children, transparent = false, walletConnected = f
               Open OTC
             </OtcNavLink>
           ) : null}
+          {OPHIS_SOLANA_CONFIG && pathname !== '/solana' && (
+            <OtcNavLink to="/solana" $transparent={transparent}>
+              Solana
+            </OtcNavLink>
+          )}
           {children}
         </Right>
       </Bar>

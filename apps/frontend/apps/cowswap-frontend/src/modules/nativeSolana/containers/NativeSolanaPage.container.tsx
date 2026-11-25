@@ -1,0 +1,182 @@
+import { useAtomValue, useSetAtom } from 'jotai'
+import { ReactNode } from 'react'
+
+import { ButtonPrimary } from '@cowprotocol/ui'
+
+import { Trans } from '@lingui/react/macro'
+import { formatOphisSolanaAmount } from '@ophis/solana-sdk'
+import { OPHIS_SOLANA_CONFIG, solanaConnectionAtom } from 'entities/solana'
+import { Callout, PageShell } from 'ophis/ds'
+import { Navigate } from 'react-router'
+
+import { SOLANA_SWAP_URL } from 'common/constants/routes'
+
+import { NativeSolanaForm } from './NativeSolanaForm.container'
+import { NativeSolanaOrders } from './NativeSolanaOrders.container'
+
+import * as styledEl from '../pure/NativeSolana.styled'
+import { shortMint } from '../services/assets.service'
+import { privateModeAtom, privateSettlementEnabled } from '../services/privateSettlement.service'
+import { walletAssetListAtom } from '../state/assets.atoms'
+import { createNativeSolanaOrderAtom } from '../state/orders.atoms'
+import { nativeSolanaBusyAtom, nativeSolanaErrorAtom, nativeSolanaReviewAtom } from '../state/trade.atoms'
+
+function PrivateOrderNotice({
+  sellsNative,
+  sellAmount,
+  buySymbol,
+}: {
+  sellsNative: boolean
+  sellAmount: string
+  buySymbol: string
+}): ReactNode {
+  const { automatic: auto, requiredVenue, walletChoice } = useAtomValue(privateModeAtom).data ?? {}
+  return (
+    <p>
+      {requiredVenue ? (
+        <Trans>
+          Backpack places one order. It can settle only if {requiredVenue} wins. An unfilled order can expire, and you
+          can reclaim its account rent.
+        </Trans>
+      ) : walletChoice ? (
+        <Trans>
+          Backpack places this order with your selected minimum. The private auction can settle it once. If it expires,
+          you can reclaim the order rent.
+        </Trans>
+      ) : auto ? (
+        <Trans>
+          Backpack places this order. The Ophis solver then settles it automatically, even if you close this page.
+        </Trans>
+      ) : sellsNative ? (
+        <Trans>
+          The first approval wraps {sellAmount} SOL in your wallet and places your order. You receive {buySymbol} after
+          you approve settlement. If the order expires, the wSOL stays in your wallet.
+        </Trans>
+      ) : (
+        <Trans>The first approval places your order. You receive {buySymbol} after you approve settlement.</Trans>
+      )}
+    </p>
+  )
+}
+
+function NativeSolanaReview(): ReactNode {
+  const review = useAtomValue(nativeSolanaReviewAtom)
+  const busy = useAtomValue(nativeSolanaBusyAtom)
+  const create = useSetAtom(createNativeSolanaOrderAtom)
+  const assets = useAtomValue(walletAssetListAtom)
+  if (!review) return null
+  const sellSymbol =
+    assets.find((asset) => asset.mint === review.form.sellMint)?.symbol ?? shortMint(review.form.sellMint)
+  const buySymbol = assets.find((asset) => asset.mint === review.form.buyMint)?.symbol ?? shortMint(review.form.buyMint)
+  const { quote } = review.quote
+  const { feeTerms } = quote
+  const baseBps = feeTerms?.baseBps
+  const improvementCapBps = feeTerms?.improvementCapBps
+  const sellAmount = formatOphisSolanaAmount(BigInt(quote.sellAmount) + BigInt(quote.feeAmount), review.sell.decimals)
+  const minimum = formatOphisSolanaAmount(
+    (BigInt(quote.buyAmount) * BigInt(10000 - review.form.slippageBps)) / 10000n,
+    review.buy.decimals,
+  )
+  return (
+    <styledEl.Card>
+      <h2>
+        <Trans>Review your swap</Trans>
+      </h2>
+      <styledEl.Values>
+        <dt>
+          <Trans>You sell</Trans>
+        </dt>
+        <dd title={review.sell.address}>
+          {sellAmount} {sellSymbol}
+        </dd>
+        <dt>
+          <Trans>Minimum received</Trans>
+        </dt>
+        <dd title={review.buy.address}>
+          {minimum} {buySymbol}
+        </dd>
+        <dt>
+          <Trans>Ophis base fee in the buy token</Trans>
+        </dt>
+        <dd>{formatOphisSolanaAmount(BigInt(quote.costs.protocolFee), review.buy.decimals)}</dd>
+        {feeTerms && (
+          <>
+            <dt>
+              <Trans>Base rate</Trans>
+            </dt>
+            <dd>
+              <Trans>{baseBps} bp</Trans>
+            </dd>
+            <dt>
+              <Trans>Ophis share of execution above your quote</Trans>
+            </dt>
+            <dd>
+              <Trans>50%, capped at {improvementCapBps} bp of the trade</Trans>
+            </dd>
+          </>
+        )}
+        <dt>
+          <Trans>Estimated settlement network fee</Trans>
+        </dt>
+        <dd>{formatOphisSolanaAmount(BigInt(quote.costs.networkFees), review.buy.decimals)} {buySymbol}</dd>
+        <dt>
+          <Trans>Total quote costs in the buy token</Trans>
+        </dt>
+        <dd>{formatOphisSolanaAmount(BigInt(quote.costs.total), review.buy.decimals)}</dd>
+        {review.solAfterOrder !== undefined && (
+          <>
+            <dt>
+              <Trans>Estimated SOL left after placing the order</Trans>
+            </dt>
+            <dd>{formatOphisSolanaAmount(review.solAfterOrder, 9)} SOL</dd>
+          </>
+        )}
+      </styledEl.Values>
+      <p>
+        <Trans>Your wallet pays to place the order and to open any required accounts. The quote includes the estimated settlement fee.</Trans>
+      </p>
+      {privateSettlementEnabled && (
+        <PrivateOrderNotice
+          sellsNative={review.form.sellMint === 'SOL'}
+          sellAmount={sellAmount}
+          buySymbol={buySymbol}
+        />
+      )}
+      <ButtonPrimary type="button" disabled={busy} onClick={() => void create()}>
+        <Trans>Confirm in wallet</Trans>
+      </ButtonPrimary>
+    </styledEl.Card>
+  )
+}
+
+export function NativeSolanaWidget(): ReactNode {
+  const wallet = useAtomValue(solanaConnectionAtom)
+  const error = useAtomValue(nativeSolanaErrorAtom)
+  const busy = useAtomValue(nativeSolanaBusyAtom)
+  return (
+    <styledEl.Stack>
+      <NativeSolanaForm key={wallet?.account.address} />
+      <NativeSolanaReview />
+      {busy && (
+        <p role="status">
+          <Trans>Preparing your trade. Check your wallet for any approval request.</Trans>
+        </p>
+      )}
+      {error && <p role="alert">{error}</p>}
+      <NativeSolanaOrders />
+    </styledEl.Stack>
+  )
+}
+
+export function NativeSolanaPage(): ReactNode {
+  if (OPHIS_SOLANA_CONFIG) return <Navigate to={SOLANA_SWAP_URL} replace />
+  return (
+    <PageShell eyebrow="Solana" title={<Trans>Swap on Solana.</Trans>}>
+      <Callout title={<Trans>Solana trading is being prepared</Trans>} tone="info">
+        <p>
+          <Trans>Trading will be available here when the Ophis Solana service is ready.</Trans>
+        </p>
+      </Callout>
+    </PageShell>
+  )
+}

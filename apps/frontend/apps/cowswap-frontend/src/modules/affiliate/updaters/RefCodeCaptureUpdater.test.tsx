@@ -7,16 +7,16 @@ const mockBind = jest.fn()
 const mockMarkBound = jest.fn()
 const wallet = '0x1111111111111111111111111111111111111111'
 
-jest.mock('@cowprotocol/wallet', () => ({ useWalletInfo: () => ({ account: wallet }) }))
+jest.mock('../hooks/useAffiliateWallet', () => ({ useAffiliateWallet: () => ({ account: wallet }) }))
 jest.mock('jotai', () => ({
   useAtomValue: (atom: string) =>
-    atom === 'saved' ? { savedCode: 'partner' } : atom === 'bound' ? () => false : undefined,
+    atom === 'saved' ? { [wallet]: { savedCode: 'partner' } } : atom === 'bound' ? () => false : undefined,
   useSetAtom: () => mockMarkBound,
 }))
 jest.mock('../state/affiliateTraderSavedCodeAtom', () => ({
   affiliatePendingRefCodeAtom: 'pending',
-  affiliateTraderSavedCodeAtom: 'saved',
-  setAffiliateTraderSavedCodeAtom: 'set',
+  affiliateTraderSavedCodeByWalletAtom: 'saved',
+  setReferralCodeForWalletAtom: 'set',
 }))
 jest.mock('../state/refBoundWalletsAtom', () => ({ isRefBoundAtom: 'bound', markRefBoundAtom: 'mark' }))
 jest.mock('../hooks/useAffiliateTraderCodeFromUrl', () => ({ useAffiliateTraderCodeFromUrl: jest.fn() }))

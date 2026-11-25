@@ -6,8 +6,13 @@ import { type PartnerDashboard, AffiliateApiError, getPartnerDashboard, useOphis
 
 import { PartnerPage } from './Partner.container'
 
+jest.mock('entities/solana', () => ({
+  solanaConnectionAtom: jest.requireActual('jotai').atom(null),
+  OPHIS_SOLANA_CONFIG: null,
+}))
+jest.mock('react-router', () => ({ ...jest.requireActual('react-router'), useLocation: () => ({ search: '' }) }))
 jest.mock('@cowprotocol/wallet', () => ({ useWalletInfo: jest.fn() }))
-jest.mock('pages/Affiliate/ConnectWalletCta', () => ({ ConnectWalletCta: 'button' }))
+jest.mock('pages/Affiliate/ConnectWalletCta', () => ({ ConnectWalletCta: () => <button>Connect</button> }))
 jest.mock('modules/affiliate', () => ({
   ...jest.requireActual('modules/affiliate'),
   useOphisAffiliateSign: jest.fn(),

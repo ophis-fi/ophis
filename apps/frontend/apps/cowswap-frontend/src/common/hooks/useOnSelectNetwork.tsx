@@ -16,7 +16,11 @@ import { useSetWalletConnectionError } from 'modules/wallet/hooks/useSetWalletCo
 
 import { useLegacySetChainIdToUrl } from './useLegacySetChainIdToUrl'
 
-export function useOnSelectNetwork(): (chainId: SupportedChainId, skipClose?: boolean) => Promise<void> {
+export function useOnSelectNetwork(): (
+  chainId: SupportedChainId,
+  skipClose?: boolean,
+  onSwitched?: () => void,
+) => Promise<void> {
   const addSnackbar = useAddSnackbar()
   const closeModal = useCloseModal(ApplicationModal.NETWORK_SELECTOR)
   const setChainIdToUrl = useLegacySetChainIdToUrl()
@@ -24,12 +28,13 @@ export function useOnSelectNetwork(): (chainId: SupportedChainId, skipClose?: bo
   const switchNetwork = useSwitchNetwork()
 
   return useCallback(
-    async (targetChain: SupportedChainId, skipClose?: boolean) => {
+    async (targetChain: SupportedChainId, skipClose?: boolean, onSwitched?: () => void) => {
       try {
         setWalletConnectionError(undefined)
         await switchNetwork(targetChain)
 
-        setChainIdToUrl(targetChain)
+        if (onSwitched) onSwitched()
+        else setChainIdToUrl(targetChain)
         // TODO: Replace any with proper type definitions
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (error: any) {

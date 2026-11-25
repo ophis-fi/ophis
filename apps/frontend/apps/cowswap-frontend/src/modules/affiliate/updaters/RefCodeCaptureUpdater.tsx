@@ -30,19 +30,18 @@
  */
 import { useAtomValue, useSetAtom } from 'jotai'
 import { RESET } from 'jotai/utils'
-import { ReactNode, useEffect, useRef } from 'react'
-
-import { getAddressKey } from '@cowprotocol/cow-sdk'
-import { useWalletInfo } from '@cowprotocol/wallet'
+import { ReactNode, useCallback, useEffect, useRef } from 'react'
 
 import { useAffiliateTraderCodeFromUrl } from '../hooks/useAffiliateTraderCodeFromUrl'
+import { useAffiliateWallet } from '../hooks/useAffiliateWallet'
 import { useOphisAffiliateSign } from '../hooks/useOphisAffiliateSign'
+import { affiliateAddressKey, isSolanaAffiliateAddress } from '../lib/affiliateAddress'
 import { formatRefCode } from '../lib/affiliateProgramUtils'
 import { AffiliateApiError, bindRefCode } from '../lib/ophisAffiliateApi'
 import {
   affiliatePendingRefCodeAtom,
-  affiliateTraderSavedCodeAtom,
-  setAffiliateTraderSavedCodeAtom,
+  affiliateTraderSavedCodeByWalletAtom,
+  setReferralCodeForWalletAtom,
 } from '../state/affiliateTraderSavedCodeAtom'
 import { isRefBoundAtom, markRefBoundAtom } from '../state/refBoundWalletsAtom'
 
@@ -52,18 +51,21 @@ function isUserRejection(error: unknown): boolean {
 }
 
 export function RefCodeCaptureUpdater(): ReactNode {
-  const { account } = useWalletInfo()
-  const { savedCode } = useAtomValue(affiliateTraderSavedCodeAtom)
-  const setSavedCode = useSetAtom(setAffiliateTraderSavedCodeAtom)
+  const { account, requestedNetwork } = useAffiliateWallet()
+  const savedCodes = useAtomValue(affiliateTraderSavedCodeByWalletAtom)
+  const savedCode = account ? savedCodes[account]?.savedCode : undefined
+  const setSavedCode = useSetAtom(setReferralCodeForWalletAtom)
   const isRefBound = useAtomValue(isRefBoundAtom)
   const markRefBound = useSetAtom(markRefBoundAtom)
   const signAffiliateAction = useOphisAffiliateSign(account)
 
   // Capture ?ref=CODE from the URL → persist for this wallet bucket, or into
   // the wallet-independent pending slot when no wallet is connected yet.
-  useAffiliateTraderCodeFromUrl((code) => {
-    setSavedCode({ savedCode: code })
-  })
+  const captureCode = useCallback(
+    (code: string) => setSavedCode(account, code, requestedNetwork),
+    [account, requestedNetwork, setSavedCode],
+  )
+  useAffiliateTraderCodeFromUrl(captureCode)
 
   // Promote a pre-connect captured code to the connecting wallet's bucket.
   // The first wallet to connect claims the pending code; the backend still
@@ -78,9 +80,15 @@ export function RefCodeCaptureUpdater(): ReactNode {
 
   useEffect(() => {
     if (!account || !pendingCode) return
-    const validated = formatRefCode(pendingCode)
+    if (
+      typeof pendingCode !== 'string' &&
+      pendingCode.network !== (isSolanaAffiliateAddress(account) ? 'solana' : 'evm')
+    )
+      return
+    const code = typeof pendingCode === 'string' ? pendingCode : pendingCode.code
+    const validated = typeof code === 'string' ? formatRefCode(code) : undefined
     if (validated && !savedCode) {
-      setSavedCode({ savedCode: validated })
+      setSavedCode(account, validated)
     }
     setPendingCode(RESET)
   }, [account, pendingCode, savedCode, setSavedCode, setPendingCode])
@@ -100,7 +108,7 @@ export function RefCodeCaptureUpdater(): ReactNode {
     const code = savedCode.toLowerCase()
     if (isRefBound(account, code)) return
 
-    const key = `${getAddressKey(account)}:${code}`
+    const key = `${affiliateAddressKey(account)}:${code}`
     if (inFlightKeyRef.current === key) return
     if (rejectedKeysRef.current.has(key)) return
     inFlightKeyRef.current = key

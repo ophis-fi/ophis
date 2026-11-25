@@ -79,3 +79,22 @@ it('keeps creation unavailable when referral status cannot be loaded', async () 
   expect(screen.queryByRole('button', { name: 'Create your referral code' })).toBeNull()
   expect(createRefCode).not.toHaveBeenCalled()
 })
+
+it('signs a validated Gnosis WETH destination when creating a Solana referral code', async () => {
+  const wallet = '63oxKoqF8skx14fGcbNfhrKtanKPHg6X6NyUw4qPirnA'
+  const payoutWallet = '0xabc0000000000000000000000000000000000001'
+  jest.mocked(getAffiliateStats).mockRejectedValue(new AffiliateApiError(404))
+  jest.mocked(createRefCode).mockResolvedValue({ code: 'solcode', kind: 'regular', created: true })
+  sign.mockResolvedValue({ ...signedBody, wallet })
+  render(<OphisAffiliateDashboard account={wallet} />)
+  const input = await screen.findByRole('textbox', { name: 'WETH payout address on Gnosis Chain' })
+  const create = screen.getByRole('button', { name: 'Create your referral code' }) as HTMLButtonElement
+  expect(create.disabled).toBe(true)
+  fireEvent.change(input, { target: { value: wallet } })
+  expect(create.disabled).toBe(true)
+  fireEvent.change(input, { target: { value: payoutWallet } })
+  fireEvent.click(create)
+  expect(await screen.findByText('https://swap.ophis.fi/?ref=solcode#/swap?network=solana')).toBeTruthy()
+  expect(sign).toHaveBeenCalledWith(`create referral code\nWETH payout: ${payoutWallet}`)
+  expect(createRefCode).toHaveBeenCalledWith({ ...signedBody, wallet, payoutWallet })
+})

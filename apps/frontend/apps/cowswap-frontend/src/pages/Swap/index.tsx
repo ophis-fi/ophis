@@ -7,6 +7,7 @@ import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { useLingui } from '@lingui/react/macro'
 import { useIsCctpEnabled } from 'entities/cctp'
+import { OPHIS_SOLANA_CONFIG } from 'entities/solana'
 import { useIsOphisSwap } from 'ophis/hooks/useIsOphisSwap'
 import { DesktopSwapLayout } from 'ophis/mobile/DesktopSwapLayout.pure'
 import { PrivateSwap } from 'ophis/privateSwap/PrivateSwap.container'
@@ -43,15 +44,18 @@ export function SwapPage(): ReactNode {
   const params = useParams()
   const cctpEnabled = useIsCctpEnabled()
   const isOphisSwap = useIsOphisSwap()
+  const { search } = useLocation()
+  const nativeSolana = isOphisSwap && !!OPHIS_SOLANA_CONFIG && new URLSearchParams(search).get('network') === 'solana'
   const { i18n } = useLingui()
   const swapDerivedStateToFill = useSwapDerivedStateToFill()
 
-  if (!params.chainId) {
+  if (!params.chainId && !nativeSolana) {
     return <SwapPageRedirect />
   }
 
   const widget = (
     <SwapWidget
+      nativeSolana={nativeSolana}
       enableCctp={cctpEnabled}
       standardUpdaters={<SwapUpdaters />}
       headerContent={isOphisSwap ? <NetworkSelector /> : undefined}

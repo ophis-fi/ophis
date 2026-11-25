@@ -1,6 +1,7 @@
 packages:
   - 'apps/*'
   - 'libs/*'
+  - '../../packages/solana-sdk'
 
 # Enforce a 1-week delay (10080 minutes)
 minimumReleaseAge: 10080

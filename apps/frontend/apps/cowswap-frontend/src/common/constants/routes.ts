@@ -6,9 +6,12 @@ import { MessageDescriptor } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 
 export const TRADE_WIDGET_PREFIX = isInjectedWidget() ? '/widget' : ''
+export const SOLANA_SWAP_URL = '/swap?network=solana'
+export const YIELD_AVAILABLE = process.env.NODE_ENV !== 'production'
 
 export const Routes = {
   HOME: '/',
+  SOLANA: '/solana',
   SWAP: `/:chainId?${TRADE_WIDGET_PREFIX}/swap/:inputCurrencyId?/:outputCurrencyId?`,
   HOOKS: `/:chainId?${TRADE_WIDGET_PREFIX}/swap/hooks/:inputCurrencyId?/:outputCurrencyId?`,
   LIMIT_ORDERS: `/:chainId?${TRADE_WIDGET_PREFIX}/limit/:inputCurrencyId?/:outputCurrencyId?`,

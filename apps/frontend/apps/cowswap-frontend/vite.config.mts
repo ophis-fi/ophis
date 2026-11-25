@@ -157,6 +157,7 @@ export default defineConfig(({ mode }) => {
         allow: [
           // search up for workspace root
           searchForWorkspaceRoot(process.cwd()),
+          path.resolve(__dirname, '../../../../packages/solana-sdk'),
           // your custom rules
           'apps/cowswap-frontend/src',
           'libs',

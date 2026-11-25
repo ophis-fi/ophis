@@ -4,19 +4,12 @@ import { useCopyClipboard } from '@cowprotocol/common-hooks'
 
 import { InlineCode, KeyValueList } from 'ophis/ds'
 
+import { referralShareLink } from 'modules/affiliate'
+
 import { GhostButton, ShareRow } from '../Affiliate/Affiliate.styled'
 
-// The swap app reads ?ref=<code> on load and binds the visitor to the referrer,
-// so the shareable link is always swap.ophis.fi regardless of which surface
-// renders it (the same origin the Profile PartnerAffiliateSummary uses).
-const SHARE_ORIGIN = 'https://swap.ophis.fi'
-
-function shareLink(code: string): string {
-  return `${SHARE_ORIGIN}/?ref=${code}`
-}
-
-function shareOnXUrl(code: string): string {
-  const text = `Swap on Ophis: intent-based, MEV-protected, gasless. ${shareLink(code)}`
+function shareOnXUrl(link: string): string {
+  const text = `Swap on Ophis: intent-based, MEV-protected, gasless. ${link}`
   return `https://x.com/intent/post?text=${encodeURIComponent(text)}`
 }
 
@@ -26,7 +19,7 @@ function shareOnXUrl(code: string): string {
  * on the Partner dashboard, so a partner could not get their link from this
  * page. Mirrors the share block on the Profile PartnerAffiliateSummary.
  */
-export function PartnerReferralShare({ code }: { code: string | undefined }): ReactNode {
+export function PartnerReferralShare({ code, solana }: { code: string | undefined; solana: boolean }): ReactNode {
   const [isCopied, copy] = useCopyClipboard()
 
   if (!code) {
@@ -37,7 +30,7 @@ export function PartnerReferralShare({ code }: { code: string | undefined }): Re
     )
   }
 
-  const link = shareLink(code)
+  const link = referralShareLink(code, solana)
 
   return (
     <>
@@ -51,7 +44,7 @@ export function PartnerReferralShare({ code }: { code: string | undefined }): Re
         <GhostButton type="button" onClick={() => copy(link)}>
           {isCopied ? 'Copied' : 'Copy share link'}
         </GhostButton>
-        <GhostButton type="button" onClick={() => window.open(shareOnXUrl(code), '_blank', 'noopener,noreferrer')}>
+        <GhostButton type="button" onClick={() => window.open(shareOnXUrl(link), '_blank', 'noopener,noreferrer')}>
           Share on X
         </GhostButton>
       </ShareRow>
@@ -60,18 +53,23 @@ export function PartnerReferralShare({ code }: { code: string | undefined }): Re
 }
 
 /** Attribution steps for partners with no referred wallets yet. */
-export function PartnerEmptyReferees(): ReactNode {
+export function PartnerEmptyReferees({ solana }: { solana: boolean }): ReactNode {
   return (
     <>
       <h3>How the program works</h3>
       <p>No referees yet.</p>
       <ol>
         <li>Share your code or link above.</li>
-        <li>New wallets can activate your code through your link. A code tagged on an order attributes that trade.</li>
+        <li>
+          New wallets can activate your code through your link.{' '}
+          {!solana && 'A code tagged on an order attributes that trade.'}
+        </li>
         <li>Track referred wallets and volume in your dashboard.</li>
       </ol>
       <p style={{ opacity: 0.75 }}>
-        Wallets appear here after binding your link or settling an eligible trade tagged with your code.
+        {solana
+          ? 'Wallets appear here after activating your link.'
+          : 'Wallets appear here after binding your link or settling an eligible trade tagged with your code.'}
       </p>
     </>
   )

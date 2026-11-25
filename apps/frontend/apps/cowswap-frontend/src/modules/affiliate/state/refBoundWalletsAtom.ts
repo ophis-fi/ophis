@@ -1,7 +1,7 @@
 import { atom } from 'jotai'
 import { atomWithStorage } from 'jotai/utils'
 
-import { getAddressKey } from '@cowprotocol/cow-sdk'
+import { affiliateAddressKey } from '../lib/affiliateAddress'
 
 /**
  * refBoundWalletsAtom — local memo of which (wallet, code) pairs have already
@@ -13,7 +13,7 @@ import { getAddressKey } from '@cowprotocol/cow-sdk'
  * re-POSTing any of them.
  *
  * This is a pure-localStorage memo with no BFF dependency. The key is
- * `${wallet}:${code}` lowercased so a wallet switching codes is tracked
+ * `${wallet}:${code}` with a case-sensitive Solana address so a wallet switching codes is tracked
  * independently.
  */
 const REF_BOUND_WALLETS_STORAGE_KEY = 'ophis:affiliateRefBoundWallets:v0'
@@ -26,10 +26,7 @@ const refBoundWalletsByKeyAtom = atomWithStorage<Record<string, true | undefined
 )
 
 function boundKey(wallet: string, code: string): string {
-  // Address via getAddressKey (canonical, lowercased) per AGENTS.md; the ref
-  // code is not an address, so it keeps its own case normalization. Both are
-  // byte-identical to the previous lowercasing, so stored keys still match.
-  return `${getAddressKey(wallet)}:${code.toLowerCase()}`
+  return `${affiliateAddressKey(wallet)}:${code.toLowerCase()}`
 }
 
 export const isRefBoundAtom = atom((get) => {

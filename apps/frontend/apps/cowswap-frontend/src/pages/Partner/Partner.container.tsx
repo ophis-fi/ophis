@@ -6,14 +6,19 @@
  */
 import { ReactNode, useCallback, useState } from 'react'
 
-import { getAddressKey } from '@cowprotocol/cow-sdk'
-import { useWalletInfo } from '@cowprotocol/wallet'
-
 import { Badge, Callout, InlineCode, MetricCard, PageShell, Section, Table, Tbody, Td, Th, Thead, Tr } from 'ophis/ds'
 
-import { type PartnerDashboard, AffiliateApiError, getPartnerDashboard, useOphisAffiliateSign } from 'modules/affiliate'
+import {
+  type PartnerDashboard,
+  affiliateAddressKey,
+  isSolanaAffiliateAddress,
+  useAffiliateWallet,
+  AffiliateApiError,
+  getPartnerDashboard,
+  useOphisAffiliateSign,
+} from 'modules/affiliate'
 
-import { ConnectWalletCta } from 'pages/Affiliate/ConnectWalletCta'
+import { AffiliateNetworkPicker, ConnectWalletCta } from 'pages/Affiliate/ConnectWalletCta'
 
 import { formatUsd } from './Partner.utils'
 import { PartnerEmptyReferees, PartnerReferralShare } from './PartnerReferralShare'
@@ -90,6 +95,7 @@ interface PartnerDashboardContentProps {
 }
 
 function PartnerDashboardContent({ data }: PartnerDashboardContentProps): ReactNode {
+  const isSolana = isSolanaAffiliateAddress(data.wallet)
   const hasHiddenReferees = data.referredCount > data.referees.length
 
   return (
@@ -106,15 +112,17 @@ function PartnerDashboardContent({ data }: PartnerDashboardContentProps): ReactN
 
       <Section id="link" title="Your referral link">
         <p>
-          Share your link so new wallets can activate your code, or tag orders with your code to attribute individual
-          trades. View referred wallets and volume below.
+          {isSolana
+            ? 'Share your link so new wallets can activate your code before their first trade.'
+            : 'Share your link so new wallets can activate your code, or tag orders with your code to attribute individual trades.'}{' '}
+          View referred wallets and volume below.
         </p>
-        <PartnerReferralShare code={data.activeCodes[0]} />
+        <PartnerReferralShare code={data.activeCodes[0]} solana={isSolana} />
       </Section>
 
       <Section id="referees" title="Referees">
         {data.referees.length === 0 ? (
-          <PartnerEmptyReferees />
+          <PartnerEmptyReferees solana={isSolana} />
         ) : (
           <>
             <Table caption="Your referred wallets, first referral date, attribution, and lifetime referred volume.">
@@ -209,7 +217,7 @@ function PartnerWalletDashboard({ account }: { account: string }): ReactNode {
 }
 
 export function PartnerPage(): ReactNode {
-  const { account } = useWalletInfo()
+  const { account, isSolana, enabled, needsMessageSigning } = useAffiliateWallet()
 
   return (
     <PageShell
@@ -218,13 +226,14 @@ export function PartnerPage(): ReactNode {
       title="Partner dashboard."
       lede="Your referral code, referred wallets, and volume. Access is restricted to Ophis partners and requires a wallet signature."
     >
+      {enabled && <AffiliateNetworkPicker solana={isSolana} needsMessageSigning={needsMessageSigning} />}
       {!account ? (
         <Callout tone="info" title="Connect a wallet">
           <p>Connect your partner wallet, then sign in below to load your dashboard.</p>
-          <ConnectWalletCta>Connect Partner Wallet</ConnectWalletCta>
+          <ConnectWalletCta solana={isSolana}>Connect Partner Wallet</ConnectWalletCta>
         </Callout>
       ) : (
-        <PartnerWalletDashboard key={getAddressKey(account)} account={account} />
+        <PartnerWalletDashboard key={affiliateAddressKey(account)} account={account} />
       )}
     </PageShell>
   )

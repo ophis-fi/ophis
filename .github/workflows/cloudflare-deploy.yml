@@ -160,6 +160,10 @@ jobs:
           REACT_APP_APP_CODE: ophis
           REACT_APP_PRIVATE_SWAP_ENABLED: ${{ vars.REACT_APP_PRIVATE_SWAP_ENABLED }}
           REACT_APP_WC_PROJECT_ID: ${{ vars.REACT_APP_WC_PROJECT_ID }}
+          # Both public values are required. An unset value hides native Solana until launch.
+          REACT_APP_OPHIS_SOLANA_API: ${{ vars.REACT_APP_OPHIS_SOLANA_API }}
+          REACT_APP_OPHIS_SOLANA_PROGRAM: ${{ vars.REACT_APP_OPHIS_SOLANA_PROGRAM }}
+          REACT_APP_OPHIS_PRIVATE_SOLVER: '0'
           # Base URL for the rebate-indexer API (TierChip + useTier hook).
           # Defaults to the same value at runtime if the env var is missing.
           REACT_APP_REBATES_API: https://rebates.ophis.fi
