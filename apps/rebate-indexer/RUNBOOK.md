@@ -410,23 +410,19 @@ Safe proposal jobs, or automatic Arc own-fee payouts are enabled by this rollout
 
 The rebate indexer reads the Solana orderbook from a separate PostgreSQL connection.
 Set `SOLANA_REPORTING_DATABASE_URL` in the protected rebate service environment
-to enable the worker at startup. The historical source on the Mini is the
-`ophis-private-reverse-db` container. It has no published port. The databases
-previously associated with port 19879 held partial or empty histories.
-Restore the verified source into the release database and run the packaged
-`check-history.sql` there as the database owner. The release binds PostgreSQL
-on the Mini at `127.0.0.1:19692`. Forward that socket over SSH to Cadia's
-private reporting network with a pinned Mini host key. Use the address
-reachable from the rebate container in its DSN. Verify the finalized
-watermark advances on that connection. Set `SOLANA_REPORTING_RPC_URL` to the approved
+to enable the worker at startup. The running mainnet orderbook database on the
+Mini binds to `127.0.0.1:19692`. Cadia's read-only PostgreSQL login reaches
+that port through its private SSH socket. The source role has column-scoped
+SELECT grants. Verify that the finalized watermark advances on that connection. Set `SOLANA_REPORTING_RPC_URL` to the approved
 mainnet read endpoint or use the default public Solana RPC.
 
 Provision a dedicated login on the source database and supply its password
 through the protected environment. The worker only needs the following grants
 on the existing Solana schema and fee view. On Cadia the optional
 `docker-compose.solana-reporting.yml` override mounts a private Unix socket at
-`/run/ophis-solana-reporting/.s.PGSQL.5432`. Append this override to the
-existing Compose file list, preserving the rewards override. The socket service
+`/run/ophis-solana-reporting/.s.PGSQL.5432`. On Cadia a protected copy in
+`secrets/docker-compose.solana-reporting.yml` is appended to the existing
+Compose file list, preserving the rewards override and surviving source sync. The socket service
 authenticates to the Mini with an SSH key restricted to its local orderbook
 port. The reader DSN supplies the database name and password independently.
 Check `systemctl status ophis-solana-reporting.socket` on Cadia if the source
@@ -488,17 +484,8 @@ New fills are fetched in bounded pages. A full page schedules another after
 already verified fills. Restarts resume the saved cursor. Removing the source
 DSN and restarting disables the worker while retaining the reporting history.
 
-The November 25 release rehearsal used six mainnet test swaps from one Ophis
-team wallet. Through slot 473447655, the stats API counted all six once and
-reported $14.200796 in internal test volume, including after replay. The
-snapshot contained zero external traders. The last test swap delivered 2.746530 USDC.
-[Settlement receipt](https://explorer.solana.com/tx/2foXQBA71K3eW8j2YPr75wGz7YW5FrxheTe3sni1YELEscikeuwFsDQPjbJrfhssrmEAjDziRbFJWK4YWt5nsgEy)
-
-The November 25 restore recovered 10 orders, six fills and six fee records. The
-release indexer advanced from finalized slot 473447655 to 473663185 with zero
-dead letters. A query from the running rebate container's network on Cadia read
-all six fee-bearing fills through a temporary SSH relay. The reporting login
-had read-only transactions and lacked insert permission. Production still
-needs its persistent reporting connection. The native Linux AMD64 reporting
-image staged on Cadia is `ophis-rebate-indexer:solana-release-6a427c943af8`
-with image ID `sha256:6d7d4021f1017cd66abf7090db42a601acb81086bc7593754a9fafdd64d35177`.
+On November 25 the production stats API reported seven finalized team fills,
+one distinct wallet and $16.902289 of volume. The seventh fill sold 0.04 SOL
+for 2.701493 USDC at slot 473698433, with a 0.000270 USDC base fee. The
+worker subsequently reported coverage past that slot and retained seven fills
+across repeat imports. No affiliate payout batch was created by the release.
