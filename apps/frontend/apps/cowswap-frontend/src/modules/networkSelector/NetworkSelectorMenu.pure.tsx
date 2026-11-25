@@ -1,11 +1,10 @@
 import { ReactNode, RefObject, useState } from 'react'
 
 import { getChainInfo } from '@cowprotocol/common-const'
-import { TargetChainId } from '@cowprotocol/cow-sdk'
+import { AdditionalTargetChainId, TargetChainId } from '@cowprotocol/cow-sdk'
 
 import { Trans, useLingui } from '@lingui/react/macro'
 
-import { SOLANA_SWAP_URL } from 'common/constants/routes'
 import { NetworksList } from 'common/pure/NetworksList/NetworksList.pure'
 
 import * as styledEl from './NetworkSelector.styled'
@@ -16,7 +15,7 @@ interface NetworkSelectorMenuProps {
   availableChains: TargetChainId[]
   isDarkMode: boolean
   onSelectChain(chainId: TargetChainId): void
-  nativeSolanaEnabled?: boolean
+  onSelectNativeSolana?(): void
   onClose(): void
 }
 
@@ -27,13 +26,15 @@ export function NetworkSelectorMenu({
   isDarkMode,
   onSelectChain,
   onClose,
-  nativeSolanaEnabled = false,
+  onSelectNativeSolana,
 }: NetworkSelectorMenuProps): ReactNode {
   const { t } = useLingui()
   const [query, setQuery] = useState('')
   const normalizedQuery = query.trim().toLowerCase()
-  const showNativeSolana = nativeSolanaEnabled && 'solana'.includes(normalizedQuery)
-  const filteredChains = availableChains.filter(
+  const chains = onSelectNativeSolana
+    ? [...new Set([...availableChains, AdditionalTargetChainId.SOLANA])]
+    : availableChains
+  const filteredChains = chains.filter(
     (id) => getChainInfo(id).label.toLowerCase().includes(normalizedQuery) || String(id).includes(normalizedQuery),
   )
 
@@ -71,15 +72,17 @@ export function NetworkSelectorMenu({
             <NetworksList
               currentChainId={currentChainId}
               isDarkMode={isDarkMode}
-              onSelectChain={onSelectChain}
+              onSelectChain={(id) => {
+                if (id === AdditionalTargetChainId.SOLANA && onSelectNativeSolana) {
+                  onClose()
+                  onSelectNativeSolana()
+                } else {
+                  onSelectChain(id)
+                }
+              }}
               availableChains={filteredChains}
             />
-            {showNativeSolana && (
-              <styledEl.NativeSolanaLink to={SOLANA_SWAP_URL} onClick={onClose}>
-                Solana
-              </styledEl.NativeSolanaLink>
-            )}
-            {filteredChains.length === 0 && !showNativeSolana && (
+            {filteredChains.length === 0 && (
               <p role="status">
                 <Trans>No networks found.</Trans>
               </p>

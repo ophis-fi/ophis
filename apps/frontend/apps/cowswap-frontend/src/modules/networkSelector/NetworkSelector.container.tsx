@@ -3,7 +3,7 @@ import { ReactNode, useRef } from 'react'
 import { getChainInfo } from '@cowprotocol/common-const'
 import { useAvailableChains, useBodyScrollbarLocker, useMediaQuery, useOnClickOutside } from '@cowprotocol/common-hooks'
 import { isSupportedChainId } from '@cowprotocol/common-utils'
-import { TargetChainId } from '@cowprotocol/cow-sdk'
+import { AdditionalTargetChainId, TargetChainId } from '@cowprotocol/cow-sdk'
 import { Media } from '@cowprotocol/ui'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
@@ -15,6 +15,7 @@ import { useTheme } from 'styled-components/macro'
 import { useModalIsOpen, useToggleModal } from 'legacy/state/application/hooks'
 import { ApplicationModal } from 'legacy/state/application/reducer'
 
+import { SOLANA_SWAP_URL } from 'common/constants/routes'
 import { useIsProviderNetworkUnsupported } from 'common/hooks/useIsProviderNetworkUnsupported'
 import { useNavigate } from 'common/hooks/useNavigate'
 import { useOnSelectNetwork } from 'common/hooks/useOnSelectNetwork'
@@ -44,14 +45,12 @@ function useDisplayedNetwork(
   label: string
 } {
   const { chainId: walletChainId } = useWalletInfo()
-  const chainId = selectedChainId ?? walletChainId
+  const chainId = nativeSolanaSelected ? AdditionalTargetChainId.SOLANA : (selectedChainId ?? walletChainId)
   const info = getChainInfo(chainId)
   const { darkMode: isDarkMode } = useTheme()
   const walletUnsupported = useIsProviderNetworkUnsupported()
   const unsupported = !nativeSolanaSelected && selectedChainId === undefined && walletUnsupported
-  const currentChainId = nativeSolanaSelected || unsupported ? null : chainId
-  if (nativeSolanaSelected)
-    return { unsupported, currentChainId, isDarkMode, logo: '/logos/token-sol.svg', label: 'Solana' }
+  const currentChainId = unsupported ? null : chainId
   return {
     unsupported,
     currentChainId,
@@ -115,7 +114,7 @@ export function NetworkSelector({
       isDarkMode={display.isDarkMode}
       onSelectChain={handleSelectChain}
       onClose={handleClose}
-      nativeSolanaEnabled={!!OPHIS_SOLANA_CONFIG && includeNativeSolana}
+      onSelectNativeSolana={OPHIS_SOLANA_CONFIG && includeNativeSolana ? () => navigate(SOLANA_SWAP_URL) : undefined}
     />
   )
 
