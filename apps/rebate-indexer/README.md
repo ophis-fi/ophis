@@ -109,6 +109,28 @@ wallets; existing EOA signatures are unaffected. A Safe owner rotation must be
 checked on this pinned chain. Changing the pin is an operator-controlled identity
 change and requires renewed verification. Payouts remain separately disabled.
 
+## Solana affiliate signatures
+
+`POST /ref/bind`, `POST /ref/codes` and `POST /partner` accept case-sensitive Solana mainnet addresses. The wallet signs the following UTF-8 text with Ed25519, using LF line breaks and no trailing newline.
+
+```text
+Ophis <action>
+Address: <base58 public key>
+Issued: <Unix seconds>
+Chain: solana:mainnet
+```
+
+Send the signature as `0x` followed by 128 hex digits. Omit `chainId`. Binding uses the action `bind referral code <lowercase code>` and the request field `referredWallet`. Partner access uses `Partner Dashboard access` and `wallet`.
+
+New Solana referrers supply `wallet` and a nonzero 20-byte `payoutWallet` that can receive WETH on Gnosis Chain. Use this two-line action so the signature authorizes the payout address.
+
+```text
+create referral code
+WETH payout: <lowercase 0x address>
+```
+
+To retrieve an existing code without changing its recipient, omit `payoutWallet` and sign the single-line action `create referral code`. Traders can bind a referral with their Solana wallet alone.
+
 ## Swap scan (exhaustive, allowlist-free)
 
 Report every Ophis swap in a time window across chains, independent of the rebate

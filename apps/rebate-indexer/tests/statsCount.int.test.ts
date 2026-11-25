@@ -3,7 +3,7 @@ import { type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { startPg, stopPg } from './fixtures/pgContainer.js';
 import { DECODER_ETHFLOW_OWNERS } from '../src/fetcher.js';
 import { PRODUCTION_CHAIN_IDS } from '../src/stats-page.js';
-import { SOVEREIGN_CHAIN_IDS } from '../src/affiliate/rates.js';
+import { SOVEREIGN_CHAIN_IDS, SOLANA_MAINNET_ID } from '../src/affiliate/rates.js';
 
 // The public /stats "distinct traders" number must count HUMANS, not eth-flow router
 // contracts. A native-ETH order settles with owner = a router, and if that router
@@ -73,6 +73,49 @@ afterAll(async () => {
 });
 
 describe('computePublicStats', () => {
+  it('counts native settlements once across stats and credits only eligible, fee-bearing referrals', async () => {
+    const trader = Buffer.alloc(32, 41);
+    const referrer = Buffer.from(HUMAN_A, 'hex');
+    const now = new Date();
+    const bound = new Date(now.getTime() - 4_000);
+    const before = new Date(bound.getTime() - 1_000);
+    const after = new Date(bound.getTime() + 1_000);
+    const fill = (id: number, timestamp: Date, value: number | null, fee: number | null) => sql`
+      INSERT INTO solana_settled_fills
+        (tx_signature, instruction_index, order_uid, slot, block_timestamp, wallet,
+         sell_mint, buy_mint, sell_atoms, buy_atoms, value_usd, base_fee_atoms, base_fee_usd)
+      VALUES (${Buffer.alloc(64, id)}, 1, ${Buffer.alloc(32, id)}, ${id}, ${timestamp.toISOString()}, ${trader},
+        ${Buffer.alloc(32, 4)}, ${Buffer.alloc(32, 5)}, 100000000, 100000000, ${value}, 10000, ${fee})
+      ON CONFLICT DO NOTHING`;
+    await sql`INSERT INTO ref_codes (code, referrer_wallet, kind) VALUES ('native-test', ${referrer}, 'regular')`;
+    await sql`INSERT INTO referrals (referred_wallet, referrer_wallet, code, bound_at, net_new)
+      VALUES (${trader}, ${referrer}, 'native-test', ${bound.toISOString()}, true)`;
+    try {
+      await fill(1, after, 100, 0.01);
+      await fill(1, after, 100, 0.01);
+      await fill(2, after, null, null);
+      const native = await computePublicStats(sql, [SOLANA_MAINNET_ID]);
+      expect(native).toMatchObject({ totalTrades: 2, totalVolumeUsd: 100, distinctTraders: 1, chainsActive: 1, avgTradeUsd: 100 });
+      const both = await computePublicStats(sql, [1, 100, SOLANA_MAINNET_ID]);
+      expect(both).toMatchObject({ totalTrades: TOTAL_TRADES + 2, distinctTraders: 3, chainsActive: 3 });
+      const { getReferrerStats } = await import('../src/api.js');
+      const { buildAffiliateReferrers } = await import('../src/affiliate/accrual.js');
+      const earnings = () => buildAffiliateReferrers(before, now);
+      const report = () => getReferrerStats(`0x${HUMAN_A}`, after);
+      expect(await report()).toMatchObject({ referredCount: 1, currentCycleNetFeeUsd: 0.01, currentCycleVolumeUsd: 100 });
+      expect(await earnings()).toMatchObject([{ buckets: [{ chainId: SOLANA_MAINNET_ID, grossBps: 1, volumeUsd: 100 }] }]);
+      // A late historical fill disqualifies the referral while all three fills still count publicly.
+      await fill(3, before, 40, 0.02);
+      expect(await report()).toMatchObject({ referredCount: 0, currentCycleNetFeeUsd: 0 });
+      expect(await earnings()).toEqual([]);
+      expect(await computePublicStats(sql, [SOLANA_MAINNET_ID])).toMatchObject({ totalTrades: 3, totalVolumeUsd: 140 });
+    } finally {
+      await sql`DELETE FROM solana_settled_fills WHERE wallet = ${trader}`;
+      await sql`DELETE FROM referrals WHERE referred_wallet = ${trader}`;
+      await sql`DELETE FROM ref_codes WHERE code = 'native-test'`;
+    }
+  });
+
   it('uses the settlement payer without multiplying partial fills or changing reward ownership', async () => {
     const uid = UID('cc');
     const recipient = W('cc');

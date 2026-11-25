@@ -20,6 +20,8 @@ const cronState = vi.hoisted(() => ({
 }));
 
 const runBatcher = vi.fn(async () => ({ status: 'no_recipients', batchId: 1, safeTxHash: null, recipientCount: 0, poolWei: 0n }));
+const deferAffiliateCycle = vi.fn(async () => {});
+const deferredAffiliateBoundaries = vi.fn(async () => [] as Date[]);
 const runAffiliatePayout = vi.fn(async () => ({ status: 'no_recipients' }));
 const proposeOwnFeeBatches = vi.fn(async () => ({ checked: 0, proposed: 0, blocked: 0 }));
 const proposePartnerFeeBatches = vi.fn(async () => ({ checked: 0, proposed: 0, blocked: 0 }));
@@ -40,7 +42,7 @@ vi.mock('../../src/scorer.js', () => ({ runScorer: vi.fn(async () => ({})) }));
 vi.mock('../../src/batcher.js', () => ({ runBatcher, isFirstOfMonth: () => cronState.firstOfMonth }));
 vi.mock('../../src/batch/reconcile.js', () => ({ reconcileBatches: vi.fn(async () => ({})) }));
 vi.mock('../../src/affiliate/deliverReport.js', () => ({ deliverMonthlyReport: vi.fn(async () => ({})) }));
-vi.mock('../../src/affiliate/payout.js', () => ({ runAffiliatePayout, reconcileAffiliateBatches: vi.fn(async () => ({})) }));
+vi.mock('../../src/affiliate/payout.js', () => ({ deferAffiliateCycle, deferredAffiliateBoundaries, runAffiliatePayout, reconcileAffiliateBatches: vi.fn(async () => ({})) }));
 vi.mock('../../src/affiliate/payoutPlan.js', () => ({ resolveAffiliatePayoutEnabled: () => true }));
 vi.mock('../../src/ownFee/payout.js', () => ({ accrueOwnFee: vi.fn(async () => ({})), proposeOwnFeeBatches, reconcileOwnFeeBatches: vi.fn(async () => ({})) }));
 vi.mock('../../src/ownFee/payoutPlan.js', () => ({ resolveOwnFeePayoutEnabled: () => true }));
@@ -143,6 +145,25 @@ describe('P1.2 cron fail-closed on partner accrual failure', () => {
     await runNightlyPipeline();
     expect(accruePartnerFees).toHaveBeenCalledTimes(1);
     expect(runBatcher).toHaveBeenCalledTimes(1);
+  });
+
+  it('persists the affiliate boundary for retry if reading payout inputs fails', async () => {
+    runAffiliatePayout.mockRejectedValueOnce(new Error('coverage query unavailable'));
+    const { runNightlyPipeline } = await import('../../src/cron.js');
+    const boundary = new Date('2026-11-01T02:00:00Z');
+    await runNightlyPipeline(boundary);
+    expect(deferAffiliateCycle).toHaveBeenCalledWith(boundary);
+  });
+
+  it('retries a deferred affiliate month independently after recording the ordinary monthly heartbeat', async () => {
+    cronState.firstOfMonth = false;
+    cronState.batcherRanThisMonth = true;
+    const original = new Date('2026-10-01T00:00:00Z');
+    deferredAffiliateBoundaries.mockResolvedValueOnce([original]);
+    const { runNightlyPipeline } = await import('../../src/cron.js');
+    await runNightlyPipeline(new Date('2026-11-02T02:00:00Z'));
+    expect(runBatcher).not.toHaveBeenCalled();
+    expect(runAffiliatePayout).toHaveBeenCalledWith(expect.objectContaining({ now: original }));
   });
 
   it('mid-month with the batcher heartbeat already recorded, the monthly section does NOT run', async () => {

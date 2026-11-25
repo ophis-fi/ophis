@@ -1,3 +1,5 @@
+import { ed25519 } from '@noble/curves/ed25519';
+import { parseAffiliateWallet } from './address.js';
 import { recoverMessageAddress, isAddress, hashMessage, parseAbi } from 'viem';
 import { getRpcClient } from '../rpc/client.js';
 import { SUPPORTED_CHAIN_IDS } from '../cow/client.js';
@@ -23,10 +25,13 @@ const CLOCK_SKEW_SEC = 60;
 /**
  * The exact message the wallet signs. Namespaced by the app + ACTION string so a
  * signature captured for one Ophis flow (e.g. dashboard access) cannot be replayed
- * for another (e.g. minting a code), and vice-versa. Address is lowercased for a
- * stable, case-insensitive comparison.
+ * for another (e.g. minting a code). EVM addresses are lowercase. Solana signs its
+ * case-sensitive base58 address and mainnet namespace.
  */
 export function buildSignedActionMessage(action: string, address: string, issuedSec: number, chainId?: number): string {
+  if (parseAffiliateWallet(address)?.bytes.length === 32) {
+    return `Ophis ${action}\nAddress: ${address}\nIssued: ${issuedSec}\nChain: solana:mainnet`;
+  }
   return `Ophis ${action}\nAddress: ${address.toLowerCase()}\nIssued: ${issuedSec}${chainId === undefined ? '' : `\nChain ID: ${chainId}`}`;
 }
 
@@ -65,22 +70,13 @@ export async function verifyPartnerAuth(
   input: PartnerAuthInput,
   clientForChain = getRpcClient,
 ): Promise<PartnerAuthResult> {
-  const { address, issued, signature, nowSec } = input;
+  const { address, issued, signature } = input;
 
   if (typeof address !== 'string' || !isAddress(address)) {
     return { ok: false, reason: 'invalid address' };
   }
-  if (!Number.isInteger(issued)) {
-    return { ok: false, reason: 'invalid issued timestamp' };
-  }
-  // Reject timestamps in the future (beyond skew) — prevents pre-signing far-dated tokens.
-  if (issued > nowSec + CLOCK_SKEW_SEC) {
-    return { ok: false, reason: 'issued timestamp is in the future' };
-  }
-  // Reject stale signatures — bounds replay.
-  if (issued < nowSec - PARTNER_SIG_MAX_AGE_SEC) {
-    return { ok: false, reason: 'signature expired' };
-  }
+  const expired = checkIssued(input);
+  if (expired) return expired;
   if (typeof signature !== 'string' || signature.length > 16_386 || !/^0x(?:[0-9a-fA-F]{2})*$/.test(signature)) {
     return { ok: false, reason: 'invalid signature' };
   }
@@ -122,4 +118,35 @@ export async function verifyPartnerAuth(
     }
   }
   return { ok: false, reason: 'signer does not match claimed address' };
+}
+
+function checkIssued({ issued, nowSec }: PartnerAuthInput): { ok: false; reason: string } | undefined {
+  if (!Number.isInteger(issued)) {
+    return { ok: false, reason: 'invalid issued timestamp' };
+  }
+  // Reject timestamps in the future (beyond skew) — prevents pre-signing far-dated tokens.
+  if (issued > nowSec + CLOCK_SKEW_SEC) {
+    return { ok: false, reason: 'issued timestamp is in the future' };
+  }
+  // Reject stale signatures — bounds replay.
+  if (issued < nowSec - PARTNER_SIG_MAX_AGE_SEC) {
+    return { ok: false, reason: 'signature expired' };
+  }
+}
+
+export async function verifyAffiliateAuth(input: PartnerAuthInput) {
+  const wallet = parseAffiliateWallet(input.address);
+  if (!wallet) return { ok: false as const, reason: 'invalid address' };
+  if (wallet.bytes.length === 20) return verifyPartnerAuth({ ...input, address: wallet.address });
+  const expired = checkIssued(input);
+  if (expired) return expired;
+  if (input.chainId !== undefined) return { ok: false as const, reason: 'invalid signature chain' };
+  if (typeof input.signature !== 'string' || input.signature.length !== 130 || !/^0x[0-9a-fA-F]{128}$/.test(input.signature)) {
+    return { ok: false as const, reason: 'invalid signature' };
+  }
+  const message = buildSignedActionMessage(input.action ?? 'Partner Dashboard access', wallet.address, input.issued);
+  if (!ed25519.verify(Buffer.from(input.signature.slice(2), 'hex'), Buffer.from(message), wallet.bytes, { zip215: false })) {
+    return { ok: false as const, reason: 'signer does not match claimed address' };
+  }
+  return { ok: true as const, address: wallet.address };
 }

@@ -1,3 +1,4 @@
+import type postgres from 'postgres';
 import { eq } from 'drizzle-orm';
 import { createPublicClient, http, parseAbi } from 'viem';
 import { db, schema, sql } from '../db/index.js';
@@ -23,6 +24,56 @@ function settledWindow(now: Date): { start: Date; end: Date; label: string } {
   const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
   return { start, end, label: `${start.toISOString().slice(0, 10)}` }; // YYYY-MM-01
+}
+
+export async function deferAffiliateCycle(now: Date, writer: typeof sql | postgres.TransactionSql = sql): Promise<void> {
+  const { label } = settledWindow(now);
+  await writer`INSERT INTO affiliate_deferred_cycles (cycle_month) VALUES (${label}) ON CONFLICT DO NOTHING`;
+}
+
+// Read both eligibility and the amounts from one snapshot while the importer can update fees and prices.
+export function readAffiliatePayoutInputs(now: Date) {
+  const { start, end } = settledWindow(now);
+  return sql.begin('isolation level repeatable read', async (tx) => {
+    const [row] = await tx<{ pending: boolean }[]>`
+      WITH binds AS (
+        SELECT referred_wallet, bound_at FROM eligible_affiliate_binds
+        WHERE length(referred_wallet) = 32 AND referred_wallet <> referrer_wallet AND bound_at < ${end.toISOString()}
+      )
+      SELECT
+        (EXISTS (SELECT 1 FROM binds) AND NOT EXISTS (
+          SELECT 1 FROM solana_fill_sync WHERE covered_block_timestamp >= ${end.toISOString()}
+        )) OR EXISTS (
+          SELECT 1 FROM binds r JOIN solana_settled_fills f ON f.wallet = r.referred_wallet
+          WHERE f.block_timestamp >= r.bound_at AND f.block_timestamp >= ${start.toISOString()}
+            AND f.block_timestamp < ${end.toISOString()} AND (
+              f.base_fee_atoms IS NULL OR (
+                f.base_fee_atoms > 0 AND (COALESCE(f.value_usd, 0) <= 0 OR COALESCE(f.base_fee_usd, 0) <= 0)
+              )
+            )
+        ) AS pending
+    `;
+    if (row!.pending) {
+      await deferAffiliateCycle(now, tx);
+      return null;
+    }
+    return buildAffiliateReferrers(start, end, tx);
+  });
+}
+
+/** Retry previously deferred cycles against their original month, even after the monthly heartbeat or rollover. */
+export async function deferredAffiliateBoundaries(servicedBoundary: Date, skipCurrentCycle: boolean): Promise<Date[]> {
+  const { start, end } = settledWindow(servicedBoundary);
+  const cutoff = (skipCurrentCycle ? start : end).toISOString().slice(0, 10);
+  const rows = await sql<{ boundary: string }[]>`
+    SELECT (d.cycle_month + interval '1 month')::date::text AS boundary
+    FROM affiliate_deferred_cycles d
+    WHERE d.cycle_month < ${cutoff}::date AND NOT EXISTS (
+      SELECT 1 FROM affiliate_batches b WHERE b.cycle_month = d.cycle_month
+    )
+    ORDER BY d.cycle_month
+  `;
+  return rows.map(row => new Date(row.boundary + 'T00:00:00Z'));
 }
 
 /**
@@ -58,7 +109,7 @@ export interface AffiliatePayoutDeps {
  */
 export async function runAffiliatePayout(deps: AffiliatePayoutDeps): Promise<{ status: string; batchId?: number }> {
   const now = deps.now ?? new Date();
-  const { start, end, label } = settledWindow(now);
+  const { label } = settledWindow(now);
 
   // Idempotency: one affiliate batch per cycle. If a row already exists for this
   // cycle (any status), do not re-propose — surface + skip (a stuck row is healed
@@ -69,13 +120,17 @@ export async function runAffiliatePayout(deps: AffiliatePayoutDeps): Promise<{ s
     return { status: 'exists', batchId: existing.id };
   }
 
+  const referrers = await readAffiliatePayoutInputs(now);
+  if (!referrers) {
+    log.warn({ cycleMonth: label }, 'affiliate payout deferred until Solana history, fees and prices cover the cycle');
+    return { status: 'awaiting_solana' };
+  }
   const weth = WETH_BY_CHAIN[GNOSIS];
   if (!weth) throw new Error('no WETH address for Gnosis');
   const client = createPublicClient({ transport: http(deps.rpcUrl) });
   const safeBalanceWei = await client.readContract({ address: weth, abi: ERC20, functionName: 'balanceOf', args: [OPHIS_SAFE_ADDRESS] });
   const wethUsdPrice = await priceTrade({ tradeUid: `0x${'00'.repeat(56)}` as `0x${string}`, chainId: GNOSIS, sellToken: weth, sellAmount: 10n ** 18n });
 
-  const referrers = await buildAffiliateReferrers(start, end);
   const owed = computeAffiliate(referrers, wethUsdPrice);
 
   // RESERVE the WETH committed to EVERY still-pending rebate proposal for the
@@ -113,7 +168,7 @@ export async function runAffiliatePayout(deps: AffiliatePayoutDeps): Promise<{ s
 
   if (plan.blocked) {
     log.error({ cycleMonth: label, totalOwedWei: plan.totalOwedWei.toString(), rebatePoolWei: rebatePoolWei.toString(), partnerLiabilityWei: partnerLiabilityWei.toString(), safeBalanceWei: safeBalanceWei.toString(), reservedForQueuedWei: reservedForQueuedWei.toString(), availableBalanceWei: availableBalanceWei.toString() }, 'affiliate payout BLOCKED');
-    await alerts.alert('affiliate-payout', `Affiliate payout ${label} BLOCKED: ${plan.reason}. rebate ${rebatePoolWei} + partner ${partnerLiabilityWei} + affiliate ${plan.totalOwedWei} > available Safe WETH ${availableBalanceWei} wei (balance ${safeBalanceWei} net of queued ${reservedForQueuedWei}). No proposal made; investigate.`).catch(() => {});
+    await alerts.alert('affiliate-payout', `Affiliate payout ${label} BLOCKED: ${plan.reason}. rebate ${rebatePoolWei} + partner ${partnerLiabilityWei} + affiliate ${plan.totalOwedWei}. Available Safe WETH ${availableBalanceWei} wei (balance ${safeBalanceWei} net of queued ${reservedForQueuedWei}). No proposal made; investigate.`).catch(() => {});
     return { status: 'blocked' };
   }
   if (plan.transfers.length === 0) {

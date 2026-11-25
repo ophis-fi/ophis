@@ -1,3 +1,4 @@
+import type postgres from 'postgres';
 import { sql } from '../db/index.js';
 import type { AffiliateReferrer } from './computeAffiliate.js';
 import { type AffiliateKind } from './rates.js';
@@ -20,8 +21,8 @@ import { type AffiliateKind } from './rates.js';
 // (Optimism is not indexed); the bucketing is OP-ready for when OP indexing ships.
 
 /** Referrers who currently hold an active partner code => partner tier this cycle. */
-async function getPartnerReferrers(): Promise<Set<string>> {
-  const rows = await sql<{ referrer_hex: string }[]>`
+async function getPartnerReferrers(reader: typeof sql | postgres.TransactionSql): Promise<Set<string>> {
+  const rows = await reader<{ referrer_hex: string }[]>`
     SELECT DISTINCT encode(referrer_wallet, 'hex') AS referrer_hex
     FROM ref_codes
     WHERE active = true AND kind = 'partner'
@@ -37,15 +38,16 @@ async function getPartnerReferrers(): Promise<Set<string>> {
 export async function buildAffiliateReferrers(
   monthStart: Date,
   monthEnd: Date,
+  reader: typeof sql | postgres.TransactionSql = sql,
 ): Promise<AffiliateReferrer[]> {
-  const partners = await getPartnerReferrers();
+  const partners = await getPartnerReferrers(reader);
   // referrer -> payout redirect (migration 0007). A referrer may hold several codes;
   // DISTINCT ON collapses them to ONE payout wallet, preferring an ACTIVE code and a
   // partner code (a partner sets the redirect on their partner code), deterministically
   // tie-broken by code. Only codes WITH a payout_wallet are considered; a referrer with
   // none stays absent here => null => pay to referrer_wallet (identity). (Can't use
   // MAX(bytea) — no such aggregate in Postgres; DISTINCT ON is the bytea-safe form.)
-  const payoutRows = await sql<{ referrer_hex: string; payout_hex: string }[]>`
+  const payoutRows = await reader<{ referrer_hex: string; payout_hex: string }[]>`
     SELECT DISTINCT ON (referrer_wallet)
       encode(referrer_wallet, 'hex') AS referrer_hex,
       encode(payout_wallet, 'hex')   AS payout_hex
@@ -58,121 +60,28 @@ export async function buildAffiliateReferrers(
     payoutByReferrer.set(`0x${row.referrer_hex}` as `0x${string}`, `0x${row.payout_hex}` as `0x${string}`);
   }
 
-  // Grouped by (referrer, chain, EFFECTIVE gross bps) — splitting volume by its
-  // per-trade fee rate. NULL fees use the policy marker derived from the authoritative
-  // order creation time; unenriched decoder-only rows are held from accrual. This lets
-  // computeAffiliate apply the regular cap LEAST-VALUABLE-FIRST even
-  // when one chain carries mixed-rate (5/10/1 bps) trades.
-  const rows = await sql<
-    { referrer_hex: string; chain_id: number; gross_bps: number; volume_usd: string }[]
-  >`
-    SELECT
-      encode(r.referrer_wallet, 'hex')                AS referrer_hex,
-      t.chain_id                                      AS chain_id,
-      COALESCE(t.volume_fee_bps, t.undecoded_fee_fallback_bps)::int AS gross_bps,
-      SUM(t.value_usd)::text                          AS volume_usd
-    FROM referrals r
-    JOIN trades t ON t.wallet = r.referred_wallet
-    WHERE t.block_timestamp >= ${monthStart.toISOString()}
-      AND t.block_timestamp <  ${monthEnd.toISOString()}
-      AND t.block_timestamp >= r.bound_at
-      AND t.value_usd IS NOT NULL
-      AND (t.volume_fee_bps IS NOT NULL OR t.undecoded_fee_fallback_bps IS NOT NULL)
-      -- Production chains only: Sepolia is indexed for dev visibility but must
-      -- never accrue a real WETH payout (audit 2026-07-09).
-      AND t.chain_id <> 11155111
-      -- appData-wins: exclude from the bind path the trades the appData query below
-      -- can CLAIM — those carrying an ACTIVE code owned by someone OTHER than the
-      -- trader. A NULL/stale/inactive code OR a self-owned code is NOT excluded here
-      -- and correctly falls back to this wallet-bind path. NOTE: this exclusion is
-      -- bps-INDEPENDENT, while the appData arm now additionally requires
-      -- volume_fee_bps > 0. So an active-non-self-code trade with a NULL/0 fee is
-      -- excluded from BOTH arms (credited nowhere) until the self-healing backfill
-      -- confirms its fee — deliberate (forge-safe), NOT a bind fallback. No
-      -- double-count either way.
-      AND NOT (
-        t.appdata_ref_code IS NOT NULL
-        AND EXISTS (
-          SELECT 1 FROM ref_codes rc
-          WHERE rc.code = t.appdata_ref_code AND rc.active AND rc.referrer_wallet <> t.wallet
-        )
-      )
-    -- Group by the gross_bps OUTPUT ALIAS, not a second COALESCE(...) literal: the
-    -- sql tag binds each interpolation as a distinct parameter, so repeating the
-    -- COALESCE here would be a different expression than the SELECT (Postgres 42803).
-    GROUP BY r.referrer_wallet, t.chain_id, gross_bps
+  const rows = await reader<{ referrer_hex: string; chain_id: number; gross_bps: string; volume_usd: string }[]>`
+    SELECT encode(referrer_wallet, 'hex') AS referrer_hex, chain_id, gross_bps,
+           SUM(value_usd)::text AS volume_usd
+    FROM affiliate_attributed_trades
+    WHERE block_timestamp >= ${monthStart.toISOString()} AND block_timestamp < ${monthEnd.toISOString()}
+    GROUP BY referrer_wallet, chain_id, gross_bps
   `;
-
-  // appData attribution: trades whose appData carries an ACTIVE referral code are
-  // credited to that code's owner directly (no wallet bind required) — this is how
-  // an agent builder's routed volume self-attributes. Self-referral (trader == code
-  // owner) earns nothing (rc.referrer_wallet <> t.wallet). Disjoint from the bind
-  // query above (which excludes exactly these trades), so no trade is double-counted.
-  // Folded into the SAME byReferrer map below, so the Regular $1M cap (applied per
-  // referrer in computeAffiliate) sees the COMBINED bind + appData volume.
-  //
-  // FEE GATE (appData arm only): require volume_fee_bps > 0 — a CONFIRMED Ophis Volume
-  // fee. appdata_ref_code is attacker-controllable, so this is the forge surface; the
-  // bind arm above is signature-gated and keeps its cutover-gated NULL fallback
-  // pre-per-trade-tracking rows. Excluding NULL here (vs the bind arm) closes the
-  // surplus/PI-NULL -> retail-COALESCE forge at the money path, as a second line behind
-  // the fetcher's attribution gate. Current hosted emitters include a 1 bp Volume
-  // entry alongside PI, so they remain positive here; a PI-only NULL row is
-  // forge-or-unconfirmed until a realized-fee source can price it. A legit legacy NULL row is
-  // converged to a positive rate by the self-healing backfill and then credited. The
-  // dashboard's appData arm (api.ts) mirrors this exact > 0 gate so display == payout.
-  const appdataRows = await sql<
-    { referrer_hex: string; chain_id: number; gross_bps: number; volume_usd: string }[]
-  >`
-    SELECT
-      encode(rc.referrer_wallet, 'hex')               AS referrer_hex,
-      t.chain_id                                      AS chain_id,
-      t.volume_fee_bps::int                           AS gross_bps,
-      SUM(t.value_usd)::text                          AS volume_usd
-    FROM trades t
-    JOIN ref_codes rc ON rc.code = t.appdata_ref_code AND rc.active
-    WHERE t.appdata_ref_code IS NOT NULL
-      AND t.block_timestamp >= ${monthStart.toISOString()}
-      AND t.block_timestamp <  ${monthEnd.toISOString()}
-      AND t.value_usd IS NOT NULL
-      AND rc.referrer_wallet <> t.wallet
-      AND t.volume_fee_bps > 0
-      -- Production chains only: mirror the bind arm (Sepolia never pays out).
-      AND t.chain_id <> 11155111
-    GROUP BY rc.referrer_wallet, t.chain_id, gross_bps
-  `;
-
-  // referrer -> "chainId:grossBps" -> bucket. Both result sets are summed in; they
-  // cover disjoint trade sets, so adding per (referrer, chain, bps) is correct (a
-  // referrer can earn bind volume AND appData volume on the same chain+rate — both
-  // count). Keeping the rate per bucket is what lets computeAffiliate take the tier
-  // share of the ACTUAL kept fee AND apply
-  // the regular cap least-valuable-first within a mixed-rate chain.
-  const byReferrer = new Map<
-    `0x${string}`,
-    Map<string, { chainId: number; grossBps: number; volumeUsd: number }>
-  >();
-  for (const row of [...rows, ...appdataRows]) {
-    const referrer = `0x${row.referrer_hex}` as `0x${string}`;
-    const volume = parseFloat(row.volume_usd);
-    if (!Number.isFinite(volume) || volume <= 0) continue;
-    const grossBps = row.gross_bps;
-    let slices = byReferrer.get(referrer);
-    if (!slices) {
-      slices = new Map();
-      byReferrer.set(referrer, slices);
-    }
-    const key = `${row.chain_id}:${grossBps}`;
-    const cur = slices.get(key) ?? { chainId: row.chain_id, grossBps, volumeUsd: 0 };
-    cur.volumeUsd += volume;
-    slices.set(key, cur);
+  const byReferrer = new Map<`0x${string}`, AffiliateReferrer['buckets'][number][]>();
+  for (const row of rows) {
+    const referrer = `0x${row.referrer_hex}` as const;
+    const volumeUsd = Number(row.volume_usd);
+    if (!Number.isFinite(volumeUsd) || volumeUsd <= 0) continue;
+    const buckets = byReferrer.get(referrer) ?? [];
+    buckets.push({ chainId: row.chain_id, volumeUsd, grossBps: Number(row.gross_bps) });
+    byReferrer.set(referrer, buckets);
   }
 
   const out: AffiliateReferrer[] = [];
   for (const [referrer, slices] of byReferrer) {
     const kind: AffiliateKind = partners.has(referrer) ? 'partner' : 'regular';
     const payoutWallet = payoutByReferrer.get(referrer) ?? null;
-    out.push({ referrer_wallet: referrer, kind, buckets: [...slices.values()], payoutWallet });
+    out.push({ referrer_wallet: referrer, kind, buckets: slices, payoutWallet });
   }
   return out;
 }

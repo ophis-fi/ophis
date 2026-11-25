@@ -405,3 +405,87 @@ are unsuitable for Arc's free 100-block RPC limit. Preserve the Arc orderbook
 history; if it is pruned, reporting must remain closed until reconciled again.
 Discovery remains fee-unverified/zero-credit until API enrichment. No payout keys,
 Safe proposal jobs, or automatic Arc own-fee payouts are enabled by this rollout.
+
+## Solana settlement reporting
+
+The rebate indexer reads the Solana orderbook from a separate PostgreSQL connection.
+Set `SOLANA_REPORTING_DATABASE_URL` in the protected rebate service environment
+to enable the worker at startup. The running mainnet orderbook database on the
+Mini binds to `127.0.0.1:19692`. Cadia's read-only PostgreSQL login reaches
+that port through its private SSH socket. The source role has column-scoped
+SELECT grants. Verify that the finalized watermark advances on that connection. Set `SOLANA_REPORTING_RPC_URL` to the approved
+mainnet read endpoint or use the default public Solana RPC.
+
+Provision a dedicated login on the source database and supply its password
+through the protected environment. The worker only needs the following grants
+on the existing Solana schema and fee view. On Cadia the optional
+`docker-compose.solana-reporting.yml` override mounts a private Unix socket at
+`/run/ophis-solana-reporting/.s.PGSQL.5432`. On Cadia a protected copy in
+`secrets/docker-compose.solana-reporting.yml` is appended to the existing
+Compose file list, preserving the rewards override and surviving source sync. The socket service
+authenticates to the Mini with an SSH key restricted to its local orderbook
+port. The reader DSN supplies the database name and password independently.
+Check `systemctl status ophis-solana-reporting.socket` on Cadia if the source
+connection fails. For a reporting-only release, set `REBATE_DEFER_STARTUP_REWARDS=true`
+during the restart so rewards run on their existing five-minute schedule.
+
+```sql
+ALTER ROLE ophis_rebate_reader SET default_transaction_read_only = on;
+GRANT CONNECT ON DATABASE ophis TO ophis_rebate_reader;
+GRANT USAGE ON SCHEMA solana TO ophis_rebate_reader;
+GRANT SELECT (singleton, slot, finalized_slot) ON solana.indexer_state TO ophis_rebate_reader;
+GRANT SELECT (slot, tx_signature, instruction_index, order_uid, sell_amount, buy_amount)
+  ON solana.trades TO ophis_rebate_reader;
+GRANT SELECT (uid, owner, order_pda, sell_token, buy_token, kind)
+  ON solana.orders TO ophis_rebate_reader;
+GRANT SELECT (tx_signature, instruction_index, auction_id)
+  ON solana.settlements TO ophis_rebate_reader;
+GRANT SELECT (tx_signature, instruction_index, order_uid, fee_mint, protocol_fee)
+  ON solana.executed_protocol_fees TO ophis_rebate_reader;
+GRANT SELECT (order_uid, signed_fee_reference) ON solana.order_quotes TO ophis_rebate_reader;
+GRANT SELECT (auction_id, order_uid, application_order, kind, volume_factor,
+              price_improvement_factor, price_improvement_max_volume_factor)
+  ON solana.fee_policies TO ophis_rebate_reader;
+```
+
+The worker checks the first known mainnet settlement and the RPC genesis hash.
+It verifies the order account, seller, mints and executed amounts against each
+finalized transaction. One order can have multiple fills. Each distinct fill
+counts once at its on-chain settlement time. Orders owned by the program state
+are treasury operations and are excluded. USDC and USDT amounts are valued
+at $1. Other pairs use historical DefiLlama prices at settlement. A missing
+price leaves the USD fields empty while the fill continues to count. Affiliate
+accounting uses the verified base portion of executed fees. Late prices and
+fee attribution are retried in a rotating historical pass.
+
+After restarting the indexer, compare the source and target with these read-only
+queries. Open `https://rebates.ophis.fi/stats?chain=solana` for the Solana row.
+For JSON, request `/stats` with `Accept: application/json` and check
+the `byChain` entry with `chainId: -1`, the report's key for Solana mainnet.
+The target's coverage timestamp reflects how far the source itself indexed.
+A recent worker check alongside an old coverage timestamp warrants checking
+the source Solana indexer.
+
+```sql
+-- Solana source
+SELECT least(slot, finalized_slot) AS finalized_boundary
+FROM solana.indexer_state WHERE singleton;
+
+-- Rebate target
+SELECT covered_slot, covered_block_timestamp, checked_at FROM solana_fill_sync;
+SELECT count(*) AS fills, count(DISTINCT wallet) AS traders, sum(value_usd) AS usd,
+       count(*) FILTER (WHERE value_usd IS NULL) AS unpriced,
+       count(*) FILTER (WHERE base_fee_usd IS NULL) AS unverified_fee
+FROM solana_settled_fills;
+```
+
+New fills are fetched in bounded pages. A full page schedules another after
+250 ms. Failed verification pauses that page for 60 seconds and preserves
+already verified fills. Restarts resume the saved cursor. Removing the source
+DSN and restarting disables the worker while retaining the reporting history.
+
+On November 25 the production stats API reported seven finalized team fills,
+one distinct wallet and $16.902289 of volume. The seventh fill sold 0.04 SOL
+for 2.701493 USDC at slot 473698433, with a 0.000270 USDC base fee. The
+worker subsequently reported coverage past that slot and retained seven fills
+across repeat imports. No affiliate payout batch was created by the release.

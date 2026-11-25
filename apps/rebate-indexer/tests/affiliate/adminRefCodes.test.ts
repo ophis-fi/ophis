@@ -93,7 +93,7 @@ test('upserts with a valid payoutWallet — stored lowercased as a Buffer, UPSER
   expect(text).toContain('kind = EXCLUDED.kind');
   expect(text).toContain('active = EXCLUDED.active');
   // The bound payout param is a Buffer of the lowercased 20-byte address.
-  const payoutBuf = lastSql!.values.find((v) => Buffer.isBuffer(v) && (v as Buffer).length === 20) as Buffer | undefined;
+  const payoutBuf = lastSql!.values[2] as Buffer;
   expect(payoutBuf).toBeInstanceOf(Buffer);
   expect(`0x${payoutBuf!.toString('hex')}`).toBe(PAYOUT.toLowerCase());
 });
@@ -134,4 +134,16 @@ test('still rejects a malformed referrerWallet (unchanged)', async () => {
   const res = await authPost({ code: 'bad2', referrerWallet: '0xnothex', kind: 'partner', payoutWallet: PAYOUT });
   expect(res.statusCode).toBe(400);
   expect(JSON.parse(res.body)).toMatchObject({ error: 'invalid referrerWallet' });
+});
+
+
+test('a Solana partner needs a nonzero Gnosis recipient', async () => {
+  app = await buildApiServer();
+  const body = { code: 'solpartner', referrerWallet: '9xQeWvG816bUx9EPfHL7JGA58HyQeZfgcRmBi1XSvMSy', kind: 'partner' };
+  expect((await authPost(body)).statusCode).toBe(400);
+  expect((await authPost({ ...body, payoutWallet: '0x' + '00'.repeat(20) })).statusCode).toBe(400);
+  const result = await authPost({ ...body, payoutWallet: PAYOUT });
+  expect(result.statusCode).toBe(200);
+  expect(result.json().payoutWallet).toBe(PAYOUT.toLowerCase());
+  expect((lastSql!.values[1] as Buffer).length).toBe(32);
 });

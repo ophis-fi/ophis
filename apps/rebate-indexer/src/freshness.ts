@@ -2,7 +2,7 @@ import type { Sql } from 'postgres';
 import { ACTIVE_PRODUCTION_CHAIN_IDS, PRODUCTION_CHAIN_IDS } from './stats-page.js';
 import { DECODER_ETHFLOW_OWNERS, OPHIS_ETHFLOW_OWNER_BY_CHAIN } from './fetcher.js';
 import { settleDecoderChains } from './cow/onchain.js';
-import { ARC_CHAIN_ID } from './affiliate/rates.js';
+import { ARC_CHAIN_ID, SOLANA_MAINNET_ID } from './affiliate/rates.js';
 
 /** Shared by the scheduler and its public freshness checks. */
 export function refreshIntervalMs(): number {
@@ -140,7 +140,15 @@ export async function readPublicDataFreshness(
     FROM unnest(${[...chainIds]}::int[]) a(chain_id)
     LEFT JOIN sources c ON c.chain_id = a.chain_id
     LEFT JOIN chain_scan_coverage sc ON sc.chain_id = a.chain_id
-    GROUP BY a.chain_id, sc.covered_through ORDER BY a.chain_id
+    GROUP BY a.chain_id, sc.covered_through
+    UNION ALL
+    SELECT ${SOLANA_MAINNET_ID}::int, 1, (covered_block_timestamp IS NOT NULL)::int, 0, 0,
+      (covered_block_timestamp < ${new Date(nowMs - 2 * refreshIntervalMs()).toISOString()}::timestamptz)::int,
+      0, '{}'::text[], covered_block_timestamp::text, checked_at::text, covered_block_timestamp::text,
+      (SELECT count(*)::int FROM solana_settled_fills WHERE value_usd IS NULL)
+    FROM solana_fill_sync
+    WHERE singleton AND (checked_at IS NOT NULL OR ${Boolean(process.env.SOLANA_REPORTING_DATABASE_URL)})
+    ORDER BY chain_id
   `;
   const dataSources: PublicDataSource[] = sources.map((s) => {
     const through = coverage === 'current-sources' ? s.covered_through : s.completed_through;
