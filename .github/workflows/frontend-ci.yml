@@ -41,6 +41,9 @@ on:
     paths:
       - 'patches/**'
       - 'apps/frontend/**'
+      - 'packages/solana-sdk/**'
+      - 'functions/solana-api/**'
+      - 'tests/functions/solana.test.ts'
   workflow_dispatch:
 
 permissions:
@@ -97,6 +100,13 @@ jobs:
       - name: typecheck cowswap-frontend
         working-directory: apps/frontend
         run: pnpm typecheck
+
+      - name: Native Solana swaps, wallet referrals and API proxy
+        working-directory: apps/frontend
+        run: |
+          pnpm --filter @ophis/solana-sdk test
+          node --experimental-strip-types --test ../../tests/functions/solana.test.ts
+          pnpm exec jest --config apps/cowswap-frontend/jest.config.ts --testPathPatterns 'modules/nativeSolana/|modules/affiliate/|pages/Profile/Profile.solana.test|pages/Partner/Partner.container.test' --passWithNoTests=false --runInBand
 
       - name: Solver attribution and fuzz regressions
         working-directory: apps/frontend
