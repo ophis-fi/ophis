@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { base58 } from '@scure/base';
 import postgres from 'postgres';
 import { historicalCoinUsd } from '../pricer.js';
@@ -15,6 +16,7 @@ const USDT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
 const SOL = '11111111111111111111111111111111';
 const WSOL = 'So11111111111111111111111111111111111111112';
 const PAGE = 12;
+const SPL_TOKEN = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 
 type Cursor = { slot: string; sig: string; ix: number; uid: string };
 type Fill = {
@@ -30,15 +32,25 @@ type Fill = {
   sell_atoms: string;
   buy_atoms: string;
   kind: 'sell' | 'buy';
+  user_source: Buffer;
+  user_destination: Buffer;
+  fee_mint: Buffer | null;
+  actual_gross: string | null;
+  execution_cost: string | null;
+  actual_base_fee: string | null;
+  actual_improvement_fee: string | null;
   protocol_fee: string | null;
   base_fee_atoms: string | null;
 };
 type TokenBalance = { accountIndex: number; mint: string; owner?: string };
+type CompiledIx = { programIdIndex: number; accounts: number[]; data: string };
 type Receipt = {
   slot: number;
   blockTime: number | null;
   meta: {
     err: unknown;
+    returnData?: { programId: string; data: [string, string] };
+    innerInstructions?: { index: number; instructions: CompiledIx[] }[];
     preTokenBalances?: TokenBalance[];
     postTokenBalances?: TokenBalance[];
     loadedAddresses?: { writable: string[]; readonly: string[] };
@@ -47,7 +59,7 @@ type Receipt = {
     signatures: string[];
     message: {
       accountKeys: string[];
-      instructions: { programIdIndex: number; accounts: number[]; data: string }[];
+      instructions: CompiledIx[];
     };
   };
 };
@@ -70,6 +82,142 @@ export function reportingRpc(url: string): SolanaRpc {
   };
 }
 
+// The finalized program already validated the canonical bump. Match the
+// receipt PDA against this UID so another database order cannot claim the fill.
+function orderPdaMatches(uid: Buffer, pda: Buffer): boolean {
+  const prefix = createHash('sha256').update('settlement v0.5    ').update(uid).update('order');
+  const program = base58.decode(PROGRAM);
+  for (let bump = 255; bump >= 0; bump--) {
+    const derived = prefix
+      .copy()
+      .update(Buffer.from([bump]))
+      .update(program)
+      .update('ProgramDerivedAddress')
+      .digest();
+    if (derived.equals(pda)) return true;
+  }
+  return false;
+}
+
+function verifyActual(
+  row: Fill,
+  receipt: Receipt,
+  keys: string[],
+  begin: Buffer,
+  ix: CompiledIx,
+): void {
+  const finishIndex = begin.readUInt16LE(1);
+  const message = receipt.transaction.message;
+  const end = message.instructions[finishIndex];
+  const nPulls = begin[12];
+  const meta = receipt.meta!;
+  const result = meta.returnData;
+  if (
+    row.kind !== 'sell' ||
+    nPulls === undefined ||
+    nPulls === 0 ||
+    begin.readBigInt64LE(3).toString() !== row.auction_id ||
+    begin[11] !== 1 ||
+    begin.length !== 13 + 8 * nPulls ||
+    ix.accounts.length !== 9 + nPulls ||
+    finishIndex <= row.instruction_index ||
+    finishIndex !== message.instructions.length - 1 ||
+    !end ||
+    end.accounts.length !== 8 ||
+    keys[end.programIdIndex] !== PROGRAM ||
+    keys[end.accounts[1]!] !== STATE ||
+    keys[end.accounts[2]!] !== SPL_TOKEN ||
+    end.accounts[0] !== ix.accounts[1] ||
+    end.accounts[3] !== ix.accounts[5] ||
+    end.accounts[4] !== ix.accounts.at(-1) ||
+    end.accounts[7] !== ix.accounts[0] ||
+    !row.user_source ||
+    !row.user_destination ||
+    !row.fee_mint?.equals(row.buy_mint) ||
+    keys[ix.accounts[6]!] !== base58.encode(row.user_source) ||
+    keys[end.accounts[6]!] !== base58.encode(row.user_destination) ||
+    keys[end.accounts[3]!] !== base58.encode(row.order_pda) ||
+    !orderPdaMatches(row.order_uid, row.order_pda) ||
+    result?.programId !== PROGRAM ||
+    result.data[1] !== 'base64'
+  )
+    throw Error('Unverified actual-output settlement');
+  const finish = Buffer.from(base58.decode(end.data));
+  const proof = Buffer.from(result.data[0], 'base64');
+  if (
+    finish.length !== 20 ||
+    finish[0] !== 14 ||
+    finish.readUInt16LE(1) !== row.instruction_index ||
+    proof.length !== 80 ||
+    !proof.subarray(0, 8).equals(Buffer.from('OPHISRC3')) ||
+    !proof.subarray(8, 40).equals(row.order_pda)
+  )
+    throw Error('Unpaired actual-output receipt');
+  const gross = proof.readBigUInt64LE(40),
+    cost = proof.readBigUInt64LE(48),
+    base = proof.readBigUInt64LE(56),
+    improvement = proof.readBigUInt64LE(64),
+    payout = proof.readBigUInt64LE(72);
+  let sold = 0n;
+  for (let pull = 0; pull < nPulls; pull++) sold += begin.readBigUInt64LE(13 + 8 * pull);
+  if (
+    gross !== cost + base + improvement + payout ||
+    payout < finish.readBigUInt64LE(4) ||
+    cost !== finish.readBigUInt64LE(12) ||
+    gross.toString() !== row.actual_gross ||
+    cost.toString() !== row.execution_cost ||
+    base.toString() !== row.actual_base_fee ||
+    base.toString() !== row.base_fee_atoms ||
+    improvement.toString() !== row.actual_improvement_fee ||
+    payout.toString() !== row.buy_atoms ||
+    sold.toString() !== row.sell_atoms ||
+    (base + improvement).toString() !== row.protocol_fee
+  )
+    throw Error('Realized amounts differ from finalized settlement');
+  const source = meta.preTokenBalances?.find((b) => b.accountIndex === ix.accounts[6]);
+  const buy = base58.encode(row.buy_mint);
+  if (
+    source?.owner !== base58.encode(row.wallet) ||
+    source.mint !== base58.encode(row.sell_mint) ||
+    (buy !== SOL &&
+      meta.postTokenBalances?.find((b) => b.accountIndex === end.accounts[6])?.mint !== buy)
+  )
+    throw Error('On-chain actual-output owner or mint mismatch');
+  // Classic token transfers at Finish debit only the fresh stage. For native
+  // output the program unwraps there and credits lamports directly; OPHISRC3
+  // records the payment after that credit and the rent refund have succeeded.
+  const actions =
+    meta.innerInstructions?.find((group) => group.index === finishIndex)?.instructions ?? [];
+  const paid = (index: number, to: number | undefined, amount: bigint) => {
+    const action = actions[index];
+    if (
+      !action ||
+      keys[action.programIdIndex] !== SPL_TOKEN ||
+      action.accounts[0] !== end.accounts[4] ||
+      action.accounts[1] !== to ||
+      action.accounts[2] !== end.accounts[3]
+    )
+      return false;
+    const data = Buffer.from(base58.decode(action.data));
+    return data.length === 9 && data[0] === 3 && data.readBigUInt64LE(1) === amount;
+  };
+  const close = actions.at(-1);
+  if (
+    !close ||
+    keys[close.programIdIndex] !== SPL_TOKEN ||
+    close.accounts[0] !== end.accounts[4] ||
+    close.accounts[1] !== end.accounts[buy === SOL ? 5 : 7] ||
+    close.accounts[2] !== end.accounts[3] ||
+    !Buffer.from(base58.decode(close.data)).equals(Buffer.from([9])) ||
+    (buy === SOL
+      ? actions.length !== 1
+      : actions.length !== 3 ||
+        !paid(0, end.accounts[6], payout) ||
+        !paid(1, end.accounts[5], gross - payout))
+  )
+    throw Error('Realized transfers differ from settlement receipt');
+}
+
 function receiptTime(row: Fill, receipt: Receipt | null): number {
   if (
     !receipt ||
@@ -88,6 +236,17 @@ function receiptTime(row: Fill, receipt: Receipt | null): number {
   if (!ix || keys[ix.programIdIndex] !== PROGRAM || keys[ix.accounts[2]!] !== STATE)
     throw Error('Mainnet BeginSettle program/state mismatch');
   const begin = Buffer.from(base58.decode(ix.data));
+  if (begin[0] === 13) {
+    if (begin.length < 13) throw Error('Invalid BeginActual layout');
+    verifyActual(row, receipt, keys, begin, ix);
+    return receipt.blockTime;
+  }
+  if (
+    [row.actual_gross, row.execution_cost, row.actual_base_fee, row.actual_improvement_fee].some(
+      (v) => v !== null,
+    )
+  )
+    throw Error('Actual-output amounts require a finalized V3 receipt');
   const n = begin[11] ?? 0;
   if (begin[0] !== 0 || n === 0 || begin.length < 12 + n) throw Error('Invalid BeginSettle layout');
   const finishIx = message.instructions[begin.readUInt16LE(1)];
@@ -144,7 +303,9 @@ async function readPage(source: postgres.Sql, from: Cursor | null, until: string
   return source<Fill[]>`
     WITH page AS MATERIALIZED (
       SELECT t.slot,t.tx_signature,t.instruction_index,t.order_uid,t.sell_amount,t.buy_amount,
-             o.owner AS wallet, o.order_pda, o.sell_token AS sell_mint, o.buy_token AS buy_mint, o.kind, s.auction_id
+             to_jsonb(t)->>'actual_gross' AS actual_gross,to_jsonb(t)->>'execution_cost' AS execution_cost,
+             to_jsonb(t)->>'actual_base_fee' AS actual_base_fee,to_jsonb(t)->>'actual_improvement_fee' AS actual_improvement_fee,
+             o.sell_token_account AS user_source,o.buy_token_account AS user_destination,o.owner AS wallet, o.order_pda, o.sell_token AS sell_mint, o.buy_token AS buy_mint, o.kind, s.auction_id
       FROM solana.trades t LEFT JOIN solana.orders o ON o.uid=t.order_uid
       LEFT JOIN solana.settlements s USING (tx_signature,instruction_index)
       WHERE t.slot <= ${until} AND o.owner IS DISTINCT FROM ${Buffer.from(base58.decode(STATE))}
@@ -153,8 +314,10 @@ async function readPage(source: postgres.Sql, from: Cursor | null, until: string
       ORDER BY t.slot,t.tx_signature,t.instruction_index,t.order_uid LIMIT ${PAGE}
     )
     SELECT t.auction_id::text,t.slot::text,t.tx_signature,t.instruction_index,t.order_uid,t.wallet,t.order_pda,t.sell_mint,t.buy_mint,t.kind,
+      t.actual_gross,t.execution_cost,t.actual_base_fee,t.actual_improvement_fee,t.user_source,t.user_destination,f.fee_mint,
       t.sell_amount::text AS sell_atoms,t.buy_amount::text AS buy_atoms,f.protocol_fee::text,
-      CASE WHEN p.base_amount <= f.protocol_fee AND q.signed_fee_reference AND p.rate IN (0.0001,0.0005) AND f.protocol_fee >= 0
+      CASE WHEN t.actual_gross IS NOT NULL THEN t.actual_base_fee
+        WHEN p.base_amount <= f.protocol_fee AND q.signed_fee_reference AND p.rate IN (0.0001,0.0005) AND f.protocol_fee >= 0
         AND f.fee_mint = CASE t.kind WHEN 'sell' THEN t.buy_mint ELSE t.sell_mint END
         AND p.policy_count = 2 AND p.volume_order < p.improvement_order
         AND (t.kind='sell' OR t.sell_amount >= f.protocol_fee)
@@ -204,9 +367,12 @@ async function prices(row: Fill, timestamp: number, price: Price) {
       // A cross-mint valuation uses the realized exchange rate before Ophis fees.
       // The indexed sell amount is gross and the buy amount is net.
       const fee = BigInt(row.protocol_fee!);
+      const grossBuy = row.actual_gross === null ? buyAtoms + fee : BigInt(row.actual_gross);
       const feeSideAtoms =
         row.kind === 'sell'
-          ? buyAtoms + (pricedSell ? fee : 0n)
+          ? pricedSell
+            ? grossBuy
+            : buyAtoms
           : sellAtoms - (pricedSell ? 0n : fee);
       if (feeSideAtoms > 0n)
         baseFeeUsd = (valueUsd * Number(row.base_fee_atoms)) / Number(feeSideAtoms);
@@ -262,7 +428,16 @@ export async function importSolanaFills(
           SELECT block_timestamp,value_usd,base_fee_atoms,base_fee_usd FROM solana_settled_fills
           WHERE tx_signature=${row.tx_signature} AND instruction_index=${row.instruction_index} AND order_uid=${row.order_uid}`;
         let timestamp = known ? Math.floor(new Date(known.block_timestamp).getTime() / 1000) : 0;
-        if (!known) {
+        const needsPricing =
+          !known ||
+          known.value_usd === null ||
+          known.base_fee_atoms !== row.base_fee_atoms ||
+          (row.base_fee_atoms !== null && known.base_fee_usd === null);
+        if (
+          !known ||
+          (needsPricing &&
+            (row.actual_gross !== null || known.base_fee_atoms !== row.base_fee_atoms))
+        ) {
           try {
             await verifyCluster();
             const sig = base58.encode(row.tx_signature);
@@ -284,12 +459,7 @@ export async function importSolanaFills(
             return { cursor, complete: false, stalled: true };
           }
         }
-        if (
-          !known ||
-          known.value_usd === null ||
-          known.base_fee_atoms !== row.base_fee_atoms ||
-          (row.base_fee_atoms !== null && known.base_fee_usd === null)
-        ) {
+        if (needsPricing) {
           const { valueUsd, baseFeeUsd } = await prices(row, timestamp, price);
           await tx`INSERT INTO solana_settled_fills
             (tx_signature,instruction_index,order_uid,slot,block_timestamp,wallet,sell_mint,buy_mint,sell_atoms,buy_atoms,value_usd,base_fee_atoms,base_fee_usd)
