@@ -11,6 +11,6 @@
     "settlementOwnedOrderAuthority": "9BAVHzoq6Cno1cctmAgYoP3zf2Yo3xuWqfznT3qaWrrL"
   },
   "solverSigner": "HaHANqyW2wVYw4qUGougZkSqYv6VgfA4DLX1bXx7PAZr",
-  "dailySolverFeeLimitLamports": 200000,
+  "dailySolverFeeLimitLamports": null,
   "treasuryWallet": "2KVz65A9v7FMkZsRZf7ea9poyhxGmycYbjyHHiFX2oZZ"
 }
