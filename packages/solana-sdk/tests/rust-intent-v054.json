@@ -1,0 +1,15 @@
+{
+  "program": "ADHUVdUs37pm9EJuQDhj9u3GqUoSiu1W6U4qikuNVNEF",
+  "encoded": "19ec88b32234206d54ff8605acaabd96caa15c4ad516792ae4ea6041e5f1045280df6128c57bee1edc6de903e151621830cac60f96a00b82ea893dcdf3785ff07220ca95ff6908545feacfa5e0aa5e18ee6b748b8b09def9909eea0f05689e488aa79b9dac65ebc99ef9f185628161c59877e86180cfd8134a2c7a50fbb9c83ce4323d91fc01ea57730f003a5827903e3af677f4e5c661d9d68174bf07361f8920a107000000000012060f000000000064b0006b002d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d",
+  "uid": "0x930e10bf82dbb1613367015cb44d2c593eaa8de52af96388b5196e848bd74f55",
+  "orderPda": "FdGJ67CFWeeiukSTTdNKjBo4Zc8FLC6PRx21hTAtjHbM",
+  "owner": "2kCPHn9kLZQxAKfEWtgCJzUmq1zLCneuQEM7EqkZ4m6h",
+  "sellMint": "8gWUkH5zo9HKE4bSzSopfbQuvWbeo7y1A96KzAJiSxtf",
+  "buyMint": "GMnPWQFtessZdjmGUnemxsg9bNFhnS2Xnbkjr9qoTvtQ",
+  "sellTokenAccount": "9g4k7TtiZoqwe2VjiVvDsbi7BfRe8Nc7KkcvYmzutHdq",
+  "buyTokenAccount": "ALFVk1nkhYqjNoMQycGoLZLKiStjdUV2k3NZY4t4uaUB",
+  "sellAmount": "500000",
+  "buyAmount": "984594",
+  "validTo": 1795207268,
+  "appData": "0x2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d"
+}

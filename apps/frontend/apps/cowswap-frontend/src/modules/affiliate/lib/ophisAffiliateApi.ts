@@ -6,14 +6,14 @@
  * no SWR. The /affiliate + /partner pages and the ref-capture updater call
  * these helpers directly.
  *
- * Signed-message format MUST byte-match the backend, which recovers the
- * signer with viem `recoverMessageAddress` (EIP-191 personal_sign). The
- * frontend signs with ethers v5 `signer.signMessage(message)` (also
- * EIP-191), NOT `_signTypedData` (EIP-712, would not verify).
+ * EVM wallets sign EIP-191 messages. Solana wallets sign their UTF-8 bytes
+ * with Ed25519 and preserve the case of the base58 public key.
  */
 
 import { getTimeoutAbortController } from '@cowprotocol/common-utils'
 import { getAddressKey } from '@cowprotocol/cow-sdk'
+
+import { affiliateAddressKey, isSolanaAffiliateAddress } from './affiliateAddress'
 
 import { AFFILIATE_API_TIMEOUT_MS } from '../config/affiliateProgram.const'
 
@@ -117,6 +117,7 @@ export interface LeaderboardResponse {
 export type AffiliateSignedAction =
   | 'Partner Dashboard access'
   | 'create referral code'
+  | `create referral code\nWETH payout: ${string}`
   // Bind is per-code, so the action string carries the code itself. The
   // backend rebuilds `bind referral code <code>` and byte-matches it.
   | `bind referral code ${string}`
@@ -132,20 +133,15 @@ export interface SignedRequestBody {
   signature: string
 }
 
-/**
- * Build the EIP-191 message string the backend expects. Address is normalized
- * to its canonical (lowercased) key and `issued` is whole seconds, both
- * load-bearing for the server-side `recoverMessageAddress` byte match.
- * getAddressKey returns the exact lowercase form, so this is byte-identical to
- * the previous `.toLowerCase()` and preserves signature compatibility.
- */
 export function buildAffiliateSignMessage(
   action: AffiliateSignedAction,
   address: string,
   issuedSec: number,
   chainId?: number,
 ): string {
-  return `Ophis ${action}\nAddress: ${getAddressKey(address)}\nIssued: ${issuedSec}${chainId === undefined ? '' : `\nChain ID: ${chainId}`}`
+  const message = `Ophis ${action}\nAddress: ${affiliateAddressKey(address)}\nIssued: ${issuedSec}`
+  if (isSolanaAffiliateAddress(address)) return message + '\nChain: solana:mainnet'
+  return chainId === undefined ? message : message + `\nChain ID: ${chainId}`
 }
 
 export function nowIssuedSec(): number {
@@ -226,7 +222,7 @@ export function bindRefCode(body: RefBindRequestBody): Promise<RefBindResponse> 
   }).then((res) => parseJson<RefBindResponse>(res))
 }
 
-export function createRefCode(body: SignedRequestBody): Promise<RefCodeCreateResponse> {
+export function createRefCode(body: SignedRequestBody & { payoutWallet?: string }): Promise<RefCodeCreateResponse> {
   return fetch(`${REBATES_API}/ref/codes`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -248,7 +244,7 @@ export function getLeaderboard(limit = 100, self?: string): Promise<LeaderboardR
 }
 
 export function getAffiliateStats(wallet: string): Promise<AffiliateStats> {
-  return fetch(`${REBATES_API}/affiliate/${encodeURIComponent(getAddressKey(wallet))}`).then((res) =>
+  return fetch(`${REBATES_API}/affiliate/${encodeURIComponent(affiliateAddressKey(wallet))}`).then((res) =>
     parseJson<AffiliateStats>(res),
   )
 }

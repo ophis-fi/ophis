@@ -8,6 +8,7 @@ import { Media } from '@cowprotocol/ui'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { Trans } from '@lingui/react/macro'
+import { OPHIS_SOLANA_CONFIG } from 'entities/solana'
 import { createPortal } from 'react-dom'
 import { useTheme } from 'styled-components/macro'
 
@@ -15,6 +16,7 @@ import { useModalIsOpen, useToggleModal } from 'legacy/state/application/hooks'
 import { ApplicationModal } from 'legacy/state/application/reducer'
 
 import { useIsProviderNetworkUnsupported } from 'common/hooks/useIsProviderNetworkUnsupported'
+import { useNavigate } from 'common/hooks/useNavigate'
 import { useOnSelectNetwork } from 'common/hooks/useOnSelectNetwork'
 import { useShouldHideNetworkSelector } from 'common/hooks/useShouldHideNetworkSelector'
 
@@ -27,6 +29,36 @@ interface NetworkSelectorProps {
   onSelectChain?(chainId: TargetChainId): boolean
   disabled?: boolean
   tokenPickerTrigger?: boolean
+  nativeSolanaSelected?: boolean
+  includeNativeSolana?: boolean
+}
+
+function useDisplayedNetwork(
+  selectedChainId: TargetChainId | undefined,
+  nativeSolanaSelected: boolean,
+): {
+  unsupported: boolean
+  currentChainId: TargetChainId | null
+  isDarkMode: boolean
+  logo: string
+  label: string
+} {
+  const { chainId: walletChainId } = useWalletInfo()
+  const chainId = selectedChainId ?? walletChainId
+  const info = getChainInfo(chainId)
+  const { darkMode: isDarkMode } = useTheme()
+  const walletUnsupported = useIsProviderNetworkUnsupported()
+  const unsupported = !nativeSolanaSelected && selectedChainId === undefined && walletUnsupported
+  const currentChainId = nativeSolanaSelected || unsupported ? null : chainId
+  if (nativeSolanaSelected)
+    return { unsupported, currentChainId, isDarkMode, logo: '/logos/token-sol.svg', label: 'Solana' }
+  return {
+    unsupported,
+    currentChainId,
+    isDarkMode,
+    logo: isDarkMode ? info.logo.dark : info.logo.light,
+    label: info.label,
+  }
 }
 
 export function NetworkSelector({
@@ -35,17 +67,16 @@ export function NetworkSelector({
   onSelectChain: selectSourceChain,
   disabled = false,
   tokenPickerTrigger = false,
+  nativeSolanaSelected = false,
+  includeNativeSolana = !selectSourceChain && !tokenPickerTrigger,
 }: NetworkSelectorProps = {}): ReactNode {
-  const { chainId: walletChainId } = useWalletInfo()
-  const chainId = selectedChainId ?? walletChainId
+  const navigate = useNavigate()
+  const display = useDisplayedNetwork(selectedChainId, nativeSolanaSelected)
   const node = useRef<HTMLDivElement>(null)
   const nodeMobile = useRef<HTMLDivElement>(null)
   const nodeSelector = useRef<HTMLButtonElement>(null)
   const isOpen = useModalIsOpen(ApplicationModal.NETWORK_SELECTOR)
   const toggleModal = useToggleModal(ApplicationModal.NETWORK_SELECTOR)
-  const isWalletChainUnsupported = useIsProviderNetworkUnsupported()
-  const isChainIdUnsupported = selectedChainId === undefined && isWalletChainUnsupported
-  const info = getChainInfo(chainId)
   const isUpToMedium = useMediaQuery(Media.upToMedium(false))
   const shouldHideNetworkSelector = useShouldHideNetworkSelector()
   useOnClickOutside(isUpToMedium ? [nodeMobile, nodeSelector] : [node], () => {
@@ -57,8 +88,6 @@ export function NetworkSelector({
   useBodyScrollbarLocker(isOpen && !disabled && !shouldHideNetworkSelector, Media.upToMedium(false))
 
   const onSelectChain = useOnSelectNetwork()
-  const { darkMode: isDarkMode } = useTheme()
-  const logoUrl = isDarkMode ? info.logo.dark : info.logo.light
   const availableChains = useAvailableChains()
   const handleClose = (): void => {
     if (isOpen) toggleModal()
@@ -68,7 +97,10 @@ export function NetworkSelector({
     if (disabled) return
     if (isOpen) toggleModal()
     if (selectSourceChain?.(targetChainId)) return
-    if (isSupportedChainId(targetChainId)) void onSelectChain(targetChainId, true)
+    if (isSupportedChainId(targetChainId)) {
+      const returnToSwap = nativeSolanaSelected ? () => navigate(`/${targetChainId}/swap`) : undefined
+      void onSelectChain(targetChainId, true, returnToSwap)
+    }
   }
 
   if (shouldHideNetworkSelector) {
@@ -78,11 +110,12 @@ export function NetworkSelector({
   const flyoutMenu = (
     <NetworkSelectorMenu
       menuRef={nodeMobile}
-      currentChainId={isChainIdUnsupported ? null : chainId}
+      currentChainId={display.currentChainId}
       availableChains={[...new Set([...availableChains, ...additionalChainIds])]}
-      isDarkMode={isDarkMode}
+      isDarkMode={display.isDarkMode}
       onSelectChain={handleSelectChain}
       onClose={handleClose}
+      nativeSolanaEnabled={!!OPHIS_SOLANA_CONFIG && includeNativeSolana}
     />
   )
 
@@ -96,13 +129,13 @@ export function NetworkSelector({
         aria-expanded={isOpen}
         aria-haspopup="dialog"
         data-token-picker-trigger={tokenPickerTrigger || undefined}
-        $isChainIdUnsupported={isChainIdUnsupported}
+        $isChainIdUnsupported={display.unsupported}
         $isOpen={isOpen}
       >
-        {!isChainIdUnsupported ? (
+        {!display.unsupported ? (
           <>
-            <styledEl.SelectorLogo src={logoUrl} />
-            <styledEl.SelectorLabel>{info?.label}</styledEl.SelectorLabel>
+            <styledEl.SelectorLogo src={display.logo} />
+            <styledEl.SelectorLabel>{display.label}</styledEl.SelectorLabel>
             <styledEl.StyledChevronDown $isOpen={isOpen} />
           </>
         ) : (

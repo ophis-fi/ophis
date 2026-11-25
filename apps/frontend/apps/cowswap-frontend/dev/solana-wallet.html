@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Ophis · Devnet wallet test</title>
+    <style>
+      body {
+        max-width: 28rem;
+        margin: 12vh auto;
+        padding: 0 1rem;
+        font:
+          1rem/1.5 system-ui,
+          sans-serif;
+        color: #18191b;
+      }
+      h1 {
+        font-size: 1.6rem;
+      }
+      button,
+      a {
+        font: inherit;
+      }
+      output {
+        overflow-wrap: anywhere;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Test WalletConnect on Solana devnet</h1>
+    <p>
+      Approve the connection to share your devnet address. Ophis then disconnects. If your wallet asks you to sign a
+      message or transaction, decline it.
+    </p>
+    <p>
+      On your phone, open <a href="https://react-wallet.walletconnect.com/settings">Reown’s demo wallet</a> and enable
+      Testnets in Settings. In its WalletConnect tab, choose Scan QR code and scan the code shown here. Use the
+      disposable demo account. MetaMask Mobile supports Solana mainnet only.
+    </p>
+    <main id="test"></main>
+    <script type="module" src="../src/dev/solana-wallet.tsx"></script>
+  </body>
+</html>

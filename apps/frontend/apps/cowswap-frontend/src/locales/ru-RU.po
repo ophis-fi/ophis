@@ -4552,6 +4552,7 @@ msgstr "Восстановить"
 
 #: apps/cowswap-frontend/src/modules/bridge/pure/contents/SwapResultContent/contents.tsx
 #: libs/common-const/src/common.ts
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaHistory.container.tsx
 msgid "Received"
 msgstr "Получено"
 
@@ -5582,8 +5583,9 @@ msgid "Connect wallet banner"
 msgstr "Подключить баннер кошелька"
 
 #: apps/cowswap-frontend/src/modules/volumeFee/hooks/useVolumeFeeTooltip.ts
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaHistory.container.tsx
 msgid "Ophis fee"
-msgstr ""
+msgstr "Комиссия Ophis"
 
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/steps/FinishedStep.tsx
 msgid "win"
@@ -6681,3 +6683,319 @@ msgstr "Один на подходящий кошелёк. Пока есть н�
 #: apps/cowswap-frontend/src/modules/swap/containers/BottomBanners/BottomBanners.container.tsx
 msgid "Claim your ticket"
 msgstr "Получить награду"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+msgid "{baseBps} bp"
+msgstr "{baseBps} б. п."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+msgid "50%, capped at {improvementCapBps} bp of the trade"
+msgstr "50 %, но не более {improvementCapBps} б. п. от суммы сделки"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaTradePanels.container.tsx
+msgid "Amount exceeds your wallet balance."
+msgstr "Сумма превышает баланс кошелька."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+msgid "Base rate"
+msgstr "Базовая ставка"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/AssetPicker.pure.tsx
+msgid "Choose a token to buy"
+msgstr "Выберите токен для покупки"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/AssetPicker.pure.tsx
+msgid "Choose a token to sell"
+msgstr "Выберите токен для продажи"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+msgid "Confirm in wallet"
+msgstr "Подтвердить в кошельке"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaWalletConnect.container.tsx
+msgid "Connect a mobile wallet by QR code"
+msgstr "Подключить мобильный кошелёк по QR-коду"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaWalletAction.container.tsx
+msgid "Connect a Solana wallet"
+msgstr "Подключить кошелёк Solana"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaTradePanels.container.tsx
+msgid "Connect to see your wallet balance."
+msgstr "Подключите кошелёк, чтобы увидеть баланс."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaWalletAction.container.tsx
+msgid "Connecting…"
+msgstr "Подключение…"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaHistory.container.tsx
+msgid "Could not load wallet trades."
+msgstr "Не удалось загрузить сделки кошелька."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaWalletAction.container.tsx
+msgid "Detected in this browser"
+msgstr "Обнаружены в этом браузере"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaWalletAction.container.tsx
+msgid "Disconnect wallet"
+msgstr "Отключить кошелёк"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaTradePanels.container.tsx
+msgid "Enter amount"
+msgstr "Введите сумму"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+msgid "Estimated SOL left after placing the order"
+msgstr "Расчётный остаток SOL после размещения ордера"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaHistory.container.tsx
+msgid "Fee attribution unavailable"
+msgstr "Разбивка комиссий недоступна"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaTradePanels.container.tsx
+msgid "Get 0.1 test SOL"
+msgstr "Получить 0,1 тестового SOL"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaWalletAction.container.tsx
+msgid "Get a wallet"
+msgstr "Установить кошелёк"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaWalletAction.container.tsx
+msgid "Get quote"
+msgstr "Получить котировку"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/AssetPicker.pure.tsx
+msgid "In your wallet"
+msgstr "В вашем кошельке"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaTradePanels.container.tsx
+msgid "Leave some SOL in your wallet for network fees and account rent."
+msgstr "Оставьте немного SOL в кошельке для комиссии сети и арендного депозита счёта."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaTradePanels.container.tsx
+msgid "Loading wallet balances…"
+msgstr "Загрузка балансов кошелька…"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaForm.container.tsx
+msgid "Local test network"
+msgstr "Локальная тестовая сеть"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+msgid "Minimum received"
+msgstr "Минимум к получению"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaHistory.container.tsx
+msgid "Next"
+msgstr "Далее"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/AssetPicker.pure.tsx
+msgid "No matching token. Try its full mint address."
+msgstr "Токен не найден. Введите полный адрес его mint-аккаунта."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaOrders.container.tsx
+msgid "No submission confirmed"
+msgstr "Отправка не подтверждена"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaHistory.container.tsx
+msgid "No trades on this page."
+msgstr "На этой странице нет сделок."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaWalletAction.container.tsx
+msgid "Open this page in a Solana wallet browser or install a compatible wallet extension."
+msgstr "Откройте эту страницу в браузере кошелька Solana или установите совместимое расширение."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+msgid "Ophis base fee in the buy token"
+msgstr "Базовая комиссия Ophis в покупаемом токене"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaHistory.container.tsx
+msgid "{amount} base units"
+msgstr "{amount} базовых единиц"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+msgid "Ophis share of execution above your quote"
+msgstr "Доля Ophis в улучшении цены относительно вашей котировки"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaWalletConnect.container.tsx
+msgid "Pairing is not configured for this site"
+msgstr "Сопряжение для этого сайта не настроено"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+msgid "Preparing your trade. Check your wallet for any approval request."
+msgstr "Подготовка сделки. Проверьте запросы на подтверждение в кошельке."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaHistory.container.tsx
+msgid "Previous"
+msgstr "Назад"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaOrders.container.tsx
+msgid "Reclaim account rent"
+msgstr "Вернуть арендный депозит"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaTradePanels.container.tsx
+msgid "Refresh balance"
+msgstr "Обновить баланс"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaOrders.container.tsx
+msgid "Refresh status"
+msgstr "Обновить статус"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaHistory.container.tsx
+msgid "Refresh trades"
+msgstr "Обновить сделки"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaTradePanels.container.tsx
+msgid "Requesting test SOL…"
+msgstr "Запрашиваем тестовые SOL…"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+msgid "Review your swap"
+msgstr "Проверьте параметры обмена"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaWalletConnect.container.tsx
+msgid "Scan with a Solana wallet or <0>open your wallet</0> on this device."
+msgstr "Отсканируйте код кошельком Solana или <0>откройте кошелёк</0> на этом устройстве."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaHistory.container.tsx
+msgid "Settled trades"
+msgstr "Исполненные сделки"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaForm.container.tsx
+msgid "Slippage limit"
+msgstr "Допустимое проскальзывание"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaOrders.container.tsx
+msgid "Solana order"
+msgstr "Ордер Solana"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+msgid "Solana trading is being prepared"
+msgstr "Идёт подготовка торгов в сети Solana"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaOrders.container.tsx
+msgid "Swap attempt"
+msgstr "Попытка обмена"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+msgid "Swap on Solana."
+msgstr "Обмен в сети Solana."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaTradePanels.container.tsx
+msgid "This wallet needs test SOL on localnet."
+msgstr "Этому кошельку нужны тестовые SOL в локальной сети."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/AssetPicker.pure.tsx
+msgid "Tokens on this network"
+msgstr "Токены этой сети"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+msgid "Total quote costs in the buy token"
+msgstr "Общие расходы по котировке в покупаемом токене"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+msgid "Trading will be available here when the Ophis Solana service is ready."
+msgstr "Торговля станет доступна, когда сервис Ophis для Solana будет готов."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaWalletConnect.container.tsx
+msgid "Unavailable on this local or custom network"
+msgstr "Недоступно в этой локальной или пользовательской сети"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaOrders.container.tsx
+msgid "Waiting for order indexing"
+msgstr "Ожидание индексации ордера"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaWalletConnect.container.tsx
+msgid "Waiting for your wallet…"
+msgstr "Ожидание ответа кошелька…"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaTradePanels.container.tsx
+msgid "Wallet balance · {balance} {symbol}"
+msgstr "Баланс кошелька · {balance} {symbol}"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaTradePanels.container.tsx
+msgid "Wallet balances unavailable"
+msgstr "Балансы кошелька недоступны"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+msgid "Your wallet pays network fees and account rent."
+msgstr "Комиссия сети и арендный депозит счёта оплачиваются из вашего кошелька."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaWalletConnect.container.tsx
+msgid "No Solana connection was confirmed. Check that your wallet supports this network, then try again."
+msgstr "Подключение к Solana не подтверждено. Проверьте, поддерживает ли ваш кошелёк эту сеть, и попробуйте снова."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaWalletConnect.container.tsx
+msgid "Your wallet did not confirm this Solana connection."
+msgstr "Ваш кошелёк не подтвердил это подключение к Solana."
+
+#: apps/cowswap-frontend/src/modules/trade/containers/TradeWidget/TradeWidgetForm.tsx
+msgid "Loading swap controls…"
+msgstr "Загружаются настройки обмена…"
+
+#: apps/cowswap-frontend/src/modules/networkSelector/NetworkSelectorMenu.pure.tsx
+msgid "No networks found."
+msgstr "Сети не найдены."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaOrders.container.tsx
+msgid "Order creation failed on Solana. Check your wallet activity."
+msgstr "Не удалось создать ордер в Solana. Проверьте историю операций в кошельке."
+
+#: apps/cowswap-frontend/src/ophis/components/AssetSwap/AssetSwapFields.tsx
+msgid "Reverse swap direction"
+msgstr "Поменять направление обмена"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaForm.container.tsx
+msgid "Solana devnet · Test tokens"
+msgstr "Тестовая сеть Solana Devnet · Тестовые токены"
+
+#: apps/cowswap-frontend/src/ophis/components/AssetSwap/AssetSwapFields.tsx
+msgid "Swap assets"
+msgstr "Обмен активов"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaOrders.container.tsx
+msgid "The transaction expired without a confirmed order. Check your wallet activity before requesting a new quote."
+msgstr "Срок действия транзакции истёк без подтверждения ордера. Проверьте историю операций в кошельке перед запросом новой котировки."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaOrders.container.tsx
+msgid "Wallet submitted. Waiting for confirmation and indexing."
+msgstr "Кошелёк отправил транзакцию. Ожидаем подтверждения и индексации."
+
+#: apps/cowswap-frontend/src/modules/trade/containers/TradeWidget/TradeWidgetForm.tsx
+msgid "You buy"
+msgstr "Вы покупаете"
+
+#: apps/cowswap-frontend/src/ophis/components/AssetSwap/AssetSwapFields.tsx
+msgid "You buy: choose a token"
+msgstr "Вы покупаете: выберите токен"
+
+#: apps/cowswap-frontend/src/ophis/components/AssetSwap/AssetSwapFields.tsx
+msgid "You sell: choose a token"
+msgstr "Вы продаёте: выберите токен"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaOrders.container.tsx
+msgid "The settlement transaction failed. Your order is still open."
+msgstr "Транзакция исполнения не удалась. Ордер остаётся открытым."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaOrders.container.tsx
+msgid "The settlement transaction expired before it landed. Your order is still open."
+msgstr "Срок действия транзакции исполнения истёк до включения в блок. Ордер остаётся открытым."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaOrders.container.tsx
+msgid "The solver has stopped working on this order. You can cancel it below."
+msgstr "Солвер прекратил обработку ордера. Вы можете отменить его ниже."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaOrders.container.tsx
+msgid "Checking whether the settlement landed on Solana."
+msgstr "Проверяем, вошла ли транзакция исполнения в блок Solana."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaOrders.container.tsx
+msgid "The settlement finalized. Checking the order receipt."
+msgstr "Исполнение окончательно подтверждено. Проверяем данные ордера."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaOrders.container.tsx
+msgid "The Ophis solver is looking for a fill at your minimum price or better."
+msgstr "Солвер Ophis ищет возможность исполнить ордер по вашей минимальной цене или выше."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaOrders.container.tsx
+msgid "Waiting for a settlement status update."
+msgstr "Ожидаем обновления статуса исполнения."

@@ -1,4 +1,4 @@
-import { ReactNode, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, ReactNode, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { getIsNativeToken, isSellOrder } from '@cowprotocol/common-utils'
 import { OrderKind } from '@cowprotocol/cow-sdk'
@@ -63,6 +63,7 @@ import { WholeTokenReview } from '../WholeTokenRoute/WholeTokenReview.container'
 import { WholeTokenRoute } from '../WholeTokenRoute/WholeTokenRoute.container'
 
 export interface SwapWidgetProps {
+  nativeSolana?: boolean
   standardUpdaters?: ReactNode
   headerContent?: ReactNode
   topContent?: ReactNode
@@ -71,7 +72,21 @@ export interface SwapWidgetProps {
   enableCctp?: boolean
 }
 
-export function SwapWidget(props: SwapWidgetProps): ReactNode {
+const NativeSolanaWidget = lazy(() =>
+  import('modules/nativeSolana').then((module) => ({ default: module.NativeSolanaWidget })),
+)
+
+export function SwapWidget({ nativeSolana, ...props }: SwapWidgetProps): ReactNode {
+  return nativeSolana ? (
+    <Suspense fallback={<p role="status">Loading swap…</p>}>
+      <NativeSolanaWidget />
+    </Suspense>
+  ) : (
+    <EvmAndBridgeSwapWidget {...props} />
+  )
+}
+
+function EvmAndBridgeSwapWidget(props: SwapWidgetProps): ReactNode {
   const direct = useNearSwapEntry()
   const consentFlow = useTokenSelectorConsentFlow()
   return (

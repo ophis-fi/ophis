@@ -1,0 +1,1559 @@
+{
+  "address": "ADHUVdUs37pm9EJuQDhj9u3GqUoSiu1W6U4qikuNVNEF",
+  "metadata": {
+    "name": "cow_settlement",
+    "version": "0.5.4",
+    "spec": "0.1.0",
+    "description": "CoW Protocol settlement program. Some of the properties and instructions of this program can't be represented via a standard IDL, please be careful to read the documentation on the function you are using.",
+    "repository": "https://github.com/cowprotocol/solana-programs"
+  },
+  "instructions": [
+    {
+      "name": "initialize",
+      "docs": [
+        "Creates the singleton settlement state PDA and the native SOL buffer. Succeeds only once, and only when signed by the hardcoded initializer."
+      ],
+      "discriminator": [
+        3
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true,
+          "address": "E5kjcEZNVhwSs53GDGZaC1W6QtAFTZr27w4upLy2K1Jn",
+          "docs": [
+            "Funds the state PDA's and native SOL buffer's rent. Must be the hardcoded initializer."
+          ]
+        },
+        {
+          "name": "state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  116,
+                  116,
+                  108,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116,
+                  32,
+                  118,
+                  48,
+                  46,
+                  53,
+                  32,
+                  32,
+                  32,
+                  32
+                ]
+              }
+            ]
+          },
+          "docs": [
+            "Canonical PDA seeded by SETTLEMENT_SEED alone. SETTLEMENT_SEED is the ASCII prefix \"settlement v\" followed by the program's major.minor version, right-padded with spaces to a fixed 19 bytes; the fixed width prevents one version's seeds from being a prefix of another's."
+          ]
+        },
+        {
+          "name": "native_sol_buffer",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  116,
+                  116,
+                  108,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116,
+                  32,
+                  118,
+                  48,
+                  46,
+                  53,
+                  32,
+                  32,
+                  32,
+                  32
+                ]
+              },
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114,
+                  32,
+                  110,
+                  97,
+                  116,
+                  105,
+                  118,
+                  101,
+                  32,
+                  115,
+                  111,
+                  108
+                ]
+              }
+            ]
+          },
+          "docs": [
+            "Canonical PDA seeded by [SETTLEMENT_SEED, \"buffer native sol\"]. Created as an empty account owned by the settlement program, whose lamports on top of rent pay out orders buying native SOL."
+          ]
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "manager",
+          "docs": [
+            "The initial holder of the Manager role: the account authorized to transfer any role."
+          ],
+          "type": "pubkey"
+        },
+        {
+          "name": "solver_authority",
+          "docs": [
+            "The initial holder of the SolverAuthority role: the account authorized to add and remove solvers."
+          ],
+          "type": "pubkey"
+        },
+        {
+          "name": "reclaim_authority",
+          "docs": [
+            "The initial holder of the ReclaimAuthority role: the account authorized to close buffer accounts and reclaim their rent."
+          ],
+          "type": "pubkey"
+        },
+        {
+          "name": "settlement_owned_order_authority",
+          "docs": [
+            "The initial holder of the SettlementOwnedOrderAuthority role: the account authorized to place orders that sell the protocol's own buffer balances."
+          ],
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "create_buffer",
+      "docs": [
+        "Creates one or more per-token buffer PDAs (token accounts) in a single instruction.",
+        "Every buffer is created under the token program that owns its mint, and the instruction names a single token_program for those CPIs to dispatch to, so mints spread across both supported token programs need one instruction each.",
+        "IDL LIMITATION: the real instruction accepts an unbounded number of (buffer_pda, mint) pairs as remaining accounts, one pair per buffer, with at least one pair required (CreateBuffer rejects zero buffers). IDL grammar has no 'repeated group' construct, so this file only declares the guaranteed index-0 template (buffer/mint_0).",
+        "Each buffer_pda_i must be the canonical PDA for seeds [SETTLEMENT_SEED, mint_i, \"buffer\"]."
+      ],
+      "discriminator": [
+        4
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "The token program the created buffer PDAs are initialized through. Must be one of the supported token programs, and the one owning every mint this instruction is handed."
+          ]
+        },
+        {
+          "name": "buffer",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  116,
+                  116,
+                  108,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116,
+                  32,
+                  118,
+                  48,
+                  46,
+                  53,
+                  32,
+                  32,
+                  32,
+                  32
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint_0"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              }
+            ]
+          },
+          "docs": [
+            "Guaranteed present: CreateBuffer rejects an instruction with zero buffers."
+          ]
+        },
+        {
+          "name": "mint_0",
+          "docs": [
+            "Guaranteed present: CreateBuffer rejects an instruction with zero buffers."
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "create_order",
+      "docs": [
+        "Allocates a per-order PDA and writes the initial OrderAccount body.",
+        "order_pda's canonical seeds are [SETTLEMENT_SEED, sha256(intent_bytes), \"order\"]. This is not expressible as a static `pda` entry because the middle seed is a hash of the entire `intent` argument, not a plain field/account reference, which is outside what the PDA-seed grammar can describe."
+      ],
+      "discriminator": [
+        2
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "docs": [
+            "Must match intent.owner; authenticates the order."
+          ]
+        },
+        {
+          "name": "created_by",
+          "writable": true,
+          "signer": true,
+          "docs": [
+            "Funds the new order PDA's rent."
+          ]
+        },
+        {
+          "name": "order_pda",
+          "writable": true,
+          "docs": [
+            "See the seed-derivation note above; cannot be auto-derived by IDL-driven tooling."
+          ]
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "intent",
+          "type": {
+            "defined": {
+              "name": "OrderIntent"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "cancel_order",
+      "docs": [
+        "Cancels an order so it can no longer be settled. Only the order owner may cancel.",
+        "If the order PDA doesn't exist yet, it's created already cancelled. For this, some arbitrary account needs to pay the rent and sign.",
+        "An existing order owned by the state PDA is cancelled by the SettlementOwnedOrderAuthority instead."
+      ],
+      "discriminator": [
+        11
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "docs": [
+            "Must match intent.owner; authenticates the cancellation. For an order owned by the state PDA, must instead match the settlement_owned_order_authority recorded in state."
+          ]
+        },
+        {
+          "name": "created_by",
+          "writable": true,
+          "signer": true,
+          "docs": [
+            "Funds the order PDA's rent when the order is created cancelled; the program only requires its signature in that case. Unused when an existing order is cancelled."
+          ]
+        },
+        {
+          "name": "order_pda",
+          "writable": true,
+          "docs": [
+            "The order to cancel. Its canonical seeds include sha256(intent), so it cannot be auto-derived by IDL-driven tooling."
+          ]
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "state",
+          "optional": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  116,
+                  116,
+                  108,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116,
+                  32,
+                  118,
+                  48,
+                  46,
+                  53,
+                  32,
+                  32,
+                  32,
+                  32
+                ]
+              }
+            ]
+          },
+          "docs": [
+            "Required only to cancel an order owned by the state PDA; names the settlement-owned-order authority the signer is checked against. Canonical PDA seeded by SETTLEMENT_SEED alone."
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "intent",
+          "type": {
+            "defined": {
+              "name": "OrderIntent"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "create_settlement_owned_order",
+      "docs": [
+        "Create an order on behalf of the state PDA. Used to sell fees accumulated in the buffer accounts through a regular settlement.",
+        "The order isn't authenticated by its owner: the owner is the settlement state PDA, which has no key. The settlement-owned-order authority signs instead, and the program forces intent.owner to be the state PDA, so a settlement-owned order can only sell funds the protocol controls (its buffer balances, which the state PDA owns). Once created it settles through the normal BeginSettle/FinalizeSettle flow.",
+        "order_pda's canonical seeds are [SETTLEMENT_SEED, sha256(intent_bytes), \"order\"]. This is not expressible as a static `pda` entry because the middle seed is a hash of the entire `intent` argument, not a plain field/account reference, which is outside what the PDA-seed grammar can describe."
+      ],
+      "discriminator": [
+        10
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "docs": [
+            "Must match the settlement_owned_order_authority recorded in the state PDA; authorizes the order without paying rent."
+          ]
+        },
+        {
+          "name": "created_by",
+          "writable": true,
+          "signer": true,
+          "docs": [
+            "Funds the new order PDA's rent and is recorded as the order's created_by, so ReclaimOrder refunds it there. May be the same account as authority."
+          ]
+        },
+        {
+          "name": "state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  116,
+                  116,
+                  108,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116,
+                  32,
+                  118,
+                  48,
+                  46,
+                  53,
+                  32,
+                  32,
+                  32,
+                  32
+                ]
+              }
+            ]
+          },
+          "docs": [
+            "Names the settlement-owned-order authority the signer is checked against and is the owner every settlement-owned order is bound to. Canonical PDA seeded by SETTLEMENT_SEED alone."
+          ]
+        },
+        {
+          "name": "order_pda",
+          "writable": true,
+          "docs": [
+            "See the seed-derivation note above; cannot be auto-derived by IDL-driven tooling."
+          ]
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "intent",
+          "type": {
+            "defined": {
+              "name": "OrderIntent"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "begin_settle",
+      "docs": [
+        "Pulls funds for a batch of orders. Must be paired in the same transaction with a FinalizeSettle at `finalize_ix_index`.",
+        "IDL LIMITATION: only the fixed-size prefix (finalize_ix_index, auction_id) is represented as typed arguments. After it, the real wire format is `[order_count: u8][transfer_count; order_count][amount: u64 LE; sum(transfer_count)]`, and each order adds `[order_pda, sell_token_account, sell_mint, destination; transfer_count]` accounts. A sell_mint set to the instructions sysvar selects Transfer instead of TransferChecked. Please check the rust documentation for more information."
+      ],
+      "discriminator": [
+        0
+      ],
+      "accounts": [
+        {
+          "name": "solver",
+          "signer": true,
+          "docs": [
+            "The solver settling this batch. Must be present in the state PDA's solver list; only a registered solver may settle."
+          ]
+        },
+        {
+          "name": "instructions_sysvar",
+          "address": "Sysvar1nstructions1111111111111111111111111"
+        },
+        {
+          "name": "state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  116,
+                  116,
+                  108,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116,
+                  32,
+                  118,
+                  48,
+                  46,
+                  53,
+                  32,
+                  32,
+                  32,
+                  32
+                ]
+              }
+            ]
+          },
+          "docs": [
+            "Must be the canonical state PDA; holds the solver list `solver` is checked against, and signs each pull as the user's SPL delegate."
+          ]
+        },
+        {
+          "name": "spl_token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "docs": [
+            "The legacy SPL Token program; one of two fixed token-program slots this settlement's pulls are issued against. A settlement whose pulls only touch Token-2022 may put any already-present account here."
+          ]
+        },
+        {
+          "name": "token_2022_program",
+          "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+          "docs": [
+            "The SPL Token-2022 program; the second fixed token-program slot. A settlement whose pulls only touch the legacy SPL Token program may put any already-present account here."
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "finalize_ix_index",
+          "type": "u16",
+          "docs": [
+            "Index of the paired FinalizeSettle in this transaction. Little-endian, matching standard Borsh/Anchor u16 decoding."
+          ]
+        },
+        {
+          "name": "auction_id",
+          "type": "i64",
+          "docs": [
+            "The off-chain auction this settlement executes. Carried in the instruction data so the settlement can be tied back to its auction off-chain, unused on-chain."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "finalize_settle",
+      "docs": [
+        "Validates that a BeginSettle at `begin_ix_index` exists and points back at this instruction. Must not be called via CPI.",
+        "IDL LIMITATION: only the fixed-size prefix (begin_ix_index) is represented as a typed argument. After it, the real wire format is `[bump: u8; push_count][amount: u64 LE; push_count]`, where each bump is the canonical bump of the push's source: the buy mint's buffer PDA, or the native SOL buffer PDA for an order buying native SOL. Each push adds `[source_buffer, destination, mint]` accounts. A mint set to the instructions sysvar selects Transfer instead of TransferChecked. Please check the rust documentation for more information."
+      ],
+      "discriminator": [
+        1
+      ],
+      "accounts": [
+        {
+          "name": "instructions_sysvar",
+          "address": "Sysvar1nstructions1111111111111111111111111"
+        },
+        {
+          "name": "state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  116,
+                  116,
+                  108,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116,
+                  32,
+                  118,
+                  48,
+                  46,
+                  53,
+                  32,
+                  32,
+                  32,
+                  32
+                ]
+              }
+            ]
+          },
+          "docs": [
+            "Must be the canonical state PDA; signs each push as the buffers' SPL token authority."
+          ]
+        },
+        {
+          "name": "spl_token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "docs": [
+            "The legacy SPL Token program; one of two fixed token-program slots this settlement's pushes are issued against. A settlement whose pushes only touch Token-2022 may put any already-present account here."
+          ]
+        },
+        {
+          "name": "token_2022_program",
+          "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+          "docs": [
+            "The SPL Token-2022 program; the second fixed token-program slot. A settlement whose pushes only touch the legacy SPL Token program may put any already-present account here."
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "begin_ix_index",
+          "type": "u16",
+          "docs": [
+            "Index of the paired BeginSettle in this transaction. Little-endian, matching standard Borsh/Anchor u16 decoding."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "reclaim_order",
+      "docs": [
+        "Closes an order PDA and returns its rent lamports to the created_by account recorded in the order body.",
+        "Anyone may reclaim after now > valid_to, or before expiry if the order is completely filled.",
+        "Reclaiming a cancelled order that is not completely filled while now <= valid_to requires the stored intent owner's signature."
+      ],
+      "discriminator": [
+        5
+      ],
+      "accounts": [
+        {
+          "name": "order_pda",
+          "writable": true,
+          "docs": [
+            "The order PDA to close. Its canonical bump is read out of the stored OrderAccount body, so no bump argument is needed."
+          ]
+        },
+        {
+          "name": "reclaim_recipient",
+          "writable": true,
+          "docs": [
+            "Must match the created_by address recorded in the order; receives the recovered rent lamports."
+          ]
+        },
+        {
+          "name": "owner",
+          "signer": true,
+          "optional": true,
+          "docs": [
+            "Required only for cancelled, unexpired orders. Must match the stored intent owner and sign, independently of reclaim_recipient."
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "reclaim_buffer",
+      "docs": [
+        "Closes one or more buffer PDAs and sends each closed buffer's rent lamports to a reclaim_recipient of the caller's choosing. Only the current holder of the ReclaimAuthority role recorded in the state PDA may authorize this. Each buffer carries a u64 burn limit in the instruction data: a buffer whose balance does not exceed its limit is burned to zero (when non-empty) and closed, while a balance above its limit is skipped so the rest of the batch still closes; the instruction reverts only when every buffer is over its limit. A zero limit forbids burning, so a non-empty buffer is closed only when the caller allows it with a non-zero limit. Any other failure, such as a non-canonical PDA or a burn or close that fails, reverts the whole instruction.",
+        "Every buffer is closed by the token program that owns it, and the instruction names a single token_program for those CPIs to dispatch to, so buffers spread across both supported token programs need one instruction each.",
+        "IDL LIMITATION: the real instruction accepts an unbounded number of (buffer_pda, mint) pairs as remaining accounts, one pair per buffer, with at least one pair required (ReclaimBuffer rejects zero buffers), and the instruction data carries one little-endian u64 burn limit per buffer in the same order. IDL grammar has no 'repeated group' construct, so this file only declares the guaranteed index-0 template (buffer/mint_0) and omits the per-buffer limits.",
+        "Each buffer_pda_i must be the canonical PDA for seeds [SETTLEMENT_SEED, mint_i, \"buffer\"]; mint_i is passed only so that derivation can be checked on-chain."
+      ],
+      "discriminator": [
+        6
+      ],
+      "accounts": [
+        {
+          "name": "state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  116,
+                  116,
+                  108,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116,
+                  32,
+                  118,
+                  48,
+                  46,
+                  53,
+                  32,
+                  32,
+                  32,
+                  32
+                ]
+              }
+            ]
+          },
+          "docs": [
+            "Must be the canonical state PDA; holds the reclaim_authority the signer is checked against, and is the buffers' SPL token authority. Canonical PDA seeded by SETTLEMENT_SEED alone. SETTLEMENT_SEED is the ASCII prefix \"settlement v\" followed by the program's major.minor version, right-padded with spaces to a fixed 19 bytes; the fixed width prevents one version's seeds from being a prefix of another's."
+          ]
+        },
+        {
+          "name": "reclaim_authority",
+          "signer": true,
+          "docs": [
+            "Must match the reclaim_authority address recorded in the state PDA."
+          ]
+        },
+        {
+          "name": "reclaim_recipient",
+          "writable": true,
+          "docs": [
+            "Receives the rent lamports of every closed buffer."
+          ]
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "The token program the buffer PDAs are closed through. Must be one of the supported token programs, and the one owning every buffer this instruction is handed."
+          ]
+        },
+        {
+          "name": "buffer",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  116,
+                  116,
+                  108,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116,
+                  32,
+                  118,
+                  48,
+                  46,
+                  53,
+                  32,
+                  32,
+                  32,
+                  32
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint_0"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              }
+            ]
+          },
+          "docs": [
+            "Guaranteed present: ReclaimBuffer rejects an instruction with zero buffers."
+          ]
+        },
+        {
+          "name": "mint_0",
+          "docs": [
+            "Guaranteed present: ReclaimBuffer rejects an instruction with zero buffers. Must be writable when this buffer's burn limit is non-zero, since burning decrements the mint's supply; read-only is enough for a zero-limit close."
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "transfer_authority",
+      "docs": [
+        "Transfers a Role to another account: the signer names the new holder and the role's holder is updated immediately.",
+        "The signer must be either the manager or the current holder of the role being transferred."
+      ],
+      "discriminator": [
+        7
+      ],
+      "accounts": [
+        {
+          "name": "signer",
+          "signer": true,
+          "docs": [
+            "Authorizes the transfer; must be the manager or the current holder of `role`."
+          ]
+        },
+        {
+          "name": "state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  116,
+                  116,
+                  108,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116,
+                  32,
+                  118,
+                  48,
+                  46,
+                  53,
+                  32,
+                  32,
+                  32,
+                  32
+                ]
+              }
+            ]
+          },
+          "docs": [
+            "Canonical PDA seeded by SETTLEMENT_SEED alone. SETTLEMENT_SEED is the ASCII prefix \"settlement v\" followed by the program's major.minor version, right-padded with spaces to a fixed 19 bytes; the fixed width prevents one version's seeds from being a prefix of another's."
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "role",
+          "type": {
+            "defined": {
+              "name": "Role"
+            }
+          },
+          "docs": [
+            "The role to transfer, as its single wire discriminator byte."
+          ]
+        },
+        {
+          "name": "new_authority",
+          "type": "pubkey",
+          "docs": [
+            "Becomes the holder of `role` once the instruction succeeds."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "add_solver",
+      "docs": [
+        "Registers a solver, allowing that account to execute settlements. Only the current holder of the SolverAuthority role may authorize this, and a solver that is already registered is rejected.",
+        "The state PDA grows by one address, so the payer tops up its rent through a system-program transfer."
+      ],
+      "discriminator": [
+        8
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "docs": [
+            "Must match the solver_authority address recorded in the state PDA. Authorizes the change but doesn't pay for it."
+          ]
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true,
+          "docs": [
+            "Funds the rent of the state PDA's extra solver slot."
+          ]
+        },
+        {
+          "name": "state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  116,
+                  116,
+                  108,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116,
+                  32,
+                  118,
+                  48,
+                  46,
+                  53,
+                  32,
+                  32,
+                  32,
+                  32
+                ]
+              }
+            ]
+          },
+          "docs": [
+            "Holds the solver authority the signer is checked against and the solver list the new solver is inserted into; grown by one address. Canonical PDA seeded by SETTLEMENT_SEED alone. SETTLEMENT_SEED is the ASCII prefix \"settlement v\" followed by the program's major.minor version, right-padded with spaces to a fixed 19 bytes; the fixed width prevents one version's seeds from being a prefix of another's."
+          ]
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "solver",
+          "type": "pubkey",
+          "docs": [
+            "The account to register as a solver."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "remove_solver",
+      "docs": [
+        "Removes a solver, preventing that account from executing settlements. Only the current holder of the SolverAuthority role may authorize this, and a solver that isn't registered is rejected.",
+        "The state PDA shrinks by one address, and the freed rent is paid to rent_recipient by a direct debit from the program-owned PDA, so no system program is involved."
+      ],
+      "discriminator": [
+        9
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "docs": [
+            "Must match the solver_authority address recorded in the state PDA. Authorizes the change but doesn't receive anything."
+          ]
+        },
+        {
+          "name": "rent_recipient",
+          "writable": true,
+          "docs": [
+            "Receives the rent freed by shrinking the state PDA."
+          ]
+        },
+        {
+          "name": "state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  116,
+                  116,
+                  108,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116,
+                  32,
+                  118,
+                  48,
+                  46,
+                  53,
+                  32,
+                  32,
+                  32,
+                  32
+                ]
+              }
+            ]
+          },
+          "docs": [
+            "Holds the solver authority the signer is checked against and the solver list the removed solver is taken from; shrunk by one address. Canonical PDA seeded by SETTLEMENT_SEED alone. SETTLEMENT_SEED is the ASCII prefix \"settlement v\" followed by the program's major.minor version, right-padded with spaces to a fixed 19 bytes; the fixed width prevents one version's seeds from being a prefix of another's."
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "solver",
+          "type": "pubkey",
+          "docs": [
+            "The solver to remove."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "withdraw_native_sol",
+      "docs": [
+        "Moves lamports out of the native SOL buffer to a recipient of the caller's choosing. Only the current holder of the SettlementOwnedOrderAuthority role may authorize this, and the buffer's rent can't be withdrawn.",
+        "Lamports move by a direct debit from the program-owned buffer, so no system program is involved."
+      ],
+      "discriminator": [
+        12
+      ],
+      "accounts": [
+        {
+          "name": "state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  116,
+                  116,
+                  108,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116,
+                  32,
+                  118,
+                  48,
+                  46,
+                  53,
+                  32,
+                  32,
+                  32,
+                  32
+                ]
+              }
+            ]
+          },
+          "docs": [
+            "Must be the canonical state PDA; holds the settlement_owned_order_authority the signer is checked against. Canonical PDA seeded by SETTLEMENT_SEED alone. SETTLEMENT_SEED is the ASCII prefix \"settlement v\" followed by the program's major.minor version, right-padded with spaces to a fixed 19 bytes; the fixed width prevents one version's seeds from being a prefix of another's."
+          ]
+        },
+        {
+          "name": "authority",
+          "signer": true,
+          "docs": [
+            "Must match the settlement_owned_order_authority address recorded in the state PDA."
+          ]
+        },
+        {
+          "name": "native_sol_buffer",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  116,
+                  116,
+                  108,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116,
+                  32,
+                  118,
+                  48,
+                  46,
+                  53,
+                  32,
+                  32,
+                  32,
+                  32
+                ]
+              },
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114,
+                  32,
+                  110,
+                  97,
+                  116,
+                  105,
+                  118,
+                  101,
+                  32,
+                  115,
+                  111,
+                  108
+                ]
+              }
+            ]
+          },
+          "docs": [
+            "The native SOL buffer created by Initialize; debited by the withdrawn amount, never below its rent."
+          ]
+        },
+        {
+          "name": "recipient",
+          "writable": true,
+          "docs": [
+            "Receives the withdrawn lamports."
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64",
+          "docs": [
+            "The maximum lamports to withdraw; capped to the buffer's balance above rent."
+          ]
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "OrderAccount",
+      "discriminator": [
+        128
+      ]
+    },
+    {
+      "name": "SettlementState",
+      "discriminator": [
+        129
+      ]
+    }
+  ],
+  "types": [
+    {
+      "name": "OrderAccount",
+      "docs": [
+        "The body stored in an order PDA."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "cancelled",
+            "type": "bool"
+          },
+          {
+            "name": "amount_withdrawn",
+            "type": "u64"
+          },
+          {
+            "name": "amount_received",
+            "type": "u64"
+          },
+          {
+            "name": "created_by",
+            "type": "pubkey"
+          },
+          {
+            "name": "intent",
+            "type": {
+              "defined": {
+                "name": "OrderIntent"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "SettlementState",
+      "docs": [
+        "The parameters used to initialize the state account. They are also the account's stored header, in wire order.",
+        "IDL LIMITATION: the sorted list of approved solvers that follows the header isn't declared here. It's a bare run of 32-byte addresses filling the rest of the account, with no length prefix for a vec type to read. add_solver inserts into it, keeping it sorted ascending by address so that it stays binary-searchable."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "manager",
+            "type": "pubkey"
+          },
+          {
+            "name": "solver_authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "reclaim_authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "settlement_owned_order_authority",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OrderIntent",
+      "docs": [
+        "Order intent. Its canonical encoding, `EncodedOrderIntent`, is the exact wire format of create_order's `intent`",
+        "argument and the exact bytes hashed (SHA-256) to produce the order UID used in the order PDA's seeds. Field order",
+        "and encoding here are load-bearing: they must match this program's Rust definition exactly."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "sell_token_account",
+            "type": "pubkey"
+          },
+          {
+            "name": "sell_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "buy_token_account",
+            "type": "pubkey"
+          },
+          {
+            "name": "buy_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "sell_amount",
+            "type": "u64"
+          },
+          {
+            "name": "buy_amount",
+            "type": "u64"
+          },
+          {
+            "name": "valid_to",
+            "type": "u32"
+          },
+          {
+            "name": "flags",
+            "type": "u8",
+            "docs": [
+              "IDL LIMITATION: this byte packs two settings the IDL's type grammar can't name as one field, so it's declared as the raw byte the wire carries. Bit 0 is reserved for future use and must be clear. Bit 1 is the OrderKind (0 = Sell, 1 = Buy). Bit 2 is partially_fillable.",
+              "Every other bit is reserved and must be clear: the program rejects a flags byte carrying one, so the same settings never have two encodings, and an order never has two UIDs."
+            ]
+          },
+          {
+            "name": "app_data",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "OrderKind",
+      "docs": [
+        "Direction of the trade. The discriminants are the values the kind bit of the encoded flags byte takes."
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Sell"
+          },
+          {
+            "name": "Buy"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Role",
+      "docs": [
+        "A transferable authority stored in the state PDA.",
+        "The discriminant is the wire value carried by the authority-transfer",
+        "instruction (see transfer_authority)."
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Manager"
+          },
+          {
+            "name": "SolverAuthority"
+          },
+          {
+            "name": "ReclaimAuthority"
+          },
+          {
+            "name": "SettlementOwnedOrderAuthority"
+          }
+        ]
+      }
+    }
+  ],
+  "errors": [
+    {
+      "code": 0,
+      "name": "FinalizeBeforeInitialize",
+      "msg": "The FinalizeSettle included as input to BeginSettle isn't before the actual BeginSettle index."
+    },
+    {
+      "code": 1,
+      "name": "BeginFinalizePairOverlap",
+      "msg": "Another BeginSettle/FinalizeSettle of this program appears strictly between this pair's bounds, nesting or overlapping two settlements."
+    },
+    {
+      "code": 2,
+      "name": "MissingCounterpartInstruction",
+      "msg": "The counterpart index points past the end of the transaction's instruction list, so no instruction sits there."
+    },
+    {
+      "code": 3,
+      "name": "CounterpartIsExternal",
+      "msg": "The instruction at the counterpart index belongs to a different program."
+    },
+    {
+      "code": 4,
+      "name": "InvalidCounterpartDiscriminator",
+      "msg": "The counterpart instruction's discriminator byte couldn't be recovered from its data."
+    },
+    {
+      "code": 5,
+      "name": "InvalidCounterpartCounterpart",
+      "msg": "The counterpart instruction's own counterpart index couldn't be recovered from its data."
+    },
+    {
+      "code": 6,
+      "name": "MismatchedCounterpartDiscriminator",
+      "msg": "The counterpart's discriminator isn't the expected BeginSettle/FinalizeSettle kind, or its counterpart index doesn't point back at this instruction."
+    },
+    {
+      "code": 7,
+      "name": "OwnerMismatch",
+      "msg": "An order-creation instruction's intent owner isn't the owner it must have: the signer for CreateOrder, the settlement state PDA for CreateSettlementOwnedOrder."
+    },
+    {
+      "code": 8,
+      "name": "AccountNotDerivable",
+      "msg": "An account was provided that cannot be derived from the seeds recognized by the program"
+    },
+    {
+      "code": 9,
+      "name": "OrdersNotStrictlyIncreasing",
+      "msg": "BeginSettle's order accounts aren't passed strictly increasing by address."
+    },
+    {
+      "code": 10,
+      "name": "SellTokenAccountMismatch",
+      "msg": "A BeginSettle sell token account doesn't match the sell_token_account recorded in the order's intent."
+    },
+    {
+      "code": 11,
+      "name": "SellTokenAccountInvalid",
+      "msg": "A BeginSettle sell token account isn't a valid SPL token account (wrong data length or not owned by the token program)."
+    },
+    {
+      "code": 12,
+      "name": "SellTokenOwnerMismatch",
+      "msg": "A BeginSettle sell token account's SPL owner isn't the order's intent owner."
+    },
+    {
+      "code": 13,
+      "name": "AccountCountNotMatchingOrderCount",
+      "msg": "BeginSettle's order-account count doesn't match the structure its instruction data expects: n orders each contribute an order PDA, a sell token account, a sell mint, plus one destination account per transfer."
+    },
+    {
+      "code": 14,
+      "name": "CalledViaCpi",
+      "msg": "BeginSettle or FinalizeSettle was invoked via CPI rather than as a top-level transaction instruction."
+    },
+    {
+      "code": 15,
+      "name": "OrderCancelled",
+      "msg": "A BeginSettle order has been cancelled by its owner and can no longer be settled."
+    },
+    {
+      "code": 16,
+      "name": "OrderExpired",
+      "msg": "A BeginSettle order's valid_to lies in the past: the order has expired and can no longer be settled."
+    },
+    {
+      "code": 17,
+      "name": "TransferCountMismatch",
+      "msg": "The transfer counts in BeginSettle don't sum to the number of transfer amounts, so destinations and amounts can't be paired up exactly."
+    },
+    {
+      "code": 18,
+      "name": "StateAccountMismatch",
+      "msg": "BeginSettle's state account isn't the canonical settlement state PDA, which must sign the pulls as the user's token delegate."
+    },
+    {
+      "code": 19,
+      "name": "AccountCountNotMatchingPushCount",
+      "msg": "FinalizeSettle's push-account count doesn't match its instruction data: each push contributes a source buffer, a destination, and a mint, so the count must be three times the number of push amounts."
+    },
+    {
+      "code": 20,
+      "name": "SettledOrderPushCountMismatch",
+      "msg": "BeginSettle: the number of pushes carried by the paired FinalizeSettle doesn't equal the number of settled orders. Each order must be paid by exactly one push."
+    },
+    {
+      "code": 21,
+      "name": "PushDestinationMismatch",
+      "msg": "BeginSettle: a paired FinalizeSettle push doesn't send its proceeds to the order's buy token account; its destination differs from the buy_token_account in the order's intent."
+    },
+    {
+      "code": 22,
+      "name": "PushSourceNotBuffer",
+      "msg": "BeginSettle: a paired FinalizeSettle push doesn't draw funds from the canonical buffer for the order's buy_mint."
+    },
+    {
+      "code": 23,
+      "name": "SellMintMismatch",
+      "msg": "BeginSettle: the OrderIntent sell_token_account holds a different mint than the declared sell_mint."
+    },
+    {
+      "code": 24,
+      "name": "LimitPriceViolated",
+      "msg": "BeginSettle: a settled order's executed price (amount_out/amount_in) is worse than the order's limit price (buy_amount/sell_amount)."
+    },
+    {
+      "code": 25,
+      "name": "PullAmountOverflow",
+      "msg": "BeginSettle: an order's pull amounts sum to more than u64::MAX."
+    },
+    {
+      "code": 26,
+      "name": "FillExceedsOrderAmount",
+      "msg": "BeginSettle: filling this order would consume more tokens than the maximum the user is willing to trade on this intent. Sell: amount_in > sell_amount; buy: amount_out > buy_amount."
+    },
+    {
+      "code": 27,
+      "name": "OrderNotExactlyFilled",
+      "msg": "BeginSettle: a non-partially_fillable order isn't filled exactly to its amount (either under- or over-filled). Sell: amount_in != sell_amount; buy: total amount_out != buy_amount."
+    },
+    {
+      "code": 28,
+      "name": "AmountWithdrawnOverflow",
+      "msg": "BeginSettle: the order's cumulative amount_withdrawn would exceed u64::MAX once this settlement's pulls are added."
+    },
+    {
+      "code": 29,
+      "name": "AmountReceivedOverflow",
+      "msg": "BeginSettle: the order's cumulative amount_received would exceed u64::MAX once this settlement's push is added."
+    },
+    {
+      "code": 30,
+      "name": "OrderNotReclaimable",
+      "msg": "ReclaimOrder was called on an order that has not yet become eligible for reclaim."
+    },
+    {
+      "code": 31,
+      "name": "ReclaimRecipientMismatch",
+      "msg": "ReclaimOrder's reclaim_recipient account doesn't match the created_by address recorded in the order."
+    },
+    {
+      "code": 32,
+      "name": "ReclaimAuthorityMismatch",
+      "msg": "ReclaimBuffer's reclaim_authority account isn't a signer, or doesn't match the reclaim_authority address recorded in the settlement state PDA."
+    },
+    {
+      "code": 33,
+      "name": "ReclaimBufferNotCanonical",
+      "msg": "A ReclaimBuffer buffer_pda doesn't sit at the canonical buffer PDA derived from its paired mint."
+    },
+    {
+      "code": 34,
+      "name": "UnauthorizedAuthorityTransfer",
+      "msg": "TransferAuthority's signer is neither the manager nor the current holder of the role being transferred, so it may not transfer it."
+    },
+    {
+      "code": 35,
+      "name": "UnauthorizedSolverManagement",
+      "msg": "AddSolver/RemoveSolver's solver-authority account isn't a signer, or doesn't match the solver_authority recorded in the settlement state PDA, so it may not change the solver list."
+    },
+    {
+      "code": 36,
+      "name": "SolverAlreadyExists",
+      "msg": "AddSolver's solver is already in the state PDA's solver list."
+    },
+    {
+      "code": 37,
+      "name": "UnauthorizedSolver",
+      "msg": "BeginSettle's solver account isn't a signer or isn't in the state PDA's solver list, so it may not settle."
+    },
+    {
+      "code": 38,
+      "name": "SolverNotFound",
+      "msg": "RemoveSolver's solver isn't in the state PDA's solver list."
+    },
+    {
+      "code": 39,
+      "name": "BufferSizeUnavailable",
+      "msg": "CreateBuffer asked the token program how long a token account for a mint has to be and couldn't read the answer, so it can't size the buffer."
+    },
+    {
+      "code": 40,
+      "name": "InvalidTokenProgram",
+      "msg": "The token program for a given token or mint is not supported."
+    },
+    {
+      "code": 41,
+      "name": "UnauthorizedSettlementOwnedOrder",
+      "msg": "CreateSettlementOwnedOrder's settlement-owned-order-authority account isn't a signer, or doesn't match the settlement_owned_order_authority recorded in the settlement state PDA."
+    },
+    {
+      "code": 42,
+      "name": "ZeroOrderAmount",
+      "msg": "An intent has a zero sell or buy amount, which is not supported."
+    },
+    {
+      "code": 43,
+      "name": "InvalidMint",
+      "msg": "A mint account supplied to BeginSettle or FinalizeSettle was not able to be parsed as such."
+    },
+    {
+      "code": 44,
+      "name": "PushSourceIsDestination",
+      "msg": "BeginSettle: a paired FinalizeSettle push's destination is the very buffer the push draws from, so settling it would move no funds yet still record the declared amount as received."
+    },
+    {
+      "code": 45,
+      "name": "NativeSolBufferEmptied",
+      "msg": "Moving lamports out of the native SOL buffer would empty it, which the runtime would then delete."
+    },
+    {
+      "code": 46,
+      "name": "ReclaimBufferBurnLimitExceeded",
+      "msg": "A buffer to be reclaimed holds more tokens than the burn limit supplied for it, so its balance can't be cleared for closing."
+    },
+    {
+      "code": 47,
+      "name": "UnauthorizedNativeSolWithdrawal",
+      "msg": "WithdrawNativeSol's authority account isn't a signer, or doesn't match the settlement_owned_order_authority recorded in the settlement state PDA."
+    },
+    {
+      "code": 48,
+      "name": "NativeSolBufferMismatch",
+      "msg": "WithdrawNativeSol's native SOL buffer account isn't the canonical native SOL buffer PDA."
+    }
+  ]
+}

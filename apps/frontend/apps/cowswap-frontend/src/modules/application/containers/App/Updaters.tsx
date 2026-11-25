@@ -15,6 +15,7 @@ import { useBalancesContext } from 'entities/balancesContext/useBalancesContext'
 import { BridgeOrdersCleanUpdater } from 'entities/bridgeOrders'
 import { BridgeProvidersUpdater, useBridgeSupportedNetworks } from 'entities/bridgeProvider'
 import { CorrelatedTokensUpdater } from 'entities/correlatedTokens'
+import { useSolanaWalletEvents } from 'entities/solana'
 import { ThemeConfigUpdater } from 'theme/ThemeConfigUpdater'
 import { TradingSdkUpdater } from 'tradingSdk/TradingSdkUpdater'
 
@@ -90,6 +91,7 @@ if (typeof window !== 'undefined') {
 }
 
 export function Updaters(): ReactNode {
+  useSolanaWalletEvents()
   const { account } = useWalletInfo()
   const deferred = useDeferredMount()
 

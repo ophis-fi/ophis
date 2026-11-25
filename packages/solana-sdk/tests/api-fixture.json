@@ -1,0 +1,49 @@
+{
+  "quote": {
+    "quote": {
+      "sellToken": "6Xa9QEwKutmxy76zoHzRzYQjXfaaXCzfUY4DQN3o7TyH",
+      "buyToken": "7ZUwLUuuayCTGVHbEUM2qMLWwkRubBdXTo6ZkNtT6w3s",
+      "receiver": null,
+      "sellAmount": "497770",
+      "buyAmount": "990822",
+      "validTo": 1795207179,
+      "appData": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "feeAmount": "2230",
+      "costs": {
+        "token": "7ZUwLUuuayCTGVHbEUM2qMLWwkRubBdXTo6ZkNtT6w3s",
+        "networkFees": "9",
+        "buyTokenAtaCosts": "2221",
+        "protocolFee": "0",
+        "total": "2230"
+      },
+      "kind": "sell",
+      "partiallyFillable": false
+    },
+    "from": "CLFHMKsVAhCrmErs3vDLLqX7s4KzPerEudoLzjmMYzYV",
+    "expiration": "2026-11-20T20:10:39.509415Z",
+    "id": 1,
+    "verified": true,
+    "funder": null
+  },
+  "order": {
+    "uid": "0x239e9b8af2b2a5d916a2b79aea36b2e853376ab9478c2cb0de8931382ba5dfa7",
+    "owner": "CLFHMKsVAhCrmErs3vDLLqX7s4KzPerEudoLzjmMYzYV",
+    "receiver": null,
+    "sellToken": "6Xa9QEwKutmxy76zoHzRzYQjXfaaXCzfUY4DQN3o7TyH",
+    "buyToken": "7ZUwLUuuayCTGVHbEUM2qMLWwkRubBdXTo6ZkNtT6w3s",
+    "sellTokenAccount": "BUo1vgoWN7n3HSJU7pWd79HdYGLMXQ5d2bBeF6zdEXck",
+    "buyTokenAccount": "CrtagCQjPt3h5chnLcgzJoSJBTMQ5h2pMvxdR5ftvr9u",
+    "sellAmount": "200000",
+    "buyAmount": "300000",
+    "validTo": 1795207179,
+    "kind": "sell",
+    "partiallyFillable": false,
+    "appData": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "fullAppData": null,
+    "orderPda": "FEQczVemnYY8KJ8T2X96pkzREJc6A37RSzmPBJniNciP",
+    "creationDate": "2026-11-20T20:09:56.894115Z",
+    "executedSellAmount": "200000",
+    "executedBuyAmount": "397339",
+    "status": "fulfilled"
+  }
+}

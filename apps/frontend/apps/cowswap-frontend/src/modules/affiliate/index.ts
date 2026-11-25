@@ -42,3 +42,5 @@ export type {
   WalletXp,
   TradeRewardStatus,
 } from './lib/ophisAffiliateApi'
+export { useAffiliateWallet } from './hooks/useAffiliateWallet'
+export { affiliateAddressKey, isSolanaAffiliateAddress, referralShareLink } from './lib/affiliateAddress'

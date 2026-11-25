@@ -3,6 +3,8 @@ import { ReactNode } from 'react'
 import { isSupportedChainId } from '@cowprotocol/common-utils'
 import { TargetChainId } from '@cowprotocol/cow-sdk'
 
+import { useIsOphisSwap } from 'ophis/hooks/useIsOphisSwap'
+
 import { Field } from 'legacy/state/types'
 
 import { NetworkSelector } from 'modules/networkSelector'
@@ -19,9 +21,11 @@ export function TradeSourceNetworkSelector({
   widget: { inputCurrencyInfo, outputCurrencyInfo, actions, params },
   openTokenSelectWidget,
 }: TradeSourceNetworkSelectorProps): ReactNode {
+  const isOphisSwap = useIsOphisSwap()
   return (
     <NetworkSelector
       tokenPickerTrigger
+      includeNativeSolana={isOphisSwap && !params.externalFunding}
       selectedChainId={inputCurrencyInfo.currency?.chainId as TargetChainId | undefined}
       additionalChainIds={params.inputTokenOptions?.chains.map(({ id }) => id as TargetChainId)}
       disabled={params.inputsDisabled}

@@ -3,7 +3,7 @@ import { lazy, ReactNode, Suspense, useEffect } from 'react'
 import { OphisPageLoader } from 'ophis/components'
 import { ASSET_SWAP_PREVIEW } from 'ophis/components/AssetSwap/assetSwapPreview.const'
 import { IntentEntry } from 'ophis/components/intent'
-import { Navigate, Route, Routes } from 'react-router'
+import { Navigate, Route, Routes, useLocation } from 'react-router'
 
 import { RedirectPathToSwapOnly, RedirectToPath } from 'legacy/pages/Swap/redirects'
 
@@ -19,7 +19,7 @@ import {
   AccountProxiesPage,
 } from 'modules/accountProxy'
 
-import { Routes as RoutesEnum, RoutesValues } from 'common/constants/routes'
+import { Routes as RoutesEnum, RoutesValues, YIELD_AVAILABLE } from 'common/constants/routes'
 import Account from 'pages/Account'
 import { AdvancedOrdersPage } from 'pages/AdvancedOrders/AdvancedOrders.page'
 import AnySwapAffectedUsers from 'pages/error/AnySwapAffectedUsers'
@@ -30,6 +30,10 @@ import YieldPage from 'pages/Yield'
 
 const AssetSwapPreview = lazy(() =>
   import('ophis/components/AssetSwap/AssetSwapPreview').then((module) => ({ default: module.AssetSwapPreview })),
+)
+
+const NativeSolanaPage = lazy(() =>
+  import('modules/nativeSolana').then((module) => ({ default: module.NativeSolanaPage })),
 )
 
 // Async routes
@@ -147,6 +151,11 @@ function DocsRedirect(): null {
   return null
 }
 
+function AffiliateRedirect(): ReactNode {
+  const { search, hash } = useLocation()
+  return <Navigate to={{ pathname: RoutesEnum.PROFILE, search, hash }} replace />
+}
+
 /**
  * /institutional moved to the business.ophis.fi subdomain (2026-05-27).
  * Bounce any in-app or bookmarked /institutional hit to the business page.
@@ -172,8 +181,9 @@ function LazyRoute({ route, element, key }: LazyRouteProps): ReactNode {
 // ABOUT, LEGAL, and BRAND wired below in PR #234 (2026-05-22) to closed
 // Ophis-native static pages.
 const lazyRoutes: LazyRouteProps[] = [
+  { route: RoutesEnum.SOLANA, element: <NativeSolanaPage /> },
   { route: RoutesEnum.CCTP, element: <CctpLegacyRedirect /> },
-  { route: RoutesEnum.YIELD, element: <YieldPage /> },
+  { route: RoutesEnum.YIELD, element: YIELD_AVAILABLE ? <YieldPage /> : <Navigate to="/swap" replace /> },
   { route: RoutesEnum.LONG_LIMIT_ORDER, element: <RedirectToPath path={'/limit'} /> },
   { route: RoutesEnum.LONG_ADVANCED_ORDERS, element: <RedirectToPath path={'/advanced'} /> },
   { route: RoutesEnum.PLAY_MEVSLICER, element: <MevSlicer /> },
@@ -181,7 +191,7 @@ const lazyRoutes: LazyRouteProps[] = [
   { route: RoutesEnum.PROFILE, element: <ProfilePage /> },
   // /affiliate dashboard folded into /profile (Phase C restructure). Redirect
   // any in-app or bookmarked hit. `replace` keeps it out of history.
-  { route: RoutesEnum.AFFILIATE, element: <Navigate to={RoutesEnum.PROFILE} replace /> },
+  { route: RoutesEnum.AFFILIATE, element: <AffiliateRedirect /> },
   { route: RoutesEnum.LEADERBOARD, element: <LeaderboardPage /> },
   // Read-only OTC surface (enabled for B; pages still redirect when rolled back).
   { route: RoutesEnum.OTC, element: <OtcPage /> },

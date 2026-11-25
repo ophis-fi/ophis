@@ -1,0 +1,16 @@
+{
+  "cluster": "mainnet-beta",
+  "genesisHash": "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d",
+  "programId": "BJZ5yma22Km3fsfrEEdZVGygdrcwoschb6uUNqQWaQ9h",
+  "initializer": "9BAVHzoq6Cno1cctmAgYoP3zf2Yo3xuWqfznT3qaWrrL",
+  "upgradeAuthority": "9BAVHzoq6Cno1cctmAgYoP3zf2Yo3xuWqfznT3qaWrrL",
+  "authorities": {
+    "manager": "9BAVHzoq6Cno1cctmAgYoP3zf2Yo3xuWqfznT3qaWrrL",
+    "solverAuthority": "9BAVHzoq6Cno1cctmAgYoP3zf2Yo3xuWqfznT3qaWrrL",
+    "reclaimAuthority": "9BAVHzoq6Cno1cctmAgYoP3zf2Yo3xuWqfznT3qaWrrL",
+    "settlementOwnedOrderAuthority": "9BAVHzoq6Cno1cctmAgYoP3zf2Yo3xuWqfznT3qaWrrL"
+  },
+  "solverSigner": "HaHANqyW2wVYw4qUGougZkSqYv6VgfA4DLX1bXx7PAZr",
+  "dailySolverFeeLimitLamports": 200000,
+  "treasuryWallet": "2KVz65A9v7FMkZsRZf7ea9poyhxGmycYbjyHHiFX2oZZ"
+}

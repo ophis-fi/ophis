@@ -14,20 +14,36 @@ import { useAssetSwapStyle } from './useAssetSwapStyle'
 
 /** Bencho's slabs applied to Ophis's real amount inputs and token picker.
  * No demo assets, prices or fees enter the trade state. */
-export function AssetSwapFields({ input, output, reverse }: TradeWidgetCurrencyFieldsProps): ReactNode {
+export function AssetSwapFields(props: TradeWidgetCurrencyFieldsProps): ReactNode {
+  const { open, forceOpen, field, onSelectToken } = useSelectTokenWidgetState()
+  const close = useCloseTokenSelectWidget()
+  // Release the EVM picker's scroll and quote locks when the inline host disappears.
+  useEffect(() => () => close({ overrideForceLock: true }), [close])
+  return (
+    <AssetSwapFieldsLayout
+      {...props}
+      inlinePicker={{
+        field: (open || forceOpen) && onSelectToken ? field : null,
+        close: () => close({ overrideForceLock: true }),
+      }}
+    />
+  )
+}
+
+export function AssetSwapFieldsLayout({
+  input,
+  output,
+  reverse,
+  inlinePicker,
+}: TradeWidgetCurrencyFieldsProps & { inlinePicker?: { field?: Field | null; close(): void } }): ReactNode {
   const root = useRef<HTMLDivElement>(null)
   const style = useAssetSwapStyle()
   const [turns, setTurns] = useState(0)
   const [coolingDown, startCooldown] = useAssetSwapCooldown()
-  const { open, forceOpen, field, onSelectToken } = useSelectTokenWidgetState()
-  const close = useCloseTokenSelectWidget()
-  // Confirmation replaces the form while the selector itself stays mounted.
-  // Release its scroll/quote locks when its inline portal host disappears.
-  useEffect(() => () => close({ overrideForceLock: true }), [close])
   const reversed = turns % 2 === 1
   const fields = reversed ? [Field.OUTPUT, Field.INPUT] : [Field.INPUT, Field.OUTPUT]
-  const pick = (open || forceOpen) && onSelectToken && field ? fields.indexOf(field) : null
-  useAssetSwapPickerFocus(root, pick, () => close({ overrideForceLock: true }))
+  const pick = inlinePicker?.field ? fields.indexOf(inlinePicker.field) : null
+  useAssetSwapPickerFocus(root, pick, () => inlinePicker?.close())
 
   return (
     <div
@@ -62,7 +78,7 @@ export function AssetSwapFields({ input, output, reverse }: TradeWidgetCurrencyF
             >
               {slabField === Field.INPUT ? input : output}
             </div>
-            <div id={`asset-swap-picker-${slabField}`} className="swp-live-picker" hidden={!on} />
+            {inlinePicker && <div id={`asset-swap-picker-${slabField}`} className="swp-live-picker" hidden={!on} />}
           </div>
         )
       })}

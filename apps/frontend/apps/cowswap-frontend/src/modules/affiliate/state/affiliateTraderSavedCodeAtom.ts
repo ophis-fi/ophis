@@ -19,12 +19,9 @@ export interface AffiliateTraderSavedCodeState {
   isLinked?: boolean
 }
 
-const affiliateTraderSavedCodeByWalletAtom = atomWithStorage<Record<string, AffiliateTraderSavedCodeState | undefined>>(
-  AFFILIATE_TRADER_SAVED_CODES_STORAGE_KEY,
-  {},
-  undefined,
-  { getOnInit: true },
-)
+export const affiliateTraderSavedCodeByWalletAtom = atomWithStorage<
+  Record<string, AffiliateTraderSavedCodeState | undefined>
+>(AFFILIATE_TRADER_SAVED_CODES_STORAGE_KEY, {}, undefined, { getOnInit: true })
 
 /**
  * Wallet-independent holding slot for a `?ref=` code captured BEFORE any
@@ -35,41 +32,28 @@ const affiliateTraderSavedCodeByWalletAtom = atomWithStorage<Record<string, Affi
  * flow and the referrer never got credit; the first wallet to connect now
  * claims it (RefCodeCaptureUpdater promotes it into the per-wallet bucket).
  */
-export const affiliatePendingRefCodeAtom = atomWithStorage<string | undefined>(
-  AFFILIATE_PENDING_REF_CODE_STORAGE_KEY,
-  undefined,
-  undefined,
-  { getOnInit: true },
-)
+export const affiliatePendingRefCodeAtom = atomWithStorage<
+  string | { code: string; network: 'solana' | 'evm' } | undefined
+>(AFFILIATE_PENDING_REF_CODE_STORAGE_KEY, undefined, undefined, { getOnInit: true })
 
-export const setAffiliateTraderSavedCodeAtom = atom(
+export const setReferralCodeForWalletAtom = atom(
   null,
-  (get, set, nextState: AffiliateTraderSavedCodeState | undefined) => {
-    const { account } = get(walletInfoAtom)
+  (_get, set, account: string | undefined, savedCode: string, network?: string | null) => {
     if (!account) {
-      // No wallet yet: park the captured code in the pending slot so it
-      // survives the URL strip + navigation + reload until a wallet connects.
-      set(affiliatePendingRefCodeAtom, nextState?.savedCode)
+      set(
+        affiliatePendingRefCodeAtom,
+        network === 'solana' || network === 'evm' ? { code: savedCode, network } : savedCode,
+      )
       return
     }
-
-    set(affiliateTraderSavedCodeByWalletAtom, (prev) => {
-      if (!nextState) {
-        const { [account]: _deleted, ...rest } = prev
-        return rest
-      }
-
-      return {
-        ...prev,
-        [account]: nextState,
-      }
-    })
+    set(affiliateTraderSavedCodeByWalletAtom, (prev) =>
+      prev[account]?.savedCode === savedCode ? prev : { ...prev, [account]: { savedCode } },
+    )
   },
 )
 
-export const affiliateTraderSavedCodeAtom = atom<AffiliateTraderSavedCodeState>((get) => {
+// EVM appData follows the EVM signer even if a Solana wallet is also connected.
+export const affiliateTraderSavedCodeAtom = atom((get): AffiliateTraderSavedCodeState => {
   const { account } = get(walletInfoAtom)
-  const storedStateByWallet = get(affiliateTraderSavedCodeByWalletAtom)
-  const storedState = account ? storedStateByWallet[account] : undefined
-  return storedState ?? {}
+  return account ? (get(affiliateTraderSavedCodeByWalletAtom)[account] ?? {}) : {}
 })

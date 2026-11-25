@@ -11,16 +11,9 @@ import { Badge, InlineCode, KeyValueList, MetricCard, Section, TextLink } from '
 
 import { GhostButton, MetricRow, ShareRow } from 'pages/Affiliate/Affiliate.styled'
 
+import { isSolanaAffiliateAddress, referralShareLink } from '../lib/affiliateAddress'
+
 import type { AffiliateStats } from '../lib/ophisAffiliateApi'
-
-const SHARE_ORIGIN = 'https://swap.ophis.fi'
-
-// HashRouter SPA: the signature-gated partner dashboard lives at /#/partner.
-const PARTNER_DASHBOARD_HREF = '/#/partner'
-
-function shareLink(code: string): string {
-  return `${SHARE_ORIGIN}/?ref=${code}`
-}
 
 function formatUsd(value: number): string {
   if (!Number.isFinite(value)) return '$0'
@@ -34,6 +27,7 @@ interface Props {
 export function PartnerAffiliateSummary({ stats }: Props): ReactNode {
   const [isCopied, copy] = useCopyClipboard()
 
+  const solana = isSolanaAffiliateAddress(stats.wallet)
   const activeCode = stats.activeCodes?.[0]
 
   return (
@@ -59,11 +53,11 @@ export function PartnerAffiliateSummary({ stats }: Props): ReactNode {
             <KeyValueList
               items={[
                 { label: 'Code', value: <InlineCode>{activeCode}</InlineCode> },
-                { label: 'Share link', value: <InlineCode>{shareLink(activeCode)}</InlineCode> },
+                { label: 'Share link', value: <InlineCode>{referralShareLink(activeCode, solana)}</InlineCode> },
               ]}
             />
             <ShareRow>
-              <GhostButton type="button" onClick={() => copy(shareLink(activeCode))}>
+              <GhostButton type="button" onClick={() => copy(referralShareLink(activeCode, solana))}>
                 {isCopied ? 'Copied' : 'Copy share link'}
               </GhostButton>
             </ShareRow>
@@ -79,8 +73,10 @@ export function PartnerAffiliateSummary({ stats }: Props): ReactNode {
           above.
         </p>
         <p>
-          <TextLink href={PARTNER_DASHBOARD_HREF}>View your full partner dashboard</TextLink> for the per-referee
-          breakdown (signature required).
+          <TextLink href={solana ? '/#/partner?network=solana' : '/#/partner'}>
+            View your full partner dashboard
+          </TextLink>{' '}
+          for the per-referee breakdown (signature required).
         </p>
       </Section>
     </>
