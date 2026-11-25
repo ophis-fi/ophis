@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { address, createNoopSigner } from '@solana/kit';
 import {
@@ -11,11 +10,12 @@ import {
   fetchOphisWalletActionContext,
   fetchOphisSolanaMint,
   TOKEN_PROGRAM_ADDRESS,
+  TOKEN_2022_PROGRAM_ADDRESS,
   parseOphisSolanaAmount,
   formatOphisSolanaAmount,
 } from '../dist/index.js';
-const fixture = JSON.parse(readFileSync(new URL('./rust-intent-v054.json', import.meta.url)));
-const api = JSON.parse(readFileSync(new URL('./api-fixture.json', import.meta.url)));
+import fixture from './rust-intent-v054.json' with { type: 'json' };
+import api from './api-fixture.json' with { type: 'json' };
 const owner = createNoopSigner(address(fixture.owner));
 const params = {
   programAddress: address(fixture.program),
@@ -140,6 +140,64 @@ test('fresh quote limits include fees and apply integer slippage without changin
   await assert.rejects(prepareOphisSolanaOrderFromQuote(input));
 });
 
+test('mainnet binds the displayed benchmark, cost ceiling and fee tier before creating wallet instructions', async () => {
+  const quote = structuredClone(api.quote);
+  quote.from = owner.address;
+  quote.expiration = new Date(Date.now() + 60_000).toISOString();
+  const q = quote.quote;
+  q.validTo = Math.floor(Date.now() / 1000) + 600;
+  q.sellToken = 'So11111111111111111111111111111111111111112';
+  q.buyToken = q.costs.token = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+  q.buyAmount = '2700724';
+  q.costs.networkFees = '418';
+  q.costs.buyTokenAtaCosts = '0';
+  q.feeTerms = { baseBps: 1, improvementShareBps: 5000, improvementCapBps: 99 };
+  const signed = Buffer.alloc(32);
+  signed.write('OPHISPI3');
+  signed.writeBigUInt64LE(2700724n, 8);
+  signed.writeBigUInt64LE(418n, 16);
+  signed.writeBigUInt64LE(1n, 24);
+  q.appData = '0x' + signed.toString('hex');
+  const input = {
+    quote,
+    programAddress: 'BJZ5yma22Km3fsfrEEdZVGygdrcwoschb6uUNqQWaQ9h',
+    owner,
+    sellProgram: TOKEN_PROGRAM_ADDRESS,
+    buyProgram: TOKEN_PROGRAM_ADDRESS,
+    slippageBps: 50,
+  };
+  const order = await prepareOphisSolanaOrderFromQuote(input);
+  assert.deepEqual(Buffer.from(order.intent.appData), signed);
+  await assert.rejects(
+    prepareOphisSolanaOrderFromQuote({ ...input, sellProgram: TOKEN_2022_PROGRAM_ADDRESS }),
+    /classic SPL/,
+  );
+  await assert.rejects(
+    prepareOphisSolanaOrderFromQuote({ ...input, buyProgram: TOKEN_2022_PROGRAM_ADDRESS }),
+    /classic SPL/,
+  );
+  assert.equal(order.intent.buyAmount, 2687220n);
+  for (const changed of [
+    { buyAmount: '2700725' },
+    { appData: '0x' + '12'.repeat(32) },
+    { feeTerms: undefined },
+    { partiallyFillable: true },
+    { kind: 'buy' },
+    { feeTerms: { ...q.feeTerms, baseBps: 5 } },
+    { feeTerms: { ...q.feeTerms, improvementCapBps: 20 } },
+    { costs: { ...q.costs, networkFees: '419' } },
+    { costs: { ...q.costs, buyTokenAtaCosts: '1' } },
+  ]) {
+    await assert.rejects(
+      prepareOphisSolanaOrderFromQuote({
+        ...input,
+        quote: { ...quote, quote: { ...q, ...changed } },
+      }),
+      /actual-output/,
+    );
+  }
+});
+
 test('agent order binds the owner, exact input, cluster and minimum output before signing', async (t) => {
   const { buildOphisSolanaWalletOrder } = await import('../dist/agent.js');
   const { fetchOphisSolanaSellQuote } = await import('../dist/read.js');
@@ -219,7 +277,8 @@ test('order actions use the selected cluster and finalize before reporting a ref
       getEpochInfo: { absoluteSlot: 100, blockHeight: height },
     };
     assert.ok(Object.hasOwn(results, method));
-    if (method === 'getLatestBlockhash') assert.equal(params?.[0]?.commitment ?? 'finalized', 'finalized');
+    if (method === 'getLatestBlockhash')
+      assert.equal(params?.[0]?.commitment ?? 'finalized', 'finalized');
     return Response.json({ jsonrpc: '2.0', id, result: results[method] });
   });
   const endpoint = 'http://localhost:8899';

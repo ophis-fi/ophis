@@ -6,13 +6,11 @@ import {
 } from '@solana-program/token';
 import { getTransferSolInstruction } from '@solana-program/system';
 import { getSyncNativeInstruction } from '@solana-program/token';
-import { resolveOrderPda } from './settlement/hooked.js';
+import { checkedQuoteAppData, OPHIS_MAINNET_PROGRAM } from './api.js';
+import { identifyOphisSolanaOrder, resolveOrderPda } from './settlement/hooked.js';
 import { encodeFlags, OrderKind } from './settlement/order.js';
 import { findStatePda } from './settlement/generated/pdas/state.js';
-import {
-  getOrderIntentEncoder,
-  type OrderIntent,
-} from './settlement/generated/types/orderIntent.js';
+import type { OrderIntent } from './settlement/generated/types/orderIntent.js';
 import { getCreateOrderInstructionAsync } from './settlement/generated/instructions/createOrder.js';
 import {
   CANCEL_ORDER_DISCRIMINATOR,
@@ -139,9 +137,7 @@ export async function prepareOphisSolanaOrder(input: OphisSolanaOrderInput) {
     }),
     appData: new Uint8Array(appData),
   };
-  const encoded = getOrderIntentEncoder().encode(intent);
-  const uid = `0x${Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new Uint8Array(encoded))), (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
-  const orderPda = (await resolveOrderPda({ programAddress, args: { intent } })).value;
+  const { uid, orderPda } = await identifyOphisSolanaOrder(programAddress, intent);
   const [statePda] = await findStatePda({ programAddress });
   const instructions: Instruction[] = [
     await getCreateAssociatedTokenIdempotentInstructionAsync({
@@ -235,6 +231,8 @@ export {
 export type { OrderIntent };
 
 export {
+  checkedQuoteAppData,
+  OPHIS_MAINNET_PROGRAM,
   fetchOphisSolanaQuote,
   fetchOphisSolanaOrder,
   type OphisSolanaQuoteRequest,
@@ -284,8 +282,13 @@ export async function prepareOphisSolanaOrderFromQuote(input: {
     value.kind === 'sell' ? (buy * BigInt(10_000 - input.slippageBps)) / 10_000n : buy;
   if (input.sellFromNativeSol && value.sellToken !== WRAPPED_SOL_MINT)
     throw Error('Native SOL funding requires a wrapped SOL quote');
-  const appData = value.appData;
-  if (!/^0x[0-9a-fA-F]{64}$/.test(appData)) throw Error('Invalid quote app data');
+  const appData = checkedQuoteAppData(input.programAddress, value);
+  if (
+    input.programAddress === OPHIS_MAINNET_PROGRAM &&
+    (input.sellProgram === TOKEN_2022_PROGRAM_ADDRESS ||
+      input.buyProgram === TOKEN_2022_PROGRAM_ADDRESS)
+  )
+    throw Error('Actual-output settlement requires classic SPL tokens or native SOL');
   return prepareOphisSolanaOrder({
     programAddress: input.programAddress,
     owner: input.owner,
@@ -300,11 +303,7 @@ export async function prepareOphisSolanaOrderFromQuote(input: {
     validTo: value.validTo,
     kind: value.kind,
     partiallyFillable: value.partiallyFillable,
-    appData: new Uint8Array(
-      Array.from({ length: 32 }, (_, index) =>
-        Number.parseInt(appData.slice(2 + index * 2, 4 + index * 2), 16),
-      ),
-    ),
+    appData,
   });
 }
 
@@ -337,3 +336,7 @@ export {
   fetchOphisWalletActionContext,
   checkOphisWalletAction,
 } from './local-rpc.js';
+
+export { identifyOphisSolanaOrder } from './settlement/hooked.js';
+export { readOphisOrderAccount } from './local-rpc.js';
+export { readOphisSellAllowance, verifyOphisMintMetadata } from './holdings.js';

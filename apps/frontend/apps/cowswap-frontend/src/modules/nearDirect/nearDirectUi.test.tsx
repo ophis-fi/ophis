@@ -42,6 +42,7 @@ jest.mock('ophis/mobile/DesktopSwapLayout.pure', () => ({
 jest.mock('react-router', () => ({
   NavLink: () => null,
   useParams: () => ({ chainId: '1' }),
+  useLocation: () => ({ search: '?route=near' }),
   useSearchParams: () => [new URLSearchParams('route=near'), jest.fn()],
 }))
 jest.mock('modules/application', () => ({ NetworkSelector: () => null, PageTitle: () => null }))

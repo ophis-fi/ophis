@@ -6,7 +6,7 @@ export const onRequest: PagesFunction = async ({ request }) => {
   if (origin && origin !== target.origin) return new Response(null, { status: 403 })
 
   const paused = () => Response.json({ errorType: 'SettlementPaused' }, {
-    status: 503, headers: { 'cache-control': 'no-store' },
+    status: 503, headers: { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' },
   })
   target.hostname = 'solana-mainnet.ophis.fi'
   try {
@@ -14,10 +14,10 @@ export const onRequest: PagesFunction = async ({ request }) => {
       method: request.method, body: request.body, redirect: 'error',
       headers: { 'content-type': 'application/json' },
     })
-    // The tunnel can return HTML while the swap box expects JSON.
-    if (response.headers.get('content-type')?.includes('text/html') && response.status >= 500) return paused()
+    const media = response.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase()
+    if (media !== 'application/json' && !/^application\/[a-z0-9.+-]+\+json$/.test(media ?? '')) return paused()
     return new Response(response.body, { status: response.status, headers: {
-      'cache-control': 'no-store', 'content-type': response.headers.get('content-type') || 'application/json',
+      'cache-control': 'no-store', 'content-type': 'application/json', 'x-content-type-options': 'nosniff',
     } })
   } catch {
     return paused()

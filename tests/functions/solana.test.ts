@@ -32,3 +32,13 @@ test('forwards the body to the fixed origin and keeps browser credentials and up
   assert.equal(res.headers.get('set-cookie'), null)
   assert.equal(fetch.mock.callCount(), 1)
 })
+
+test('only JSON responses are served on the wallet origin', async (t) => {
+  t.mock.method(globalThis, 'fetch', async () => new Response('Unexpected document', {
+    headers: { 'content-type': 'text/html' },
+  }))
+  const res = await call(new Request(url))
+  assert.equal(res.status, 503)
+  assert.equal(res.headers.get('x-content-type-options'), 'nosniff')
+  assert.deepEqual(await res.json(), { errorType: 'SettlementPaused' })
+})

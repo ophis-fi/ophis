@@ -7,18 +7,16 @@ import { AssetSwapFieldsLayout } from 'ophis/components/AssetSwap/AssetSwapField
 
 import { NetworkSelector } from 'modules/networkSelector'
 
-import { PrivateOperatorFunding } from './PrivateOperatorFunding.container'
 import { BuyPanel, LocalTestFunds, SellPanel } from './SolanaTradePanels.container'
 import { SolanaWalletAction } from './SolanaWalletAction.container'
 
 import { AssetPicker } from '../pure/AssetPicker.pure'
 import * as styledEl from '../pure/SwapForm.styled'
-import { privateModeAtom, privateSettlementEnabled } from '../services/privateSettlement.service'
+import { privateSettlementEnabled } from '../services/privateSettlement.service'
 import { sellAmountStateAtom, walletAssetListAtom, walletHoldingsMapAtom } from '../state/assets.atoms'
 import { nativeSolanaBusyAtom, nativeSolanaFormAtom, requestNativeSolanaQuoteAtom } from '../state/trade.atoms'
 
 export function NativeSolanaForm(): ReactNode {
-  const mode = useAtomValue(privateModeAtom).data
   const [form, setForm] = useAtom(nativeSolanaFormAtom)
   const owner = useAtomValue(solanaConnectionAtom)
   const busy = useAtomValue(nativeSolanaBusyAtom)
@@ -35,7 +33,6 @@ export function NativeSolanaForm(): ReactNode {
   const holdings = useAtomValue(walletHoldingsMapAtom)
   const { valid, exceeds } = useAtomValue(sellAmountStateAtom)
   const canQuote = !!owner && !!form.buyMint && valid && !exceeds && !busy
-  const reviewSolverRent = mode?.walletChoice && new URLSearchParams(window.location.search).get('solverFunding') === 'wsol'
   return (
     <styledEl.Swap
       aria-label="Solana swap"
@@ -84,9 +81,6 @@ export function NativeSolanaForm(): ReactNode {
           onClick: () => setForm({ ...form, sellMint: form.buyMint, buyMint: form.sellMint, amount: '' }),
         }}
       />
-      {mode?.automatic && (!mode.walletChoice || reviewSolverRent) && owner && (
-        <PrivateOperatorFunding nativePayout={mode.nativePayout} forWsol={reviewSolverRent} />
-      )}
       <LocalTestFunds />
       <SolanaWalletAction canQuote={canQuote} busy={busy} />
       {picker && (

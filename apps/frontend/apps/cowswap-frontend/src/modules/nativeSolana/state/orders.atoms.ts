@@ -3,7 +3,9 @@ import { atomFamily, atomWithStorage } from 'jotai/utils'
 
 import {
   fetchOphisSolanaOrder,
-  hasConfirmedSolanaPayout,
+  identifyOphisSolanaOrder,
+  readOphisOrderAccount,
+  readOphisSellAllowance,
   getOrderIntentDecoder,
   getOrderIntentEncoder,
   ophisSolanaWalletSigner,
@@ -49,7 +51,7 @@ export interface SavedNativeSolanaOrder {
   reclaimed: boolean
   walletAction?: {
     reclaim: boolean
-    signature: string
+    signature: string | null
     lastHeight: string
     status: 'pending' | 'confirmed' | 'failed' | 'expired'
   }
@@ -76,7 +78,7 @@ function isSavedOrder(value: unknown): value is SavedNativeSolanaOrder {
     (order.signature === null || typeof order.signature === 'string') &&
     (!order.walletAction ||
       (typeof order.walletAction.reclaim === 'boolean' &&
-        /^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(order.walletAction.signature) &&
+        (order.walletAction.signature === null || /^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(order.walletAction.signature)) &&
         /^\d{1,20}$/.test(order.walletAction.lastHeight) &&
         ['pending', 'confirmed', 'failed', 'expired'].includes(order.walletAction.status))) &&
     isIntentBytes(order.intent)
@@ -110,8 +112,7 @@ function shouldCheckSubmission(lifetime: SavedNativeSolanaOrder['creationLifetim
 async function lookupMissingCreation(order: SavedNativeSolanaOrder): Promise<'pending' | 'failed' | 'unconfirmed'> {
   const lifetime = order.creationLifetime
   const rpc = balanceEndpoint(OPHIS_SOLANA_CONFIG)
-  if (!order.signature || !rpc || !lifetime || !shouldCheckSubmission(lifetime) || !/^\d{1,20}$/.test(lifetime.height))
-    return 'pending'
+  if (!rpc || !lifetime || !shouldCheckSubmission(lifetime) || !/^\d{1,20}$/.test(lifetime.height)) return 'pending'
   return checkOphisSolanaCreation(
     rpc,
     order.genesis,
@@ -122,18 +123,63 @@ async function lookupMissingCreation(order: SavedNativeSolanaOrder): Promise<'pe
 }
 
 export type SolverAttemptState = 'searching' | 'inactive' | 'pending' | 'confirmed' | 'failed' | 'expired' | 'unknown'
-type OrderWithAttempt = OphisSolanaOrder & { payoutConfirmed?: boolean; settlementAttempt?: { state: SolverAttemptState } }
+type OrderWithAttempt = OphisSolanaOrder & {
+  payoutConfirmed?: boolean
+  settlementAttempt?: { state: SolverAttemptState }
+}
 
 async function getOrderStatus(uid: string, order?: SavedNativeSolanaOrder): Promise<OrderWithAttempt> {
   if (privateSettlementEnabled && order) {
     const receipt = await privateAction<OrderWithAttempt | null>('order', { uid, pda: order.orderPda })
     if (receipt) return receipt
   }
-  const result = await fetchOphisSolanaOrder(OPHIS_SOLANA_CONFIG?.api || '', uid)
+  const config = OPHIS_SOLANA_CONFIG
+  if (!config || !order) throw Error('Order configuration is unavailable.')
+  let result: OphisSolanaOrder
+  try {
+    result = await fetchOphisSolanaOrder(config.api, uid)
+  } catch (error) {
+    const rpc = balanceEndpoint(config)
+    if (!rpc) throw error
+    const chain = await readOphisOrderAccount(rpc, config.genesis, config.program, uid, solanaAddress(order.orderPda))
+    if (!chain) throw error
+    const intent = chain.intent
+    const filled = chain.amountWithdrawn === intent.sellAmount && chain.amountReceived >= intent.buyAmount
+    return {
+      uid,
+      owner: intent.owner,
+      orderPda: solanaAddress(order.orderPda),
+      sellToken: intent.sellMint,
+      buyToken: intent.buyMint,
+      sellAmount: String(intent.sellAmount),
+      buyAmount: String(intent.buyAmount),
+      executedSellAmount: String(chain.amountWithdrawn),
+      executedBuyAmount: String(chain.amountReceived),
+      status: filled
+        ? 'fulfilled'
+        : chain.cancelled
+          ? 'cancelled'
+          : intent.validTo <= Date.now() / 1000
+            ? 'expired'
+            : 'open',
+    }
+  }
+  if (result.owner !== order.owner || result.orderPda !== order.orderPda)
+    throw Error('Indexed order identity mismatch.')
   const rpc = mainnetWalletRpc(OPHIS_SOLANA_CONFIG)
-  if (result.status === 'open' && order?.creationLifetime && Date.now() - order.creationLifetime.requestedAt < 300_000 &&
-      OPHIS_SOLANA_CONFIG && rpc) {
-    const payoutConfirmed = await hasConfirmedSolanaPayout(rpc, OPHIS_SOLANA_CONFIG.program, result).catch(() => false)
+  if (
+    result.status === 'open' &&
+    order?.creationLifetime &&
+    Date.now() - order.creationLifetime.requestedAt < 300_000 &&
+    OPHIS_SOLANA_CONFIG &&
+    rpc
+  ) {
+    const chain = await readOphisOrderAccount(rpc, config.genesis, config.program, uid, result.orderPda).catch(
+      () => null,
+    )
+    if (chain?.cancelled) return { ...result, status: 'cancelled' }
+    const payoutConfirmed =
+      !!chain && chain.amountWithdrawn === chain.intent.sellAmount && chain.amountReceived >= chain.intent.buyAmount
     return { ...result, payoutConfirmed }
   }
   return result
@@ -160,14 +206,14 @@ export const nativeSolanaOrderQueryAtom = atomFamily((uid: string) =>
       refetchOnWindowFocus: false,
       refetchInterval: (query) => {
         if (query.state.data) return query.state.data.status === 'open' ? 4000 : false
-        if (!order?.signature) return false
+        if (!order?.signature && !order?.creationLifetime) return false
         return shouldCheckSubmission(order.creationLifetime) ? 15000 : 4000
       },
     }
   }),
 )
 
-export const createNativeSolanaOrderAtom = atom(null, async (get, set) => {
+const placeNativeSolanaOrderAtom = atom(null, async (get, set, replaceAllowance: boolean) => {
   const review = get(nativeSolanaReviewAtom)
   const config = OPHIS_SOLANA_CONFIG
   if (!review || !config || get(nativeSolanaBusyAtom)) return
@@ -177,6 +223,39 @@ export const createNativeSolanaOrderAtom = atom(null, async (get, set) => {
     const { connection } = review
     checkLocalBackpackRpc(config, connection)
     const order = await prepareReviewedSolanaOrder(config, review)
+    const rpc = balanceEndpoint(config)
+    if (!rpc) throw Error('Wallet balance service unavailable.')
+    const allowance = await readOphisSellAllowance(
+      rpc,
+      config.genesis,
+      solanaAddress(connection.account.address),
+      review.sell,
+    )
+    if (allowance?.delegate !== review.allowance?.delegate || allowance?.atoms !== review.allowance?.atoms)
+      throw Error('Your token spending allowance changed. Request a new quote.')
+    if (allowance && !replaceAllowance) throw Error('Review the existing token allowance before continuing.')
+    const live = get(visibleNativeSolanaOrdersAtom).filter((saved) => {
+      const intent = getOrderIntentDecoder().decode(Uint8Array.from(saved.intent))
+      return (
+        !saved.reclaimed &&
+        Date.now() < intent.validTo * 1000 &&
+        intent.sellTokenAccount === order.intent.sellTokenAccount
+      )
+    })
+    for (const saved of live) {
+      const current = await readOphisOrderAccount(
+        rpc,
+        config.genesis,
+        config.program,
+        saved.uid,
+        solanaAddress(saved.orderPda),
+      )
+      const pending = current
+        ? !current.cancelled && current.amountWithdrawn < current.intent.sellAmount
+        : saved.creationLifetime && (await lookupMissingCreation(saved)) === 'pending'
+      if (pending)
+        throw Error('This token account has a pending order. Let it finish or cancel it before placing another.')
+    }
     const context = await nativeSolanaContext(config)
     if (get(nativeSolanaReviewAtom) !== review) throw Error('The wallet or trade changed. Request a new quote.')
     const record: SavedNativeSolanaOrder = {
@@ -219,6 +298,15 @@ export const createNativeSolanaOrderAtom = atom(null, async (get, set) => {
   }
 })
 
+export const createNativeSolanaOrderAtom = atom(null, async (get, set, replaceAllowance: boolean = false) => {
+  const wallet = get(solanaConnectionAtom)
+  if (!wallet || !navigator.locks) return set(placeNativeSolanaOrderAtom, replaceAllowance)
+  await navigator.locks.request('ophis-solana-place:' + wallet.account.address, { ifAvailable: true }, async (lock) => {
+    if (lock) await set(placeNativeSolanaOrderAtom, replaceAllowance)
+    else set(nativeSolanaErrorAtom, 'Another tab is already placing an order for this wallet.')
+  })
+})
+
 export const orderActionMessageAtom = atomFamily((_uid: string) => atom<{ text: string; error?: boolean } | null>(null))
 
 const ownerRpc = () => privateWalletRpc ?? balanceEndpoint(OPHIS_SOLANA_CONFIG)
@@ -228,12 +316,23 @@ export const orderActionReceiptAtom = atomFamily((uid: string) =>
     const order = get(visibleNativeSolanaOrdersAtom).find((record) => record.uid === uid)
     const action = order?.walletAction
     return {
-      queryKey: ['ophisSolanaAction', order?.genesis, uid, action?.signature],
+      queryKey: ['ophisSolanaAction', order?.genesis, uid, action?.signature, action?.lastHeight, action?.reclaim],
       enabled: action?.status === 'pending',
-      queryFn: () => {
+      queryFn: async () => {
         const rpc = ownerRpc()
         if (!rpc || !action || !order) throw Error('Reconnect to check the transaction.')
-        return checkOphisWalletAction(rpc, order.genesis, action.signature, BigInt(action.lastHeight))
+        const status = await checkOphisWalletAction(rpc, order.genesis, action.signature, BigInt(action.lastHeight))
+        if (action.signature && status !== 'confirmed') return status
+        const account = await readOphisOrderAccount(
+          rpc,
+          order.genesis,
+          solanaAddress(order.program),
+          uid,
+          solanaAddress(order.orderPda),
+          'finalized',
+        )
+        if (action.reclaim ? account === null : account?.cancelled) return 'confirmed'
+        return status === 'confirmed' ? 'failed' : status
       },
       refetchInterval: 5000,
       retry: false,
@@ -248,14 +347,21 @@ export const recordOrderActionAtom = atom(
     set,
     result: {
       uid: string
-      signature: string
+      signature: string | null
+      lastHeight: string
       status: 'confirmed' | 'failed' | 'expired'
     },
   ) => {
     const all = get(savedNativeSolanaOrdersAtom)
     const order = all[result.uid]
     const action = order?.walletAction
-    if (!action || action.signature !== result.signature || action.status !== 'pending') return
+    if (
+      !action ||
+      action.signature !== result.signature ||
+      action.lastHeight !== result.lastHeight ||
+      action.status !== 'pending'
+    )
+      return
     set(savedNativeSolanaOrdersAtom, {
       ...all,
       [result.uid]: {
@@ -291,23 +397,43 @@ export const manageNativeSolanaOrderAtom = atom(null, async (get, set, action: {
     checkLocalBackpackRpc(config, connection)
     const intent = getOrderIntentDecoder().decode(new Uint8Array(order.intent))
     if (intent.owner !== connection.account.address) throw Error('Reconnect the order owner.')
+    const identity = await identifyOphisSolanaOrder(config.program, intent)
+    if (identity.uid !== order.uid || identity.orderPda !== order.orderPda)
+      throw Error('Saved order identity mismatch.')
+    const rpc = ownerRpc()
+    if (!rpc) throw Error('Order recovery RPC is unavailable.')
+    const chain = await readOphisOrderAccount(rpc, config.genesis, config.program, identity.uid, identity.orderPda)
+    if (!chain) throw Error('The order account is no longer on-chain. Refresh its status.')
     const owner = ophisSolanaWalletSigner(connection.account)
     const instruction = action.reclaim
       ? prepareOphisSolanaReclaim({
           programAddress: config.program,
           owner,
-          orderPda: solanaAddress(order.orderPda),
-          createdBy: solanaAddress(order.createdBy),
+          orderPda: identity.orderPda,
+          createdBy: chain.createdBy,
         })
       : await prepareOphisSolanaCancellation({ programAddress: config.program, owner, intent, existingOnly: true })
-    const context = privateWalletRpc
-      ? await fetchOphisWalletActionContext(privateWalletRpc, config.program, config.genesis)
-      : await nativeSolanaContext(config)
+    const context = await fetchOphisWalletActionContext(rpc, config.program, config.genesis)
     if (get(solanaConnectionAtom) !== connection) throw Error('The wallet changed. Try again.')
     set(message, {
       text: action.reclaim ? 'Review the storage refund in your wallet.' : 'Review the cancellation in your wallet.',
     })
+    const saveAction = (signature: string | null) => {
+      set(savedNativeSolanaOrdersAtom, (all) => ({
+        ...all,
+        [order.uid]: {
+          ...all[order.uid],
+          walletAction: {
+            reclaim: action.reclaim,
+            signature,
+            lastHeight: String(context.lastValidBlockHeight),
+            status: 'pending',
+          },
+        },
+      }))
+    }
     const signature = await sendOphisSolanaWalletTransaction({
+      onBeforeBroadcast: () => saveAction(null),
       ...connection,
       chain: config.chain,
       instructions: [instruction],
@@ -315,18 +441,7 @@ export const manageNativeSolanaOrderAtom = atom(null, async (get, set, action: {
       programAddress: config.program,
       expectedGenesisHash: config.genesis,
     })
-    set(savedNativeSolanaOrdersAtom, (all) => ({
-      ...all,
-      [order.uid]: {
-        ...all[order.uid],
-        walletAction: {
-          reclaim: action.reclaim,
-          signature,
-          lastHeight: String(context.lastValidBlockHeight),
-          status: 'pending',
-        },
-      },
-    }))
+    saveAction(signature)
     set(message, null)
   } catch (error: unknown) {
     set(message, { text: nativeSolanaErrorMessage(error), error: true })

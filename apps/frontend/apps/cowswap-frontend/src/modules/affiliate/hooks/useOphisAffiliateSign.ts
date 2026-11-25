@@ -4,6 +4,7 @@ import { useCallback } from 'react'
 import { useWalletProvider } from '@cowprotocol/wallet-provider'
 
 import { OPHIS_SOLANA_CONFIG, solanaConnectionAtom, type SolanaConnection } from 'entities/solana'
+import { verifySolanaMessage } from 'entities/solana/verifySolanaMessage'
 import { utils } from 'ethers'
 
 import { isSolanaAffiliateAddress } from '../lib/affiliateAddress'
@@ -35,6 +36,7 @@ async function signSolanaAction(
     utils.hexlify(signed.signedMessage) !== utils.hexlify(message)
   )
     throw Error('The wallet returned an invalid signed message.')
+  await verifySolanaMessage(account, signed.signature, message)
   return { wallet: account, issued, signature: utils.hexlify(signed.signature) }
 }
 

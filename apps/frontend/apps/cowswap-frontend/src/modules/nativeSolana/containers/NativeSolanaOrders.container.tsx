@@ -7,10 +7,9 @@ import { Trans } from '@lingui/react/macro'
 import { solanaConnectionAtom } from 'entities/solana'
 
 import { NativeSolanaHistory } from './NativeSolanaHistory.container'
-import { PrivateSettlementPanel } from './PrivateSettlement.container'
 
 import * as styledEl from '../pure/NativeSolana.styled'
-import { privateAction, privateModeAtom, privateSettlementEnabled } from '../services/privateSettlement.service'
+import { privateAction, privateSettlementEnabled } from '../services/privateSettlement.service'
 import {
   manageNativeSolanaOrderAtom,
   orderActionMessageAtom,
@@ -44,7 +43,6 @@ function SolverAttempt({ attempt, stale }: { attempt?: { state: SolverAttemptSta
 }
 
 function NativeSolanaOrderCard({ order }: { order: SavedNativeSolanaOrder }): ReactNode {
-  const auto = useAtomValue(privateModeAtom).data?.automatic
   const { data, refetch, isFetching, isError } = useAtomValue(nativeSolanaOrderQueryAtom(order.uid))
   const manage = useSetAtom(manageNativeSolanaOrderAtom)
   const busy = useAtomValue(nativeSolanaBusyAtom)
@@ -55,10 +53,11 @@ function NativeSolanaOrderCard({ order }: { order: SavedNativeSolanaOrder }): Re
   const pending = action?.status === 'pending'
   useEffect(() => {
     if (pending && action && receipt.data && receipt.data !== 'pending')
-      record({ uid: order.uid, signature: action.signature, status: receipt.data })
+      record({ uid: order.uid, signature: action.signature, lastHeight: action.lastHeight, status: receipt.data })
   }, [record, order.uid, action, pending, receipt.data])
   const cancelled = action?.status === 'confirmed' && !action.reclaim
-  const open = data?.status === 'open' && !data.payoutConfirmed && !cancelled && !order.reclaimed
+  const open =
+    ((data?.status === 'open' && !data.payoutConfirmed) || (isError && !data)) && !cancelled && !order.reclaimed
   const reclaimable = !order.reclaimed && (cancelled || (data && 'uid' in data && data.status !== 'open'))
   return (
     <styledEl.Card>
@@ -82,19 +81,14 @@ function NativeSolanaOrderCard({ order }: { order: SavedNativeSolanaOrder }): Re
         ) : order.signature ? (
           <Trans>Wallet submitted. Waiting for confirmation and indexing.</Trans>
         ) : (
-          <Trans>No submission confirmed</Trans>
+          <Trans>Checking whether the order reached Solana.</Trans>
         )}
       </p>
-      {privateSettlementEnabled &&
-        open &&
-        data?.status === 'open' &&
-        (auto === false ? (
-          <PrivateSettlementPanel order={order} />
-        ) : (
-          <p role="status">
-            <SolverAttempt attempt={data.settlementAttempt} stale={isError} />
-          </p>
-        ))}
+      {privateSettlementEnabled && open && data?.status === 'open' && (
+        <p role="status">
+          <SolverAttempt attempt={data.settlementAttempt} stale={isError} />
+        </p>
+      )}
       {message && <p role={message.error ? 'alert' : 'status'}>{message.text}</p>}
       {pending && (
         <p role="status">
@@ -107,7 +101,7 @@ function NativeSolanaOrderCard({ order }: { order: SavedNativeSolanaOrder }): Re
           )}
         </p>
       )}
-      {privateSettlementEnabled && action && (
+      {privateSettlementEnabled && action?.signature && (
         <a href={'https://explorer.solana.com/tx/' + action.signature} target="_blank" rel="noreferrer">
           {action.reclaim ? <Trans>View refund transaction</Trans> : <Trans>View cancellation transaction</Trans>}
         </a>

@@ -1,6 +1,7 @@
 import { walletConnectSvg } from '@cowprotocol/wallet'
 
 import { solanaPairingChain, type SolanaWalletNetwork } from 'entities/solana'
+import { verifySolanaMessage } from 'entities/solana/verifySolanaMessage'
 import { utils } from 'ethers'
 
 import type { OphisSolanaWallet, OphisSolanaWalletAccount } from '@ophis/solana-sdk'
@@ -105,6 +106,7 @@ function messageSigning(
       })
       const signature = utils.base58.decode(result.signature)
       if (signature.length !== 64) throw Error('WalletConnect returned an invalid message signature.')
+      await verifySolanaMessage(input.account.address, signature, input.message)
       return [{ signature, signedMessage: input.message }]
     },
   }

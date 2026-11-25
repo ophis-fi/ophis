@@ -81,10 +81,14 @@ export async function sendOphisSolanaWalletTransaction(input: {
   /** Persist recovery data before the first operation that can broadcast the order. */
   onBeforeBroadcast?: () => void;
 }): Promise<string> {
-  const { wallet, account, chain } = input;
+  const { wallet, chain } = input;
+  const account = wallet.accounts.find((current) => current.address === input.account.address);
   if (
+    !account ||
+    !isOphisSolanaWallet(wallet) ||
     !supportsOphisSolanaAccount(wallet, account, chain) ||
-    !wallet.accounts.some((current) => current.address === account.address)
+    account.publicKey.length !== 32 ||
+    getBase58Decoder().decode(account.publicKey) !== account.address
   )
     throw Error('Reconnect a Solana wallet on the selected network');
   const signing = wallet.features['solana:signTransaction'];
@@ -159,6 +163,7 @@ export async function sendOphisSolanaWalletTransaction(input: {
     return signature;
   }
   input.onBeforeBroadcast?.();
+  const message = Uint8Array.from(getTransactionDecoder().decode(transaction).messageBytes);
   const outputs = await wallet.features['solana:signAndSendTransaction'].signAndSendTransaction({
     transaction,
     account,
@@ -173,5 +178,16 @@ export async function sendOphisSolanaWalletTransaction(input: {
   const signature = outputs[0]?.signature;
   if (outputs.length !== 1 || !(signature instanceof Uint8Array) || signature.length !== 64)
     throw Error('Wallet returned an invalid transaction signature');
+  const key = await crypto.subtle.importKey(
+    'raw',
+    Uint8Array.from(account.publicKey),
+    'Ed25519',
+    false,
+    ['verify'],
+  );
+  if (!(await crypto.subtle.verify('Ed25519', key, Uint8Array.from(signature), message)))
+    throw Error(
+      'The wallet returned a signature for a different transaction. Checking the order on Solana.',
+    );
   return getBase58Decoder().decode(signature);
 }

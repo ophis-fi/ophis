@@ -19,21 +19,15 @@ export function useCreateAffiliateCode(
   const sign = useOphisAffiliateSign(account)
   const [createState, setCreateState] = useState<CreateState>('idle')
 
-  // Latest connected account, for guarding async continuations: a wallet
-  // switch mid-sign/mid-request must not render the OLD wallet's minted code
-  // under the NEW wallet's dashboard.
-  const accountRef = useRef(account)
-  useLayoutEffect(() => {
-    accountRef.current = account
-  }, [account])
-
-  // A GENUINE wallet switch resets the mint state machine (a stale in-flight
-  // create or error/rejected state would otherwise mislabel the new wallet's
-  // button). Key on the canonical address key so a checksum-only re-emit of
-  // the SAME wallet does NOT reset mid-signature -- otherwise the reset
-  // re-enables the button and the user can fire a duplicate createRefCode
-  // (Codex review).
   const accountKey = affiliateAddressKey(account)
+  const accountRevision = useRef(0)
+  useLayoutEffect(
+    () => () => {
+      ++accountRevision.current
+    },
+    [accountKey],
+  )
+
   useEffect(() => {
     setCreateState('idle')
   }, [accountKey])
@@ -45,16 +39,17 @@ export function useCreateAffiliateCode(
       // the NEW wallet, so a stale continuation must bail WITHOUT touching state
       // (including the 'creating' transition and the catch path) — otherwise it
       // strands the new wallet on a "Creating..."/error label (Codex review).
+      const revision = accountRevision.current
       const startAccount = account
       setCreateState('signing')
       try {
         const body = await sign(
           payoutWallet ? `create referral code\nWETH payout: ${payoutWallet}` : 'create referral code',
         )
-        if (affiliateAddressKey(accountRef.current) !== affiliateAddressKey(startAccount)) return
+        if (accountRevision.current !== revision) return
         setCreateState('creating')
         const res = await createRefCode(payoutWallet ? { ...body, payoutWallet } : body)
-        if (affiliateAddressKey(accountRef.current) !== affiliateAddressKey(startAccount)) return
+        if (accountRevision.current !== revision) return
         setStats((prev) =>
           prev
             ? { ...prev, activeCodes: [res.code, ...prev.activeCodes.filter((c) => c !== res.code)] }
@@ -69,7 +64,7 @@ export function useCreateAffiliateCode(
         )
         setCreateState('idle')
       } catch (error: unknown) {
-        if (affiliateAddressKey(accountRef.current) !== affiliateAddressKey(startAccount)) return
+        if (accountRevision.current !== revision) return
         // User-rejected signature (ethers v5 ACTION_REJECTED / EIP-1193 4001).
         const code = (error as { code?: number | string })?.code
         if (code === 4001 || code === 'ACTION_REJECTED') {

@@ -1,4 +1,8 @@
-import { getOrderAccountDecoder, ORDER_ACCOUNT_DISCRIMINATOR } from './settlement/generated/accounts/orderAccount.js';
+import {
+  getOrderAccountDecoder,
+  ORDER_ACCOUNT_DISCRIMINATOR,
+} from './settlement/generated/accounts/orderAccount.js';
+import { identifyOphisSolanaOrder } from './settlement/hooked.js';
 import type { OphisSolanaOrder } from './api.js';
 import {
   createSolanaRpc,
@@ -36,10 +40,14 @@ export async function fetchOphisWalletActionContext(
 export async function checkOphisWalletAction(
   endpoint: string,
   genesis: string,
-  tx: string,
+  tx: string | null,
   lastHeight: bigint,
 ) {
   const rpc = await matchingRpc(endpoint, genesis);
+  if (!tx) {
+    const tip = await rpc.getEpochInfo({ commitment: 'finalized' }).send();
+    return tip.blockHeight != null && tip.blockHeight > lastHeight ? 'expired' : 'pending';
+  }
   const lookup = () =>
     rpc.getSignatureStatuses([signature(tx)], { searchTransactionHistory: true }).send();
   let receipt = await lookup();
@@ -118,19 +126,22 @@ export async function waitForLocalConfirmation(
 export async function checkOphisSolanaCreation(
   endpoint: string,
   genesis: string,
-  tx: string,
+  tx: string | null,
   orderPda: Address,
   lastValidBlockHeight: bigint,
 ): Promise<'pending' | 'failed' | 'unconfirmed'> {
   const rpc = await matchingRpc(endpoint, genesis);
   const tip = await rpc.getEpochInfo({ commitment: 'finalized' }).send();
   if (tip.blockHeight == null || tip.blockHeight <= lastValidBlockHeight) return 'pending';
-  const statuses = await rpc
-    .getSignatureStatuses([signature(tx)], { searchTransactionHistory: true })
-    .send();
-  if (statuses.context.slot < tip.absoluteSlot) return 'pending';
-  const status = statuses.value[0];
-  if (status) return status.confirmationStatus === 'finalized' && status.err ? 'failed' : 'pending';
+  if (tx) {
+    const statuses = await rpc
+      .getSignatureStatuses([signature(tx)], { searchTransactionHistory: true })
+      .send();
+    if (statuses.context.slot < tip.absoluteSlot) return 'pending';
+    const status = statuses.value[0];
+    if (status)
+      return status.confirmationStatus === 'finalized' && status.err ? 'failed' : 'pending';
+  }
   const account = await rpc
     .getAccountInfo(orderPda, {
       commitment: 'finalized',
@@ -142,17 +153,55 @@ export async function checkOphisSolanaCreation(
   return account.value ? 'pending' : 'unconfirmed';
 }
 
-/** The indexed order supplies the canonical PDA. Finalized history follows confirmed delivery. */
-export async function hasConfirmedSolanaPayout(endpoint: string, program: Address, order: OphisSolanaOrder): Promise<boolean> {
+export async function readOphisOrderAccount(
+  endpoint: string,
+  genesis: string,
+  program: Address,
+  uid: string,
+  pda: Address,
+  commitment: 'confirmed' | 'finalized' = 'confirmed',
+) {
+  const rpc = await matchingRpc(endpoint, genesis);
   const decoder = getOrderAccountDecoder();
-  const { value } = await createSolanaRpc(endpoint).getAccountInfo(order.orderPda, {
-    commitment: 'confirmed', encoding: 'base64', dataSlice: { offset: 0, length: decoder.fixedSize },
-  }).send();
-  if (!value || value.owner !== program) return false;
+  const { value } = await rpc
+    .getAccountInfo(pda, {
+      commitment,
+      encoding: 'base64',
+      dataSlice: { offset: 0, length: decoder.fixedSize },
+    })
+    .send();
+  if (!value) return null;
   const bytes = getBase64Encoder().encode(value.data[0]);
-  if (bytes.length !== decoder.fixedSize || bytes[0] !== ORDER_ACCOUNT_DISCRIMINATOR[0]) return false;
-  const { intent, amountWithdrawn, amountReceived } = decoder.decode(bytes);
-  return intent.owner === order.owner && intent.sellMint === order.sellToken && intent.buyMint === order.buyToken &&
-    intent.sellAmount === BigInt(order.sellAmount) && intent.buyAmount === BigInt(order.buyAmount) &&
-    amountWithdrawn === intent.sellAmount && amountReceived >= intent.buyAmount && amountReceived > 0n;
+  if (
+    value.owner !== program ||
+    bytes.length !== decoder.fixedSize ||
+    bytes[0] !== ORDER_ACCOUNT_DISCRIMINATOR[0]
+  )
+    throw Error('Invalid Solana order account');
+  const account = decoder.decode(bytes);
+  const identity = await identifyOphisSolanaOrder(program, account.intent);
+  if (identity.uid !== uid || identity.orderPda !== pda)
+    throw Error('Solana order identity mismatch');
+  return account;
+}
+
+export async function hasConfirmedSolanaPayout(
+  endpoint: string,
+  genesis: string,
+  program: Address,
+  order: OphisSolanaOrder,
+): Promise<boolean> {
+  const account = await readOphisOrderAccount(
+    endpoint,
+    genesis,
+    program,
+    order.uid,
+    order.orderPda,
+  );
+  return (
+    !!account &&
+    account.amountWithdrawn === account.intent.sellAmount &&
+    account.amountReceived > 0n &&
+    account.amountReceived >= account.intent.buyAmount
+  );
 }

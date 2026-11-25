@@ -1,5 +1,5 @@
 import { useAtomValue, useSetAtom } from 'jotai'
-import { ReactNode } from 'react'
+import { ReactNode, useState } from 'react'
 
 import { ButtonPrimary } from '@cowprotocol/ui'
 
@@ -62,6 +62,7 @@ function PrivateOrderNotice({
 function NativeSolanaReview(): ReactNode {
   const review = useAtomValue(nativeSolanaReviewAtom)
   const busy = useAtomValue(nativeSolanaBusyAtom)
+  const [acceptedReview, setAcceptedReview] = useState<typeof review>(null)
   const create = useSetAtom(createNativeSolanaOrderAtom)
   const assets = useAtomValue(walletAssetListAtom)
   if (!review) return null
@@ -71,6 +72,7 @@ function NativeSolanaReview(): ReactNode {
   const { quote } = review.quote
   const { feeTerms } = quote
   const baseBps = feeTerms?.baseBps
+  const maximumCost = BigInt(quote.costs.networkFees) + BigInt(quote.costs.buyTokenAtaCosts)
   const improvementCapBps = feeTerms?.improvementCapBps
   const sellAmount = formatOphisSolanaAmount(BigInt(quote.sellAmount) + BigInt(quote.feeAmount), review.sell.decimals)
   const minimum = formatOphisSolanaAmount(
@@ -88,6 +90,12 @@ function NativeSolanaReview(): ReactNode {
         </dt>
         <dd title={review.sell.address}>
           {sellAmount} {sellSymbol}
+        </dd>
+        <dt>
+          <Trans>Quoted output</Trans>
+        </dt>
+        <dd>
+          {formatOphisSolanaAmount(BigInt(quote.buyAmount), review.buy.decimals)} {buySymbol}
         </dd>
         <dt>
           <Trans>Minimum received</Trans>
@@ -108,7 +116,7 @@ function NativeSolanaReview(): ReactNode {
               <Trans>{baseBps} bp</Trans>
             </dd>
             <dt>
-              <Trans>Ophis share of execution above your quote</Trans>
+              <Trans>Ophis share of price improvement</Trans>
             </dt>
             <dd>
               <Trans>50%, capped at {improvementCapBps} bp of the trade</Trans>
@@ -116,9 +124,11 @@ function NativeSolanaReview(): ReactNode {
           </>
         )}
         <dt>
-          <Trans>Estimated settlement network fee</Trans>
+          <Trans>Maximum settlement cost in {buySymbol}</Trans>
         </dt>
-        <dd>{formatOphisSolanaAmount(BigInt(quote.costs.networkFees), review.buy.decimals)} {buySymbol}</dd>
+        <dd>
+          {formatOphisSolanaAmount(maximumCost, review.buy.decimals)} {buySymbol}
+        </dd>
         <dt>
           <Trans>Total quote costs in the buy token</Trans>
         </dt>
@@ -133,7 +143,16 @@ function NativeSolanaReview(): ReactNode {
         )}
       </styledEl.Values>
       <p>
-        <Trans>Your wallet pays to place the order and to open any required accounts. The quote includes the estimated settlement fee.</Trans>
+        <Trans>Your wallet pays to place the order and open any required accounts.</Trans>
+        {feeTerms && (
+          <>
+            {' '}
+            <Trans>
+              If the swap delivers more than the quoted output after settlement costs and the base fee, you keep at
+              least half the difference.
+            </Trans>
+          </>
+        )}
       </p>
       {privateSettlementEnabled && (
         <PrivateOrderNotice
@@ -142,7 +161,25 @@ function NativeSolanaReview(): ReactNode {
           buySymbol={buySymbol}
         />
       )}
-      <ButtonPrimary type="button" disabled={busy} onClick={() => void create()}>
+      {review.allowance && (
+        <label>
+          <input
+            type="checkbox"
+            checked={acceptedReview === review}
+            onChange={(event) => setAcceptedReview(event.target.checked ? review : null)}
+          />
+          <Trans>
+            Replace the existing allowance of {formatOphisSolanaAmount(review.allowance.atoms, review.sell.decimals)}{' '}
+            {sellSymbol}
+            for {review.allowance.delegate}. Older orders using this allowance may stop filling.
+          </Trans>
+        </label>
+      )}
+      <ButtonPrimary
+        type="button"
+        disabled={busy || (!!review.allowance && acceptedReview !== review)}
+        onClick={() => void create(acceptedReview === review)}
+      >
         <Trans>Confirm in wallet</Trans>
       </ButtonPrimary>
     </styledEl.Card>

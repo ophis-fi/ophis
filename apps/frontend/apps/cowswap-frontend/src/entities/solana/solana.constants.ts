@@ -1,4 +1,4 @@
-import { solanaAddress, type OphisSolanaWalletChain } from '@ophis/solana-sdk'
+import { OPHIS_MAINNET_PROGRAM, solanaAddress, type OphisSolanaWalletChain } from '@ophis/solana-sdk'
 
 export const SOLANA_MAINNET_GENESIS = '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d'
 export const SOLANA_DEVNET_GENESIS = 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG'
@@ -32,9 +32,8 @@ function isPublicApi(url: URL): boolean {
 }
 
 function isExpectedChain(chain: string, genesis: string): boolean {
-  return chain === 'solana:mainnet'
-    ? genesis === SOLANA_MAINNET_GENESIS
-    : chain.startsWith('solana:') && genesis !== SOLANA_MAINNET_GENESIS
+  if (chain === 'solana:localnet') return !Object.values(walletConnectClusters).includes(genesis)
+  return walletConnectClusters[chain as OphisSolanaWalletChain] === genesis
 }
 
 export function readOphisSolanaConfig(): OphisSolanaConfig | null {
@@ -46,6 +45,13 @@ export function readOphisSolanaConfig(): OphisSolanaConfig | null {
     const chain = process.env.REACT_APP_OPHIS_SOLANA_WALLET_CHAIN || 'solana:mainnet'
     const genesis = process.env.REACT_APP_OPHIS_SOLANA_GENESIS || SOLANA_MAINNET_GENESIS
     if (!isPublicApi(url) || !isExpectedChain(chain, genesis)) return null
+    if (
+      window.location.hostname === 'swap.ophis.fi' &&
+      (url.href.replace(/\/$/, '') !== 'https://swap.ophis.fi/solana-api' ||
+        program !== OPHIS_MAINNET_PROGRAM ||
+        chain !== 'solana:mainnet')
+    )
+      return null
     solanaAddress(genesis)
     return { api: url.toString(), program: solanaAddress(program), genesis, chain: chain as OphisSolanaWalletChain }
   } catch {

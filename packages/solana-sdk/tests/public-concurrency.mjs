@@ -87,8 +87,8 @@ const results = await Promise.all(orders.map(async ({ owner, order, start }) => 
   const status = await fetchOphisSolanaOrder(api, order.uid);
   assert.equal(status.status, 'fulfilled');
   assert.equal(status.owner, owner.address);
-  assert(await hasConfirmedSolanaPayout('http://127.0.0.1:18899', address(program), status));
-  assert.equal(await hasConfirmedSolanaPayout('http://127.0.0.1:18899', SOLANA_NATIVE_ASSET, status), false);
+  assert(await hasConfirmedSolanaPayout('http://127.0.0.1:18899', genesis, address(program), status));
+  await assert.rejects(hasConfirmedSolanaPayout('http://127.0.0.1:18899', genesis, SOLANA_NATIVE_ASSET, status));
   return { owner: owner.address, uid: order.uid, received: received.toString(), confirmationMs, indexedMs: Date.now() - start };
 }));
 console.log(JSON.stringify({ genesis, results }, null, 2));

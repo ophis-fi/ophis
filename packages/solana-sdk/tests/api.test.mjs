@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import {
   fetchOphisSolanaOrder,
@@ -7,7 +6,7 @@ import {
   SOLANA_NATIVE_ASSET,
   WRAPPED_SOL_MINT,
 } from '../dist/index.js';
-const fixture = JSON.parse(readFileSync(new URL('./api-fixture.json', import.meta.url)));
+import fixture from './api-fixture.json' with { type: 'json' };
 const input = {
   from: fixture.quote.from,
   sellToken: fixture.quote.quote.sellToken,
@@ -72,6 +71,12 @@ test('verified fee terms require a stored reference and the published share and 
 
 test('invalid native response fields cannot silently become a verified quote', async (t) => {
   for (const alter of [
+    (value) => {
+      value.quote.partiallyFillable = true;
+    },
+    (value) => {
+      value.quote.validTo = Math.floor(Date.now() / 1000) + 3600;
+    },
     (value) => {
       delete value.verified;
     },

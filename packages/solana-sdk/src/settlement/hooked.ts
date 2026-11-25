@@ -40,11 +40,13 @@ export async function resolveOrderPda({
   programAddress: Address;
   args: { intent: OrderIntentArgs };
 }): Promise<{ value: Address }> {
-  const intentBytes = getOrderIntentEncoder().encode(args.intent);
-  const orderUid = new Uint8Array(await crypto.subtle.digest("SHA-256", intentBytes));
-  const [address] = await getProgramDerivedAddress({
-    programAddress,
-    seeds: [SETTLEMENT_SEED, orderUid, "order"],
-  });
-  return { value: address };
+  return { value: (await identifyOphisSolanaOrder(programAddress, args.intent)).orderPda };
+}
+
+export async function identifyOphisSolanaOrder(programAddress: Address, intent: OrderIntentArgs) {
+  const bytes = getOrderIntentEncoder().encode(intent);
+  const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", Uint8Array.from(bytes)));
+  const [orderPda] = await getProgramDerivedAddress({ programAddress, seeds: [SETTLEMENT_SEED, hash, "order"] });
+  const uid = "0x" + Array.from(hash, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return { uid, orderPda };
 }

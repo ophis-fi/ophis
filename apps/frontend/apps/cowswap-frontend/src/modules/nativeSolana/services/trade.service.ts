@@ -1,6 +1,9 @@
 import {
   fetchOphisSolanaChainContext,
   fetchOphisSolanaMint,
+  verifyOphisMintMetadata,
+  readOphisSellAllowance,
+  checkedQuoteAppData,
   fetchOphisSolanaQuote,
   OPHIS_LOCAL_WALLET_RPC,
   OphisSolanaHttpError,
@@ -16,6 +19,8 @@ import {
 } from '@ophis/solana-sdk'
 import { OPHIS_SOLANA_CONFIG, type OphisSolanaConfig, type SolanaConnection } from 'entities/solana'
 
+import { balanceEndpoint } from './assets.service'
+
 export interface NativeSolanaForm {
   sellMint: string
   buyMint: string
@@ -29,6 +34,7 @@ export interface NativeSolanaReview {
   buy: OphisSolanaMintMetadata
   form: NativeSolanaForm
   connection: SolanaConnection
+  allowance?: Awaited<ReturnType<typeof readOphisSellAllowance>>
   solAfterOrder?: bigint
 }
 
@@ -94,6 +100,12 @@ export async function loadNativeSolanaQuote(
     mintMetadata(config.api, form.buyMint),
   ])
   if (sell.address === buy.address) throw Error('Choose two different tokens.')
+  const rpc = balanceEndpoint(config)
+  if (!rpc) throw Error('Wallet balance service unavailable.')
+  const [, allowance] = await Promise.all([
+    verifyOphisMintMetadata(rpc, config.genesis, [sell, buy]),
+    readOphisSellAllowance(rpc, config.genesis, solanaAddress(connection.account.address), sell),
+  ])
   const quote = await fetchOphisSolanaQuote(config.api, {
     from: solanaAddress(connection.account.address),
     walletCreatesBuyTokenAccount: true,
@@ -104,7 +116,8 @@ export async function loadNativeSolanaQuote(
     priceQuality: 'verified',
   })
   if (!quote.verified) throw Error('An executable quote could not be verified. Request a new quote.')
-  const review: NativeSolanaReview = { quote, sell, buy, form, connection }
+  checkedQuoteAppData(config.program, quote.quote)
+  const review: NativeSolanaReview = { quote, sell, buy, form, connection, allowance }
   if (config.chain === 'solana:localnet') {
     const order = await prepareReviewedSolanaOrder(config, review)
     review.solAfterOrder = await previewOphisLocalOrder({
@@ -130,7 +143,8 @@ const protocolErrorMessages: Record<string, string | undefined> = {
   PrivateWallet: 'For this private test, connect the authorized Backpack account (63ox…irnA).',
   ChainUnavailable: 'Solana chain data is temporarily unavailable. Request a fresh quote in a moment.',
   PrivateBudget: 'The private RPC test budget is low. New orders are paused.',
-  PrivateSolverRent: 'The Ophis solver needs more SOL for account rent and settlement fees. Your swap has not been placed.',
+  PrivateSolverRent:
+    'The Ophis solver needs more SOL for account rent and settlement fees. Your swap has not been placed.',
   PrivateSolverFunding:
     'Review solver funding in Backpack first. Once the 0.003 SOL transfer confirms, get a fresh quote.',
 }

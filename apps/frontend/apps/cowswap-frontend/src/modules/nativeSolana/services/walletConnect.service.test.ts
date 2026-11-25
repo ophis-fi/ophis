@@ -1,3 +1,4 @@
+import { generateKeyPairSync, sign as signBytes, webcrypto } from 'crypto'
 import { solanaPairingChain, type OphisSolanaConfig } from 'entities/solana'
 import { utils } from 'ethers'
 
@@ -20,7 +21,11 @@ const config: OphisSolanaConfig = {
 const chainId = 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1'
 const method = 'solana_signAndSendTransaction'
 const feature = 'solana:signAndSendTransaction'
-const address = config.program
+const { publicKey, privateKey } = generateKeyPairSync('ed25519')
+const address = utils.base58.encode(publicKey.export({ type: 'spki', format: 'der' }).subarray(-32))
+beforeAll(() => {
+  Object.defineProperty(crypto, 'subtle', { configurable: true, value: webcrypto.subtle })
+})
 const session = {
   expiry: Math.floor(Date.now() / 1000) + 300,
   namespaces: { solana: { methods: [method], accounts: [chainId + ':' + address] } },
@@ -116,6 +121,8 @@ it('uses base58 message signing only with an approved account and method', async
   const account = approvedWallet.accounts[0]
   mockClient.session.get.mockReturnValueOnce(session)
   await expect(sign({ account, message })).rejects.toThrow('supports Solana message signing')
+  await expect(sign({ account, message })).rejects.toThrow('does not match')
+  mockClient.request.mockResolvedValueOnce({ signature: utils.base58.encode(signBytes(null, message, privateKey)) })
   const [signed] = await sign({ account, message })
   expect(signed.signedMessage).toEqual(message)
   expect(signed.signature).toHaveLength(64)

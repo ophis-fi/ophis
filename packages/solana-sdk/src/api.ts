@@ -1,4 +1,4 @@
-import { address, blockhash, type Address } from '@solana/kit';
+import { address, blockhash, getBase16Encoder, type Address } from '@solana/kit';
 import type { OphisSolanaChainContext } from './transaction.js';
 import {
   TOKEN_PROGRAM_ADDRESS,
@@ -44,6 +44,49 @@ export interface OphisSolanaQuote {
   id: number | null;
   verified: boolean;
   funder: Address | null;
+}
+
+export const OPHIS_MAINNET_PROGRAM = address('BJZ5yma22Km3fsfrEEdZVGygdrcwoschb6uUNqQWaQ9h');
+const mainnetStables = new Set<string>([
+  'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+  'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
+  'HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr',
+  '2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo',
+  '2u1tszSeqZ3qBWF3uNGPFc8TzMk2tdiwknnRMWGWjGWH',
+]);
+
+export function checkedQuoteAppData(
+  program: Address,
+  quote: OphisSolanaQuote['quote'],
+): Uint8Array {
+  if (!/^0x[0-9a-fA-F]{64}$/.test(quote.appData)) throw Error('Invalid quote app data');
+  const bytes = new Uint8Array(getBase16Encoder().encode(quote.appData.slice(2)));
+  if (program !== OPHIS_MAINNET_PROGRAM) return bytes;
+
+  const view = new DataView(bytes.buffer);
+  const maxCost =
+    BigInt(atoms(quote.costs.networkFees)) + BigInt(atoms(quote.costs.buyTokenAtaCosts));
+  const stableSell = mainnetStables.has(quote.sellToken),
+    stableBuy = mainnetStables.has(quote.buyToken);
+  const isSol = (mint: Address) => mint === NATIVE_SOL || mint === WSOL;
+  const lowBase =
+    (stableSell && stableBuy) ||
+    (stableSell && isSol(quote.buyToken)) ||
+    (stableBuy && isSol(quote.sellToken));
+  const terms = quote.feeTerms;
+  if (
+    new TextDecoder().decode(bytes.subarray(0, 8)) !== 'OPHISPI3' ||
+    quote.kind !== 'sell' ||
+    quote.partiallyFillable ||
+    quote.costs.token !== quote.buyToken ||
+    view.getBigUint64(8, true) !== BigInt(atoms(quote.buyAmount, true)) ||
+    view.getBigUint64(16, true) !== maxCost ||
+    terms?.baseBps !== (lowBase ? 1 : 5) ||
+    terms.improvementShareBps !== 5000 ||
+    terms.improvementCapBps !== (stableSell && stableBuy ? 20 : 99)
+  )
+    throw Error('Request a new quote with matching actual-output fee terms');
+  return bytes;
 }
 
 export interface OphisSolanaOrder {
@@ -183,13 +226,14 @@ export async function fetchOphisSolanaQuote(
     throw Error('Quote does not match the requested trade');
   if (
     typeof value.verified !== 'boolean' ||
-    typeof quote.partiallyFillable !== 'boolean' ||
+    quote.partiallyFillable !== false ||
     typeof value.expiration !== 'string' ||
     !Number.isFinite(Date.parse(value.expiration)) ||
     typeof quote.validTo !== 'number' ||
     !Number.isInteger(quote.validTo) ||
     quote.validTo <= 0 ||
     quote.validTo > 0xffff_ffff ||
+    quote.validTo > Math.floor(Date.now() / 1000) + (input.validFor ?? 1800) + 60 ||
     typeof quote.appData !== 'string' ||
     !/^0x[0-9a-fA-F]{64}$/.test(quote.appData) ||
     (value.id !== null && (!Number.isSafeInteger(value.id) || Number(value.id) < 0))

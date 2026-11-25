@@ -5,7 +5,7 @@ import { type SolanaConnection, solanaConnectionAtom } from 'entities/solana'
 import { utils } from 'ethers'
 import { MemoryRouter } from 'react-router'
 
-import { generateKeyPairSync, sign, verify, type KeyObject } from 'crypto'
+import { generateKeyPairSync, sign, verify, webcrypto, type KeyObject } from 'crypto'
 
 import { RefCodeCaptureUpdater } from 'modules/affiliate'
 
@@ -27,6 +27,13 @@ jest.mock('@cowprotocol/wallet-provider', () => ({ useWalletProvider: () => unde
 jest.mock('modules/nativeSolana', () => ({ SolanaWalletPicker: () => <button>Connect Solana</button> }))
 jest.mock('modules/wallet', () => ({ Web3Status: () => null }))
 jest.mock('legacy/state/application/hooks', () => ({ useToggleWalletModal: () => jest.fn() }))
+
+beforeAll(() => {
+  Object.defineProperty(crypto, 'subtle', { configurable: true, value: webcrypto.subtle })
+})
+afterAll(() => {
+  Reflect.deleteProperty(crypto, 'subtle')
+})
 
 const mockEvm = '0xabcdef0000000000000000000000000000000001'
 const realFetch = global.fetch

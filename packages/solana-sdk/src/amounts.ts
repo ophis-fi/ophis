@@ -24,6 +24,9 @@ export function formatOphisSolanaAmount(atoms: bigint, decimals: number): string
     throw Error('Invalid token atoms or mint decimals');
   const text = atoms.toString().padStart(decimals + 1, '0');
   if (decimals === 0) return text;
-  const fraction = text.slice(-decimals).replace(/0+$/, '');
+  let end = text.length;
+  const start = end - decimals;
+  while (end > start && text.charCodeAt(end - 1) === 48) --end;
+  const fraction = text.slice(start, end);
   return text.slice(0, -decimals) + (fraction ? `.${fraction}` : '');
 }

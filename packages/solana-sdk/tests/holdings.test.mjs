@@ -4,6 +4,8 @@ import { address, getAddressEncoder } from '@solana/kit';
 import { readHoldingLabel } from '../dist/holding-labels.js';
 import {
   fetchOphisWalletHoldings,
+  readOphisSellAllowance,
+  verifyOphisMintMetadata,
   requestOphisLocalTestSol,
   TOKEN_PROGRAM_ADDRESS,
   TOKEN_2022_PROGRAM_ADDRESS,
@@ -84,4 +86,58 @@ test('balances require matching genesis and only include initialized associated 
     /Local test network required/,
   );
   assert.ok(!methods.includes('requestAirdrop'));
+});
+
+test('mint decimals and existing SPL allowance come from the configured cluster and canonical account', async (t) => {
+  const [ata] = await findAssociatedTokenPda({ owner, mint, tokenProgram: TOKEN_PROGRAM_ADDRESS });
+  const header = Buffer.alloc(115);
+  header[44] = 6;
+  header[45] = 1;
+  const mintInfo = { address: mint, tokenProgram: TOKEN_PROGRAM_ADDRESS, decimals: 6 };
+  const delegate = genesis;
+  const info = { owner, mint, delegate, delegatedAmount: { amount: '9007199254740993' } };
+  let pubkey = ata;
+  t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    const { id, method } = JSON.parse(init.body);
+    const account = { owner: TOKEN_PROGRAM_ADDRESS, lamports: 1, executable: false, space: 165 };
+    const results = {
+      getGenesisHash: genesis,
+      getMultipleAccounts: {
+        context: { slot: 4 },
+        value: [{ ...account, data: [header.toString('base64'), 'base64'] }],
+      },
+      getTokenAccountsByOwner: {
+        context: { slot: 4 },
+        value: [
+          {
+            pubkey,
+            account: {
+              ...account,
+              data: { program: 'spl-token', parsed: { type: 'account', info } },
+            },
+          },
+        ],
+      },
+    };
+    assert.ok(Object.hasOwn(results, method));
+    return Response.json({ id, jsonrpc: '2.0', result: results[method] });
+  });
+  await verifyOphisMintMetadata(endpoint, genesis, [mintInfo]);
+  await assert.rejects(
+    verifyOphisMintMetadata(endpoint, genesis, [{ ...mintInfo, decimals: 9 }]),
+    /decimals/,
+  );
+  await assert.rejects(
+    verifyOphisMintMetadata(endpoint, genesis, [
+      { ...mintInfo, tokenProgram: TOKEN_2022_PROGRAM_ADDRESS },
+    ]),
+    /program/,
+  );
+  await assert.rejects(verifyOphisMintMetadata(endpoint, owner, [mintInfo]), /network mismatch/);
+  assert.deepEqual(await readOphisSellAllowance(endpoint, genesis, owner, mintInfo), {
+    delegate,
+    atoms: 9007199254740993n,
+  });
+  pubkey = owner;
+  assert.equal(await readOphisSellAllowance(endpoint, genesis, owner, mintInfo), null);
 });

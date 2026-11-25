@@ -68,10 +68,6 @@ msgstr "Because you are using a smart contract wallet, you will pay a separate g
 msgid "You sell: choose a token"
 msgstr "You sell: choose a token"
 
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
-msgid "Ophis share of execution above your quote"
-msgstr "Ophis share of execution above your quote"
-
 #: apps/cowswap-frontend/src/api/cowProtocol/errors/OperatorError.ts
 msgid "cancelled. Too many order cancellations"
 msgstr "cancelled. Too many order cancellations"
@@ -197,6 +193,10 @@ msgstr "Network costs (est.)"
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/ReceiptModal/ReceiptModal.modal.tsx
 msgid "The account address which will/did receive the bought amount."
 msgstr "The account address which will/did receive the bought amount."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+msgid "If the swap delivers more than the quoted output after settlement costs and the base fee, you keep at least half the difference."
+msgstr "If the swap delivers more than the quoted output after settlement costs and the base fee, you keep at least half the difference."
 
 #: apps/cowswap-frontend/src/modules/account/containers/OrdersPanel/index.tsx
 msgid "Close account"
@@ -737,10 +737,6 @@ msgstr "Review the details."
 msgid "Scheduled"
 msgstr "Scheduled"
 
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/PrivateSettlement.container.tsx
-msgid "Checking settlement on mainnet"
-msgstr "Checking settlement on mainnet"
-
 #: apps/cowswap-frontend/src/modules/trade/hooks/useGetConfirmButtonLabel.ts
 msgid "Approve and Swap"
 msgstr "Approve and Swap"
@@ -868,10 +864,6 @@ msgstr "Review"
 msgid "Cancelling order with id {shortId}:<0/><1>{orderSummary}</1>"
 msgstr "Cancelling order with id {shortId}:<0/><1>{orderSummary}</1>"
 
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/PrivateSettlement.container.tsx
-msgid "Settle in Backpack"
-msgstr "Settle in Backpack"
-
 #: apps/cowswap-frontend/src/modules/twap/containers/TwapFormWidget/tooltips.tsx
 msgid "Sell per part"
 msgstr "Sell per part"
@@ -899,10 +891,6 @@ msgstr "Technical details"
 #: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketConfirm/BasketConfirm.pure.tsx
 msgid "Waiting for every leg to be quoted before you can place the basket."
 msgstr "Waiting for every leg to be quoted before you can place the basket."
-
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaOrders.container.tsx
-msgid "No submission confirmed"
-msgstr "No submission confirmed"
 
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/OrderStatusBox/getOrderStatusTitleAndColor.ts
 #: apps/cowswap-frontend/src/modules/ordersTable/state/tabs/ordersTableTabs.constants.ts
@@ -1586,10 +1574,6 @@ msgstr "Remove list"
 msgid "Help Center"
 msgstr "Help Center"
 
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/PrivateSettlement.container.tsx
-msgid "Finalized settlement"
-msgstr "Finalized settlement"
-
 #: apps/cowswap-frontend/src/modules/tokensList/pure/TokensVirtualList/tokensVirtualListUtils.ts
 msgid "Recent"
 msgstr "Recent"
@@ -1696,6 +1680,10 @@ msgstr "Price Updated"
 msgid "Previous"
 msgstr "Previous"
 
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaOrders.container.tsx
+msgid "Checking whether the order reached Solana."
+msgstr "Checking whether the order reached Solana."
+
 #: apps/cowswap-frontend/src/modules/hooksStore/pure/AddCustomHookForm/index.tsx
 msgid "Enter a hook dapp URL"
 msgstr "Enter a hook dapp URL"
@@ -1720,6 +1708,10 @@ msgstr "Recoverable balance"
 #: apps/cowswap-frontend/src/modules/swap/containers/WholeTokenRoute/WholeTokenReview.container.tsx
 msgid "Expected spend (incl. fees)"
 msgstr "Expected spend (incl. fees)"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+msgid "Quoted output"
+msgstr "Quoted output"
 
 #: apps/cowswap-frontend/src/modules/hooksStore/pure/AddCustomHookForm/constants.tsx
 msgid "Invalid hook dapp ID format. The ID must be a 64-character hexadecimal string."
@@ -2237,7 +2229,6 @@ msgstr "The order remains open. Execution requires sufficient balance."
 
 #: apps/cowswap-frontend/src/modules/bridge/pure/contents/BridgingProgressContent/ReceivedBridgingContent/index.tsx
 #: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/PrivateSettlement.container.tsx
 msgid "Minimum received"
 msgstr "Minimum received"
 
@@ -2468,10 +2459,6 @@ msgstr "View refund transaction"
 #: apps/cowswap-frontend/src/modules/swap/hooks/useDirectSwap.ts
 msgid "Swap for {buyAmount} {symbol} on {venue}"
 msgstr "Swap for {buyAmount} {symbol} on {venue}"
-
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/PrivateSettlement.container.tsx
-msgid "Simulated receipt"
-msgstr "Simulated receipt"
 
 #: apps/cowswap-frontend/src/modules/ethFlow/pure/EthFlowStepper/steps/Step1.tsx
 msgid "Sent {nativeTokenSymbol}"
@@ -2867,6 +2854,10 @@ msgstr "Please type the word <0>\"{confirmWord}\"</0> to {action}."
 msgid "Pending..."
 msgstr "Pending..."
 
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+msgid "Ophis share of price improvement"
+msgstr "Ophis share of price improvement"
+
 #: apps/cowswap-frontend/src/modules/erc20Approve/pure/Toggle/Toggle.tsx
 msgid "Unlimited"
 msgstr "Unlimited"
@@ -3228,10 +3219,6 @@ msgstr "Restricted Ethereum canary"
 msgid "Transaction Confirmed"
 msgstr "Transaction Confirmed"
 
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
-msgid "Your wallet pays to place the order and to open any required accounts. The quote includes the estimated settlement fee."
-msgstr "Your wallet pays to place the order and to open any required accounts. The quote includes the estimated settlement fee."
-
 #: apps/cowswap-frontend/src/modules/ethFlow/pure/EthFlowBanner/index.tsx
 msgid "This way, you'll take advantage of"
 msgstr "This way, you'll take advantage of"
@@ -3535,10 +3522,6 @@ msgstr "{baseBps} bp"
 #: apps/cowswap-frontend/src/api/cowProtocol/errors/OperatorError.ts
 msgid "cancelling"
 msgstr "cancelling"
-
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/PrivateSettlement.container.tsx
-msgid "New account deposits"
-msgstr "New account deposits"
 
 #: apps/cowswap-frontend/src/legacy/hooks/useWrapCallback.ts
 msgid "Signing transaction"
@@ -4128,10 +4111,6 @@ msgstr "Token symbol, address"
 msgid "Order Receipt"
 msgstr "Order Receipt"
 
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
-msgid "Estimated settlement network fee"
-msgstr "Estimated settlement network fee"
-
 #: apps/cowswap-frontend/src/modules/nativeSolana/pure/AssetPicker.pure.tsx
 msgid "Choose a token to sell"
 msgstr "Choose a token to sell"
@@ -4256,6 +4235,10 @@ msgstr "Approve"
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/OrdersTable/Header/ordersTableHeader.constants.tsx
 msgid "Execution time"
 msgstr "Execution time"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+msgid "Your wallet pays to place the order and open any required accounts."
+msgstr "Your wallet pays to place the order and open any required accounts."
 
 #: apps/cowswap-frontend/src/modules/limitOrders/containers/LimitOrdersWidget/index.tsx
 msgid "Place orders for higher than available balance!"
@@ -5307,10 +5290,6 @@ msgstr "No expired orders found"
 msgid "Creating and cancelling orders costs Ethereum gas; nothing on this surface is gas-free."
 msgstr "Creating and cancelling orders costs Ethereum gas; nothing on this surface is gas-free."
 
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/PrivateSettlement.container.tsx
-msgid "Review settlement"
-msgstr "Review settlement"
-
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/OrderEstimatedExecutionPrice/OrderEstimatedExecutionPrice.pure.tsx
 msgid "Current market price is <0><1/></0> and needs to go {marketPriceDirection} by <2><3/></2> <4>(<5>{percentageDifferenceInvertedFormatted}%</5>)</4> to execute your order at <6><7/></6>."
 msgstr "Current market price is <0><1/></0> and needs to go {marketPriceDirection} by <2><3/></2> <4>(<5>{percentageDifferenceInvertedFormatted}%</5>)</4> to execute your order at <6><7/></6>."
@@ -5685,10 +5664,6 @@ msgstr "Add Pre-Hook Action"
 #: apps/cowswap-frontend/src/legacy/components/Tokens/TokensTable.tsx
 msgid "Page {page} of {maxPage}"
 msgstr "Page {page} of {maxPage}"
-
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/PrivateSettlement.container.tsx
-msgid "Preparing settlement…"
-msgstr "Preparing settlement…"
 
 #: apps/cowswap-frontend/src/modules/tokensList/pure/SelectTokenModal/MobileChainSelector.tsx
 msgid "Selected network {activeChainLabel}"
@@ -6337,7 +6312,6 @@ msgid "Limit orders on Ophis are free to place and cancel. That's unique in DeFi
 msgstr "Limit orders on Ophis are free to place and cancel. That's unique in DeFi!"
 
 #: apps/cowswap-frontend/src/modules/bridge/pure/RouteOverviewTitle/index.tsx
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/PrivateSettlement.container.tsx
 #: apps/cowswap-frontend/src/modules/swap/containers/WholeTokenRoute/WholeTokenRouteDetails.container.tsx
 msgid "Route"
 msgstr "Route"
@@ -6410,6 +6384,10 @@ msgstr "Add Hook"
 #: apps/cowswap-frontend/src/modules/trade/containers/TradeWidgetLinks/index.tsx
 msgid "select"
 msgstr "select"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+msgid "Maximum settlement cost in {buySymbol}"
+msgstr "Maximum settlement cost in {buySymbol}"
 
 #: apps/cowswap-frontend/src/modules/erc20Approve/pure/ApproveConfirmation/AdvancedApprove.tsx
 msgid "Allow spending"
@@ -6916,10 +6894,6 @@ msgstr "{walletName} account changed"
 msgid "Price impact is too high"
 msgstr "Price impact is too high"
 
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/PrivateSettlement.container.tsx
-msgid "Previous settlement attempt"
-msgstr "Previous settlement attempt"
-
 #: apps/cowswap-frontend/src/legacy/components/Tokens/TokensTable.tsx
 msgid "Value"
 msgstr "Value"
@@ -7155,10 +7129,6 @@ msgstr "Distance to market"
 msgid "Did you know?"
 msgstr "Did you know?"
 
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/PrivateSettlement.container.tsx
-msgid "Network fee"
-msgstr "Network fee"
-
 #: apps/cowswap-frontend/src/modules/twap/containers/TwapFormWarnings/warnings/SmallPartTimeWarning.tsx
 msgid "Insufficient time between parts"
 msgstr "Insufficient time between parts"
@@ -7170,6 +7140,12 @@ msgstr "checkmark"
 #: apps/cowswap-frontend/src/pages/error/AnySwapAffectedUsers/index.tsx
 msgid "Review your token approvals"
 msgstr "Review your token approvals"
+
+#. placeholder {0}: formatOphisSolanaAmount(review.allowance.atoms, review.sell.decimals)
+#. placeholder {1}: review.allowance.delegate
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+msgid "Replace the existing allowance of {0} {sellSymbol}for {1}. Older orders using this allowance may stop filling."
+msgstr "Replace the existing allowance of {0} {sellSymbol}for {1}. Older orders using this allowance may stop filling."
 
 #: apps/cowswap-frontend/src/modules/trade/containers/QuotePolingProgress/index.tsx
 msgid "Quote will be updated in {time}"

@@ -42,6 +42,11 @@ jest.mock(
     parseOphisSolanaAmount: () => 1000000n,
     fetchOphisSolanaQuote: jest.fn(),
     ophisSolanaWalletSigner: jest.fn(),
+    checkedQuoteAppData: jest.fn(),
+    readOphisSellAllowance: async () => null,
+    verifyOphisMintMetadata: async () => undefined,
+    identifyOphisSolanaOrder: async () => ({ uid: '0x' + '12'.repeat(32), orderPda: 'pda' }),
+    readOphisOrderAccount: async () => ({ createdBy: 'owner' }),
     prepareOphisSolanaOrderFromQuote: async () => ({ instructions: [], payer: 'owner' }),
     previewOphisLocalOrder: async () => 1n,
   }),
@@ -158,6 +163,11 @@ it.each([false, true])(
         reclaimed: false,
       },
     })
+    store.set(savedNativeSolanaOrdersAtom, (all) => ({ [uid]: { ...all[uid], orderPda: 'another-pda' } }))
+    jest.mocked(sendOphisSolanaWalletTransaction).mockClear()
+    await store.set(manageNativeSolanaOrderAtom, { uid, reclaim })
+    expect(sendOphisSolanaWalletTransaction).not.toHaveBeenCalled()
+    store.set(savedNativeSolanaOrdersAtom, (all) => ({ [uid]: { ...all[uid], orderPda: 'pda' } }))
     jest.mocked(sendOphisSolanaWalletTransaction).mockClear()
     await store.set(manageNativeSolanaOrderAtom, { uid, reclaim })
     expect(fetchOphisWalletActionContext).toHaveBeenCalledWith(
@@ -171,7 +181,7 @@ it.each([false, true])(
     })
     await store.set(manageNativeSolanaOrderAtom, { uid, reclaim })
     expect(sendOphisSolanaWalletTransaction).toHaveBeenCalledTimes(1)
-    store.set(recordOrderActionAtom, { uid, signature, status: 'confirmed' })
+    store.set(recordOrderActionAtom, { uid, signature, lastHeight: '10', status: 'confirmed' })
     expect(store.get(savedNativeSolanaOrdersAtom)[uid].reclaimed).toBe(reclaim)
   },
 )

@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { address, createNoopSigner, generateKeyPairSigner } from '@solana/kit';
@@ -13,7 +12,7 @@ import {
   WRAPPED_SOL_MINT,
 } from '../dist/index.js';
 
-const fixture = JSON.parse(readFileSync(new URL('./rust-intent-v054.json', import.meta.url)));
+import fixture from './rust-intent-v054.json' with { type: 'json' };
 const input = {
   programAddress: address(fixture.program),
   owner: createNoopSigner(address(fixture.owner)),
