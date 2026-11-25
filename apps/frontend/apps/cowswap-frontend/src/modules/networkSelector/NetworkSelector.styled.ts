@@ -2,7 +2,6 @@ import { Media, SearchInput, UI } from '@cowprotocol/ui'
 
 import { transparentize } from 'color2k'
 import { AlertTriangle, ChevronDown, X } from 'react-feather'
-import { Link } from 'react-router'
 import styled from 'styled-components/macro'
 
 import { TAP_DESKTOP, TAP_MOBILE } from 'common/pure/NetworksList/NetworksList.constants'
@@ -281,21 +280,5 @@ export const NetworkAlertLabel = styled.div`
     > span {
       display: none;
     }
-  }
-`
-
-export const NativeSolanaLink = styled(Link)`
-  display: flex;
-  align-items: center;
-  min-height: 48px;
-  padding: 12px 16px;
-  color: inherit;
-  text-decoration: none;
-  &:hover {
-    background: var(--cow-color-paper-darker);
-  }
-  &:focus-visible {
-    outline: 2px solid var(--cow-color-primary);
-    outline-offset: -2px;
   }
 `

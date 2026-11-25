@@ -25,7 +25,7 @@ export function TradeSourceNetworkSelector({
   return (
     <NetworkSelector
       tokenPickerTrigger
-      includeNativeSolana={isOphisSwap && !params.externalFunding}
+      includeNativeSolana={isOphisSwap}
       selectedChainId={inputCurrencyInfo.currency?.chainId as TargetChainId | undefined}
       additionalChainIds={params.inputTokenOptions?.chains.map(({ id }) => id as TargetChainId)}
       disabled={params.inputsDisabled}

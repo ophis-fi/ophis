@@ -1,11 +1,10 @@
 import { createRef } from 'react'
 
-import { TargetChainId } from '@cowprotocol/cow-sdk'
+import { AdditionalTargetChainId, TargetChainId } from '@cowprotocol/cow-sdk'
 
 import { i18n } from '@lingui/core'
 import { I18nProvider } from '@lingui/react'
 import { fireEvent, render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
 import { ThemeProvider } from 'styled-components/macro'
 import { getCowswapTheme } from 'theme'
 
@@ -44,31 +43,38 @@ it('finds networks by name or chain ID, reports missing matches and preserves se
   expect(onClose).toHaveBeenCalledTimes(1)
 })
 
-it('opens native Solana without selecting it as an EVM chain', () => {
+it.each([
+  { chains: [1], nativeEnabled: true },
+  { chains: [1, AdditionalTargetChainId.SOLANA], nativeEnabled: true },
+  { chains: [1, AdditionalTargetChainId.SOLANA], nativeEnabled: false },
+])('shows one Solana network and selects the available route with %j', ({ chains, nativeEnabled }) => {
   const onClose = jest.fn()
   const onSelectChain = jest.fn()
+  const onSelectNativeSolana = jest.fn()
   render(
-    <MemoryRouter>
-      <I18nProvider i18n={i18n}>
-        <ThemeProvider theme={getCowswapTheme(true)}>
-          <NetworkSelectorMenu
-            menuRef={createRef<HTMLDivElement>()}
-            currentChainId={null}
-            availableChains={[1] as TargetChainId[]}
-            isDarkMode
-            onSelectChain={onSelectChain}
-            onClose={onClose}
-            nativeSolanaEnabled
-          />
-        </ThemeProvider>
-      </I18nProvider>
-    </MemoryRouter>,
+    <I18nProvider i18n={i18n}>
+      <ThemeProvider theme={getCowswapTheme(true)}>
+        <NetworkSelectorMenu
+          menuRef={createRef<HTMLDivElement>()}
+          currentChainId={null}
+          availableChains={chains as TargetChainId[]}
+          isDarkMode
+          onSelectChain={onSelectChain}
+          onClose={onClose}
+          onSelectNativeSolana={nativeEnabled ? onSelectNativeSolana : undefined}
+        />
+      </ThemeProvider>
+    </I18nProvider>,
   )
   fireEvent.change(screen.getByRole('textbox', { name: 'Search network' }), { target: { value: 'solana' } })
-  const link = screen.getByRole('link', { name: 'Solana' })
-  expect(link.getAttribute('href')).toBe('/swap?network=solana')
-  expect(screen.queryByRole('status')).toBeNull()
-  fireEvent.click(link)
-  expect(onClose).toHaveBeenCalledTimes(1)
-  expect(onSelectChain).not.toHaveBeenCalled()
+  expect(screen.getAllByText('Solana')).toHaveLength(1)
+  fireEvent.click(screen.getByRole('button', { name: 'Solana' }))
+  if (nativeEnabled) {
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(onSelectNativeSolana).toHaveBeenCalledTimes(1)
+    expect(onSelectChain).not.toHaveBeenCalled()
+  } else {
+    expect(onSelectChain).toHaveBeenCalledWith(AdditionalTargetChainId.SOLANA)
+    expect(onSelectNativeSolana).not.toHaveBeenCalled()
+  }
 })
