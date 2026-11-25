@@ -14,7 +14,7 @@ import { atomWithQuery } from 'jotai-tanstack-query'
 
 import { nativeSolanaFormAtom } from './trade.atoms'
 
-import { balanceEndpoint, nativeAsset, networkAssets, walletAssets, walletMint } from '../services/assets.service'
+import { balanceEndpoint, nativeAsset, networkAssets, walletAssets, walletHoldingsKey, walletMint } from '../services/assets.service'
 import { privateAction, privateSettlementEnabled } from '../services/privateSettlement.service'
 
 export const solanaNetworkAssetsAtom = atomWithQuery(() => ({
@@ -30,7 +30,7 @@ export const solanaHoldingsAtom = atomWithQuery<OphisWalletHolding[]>((get) => {
   const config = OPHIS_SOLANA_CONFIG
   const rpc = balanceEndpoint(config)
   return {
-    queryKey: ['solana-wallet-assets', config?.genesis, owner],
+    queryKey: walletHoldingsKey(config?.genesis, owner),
     enabled: !!owner && !!config && !!rpc,
     queryFn: () => {
       if (!config || !rpc || !owner) throw Error('Wallet balance service unavailable.')

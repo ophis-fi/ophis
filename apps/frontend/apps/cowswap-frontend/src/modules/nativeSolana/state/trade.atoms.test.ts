@@ -1,4 +1,5 @@
 import { createStore } from 'jotai'
+import { queryClientAtom } from 'jotai-tanstack-query'
 
 import {
   fetchOphisSolanaQuote,
@@ -13,13 +14,15 @@ import {
   manageNativeSolanaOrderAtom,
   orderActionReceiptAtom,
   recordOrderActionAtom,
+} from './orderActions.atoms'
+import {
   savedNativeSolanaOrdersAtom,
   visibleNativeSolanaOrdersAtom,
 } from './orders.atoms'
 import { nativeSolanaFormAtom, nativeSolanaReviewAtom, requestNativeSolanaQuoteAtom } from './trade.atoms'
 
 import { nativeSolanaErrorMessage } from '../services/trade.service'
-import { balanceEndpoint, mainnetWalletRpc } from '../services/assets.service'
+import { balanceEndpoint, mainnetWalletRpc, walletHoldingsKey } from '../services/assets.service'
 
 jest.mock(
   '@ophis/solana-sdk',
@@ -192,8 +195,12 @@ it.each([false, true])(
     })
     await store.set(manageNativeSolanaOrderAtom, { uid, reclaim })
     expect(sendOphisSolanaWalletTransaction).toHaveBeenCalledTimes(1)
+    const cache = store.get(queryClientAtom)
+    const key = walletHoldingsKey('own-genesis', 'owner')
+    cache.setQueryData(key, [])
     store.set(recordOrderActionAtom, { uid, signature, lastHeight: '10', status: 'confirmed' })
     expect(store.get(savedNativeSolanaOrdersAtom)[uid].reclaimed).toBe(reclaim)
+    expect(cache.getQueryState(key)?.isInvalidated).toBe(true)
   },
 )
 

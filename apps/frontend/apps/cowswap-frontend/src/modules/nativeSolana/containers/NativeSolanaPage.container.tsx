@@ -18,7 +18,7 @@ import * as styledEl from '../pure/NativeSolana.styled'
 import { shortMint } from '../services/assets.service'
 import { privateModeAtom, privateSettlementEnabled } from '../services/privateSettlement.service'
 import { walletAssetListAtom } from '../state/assets.atoms'
-import { createNativeSolanaOrderAtom } from '../state/orders.atoms'
+import { createNativeSolanaOrderAtom } from '../state/placeOrder.atoms'
 import { nativeSolanaBusyAtom, nativeSolanaErrorAtom, nativeSolanaReviewAtom } from '../state/trade.atoms'
 
 function PrivateOrderNotice({

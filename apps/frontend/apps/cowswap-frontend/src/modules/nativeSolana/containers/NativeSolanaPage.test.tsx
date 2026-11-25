@@ -21,7 +21,7 @@ jest.mock('../state/assets.atoms', () => ({
     { mint: 'mint', symbol: 'USDC' },
   ]),
 }))
-jest.mock('../state/orders.atoms', () => ({
+jest.mock('../state/placeOrder.atoms', () => ({
   createNativeSolanaOrderAtom: jest
     .requireActual('jotai')
     .atom(null, (_get: unknown, _set: unknown, accepted: boolean) => mockCreate(accepted)),

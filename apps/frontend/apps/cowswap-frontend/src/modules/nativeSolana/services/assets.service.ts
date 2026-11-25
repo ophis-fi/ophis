@@ -7,6 +7,8 @@ import {
 } from '@ophis/solana-sdk'
 import { SOLANA_DEVNET_GENESIS, type OphisSolanaConfig } from 'entities/solana'
 
+export const walletHoldingsKey = (genesis?: string, owner?: string) => ['solana-wallet-assets', genesis, owner] as const
+
 export interface SolanaAsset {
   mint: string
   symbol: string
