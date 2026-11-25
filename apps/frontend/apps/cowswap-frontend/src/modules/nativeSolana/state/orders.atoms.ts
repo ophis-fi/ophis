@@ -53,6 +53,7 @@ export interface SavedNativeSolanaOrder {
     reclaim: boolean
     signature: string | null
     lastHeight: string
+    observedSlot?: string
     status: 'pending' | 'confirmed' | 'failed' | 'expired'
   }
 }
@@ -80,6 +81,7 @@ function isSavedOrder(value: unknown): value is SavedNativeSolanaOrder {
       (typeof order.walletAction.reclaim === 'boolean' &&
         (order.walletAction.signature === null || /^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(order.walletAction.signature)) &&
         /^\d{1,20}$/.test(order.walletAction.lastHeight) &&
+        (order.walletAction.observedSlot === undefined || /^\d{1,20}$/.test(order.walletAction.observedSlot)) &&
         ['pending', 'confirmed', 'failed', 'expired'].includes(order.walletAction.status))) &&
     isIntentBytes(order.intent)
   )
@@ -141,7 +143,13 @@ async function getOrderStatus(uid: string, order?: SavedNativeSolanaOrder): Prom
   } catch (error) {
     const rpc = balanceEndpoint(config)
     if (!rpc) throw error
-    const chain = await readOphisOrderAccount(rpc, config.genesis, config.program, uid, solanaAddress(order.orderPda))
+    const { account: chain } = await readOphisOrderAccount(
+      rpc,
+      config.genesis,
+      config.program,
+      uid,
+      solanaAddress(order.orderPda),
+    )
     if (!chain) throw error
     const intent = chain.intent
     const filled = chain.amountWithdrawn === intent.sellAmount && chain.amountReceived >= intent.buyAmount
@@ -174,9 +182,9 @@ async function getOrderStatus(uid: string, order?: SavedNativeSolanaOrder): Prom
     OPHIS_SOLANA_CONFIG &&
     rpc
   ) {
-    const chain = await readOphisOrderAccount(rpc, config.genesis, config.program, uid, result.orderPda).catch(
-      () => null,
-    )
+    const chain = (
+      await readOphisOrderAccount(rpc, config.genesis, config.program, uid, result.orderPda).catch(() => null)
+    )?.account
     if (chain?.cancelled) return { ...result, status: 'cancelled' }
     const payoutConfirmed =
       !!chain && chain.amountWithdrawn === chain.intent.sellAmount && chain.amountReceived >= chain.intent.buyAmount
@@ -243,7 +251,7 @@ const placeNativeSolanaOrderAtom = atom(null, async (get, set, replaceAllowance:
       )
     })
     for (const saved of live) {
-      const current = await readOphisOrderAccount(
+      const { account: current } = await readOphisOrderAccount(
         rpc,
         config.genesis,
         config.program,
@@ -323,7 +331,7 @@ export const orderActionReceiptAtom = atomFamily((uid: string) =>
         if (!rpc || !action || !order) throw Error('Reconnect to check the transaction.')
         const status = await checkOphisWalletAction(rpc, order.genesis, action.signature, BigInt(action.lastHeight))
         if (action.signature && status !== 'confirmed') return status
-        const account = await readOphisOrderAccount(
+        const { account, slot } = await readOphisOrderAccount(
           rpc,
           order.genesis,
           solanaAddress(order.program),
@@ -331,7 +339,9 @@ export const orderActionReceiptAtom = atomFamily((uid: string) =>
           solanaAddress(order.orderPda),
           'finalized',
         )
-        if (action.reclaim ? account === null : account?.cancelled) return 'confirmed'
+        if (action.observedSlot && slot < BigInt(action.observedSlot)) return 'pending'
+        const canProveClosure = !!action.observedSlot || (action.signature !== null && status === 'confirmed')
+        if (action.reclaim ? account === null && canProveClosure : account?.cancelled) return 'confirmed'
         return status === 'confirmed' ? 'failed' : status
       },
       refetchInterval: 5000,
@@ -402,8 +412,15 @@ export const manageNativeSolanaOrderAtom = atom(null, async (get, set, action: {
       throw Error('Saved order identity mismatch.')
     const rpc = ownerRpc()
     if (!rpc) throw Error('Order recovery RPC is unavailable.')
-    const chain = await readOphisOrderAccount(rpc, config.genesis, config.program, identity.uid, identity.orderPda)
-    if (!chain) throw Error('The order account is no longer on-chain. Refresh its status.')
+    const { account: chain, slot: observedSlot } = await readOphisOrderAccount(
+      rpc,
+      config.genesis,
+      config.program,
+      identity.uid,
+      identity.orderPda,
+      'finalized',
+    )
+    if (!chain) throw Error('The order is unavailable at finality. Refresh its status before retrying.')
     const owner = ophisSolanaWalletSigner(connection.account)
     const instruction = action.reclaim
       ? prepareOphisSolanaReclaim({
@@ -427,6 +444,7 @@ export const manageNativeSolanaOrderAtom = atom(null, async (get, set, action: {
             reclaim: action.reclaim,
             signature,
             lastHeight: String(context.lastValidBlockHeight),
+            observedSlot: String(observedSlot),
             status: 'pending',
           },
         },

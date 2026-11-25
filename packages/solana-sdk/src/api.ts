@@ -63,6 +63,7 @@ export function checkedQuoteAppData(
   const bytes = new Uint8Array(getBase16Encoder().encode(quote.appData.slice(2)));
   if (program !== OPHIS_MAINNET_PROGRAM) return bytes;
 
+  // Bytes 24–31 are an order nonce. The settlement program selects the fee tier from the two mints.
   const view = new DataView(bytes.buffer);
   const maxCost =
     BigInt(atoms(quote.costs.networkFees)) + BigInt(atoms(quote.costs.buyTokenAtaCosts));

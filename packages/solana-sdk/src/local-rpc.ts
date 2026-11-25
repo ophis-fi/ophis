@@ -163,14 +163,14 @@ export async function readOphisOrderAccount(
 ) {
   const rpc = await matchingRpc(endpoint, genesis);
   const decoder = getOrderAccountDecoder();
-  const { value } = await rpc
+  const { value, context } = await rpc
     .getAccountInfo(pda, {
       commitment,
       encoding: 'base64',
       dataSlice: { offset: 0, length: decoder.fixedSize },
     })
     .send();
-  if (!value) return null;
+  if (!value) return { account: null, slot: context.slot };
   const bytes = getBase64Encoder().encode(value.data[0]);
   if (
     value.owner !== program ||
@@ -182,7 +182,7 @@ export async function readOphisOrderAccount(
   const identity = await identifyOphisSolanaOrder(program, account.intent);
   if (identity.uid !== uid || identity.orderPda !== pda)
     throw Error('Solana order identity mismatch');
-  return account;
+  return { account, slot: context.slot };
 }
 
 export async function hasConfirmedSolanaPayout(
@@ -191,7 +191,7 @@ export async function hasConfirmedSolanaPayout(
   program: Address,
   order: OphisSolanaOrder,
 ): Promise<boolean> {
-  const account = await readOphisOrderAccount(
+  const { account } = await readOphisOrderAccount(
     endpoint,
     genesis,
     program,

@@ -2,6 +2,7 @@ import { createStore } from 'jotai'
 
 import {
   fetchOphisSolanaQuote,
+  readOphisOrderAccount,
   fetchOphisWalletActionContext,
   sendOphisSolanaWalletTransaction,
   solanaAddress,
@@ -10,6 +11,7 @@ import { solanaConnectionAtom, type SolanaConnection } from 'entities/solana'
 
 import {
   manageNativeSolanaOrderAtom,
+  orderActionReceiptAtom,
   recordOrderActionAtom,
   savedNativeSolanaOrdersAtom,
   visibleNativeSolanaOrdersAtom,
@@ -28,6 +30,7 @@ jest.mock(
     SOLANA_NATIVE_ASSET: 'native',
     TOKEN_PROGRAM_ADDRESS: 'token',
     fetchOphisSolanaChainContext: async () => ({ programAddress: 'own-program', genesisHash: 'own-genesis' }),
+    checkOphisWalletAction: async () => 'pending',
     fetchOphisWalletActionContext: jest.fn().mockResolvedValue({ lastValidBlockHeight: 10n }),
     sendOphisSolanaWalletTransaction: jest.fn().mockResolvedValue('1'.repeat(64)),
     getOrderIntentDecoder: () => ({ decode: () => ({ owner: 'owner' }) }),
@@ -46,7 +49,7 @@ jest.mock(
     readOphisSellAllowance: async () => null,
     verifyOphisMintMetadata: async () => undefined,
     identifyOphisSolanaOrder: async () => ({ uid: '0x' + '12'.repeat(32), orderPda: 'pda' }),
-    readOphisOrderAccount: async () => ({ createdBy: 'owner' }),
+    readOphisOrderAccount: jest.fn().mockResolvedValue({ account: { createdBy: 'owner' }, slot: 93n }),
     prepareOphisSolanaOrderFromQuote: async () => ({ instructions: [], payer: 'owner' }),
     previewOphisLocalOrder: async () => 1n,
   }),
@@ -170,6 +173,14 @@ it.each([false, true])(
     store.set(savedNativeSolanaOrdersAtom, (all) => ({ [uid]: { ...all[uid], orderPda: 'pda' } }))
     jest.mocked(sendOphisSolanaWalletTransaction).mockClear()
     await store.set(manageNativeSolanaOrderAtom, { uid, reclaim })
+    expect(readOphisOrderAccount).toHaveBeenCalledWith(
+      'http://localhost/private/wallet-rpc',
+      'own-genesis',
+      'own-program',
+      uid,
+      'pda',
+      'finalized',
+    )
     expect(fetchOphisWalletActionContext).toHaveBeenCalledWith(
       'http://localhost/private/wallet-rpc',
       'own-program',
@@ -177,7 +188,7 @@ it.each([false, true])(
     )
     expect(store.get(savedNativeSolanaOrdersAtom)[uid]).toMatchObject({
       reclaimed: false,
-      walletAction: { reclaim, signature, status: 'pending' },
+      walletAction: { reclaim, signature, observedSlot: '93', status: 'pending' },
     })
     await store.set(manageNativeSolanaOrderAtom, { uid, reclaim })
     expect(sendOphisSolanaWalletTransaction).toHaveBeenCalledTimes(1)
@@ -185,3 +196,29 @@ it.each([false, true])(
     expect(store.get(savedNativeSolanaOrdersAtom)[uid].reclaimed).toBe(reclaim)
   },
 )
+
+it('requires a finalized absence at or after the previously observed live account slot to confirm a refund', async () => {
+  const store = createStore()
+  const uid = '0x' + '41'.repeat(32)
+  store.set(solanaConnectionAtom, connection('owner'))
+  store.set(savedNativeSolanaOrdersAtom, {
+    [uid]: {
+      uid,
+      owner: 'owner',
+      createdBy: 'owner',
+      orderPda: 'pda',
+      program: 'own-program',
+      genesis: 'own-genesis',
+      intent: Array(213).fill(0),
+      signature: null,
+      reclaimed: false,
+      walletAction: { reclaim: true, signature: null, lastHeight: '300', observedSlot: '200', status: 'pending' },
+    },
+  })
+  const read = jest.mocked(readOphisOrderAccount)
+  read.mockResolvedValue({ account: null, slot: 199n })
+  const query = store.get(orderActionReceiptAtom(uid))
+  expect((await query.refetch()).data).toBe('pending')
+  read.mockResolvedValue({ account: null, slot: 201n })
+  expect((await query.refetch()).data).toBe('confirmed')
+})

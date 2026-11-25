@@ -255,7 +255,8 @@ test('recovery and payout verify the entire intent, program and order PDA on the
       pda,
       'finalized',
     );
-  assert.equal((await read(fixture.uid, fixture.orderPda)).cancelled, true);
+  assert.equal((await read(fixture.uid, fixture.orderPda)).account.cancelled, true);
+  assert.equal((await read(fixture.uid, fixture.orderPda)).slot, 9n);
   await assert.rejects(read(fixture.uid, fixture.owner), /identity mismatch/);
   await assert.rejects(read('0x' + '5a'.repeat(32), fixture.orderPda), /identity mismatch/);
   state.intent = { ...intent, validTo: intent.validTo + 1 };

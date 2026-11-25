@@ -168,6 +168,13 @@ test('mainnet binds the displayed benchmark, cost ceiling and fee tier before cr
   };
   const order = await prepareOphisSolanaOrderFromQuote(input);
   assert.deepEqual(Buffer.from(order.intent.appData), signed);
+  const anotherNonce = Buffer.from(signed);
+  anotherNonce.writeBigUInt64LE(123n, 24);
+  const otherOrder = await prepareOphisSolanaOrderFromQuote({
+    ...input, quote: { ...quote, quote: { ...q, appData: '0x' + anotherNonce.toString('hex') } },
+  });
+  assert.equal(otherOrder.intent.buyAmount, order.intent.buyAmount);
+  assert.notEqual(otherOrder.uid, order.uid);
   await assert.rejects(
     prepareOphisSolanaOrderFromQuote({ ...input, sellProgram: TOKEN_2022_PROGRAM_ADDRESS }),
     /classic SPL/,
