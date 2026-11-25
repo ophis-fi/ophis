@@ -219,7 +219,7 @@ type Sync = {
   tail: Cursor | null;
   repair: Cursor | null;
   covered_slot: string | null;
-  covered_block_timestamp: Date | null;
+  covered_block_timestamp: Date | string | null;
 };
 export async function importSolanaFills(
   source: postgres.Sql,
@@ -314,7 +314,10 @@ export async function importSolanaFills(
       sync.covered_slot && tail.complete
         ? await processPage(sync.repair, sync.covered_slot)
         : { complete: false, cursor: sync.repair, stalled: false };
-    await tx`UPDATE solana_fill_sync SET tail=${tail.cursor && tx.json(tail.cursor)},repair=${!repair.complete && repair.cursor ? tx.json(repair.cursor) : null}`;
+    // The shared Drizzle client uses transparent JSON/time serializers. Bind text
+    // explicitly so a stopped page commits the same cursor in the service and on replay.
+    await tx`UPDATE solana_fill_sync SET tail=${tail.cursor && JSON.stringify(tail.cursor)}::text::jsonb,
+      repair=${!repair.complete && repair.cursor ? JSON.stringify(repair.cursor) : null}::text::jsonb`;
     if (tail.stalled || repair.stalled) return false;
     if (!tail.complete) return true;
     let coveredTime = sync.covered_block_timestamp;
@@ -345,7 +348,7 @@ export async function importSolanaFills(
         return false;
       }
     }
-    await tx`UPDATE solana_fill_sync SET covered_slot=${head.slot},covered_block_timestamp=${coveredTime},checked_at=now()`;
+    await tx`UPDATE solana_fill_sync SET covered_slot=${head.slot},covered_block_timestamp=${coveredTime && new Date(coveredTime).toISOString()}::text::timestamptz,checked_at=now()`;
     return false;
   });
 }

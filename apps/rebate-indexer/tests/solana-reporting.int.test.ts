@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { base58 } from '@scure/base';
 import postgres from 'postgres';
+import { drizzle } from 'drizzle-orm/postgres-js';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { importSolanaFills, type SolanaRpc } from '../src/solana/fills.js';
 import { startPg, stopPg } from './fixtures/pgContainer.js';
@@ -82,6 +83,7 @@ beforeAll(async () => {
   const pg = await startPg();
   container = pg.container;
   sql = postgres(pg.connectionUri, { max: 3, onnotice: () => {} });
+  drizzle(sql); // Install the same serializers the running rebate service uses.
   await sql.unsafe(
     readFileSync(new URL('../migrations/0054_solana_settled_fills.sql', import.meta.url), 'utf8'),
   );
@@ -138,7 +140,7 @@ it('backfills partial fills, rejects invalid receipts, withholds unknown fees an
   while (await importSolanaFills(sql, sql, rpc, noPrices)) {}
   expect(await count()).toBe(26);
   expect((await coverage()).covered_slot).toBe(String(firstSlot + 25));
-  expect((await coverage()).covered_block_timestamp).toEqual(
+  expect(new Date((await coverage()).covered_block_timestamp)).toEqual(
     new Date(1000 * blockTime(firstSlot + 24)),
   );
   expect(
