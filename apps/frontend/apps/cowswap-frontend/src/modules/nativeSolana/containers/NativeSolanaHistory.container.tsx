@@ -10,7 +10,7 @@ import { OPHIS_SOLANA_CONFIG, solanaConnectionAtom } from 'entities/solana'
 import { atomWithQuery } from 'jotai-tanstack-query'
 
 import * as styledEl from '../pure/NativeSolana.styled'
-import { walletMint } from '../services/assets.service'
+import { walletMint, type SolanaAsset } from '../services/assets.service'
 import { walletAssetListAtom } from '../state/assets.atoms'
 
 const pageSize = 10
@@ -28,24 +28,25 @@ const historyAtom = atomFamily((page: number) =>
   }),
 )
 
+function tradeAmount(amount: string, mint: string, assets: SolanaAsset[]): ReactNode {
+  const asset = assets.find((token) => token.mint === walletMint(mint))
+  if (asset?.decimals === undefined)
+    return (
+      <>
+        <Trans>{amount} base units</Trans> <code>{mint}</code>
+      </>
+    )
+  return (
+    <span title={mint}>
+      {formatOphisSolanaAmount(BigInt(amount), asset.decimals)} {asset.symbol}
+    </span>
+  )
+}
+
 export function NativeSolanaHistory(): ReactNode {
   const [page, setPage] = useState(0)
   const { data, isFetching, isError, refetch } = useAtomValue(historyAtom(page))
   const assets = useAtomValue(walletAssetListAtom)
-  function tradeAmount(amount: string, mint: string): ReactNode {
-    const asset = assets.find((token) => token.mint === walletMint(mint))
-    if (asset?.decimals === undefined)
-      return (
-        <>
-          <Trans>{amount} base units</Trans> <code>{mint}</code>
-        </>
-      )
-    return (
-      <span title={mint}>
-        {formatOphisSolanaAmount(BigInt(amount), asset.decimals)} {asset.symbol}
-      </span>
-    )
-  }
   return (
     <styledEl.Card>
       <h3>
@@ -63,13 +64,13 @@ export function NativeSolanaHistory(): ReactNode {
       )}
       {data?.map(({ txSignature, instructionIndex, orderUid, buyAmount, buyToken, protocolFee, feeMint }) => (
         <p key={txSignature + instructionIndex + orderUid}>
-          <Trans>Received</Trans> {tradeAmount(buyAmount, buyToken)}
+          <Trans>Received</Trans> {tradeAmount(buyAmount, buyToken, assets)}
           <br />
           {protocolFee === null || feeMint === null ? (
             <Trans>Fee attribution unavailable</Trans>
           ) : (
             <>
-              <Trans>Ophis fee</Trans> {tradeAmount(protocolFee, feeMint)}
+              <Trans>Ophis fee</Trans> {tradeAmount(protocolFee, feeMint, assets)}
             </>
           )}
           {OPHIS_SOLANA_CONFIG?.chain === 'solana:mainnet' && (
