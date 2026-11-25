@@ -9,7 +9,7 @@ import {
   solanaAddress,
   type OphisSolanaOrder,
 } from '@ophis/solana-sdk'
-import { OPHIS_SOLANA_CONFIG, solanaConnectionAtom } from 'entities/solana'
+import { OPHIS_SOLANA_CONFIG, solanaConnectionAtom, type OphisSolanaConfig } from 'entities/solana'
 import { atomWithQuery } from 'jotai-tanstack-query'
 
 import { balanceEndpoint, mainnetWalletRpc, walletHoldingsKey } from '../services/assets.service'
@@ -43,6 +43,17 @@ function isIntentBytes(value: unknown): value is number[] {
   )
 }
 
+function validWalletAction(action: SavedNativeSolanaOrder['walletAction']): boolean {
+  if (!action) return true
+  return (
+    typeof action.reclaim === 'boolean' &&
+    (action.signature === null || /^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(action.signature)) &&
+    /^\d{1,20}$/.test(action.lastHeight) &&
+    (action.observedSlot === undefined || /^\d{1,20}$/.test(action.observedSlot)) &&
+    ['pending', 'confirmed', 'failed', 'expired'].includes(action.status)
+  )
+}
+
 function isSavedOrder(value: unknown): value is SavedNativeSolanaOrder {
   if (!value || typeof value !== 'object') return false
   const order = value as Partial<SavedNativeSolanaOrder>
@@ -54,12 +65,7 @@ function isSavedOrder(value: unknown): value is SavedNativeSolanaOrder {
     ) &&
     typeof order.reclaimed === 'boolean' &&
     (order.signature === null || typeof order.signature === 'string') &&
-    (!order.walletAction ||
-      (typeof order.walletAction.reclaim === 'boolean' &&
-        (order.walletAction.signature === null || /^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(order.walletAction.signature)) &&
-        /^\d{1,20}$/.test(order.walletAction.lastHeight) &&
-        (order.walletAction.observedSlot === undefined || /^\d{1,20}$/.test(order.walletAction.observedSlot)) &&
-        ['pending', 'confirmed', 'failed', 'expired'].includes(order.walletAction.status))) &&
+    validWalletAction(order.walletAction) &&
     isIntentBytes(order.intent)
   )
 }
@@ -88,7 +94,9 @@ function shouldCheckSubmission(lifetime: SavedNativeSolanaOrder['creationLifetim
   return !!lifetime && Date.now() - lifetime.requestedAt >= 90_000
 }
 
-export async function lookupMissingCreation(order: SavedNativeSolanaOrder): Promise<'pending' | 'failed' | 'unconfirmed'> {
+export async function lookupMissingCreation(
+  order: SavedNativeSolanaOrder,
+): Promise<'pending' | 'failed' | 'unconfirmed'> {
   const lifetime = order.creationLifetime
   const rpc = balanceEndpoint(OPHIS_SOLANA_CONFIG)
   if (!rpc || !lifetime || !shouldCheckSubmission(lifetime) || !/^\d{1,20}$/.test(lifetime.height)) return 'pending'
@@ -111,65 +119,81 @@ function balanceState(order?: OrderWithAttempt): OphisSolanaOrder['status'] | un
   return order?.payoutConfirmed ? 'fulfilled' : order?.status
 }
 
+async function readOrderStatus(
+  config: OphisSolanaConfig,
+  order: SavedNativeSolanaOrder,
+  error: unknown,
+): Promise<OphisSolanaOrder> {
+  const uid = order.uid
+  const rpc = balanceEndpoint(config)
+  if (!rpc) throw error
+  const { account: chain } = await readOphisOrderAccount(
+    rpc,
+    config.genesis,
+    config.program,
+    uid,
+    solanaAddress(order.orderPda),
+  )
+  if (!chain) throw error
+  const intent = chain.intent
+  const filled = chain.amountWithdrawn === intent.sellAmount && chain.amountReceived >= intent.buyAmount
+  return {
+    uid,
+    owner: intent.owner,
+    orderPda: solanaAddress(order.orderPda),
+    sellToken: intent.sellMint,
+    buyToken: intent.buyMint,
+    sellAmount: String(intent.sellAmount),
+    buyAmount: String(intent.buyAmount),
+    executedSellAmount: String(chain.amountWithdrawn),
+    executedBuyAmount: String(chain.amountReceived),
+    status: filled
+      ? 'fulfilled'
+      : chain.cancelled
+        ? 'cancelled'
+        : intent.validTo <= Date.now() / 1000
+          ? 'expired'
+          : 'open',
+  }
+}
+
+async function checkOrderPayout(
+  rpc: string,
+  config: OphisSolanaConfig,
+  result: OphisSolanaOrder,
+): Promise<OrderWithAttempt> {
+  const chain = (
+    await readOphisOrderAccount(rpc, config.genesis, config.program, result.uid, result.orderPda).catch(() => null)
+  )?.account
+  if (chain?.cancelled) return { ...result, status: 'cancelled' }
+  const payoutConfirmed =
+    !!chain && chain.amountWithdrawn === chain.intent.sellAmount && chain.amountReceived >= chain.intent.buyAmount
+  return { ...result, payoutConfirmed }
+}
+
+function hasRecentOpenOrder(status: OphisSolanaOrder['status'], order: SavedNativeSolanaOrder): boolean {
+  return status === 'open' && !!order.creationLifetime && Date.now() - order.creationLifetime.requestedAt < 300_000
+}
+
 async function getOrderStatus(uid: string, order?: SavedNativeSolanaOrder): Promise<OrderWithAttempt> {
-  if (privateSettlementEnabled && order) {
+  if (!order) throw Error('Order configuration is unavailable.')
+  if (privateSettlementEnabled) {
     const receipt = await privateAction<OrderWithAttempt | null>('order', { uid, pda: order.orderPda })
     if (receipt) return receipt
   }
   const config = OPHIS_SOLANA_CONFIG
-  if (!config || !order) throw Error('Order configuration is unavailable.')
+  if (!config) throw Error('Order configuration is unavailable.')
   let result: OphisSolanaOrder
   try {
     result = await fetchOphisSolanaOrder(config.api, uid)
   } catch (error) {
-    const rpc = balanceEndpoint(config)
-    if (!rpc) throw error
-    const { account: chain } = await readOphisOrderAccount(
-      rpc,
-      config.genesis,
-      config.program,
-      uid,
-      solanaAddress(order.orderPda),
-    )
-    if (!chain) throw error
-    const intent = chain.intent
-    const filled = chain.amountWithdrawn === intent.sellAmount && chain.amountReceived >= intent.buyAmount
-    return {
-      uid,
-      owner: intent.owner,
-      orderPda: solanaAddress(order.orderPda),
-      sellToken: intent.sellMint,
-      buyToken: intent.buyMint,
-      sellAmount: String(intent.sellAmount),
-      buyAmount: String(intent.buyAmount),
-      executedSellAmount: String(chain.amountWithdrawn),
-      executedBuyAmount: String(chain.amountReceived),
-      status: filled
-        ? 'fulfilled'
-        : chain.cancelled
-          ? 'cancelled'
-          : intent.validTo <= Date.now() / 1000
-            ? 'expired'
-            : 'open',
-    }
+    return readOrderStatus(config, order, error)
   }
   if (result.owner !== order.owner || result.orderPda !== order.orderPda)
     throw Error('Indexed order identity mismatch.')
-  const rpc = mainnetWalletRpc(OPHIS_SOLANA_CONFIG)
-  if (
-    result.status === 'open' &&
-    order?.creationLifetime &&
-    Date.now() - order.creationLifetime.requestedAt < 300_000 &&
-    OPHIS_SOLANA_CONFIG &&
-    rpc
-  ) {
-    const chain = (
-      await readOphisOrderAccount(rpc, config.genesis, config.program, uid, result.orderPda).catch(() => null)
-    )?.account
-    if (chain?.cancelled) return { ...result, status: 'cancelled' }
-    const payoutConfirmed =
-      !!chain && chain.amountWithdrawn === chain.intent.sellAmount && chain.amountReceived >= chain.intent.buyAmount
-    return { ...result, payoutConfirmed }
+  const rpc = mainnetWalletRpc(config)
+  if (rpc && hasRecentOpenOrder(result.status, order)) {
+    return checkOrderPayout(rpc, config, result)
   }
   return result
 }

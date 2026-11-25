@@ -7,6 +7,7 @@ import {
   compileOphisSolanaWalletTransaction,
   fetchOphisSolanaChainContext,
   checkOphisWalletAction,
+  fetchOphisWalletActionReceipt,
   fetchOphisWalletActionContext,
   fetchOphisSolanaMint,
   TOKEN_PROGRAM_ADDRESS,
@@ -301,10 +302,18 @@ test('order actions use the selected cluster and finalize before reporting a ref
   assert.equal(await check(), 'pending');
   height = 101;
   assert.equal(await check(), 'expired');
-  landed = { confirmationStatus: 'confirmed', err: null };
+  landed = { slot: 95, confirmationStatus: 'confirmed', err: null };
   assert.equal(await check(), 'pending');
   landed.confirmationStatus = 'finalized';
   assert.equal(await check(), 'confirmed');
+  assert.deepEqual(
+    await fetchOphisWalletActionReceipt(endpoint, fixture.owner, '1'.repeat(64), 100n),
+    { status: 'confirmed', slot: 95n },
+  );
+  assert.deepEqual(await fetchOphisWalletActionReceipt(endpoint, fixture.owner, null, 100n), {
+    status: 'expired',
+    slot: 100n,
+  });
   landed.err = 'AccountNotFound';
   assert.equal(await check(), 'failed');
 });

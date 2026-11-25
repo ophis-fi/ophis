@@ -334,6 +334,7 @@ export {
   hasConfirmedSolanaPayout,
   checkOphisSolanaCreation,
   fetchOphisWalletActionContext,
+  fetchOphisWalletActionReceipt,
   checkOphisWalletAction,
 } from './local-rpc.js';
 

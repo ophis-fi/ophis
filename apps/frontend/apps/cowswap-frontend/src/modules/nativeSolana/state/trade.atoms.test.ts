@@ -1,28 +1,22 @@
 import { createStore } from 'jotai'
-import { queryClientAtom } from 'jotai-tanstack-query'
 
 import {
   fetchOphisSolanaQuote,
   readOphisOrderAccount,
   fetchOphisWalletActionContext,
+  fetchOphisWalletActionReceipt,
   sendOphisSolanaWalletTransaction,
   solanaAddress,
 } from '@ophis/solana-sdk'
 import { solanaConnectionAtom, type SolanaConnection } from 'entities/solana'
+import { queryClientAtom } from 'jotai-tanstack-query'
 
-import {
-  manageNativeSolanaOrderAtom,
-  orderActionReceiptAtom,
-  recordOrderActionAtom,
-} from './orderActions.atoms'
-import {
-  savedNativeSolanaOrdersAtom,
-  visibleNativeSolanaOrdersAtom,
-} from './orders.atoms'
+import { manageNativeSolanaOrderAtom, orderActionReceiptAtom, recordOrderActionAtom } from './orderActions.atoms'
+import { savedNativeSolanaOrdersAtom, visibleNativeSolanaOrdersAtom } from './orders.atoms'
 import { nativeSolanaFormAtom, nativeSolanaReviewAtom, requestNativeSolanaQuoteAtom } from './trade.atoms'
 
-import { nativeSolanaErrorMessage } from '../services/trade.service'
 import { balanceEndpoint, mainnetWalletRpc, walletHoldingsKey } from '../services/assets.service'
+import { nativeSolanaErrorMessage } from '../services/trade.service'
 
 jest.mock(
   '@ophis/solana-sdk',
@@ -33,7 +27,7 @@ jest.mock(
     SOLANA_NATIVE_ASSET: 'native',
     TOKEN_PROGRAM_ADDRESS: 'token',
     fetchOphisSolanaChainContext: async () => ({ programAddress: 'own-program', genesisHash: 'own-genesis' }),
-    checkOphisWalletAction: async () => 'pending',
+    fetchOphisWalletActionReceipt: jest.fn().mockResolvedValue({ status: 'pending' }),
     fetchOphisWalletActionContext: jest.fn().mockResolvedValue({ lastValidBlockHeight: 10n }),
     sendOphisSolanaWalletTransaction: jest.fn().mockResolvedValue('1'.repeat(64)),
     getOrderIntentDecoder: () => ({ decode: () => ({ owner: 'owner' }) }),
@@ -228,4 +222,16 @@ it('requires a finalized absence at or after the previously observed live accoun
   expect((await query.refetch()).data).toBe('pending')
   read.mockResolvedValue({ account: null, slot: 201n })
   expect((await query.refetch()).data).toBe('confirmed')
+
+  store.set(savedNativeSolanaOrdersAtom, (all) => ({
+    [uid]: { ...all[uid], walletAction: { ...all[uid].walletAction!, signature: '1'.repeat(64) } },
+  }))
+  jest.mocked(fetchOphisWalletActionReceipt).mockResolvedValue({ status: 'confirmed', slot: 250n })
+  read.mockResolvedValue({ account: { cancelled: false }, slot: 225n } as Awaited<
+    ReturnType<typeof readOphisOrderAccount>
+  >)
+  const signed = store.get(orderActionReceiptAtom(uid))
+  expect((await signed.refetch()).data).toBe('pending')
+  read.mockResolvedValue({ account: null, slot: 250n })
+  expect((await signed.refetch()).data).toBe('confirmed')
 })

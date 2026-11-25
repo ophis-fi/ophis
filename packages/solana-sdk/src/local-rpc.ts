@@ -43,23 +43,36 @@ export async function checkOphisWalletAction(
   tx: string | null,
   lastHeight: bigint,
 ) {
+  return (await fetchOphisWalletActionReceipt(endpoint, genesis, tx, lastHeight)).status;
+}
+
+export async function fetchOphisWalletActionReceipt(
+  endpoint: string,
+  genesis: string,
+  tx: string | null,
+  lastHeight: bigint,
+): Promise<{ status: 'pending' | 'expired' | 'confirmed' | 'failed'; slot?: bigint }> {
   const rpc = await matchingRpc(endpoint, genesis);
   if (!tx) {
     const tip = await rpc.getEpochInfo({ commitment: 'finalized' }).send();
-    return tip.blockHeight != null && tip.blockHeight > lastHeight ? 'expired' : 'pending';
+    return tip.blockHeight != null && tip.blockHeight > lastHeight
+      ? { status: 'expired', slot: tip.absoluteSlot }
+      : { status: 'pending' };
   }
   const lookup = () =>
     rpc.getSignatureStatuses([signature(tx)], { searchTransactionHistory: true }).send();
   let receipt = await lookup();
   if (!receipt.value[0]) {
     const tip = await rpc.getEpochInfo({ commitment: 'finalized' }).send();
-    if (tip.blockHeight == null || tip.blockHeight <= lastHeight) return 'pending';
+    if (tip.blockHeight == null || tip.blockHeight <= lastHeight) return { status: 'pending' };
     receipt = await lookup();
-    if (!receipt.value[0] && receipt.context.slot >= tip.absoluteSlot) return 'expired';
+    if (!receipt.value[0] && receipt.context.slot >= tip.absoluteSlot)
+      return { status: 'expired', slot: tip.absoluteSlot };
   }
   const status = receipt.value[0];
-  if (status?.confirmationStatus !== 'finalized') return 'pending';
-  return status.err ? 'failed' : 'confirmed';
+  if (status?.confirmationStatus !== 'finalized' || typeof status.slot !== 'bigint')
+    return { status: 'pending' };
+  return { status: status.err ? 'failed' : 'confirmed', slot: status.slot };
 }
 
 export async function localWalletRpc(genesis: string) {
