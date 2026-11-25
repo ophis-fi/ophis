@@ -1,0 +1,13 @@
+{
+  "signature": "5AWm3ZzfK31gfc2RA5eTWJum28SfcQMcLyuWuFwsPypHAbh2csnQjoZMoYMrv6xoeYJLxSamkXrntuPr4Nm4z7g3",
+  "slot": "69259",
+  "treasury": "3LAnPTtH3mCPsE7CoWqKQihRgsrg3PWqaMbQMUZ7LMfz",
+  "buffer": "FwHBxLqHiBziovCCnft6tpbTyeAhpBYFd2BfrVqEqufg",
+  "maxLamports": "18446744073709551615",
+  "receivedLamports": "20065",
+  "networkFeeLamports": "5000",
+  "payer": "E5kjcEZNVhwSs53GDGZaC1W6QtAFTZr27w4upLy2K1Jn",
+  "cluster": "disposable localnet",
+  "mainnetTransactions": 0,
+  "unrelatedTreasuryRejected": true
+}
