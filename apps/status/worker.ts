@@ -42,7 +42,8 @@ export default {
     if (pathname !== '/status.json' || (request.method !== 'GET' && request.method !== 'HEAD')) {
       return new Response('Not found\n', { status: 404 });
     }
-    // Thirty seconds in this data centre's cache: a burst of readers costs the store one read.
+    // Ten seconds in this data centre's cache: a burst of readers costs the store one read.
+    // (Thirty showed rounds up to a minute and a half late on the first day.)
     // That copy is the Worker's own and never goes out as it is: Cloudflare rewrites the
     // Cache-Control of an answer it serves from cache to the zone's browser TTL (four hours on
     // ophis.fi, seen on the first deploy), and a browser would then show a status hours old.
@@ -60,7 +61,7 @@ export default {
           headers: { ...JSON_HEADERS, 'cache-control': 'no-store' },
         });
       }
-      const copy = new Response(state, { headers: { 'cache-control': 'public, max-age=30' } });
+      const copy = new Response(state, { headers: { 'cache-control': 'public, max-age=10' } });
       ctx.waitUntil(caches.default.put(key, copy));
     }
     return new Response(state, { headers: { ...JSON_HEADERS, 'cache-control': 'no-store' } });
