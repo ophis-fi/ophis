@@ -23,7 +23,7 @@ export function useReceiptTrade(
   const { refetch } = history
   useEffect(() => {
     if (!lookup || trade || page !== 0 || order.reclaimed) return
-    const timer = window.setInterval(() => void refetch(), 4000)
+    const timer = window.setInterval(() => void refetch({ cancelRefetch: false }), 4000)
     const end = window.setTimeout(() => window.clearInterval(timer), 60_000)
     return () => {
       window.clearInterval(timer)
@@ -36,8 +36,8 @@ export function useReceiptTrade(
       trade,
       isFetchingTrade: history.isFetching,
       refreshTrade: lookup ? refetch : undefined,
-      checkOlder: hasOlder ? () => setPage((current) => current + 1) : undefined,
+      checkOlder: hasOlder ? () => setPage(page + 1) : undefined,
     }),
-    [trade, history.isFetching, lookup, refetch, hasOlder],
+    [trade, history.isFetching, lookup, refetch, hasOlder, page],
   )
 }
