@@ -8,7 +8,7 @@ import {
 } from '@ophis/solana-sdk'
 import { solanaConnectionAtom, type SolanaConnection } from 'entities/solana'
 
-import { savedNativeSolanaOrdersAtom, type SavedNativeSolanaOrder } from './orders.atoms'
+import { activeSolanaReceiptAtom, savedNativeSolanaOrdersAtom, type SavedNativeSolanaOrder } from './orders.atoms'
 import { createNativeSolanaOrderAtom } from './placeOrder.atoms'
 import {
   nativeSolanaBusyAtom,
@@ -115,6 +115,7 @@ it('persists the unsigned recovery record at broadcast and replaces it with the 
   })
   await store.set(createNativeSolanaOrderAtom)
   const record = { ...savedOrder, creationLifetime: { height: '135', requestedAt: expect.any(Number) } }
+  expect(store.get(activeSolanaReceiptAtom)).toBe(uid)
   expect(snapshots).toEqual([{}, { [uid]: record }])
   expect(ordersAfterReload()).toEqual({ [uid]: { ...record, signature } })
   expect(store.get(nativeSolanaErrorAtom)).toBeNull()
@@ -127,6 +128,7 @@ it('leaves no recovery record when the wallet rejects before broadcast', async (
   const review = store.get(nativeSolanaReviewAtom)
   send.mockRejectedValueOnce(new Error('User rejected'))
   await store.set(createNativeSolanaOrderAtom)
+  expect(store.get(activeSolanaReceiptAtom)).toBeNull()
   expect(store.get(nativeSolanaErrorAtom)).toBe('User rejected')
   expect(ordersAfterReload()).toEqual({})
   expect(store.get(nativeSolanaReviewAtom)).toBe(review)
@@ -140,6 +142,7 @@ it('recovers an ambiguous broadcast and blocks a duplicate while its order accou
     throw new Error('RPC timed out')
   })
   await store.set(createNativeSolanaOrderAtom)
+  expect(store.get(activeSolanaReceiptAtom)).toBe(uid)
   expect(store.get(nativeSolanaErrorAtom)).toBe('RPC timed out')
   const saved = ordersAfterReload()
   expect(saved[uid]).toMatchObject({ signature: null, creationLifetime: { height: '135' } })
