@@ -43,25 +43,26 @@ export default {
       return new Response('Not found\n', { status: 404 });
     }
     // Thirty seconds in this data centre's cache: a burst of readers costs the store one read.
+    // That copy is the Worker's own and never goes out as it is: Cloudflare rewrites the
+    // Cache-Control of an answer it serves from cache to the zone's browser TTL (four hours on
+    // ophis.fi, seen on the first deploy), and a browser would then show a status hours old.
     const key = new Request(`${origin}/status.json`);
     const cached = await caches.default.match(key);
-    if (cached) return cached;
-    let state: string;
-    try {
-      state = await env.STATUS.getByName('status').snapshot();
-    } catch (error) {
-      // The store is out of reach: say so, and let nothing keep the answer. The page then
-      // reads "Status data is unavailable".
-      console.error(JSON.stringify({ error: 'snapshot failed', detail: String(error) }));
-      return new Response('{"error":"unavailable"}\n', {
-        status: 503,
-        headers: { ...JSON_HEADERS, 'cache-control': 'no-store' },
-      });
+    let state = cached ? await cached.text() : undefined;
+    if (state === undefined) {
+      try {
+        state = await env.STATUS.getByName('status').snapshot();
+      } catch (error) {
+        // The store is out of reach: say so. The page then reads "Status data is unavailable".
+        console.error(JSON.stringify({ error: 'snapshot failed', detail: String(error) }));
+        return new Response('{"error":"unavailable"}\n', {
+          status: 503,
+          headers: { ...JSON_HEADERS, 'cache-control': 'no-store' },
+        });
+      }
+      const copy = new Response(state, { headers: { 'cache-control': 'public, max-age=30' } });
+      ctx.waitUntil(caches.default.put(key, copy));
     }
-    const response = new Response(state, {
-      headers: { ...JSON_HEADERS, 'cache-control': 'public, max-age=30' },
-    });
-    ctx.waitUntil(caches.default.put(key, response.clone()));
-    return response;
+    return new Response(state, { headers: { ...JSON_HEADERS, 'cache-control': 'no-store' } });
   },
 } satisfies ExportedHandler<Env>;
