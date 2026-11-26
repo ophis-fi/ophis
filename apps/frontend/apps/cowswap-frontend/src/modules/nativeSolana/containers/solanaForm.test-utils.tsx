@@ -58,9 +58,10 @@ afterEach(() => {
 })
 
 export function renderForm(onReview = jest.fn()): ReturnType<typeof createStore> {
-  HTMLDialogElement.prototype.showModal = function (): void {
-    this.open = true
-  }
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    value: (media: string) => ({ media, matches: false, addEventListener: jest.fn(), removeEventListener: jest.fn() }),
+  })
   const store = createStore()
   store.get(queryClientAtom).clear()
   render(

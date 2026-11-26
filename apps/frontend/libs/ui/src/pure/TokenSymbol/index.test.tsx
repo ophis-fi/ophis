@@ -1,7 +1,7 @@
 import { ARC_CIRBTC, ARC_EURC, ARC_USDC, ARC_USYC, USDCE_INK, USDC_MAINNET } from '@cowprotocol/common-const'
 
 import { i18n } from '@lingui/core'
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import { AssetCheck, TokenSymbol } from './index'
 
@@ -65,10 +65,15 @@ it('shows the issuer explanation on hover and includes USYC eligibility', async 
     fireEvent.mouseEnter(icon)
   })
   expect(screen.getByRole('tooltip').textContent).toContain('USYC requires an eligible, allowlisted wallet')
+  const tip = screen.getByRole('tooltip')
+  fireEvent.mouseLeave(icon)
+  fireEvent.mouseEnter(tip)
   await act(async () => {
-    fireEvent.mouseLeave(icon)
+    await new Promise((resolve) => setTimeout(resolve, 330))
   })
-  expect(screen.queryByRole('tooltip')).toBeNull()
+  expect(screen.getByRole('tooltip')).toBe(tip)
+  fireEvent.mouseLeave(tip)
+  await waitFor(() => expect(screen.queryByRole('tooltip')).toBeNull())
 })
 
 it('opens from keyboard focus and dismisses with Escape or an outside tap', async () => {
@@ -77,6 +82,7 @@ it('opens from keyboard focus and dismisses with Escape or an outside tap', asyn
   await act(async () => {
     trigger.focus()
   })
+  expect(trigger.getAttribute('aria-describedby')).toBe(screen.getByRole('tooltip').id)
   await act(async () => {
     fireEvent.mouseLeave(screen.getByRole('img', { name: badge }))
   })
@@ -98,7 +104,7 @@ it('opens from keyboard focus and dismisses with Escape or an outside tap', asyn
 it('reuses a parent button focus and lets a badge tap explain without selecting the token', async () => {
   const select = jest.fn()
   render(
-    <button onClick={select}>
+    <button onClick={select} aria-describedby="token-help">
       <TokenSymbol token={ARC_USYC} />
     </button>,
   )
@@ -107,6 +113,7 @@ it('reuses a parent button focus and lets a badge tap explain without selecting 
   await act(async () => {
     trigger.focus()
   })
+  expect(trigger.getAttribute('aria-describedby')).toBe('token-help ' + screen.getByRole('tooltip').id)
   await act(async () => {
     fireEvent.mouseLeave(screen.getByRole('img', { name: badge }))
   })
@@ -114,6 +121,7 @@ it('reuses a parent button focus and lets a badge tap explain without selecting 
   await act(async () => {
     trigger.blur()
   })
+  expect(trigger.getAttribute('aria-describedby')).toBe('token-help')
   expect(screen.queryByRole('tooltip')).toBeNull()
   await act(async () => {
     fireEvent.click(screen.getByRole('img', { name: badge }))

@@ -1,5 +1,5 @@
 import { useAtom, useAtomValue } from 'jotai'
-import { ReactNode, useState } from 'react'
+import { type MouseEventHandler, ReactNode, useState } from 'react'
 
 import { Trans, useLingui } from '@lingui/react/macro'
 import { formatOphisSolanaAmount, requestOphisLocalTestSol, solanaAddress } from '@ophis/solana-sdk'
@@ -23,7 +23,7 @@ import {
 } from '../state/assets.atoms'
 import { nativeSolanaBusyAtom, nativeSolanaFormAtom, nativeSolanaReviewAtom } from '../state/trade.atoms'
 
-export function SellPanel({ open }: { open(): void }): ReactNode {
+export function SellPanel({ open }: { open: MouseEventHandler<HTMLButtonElement> }): ReactNode {
   const { t } = useLingui()
   const [form, setForm] = useAtom(nativeSolanaFormAtom)
   const busy = useAtomValue(nativeSolanaBusyAtom)
@@ -117,7 +117,7 @@ export function SellPanel({ open }: { open(): void }): ReactNode {
     </styledEl.Panel>
   )
 }
-export function BuyPanel({ open }: { open(): void }): ReactNode {
+export function BuyPanel({ open }: { open: MouseEventHandler<HTMLButtonElement> }): ReactNode {
   const [form, setForm] = useAtom(nativeSolanaFormAtom)
   const busy = useAtomValue(nativeSolanaBusyAtom)
   const review = useAtomValue(nativeSolanaReviewAtom)

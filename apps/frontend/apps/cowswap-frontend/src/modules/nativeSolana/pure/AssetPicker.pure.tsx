@@ -1,8 +1,9 @@
-import { ReactNode, useEffect, useRef, useState } from 'react'
+import { ReactNode, useEffect, useId, useRef, useState } from 'react'
 
 import { Trans } from '@lingui/react/macro'
 import { formatOphisSolanaAmount, SOLANA_NATIVE_ASSET, solanaAddress, type OphisWalletHolding } from '@ophis/solana-sdk'
 import { VerifiedAssetBadge, type Verification } from 'entities/verifiedAsset'
+import { ArrowLeft } from 'react-feather'
 
 import * as styledEl from './SwapForm.styled'
 
@@ -64,21 +65,13 @@ function matchingAssets(assets: SolanaAsset[], other: string, term: string): Sol
   return matches
 }
 
-export function AssetPicker({
-  side,
-  assets,
-  holdings,
-  other,
-  select,
-  close,
-  catalogLoading,
-  verifyAsset,
-  catalogUnavailable,
-}: AssetPickerProps): ReactNode {
-  const dialog = useRef<HTMLDialogElement>(null)
+export function AssetPicker(props: AssetPickerProps): ReactNode {
+  const { side, assets, holdings, other, select, close, verifyAsset } = props
+  const search = useRef<HTMLInputElement>(null)
+  const titleId = useId()
   const [query, setQuery] = useState('')
   useEffect(() => {
-    dialog.current?.showModal()
+    search.current?.focus({ preventScroll: true })
   }, [])
   const filtered = matchingAssets(assets, other, query.trim())
   const held: SolanaAsset[] = []
@@ -88,16 +81,23 @@ export function AssetPicker({
     rows.push(asset)
   }
   return (
-    <styledEl.Dialog ref={dialog} aria-labelledby="asset-title" onCancel={close}>
-      <styledEl.Line>
-        <h2 id="asset-title">
-          {side === 'sell' ? <Trans>Choose a token to sell</Trans> : <Trans>Choose a token to buy</Trans>}
-        </h2>
-        <styledEl.SmallButton type="button" onClick={close} aria-label="Close token picker">
-          ×
-        </styledEl.SmallButton>
-      </styledEl.Line>
+    <section
+      aria-labelledby={titleId}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          event.stopPropagation()
+          close()
+        }
+      }}
+    >
+      <styledEl.PickerHeading>
+        <styledEl.Back type="button" onClick={close} aria-label="Close token picker">
+          <ArrowLeft size={20} aria-hidden="true" />
+        </styledEl.Back>
+        <h2 id={titleId}>{side === 'sell' ? <Trans>You sell</Trans> : <Trans>You buy</Trans>}</h2>
+      </styledEl.PickerHeading>
       <styledEl.Search
+        ref={search}
         aria-label="Search tokens"
         placeholder="Search symbol, name or mint address"
         value={query}
@@ -105,56 +105,58 @@ export function AssetPicker({
         autoComplete="off"
         spellCheck={false}
       />
-      {[
-        { label: <Trans>In your wallet</Trans>, rows: held },
-        { label: <Trans>Tokens on this network</Trans>, rows: others },
-      ].map(
-        ({ label, rows }, i) =>
-          rows.length > 0 && (
-            <section key={i}>
-              <styledEl.Caption>{label}</styledEl.Caption>
-              {rows.slice(0, maxRowsPerGroup).map((asset) => {
-                const holding = holdings.get(asset.mint)
-                return (
-                  <styledEl.Option key={asset.mint} type="button" title={asset.mint} onClick={() => select(asset)}>
-                    <AssetIcon asset={asset} />
-                    <span>
-                      <strong>
-                        {asset.symbol}
-                        <VerifiedAssetBadge verified={verifyAsset(asset)} />
-                      </strong>
-                      <small>
-                        {asset.name}
-                        {asset.mint !== nativeAsset.mint && ' · ' + shortMint(asset.mint)}
-                      </small>
-                    </span>
-                    {holding && <b>{formatOphisSolanaAmount(holding.atoms, holding.decimals)}</b>}
-                  </styledEl.Option>
-                )
-              })}
-            </section>
-          ),
-      )}
-      {(held.length > maxRowsPerGroup || others.length > maxRowsPerGroup) && (
-        <p>
-          <Trans>Search to narrow the list.</Trans>
-        </p>
-      )}
-      {catalogLoading && (
-        <p role="status">
-          <Trans>Loading more Solana tokens…</Trans>
-        </p>
-      )}
-      {catalogUnavailable && (
-        <p role="status">
-          <Trans>The full token list is unavailable. You can still paste a mint address.</Trans>
-        </p>
-      )}
-      {!catalogLoading && !filtered.length && (
-        <p role="status">
-          <Trans>No matching token. Try its full mint address.</Trans>
-        </p>
-      )}
-    </styledEl.Dialog>
+      <styledEl.TokenList>
+        {[
+          { label: <Trans>In your wallet</Trans>, rows: held },
+          { label: <Trans>Tokens on this network</Trans>, rows: others },
+        ].map(
+          ({ label, rows }, i) =>
+            rows.length > 0 && (
+              <section key={i}>
+                <styledEl.Caption>{label}</styledEl.Caption>
+                {rows.slice(0, maxRowsPerGroup).map((asset) => {
+                  const holding = holdings.get(asset.mint)
+                  return (
+                    <styledEl.Option key={asset.mint} type="button" title={asset.mint} onClick={() => select(asset)}>
+                      <AssetIcon asset={asset} />
+                      <span>
+                        <strong>
+                          {asset.symbol}
+                          <VerifiedAssetBadge verified={verifyAsset(asset)} />
+                        </strong>
+                        <small>
+                          {asset.name}
+                          {asset.mint !== nativeAsset.mint && ' · ' + shortMint(asset.mint)}
+                        </small>
+                      </span>
+                      {holding && <b>{formatOphisSolanaAmount(holding.atoms, holding.decimals)}</b>}
+                    </styledEl.Option>
+                  )
+                })}
+              </section>
+            ),
+        )}
+        {(held.length > maxRowsPerGroup || others.length > maxRowsPerGroup) && (
+          <p>
+            <Trans>Search to narrow the list.</Trans>
+          </p>
+        )}
+        {props.catalogLoading && (
+          <p role="status">
+            <Trans>Loading more Solana tokens…</Trans>
+          </p>
+        )}
+        {props.catalogUnavailable && (
+          <p role="status">
+            <Trans>The full token list is unavailable. You can still paste a mint address.</Trans>
+          </p>
+        )}
+        {!props.catalogLoading && !filtered.length && (
+          <p role="status">
+            <Trans>No matching token. Try its full mint address.</Trans>
+          </p>
+        )}
+      </styledEl.TokenList>
+    </section>
   )
 }
