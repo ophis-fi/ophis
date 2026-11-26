@@ -2,9 +2,12 @@ import { ReactNode } from 'react'
 
 import OrderCheckIcon from '@cowprotocol/assets/cow-swap/order-check.svg'
 import { ChainInfo } from '@cowprotocol/cow-sdk'
+import { Badge, BadgeTypes } from '@cowprotocol/ui'
 
-import { useLingui } from '@lingui/react/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import SVG from 'react-inlinesvg'
+
+import { NEW_NETWORK_IDS } from 'common/pure/NetworksList/NetworksList.constants'
 
 import { getChainAccent } from './getChainAccent'
 import * as styledEl from './styled'
@@ -61,6 +64,11 @@ export function ChainButton({
         <styledEl.ChainText disabled$={isDisabled} loading$={isLoading}>
           {chain.label}
         </styledEl.ChainText>
+        {NEW_NETWORK_IDS.has(chain.id) && (
+          <Badge type={BadgeTypes.ALERT2}>
+            <Trans>NEW</Trans>
+          </Badge>
+        )}
       </styledEl.ChainInfo>
       {isActive && !isLoading && (
         <styledEl.ActiveIcon aria-hidden accent$={accent} color$={chain.color}>

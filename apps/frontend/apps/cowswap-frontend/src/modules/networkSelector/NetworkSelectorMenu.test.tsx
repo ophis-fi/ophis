@@ -68,7 +68,7 @@ it.each([
   )
   fireEvent.change(screen.getByRole('textbox', { name: 'Search network' }), { target: { value: 'solana' } })
   expect(screen.getAllByText('Solana')).toHaveLength(1)
-  fireEvent.click(screen.getByRole('button', { name: 'Solana' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Solana NEW' }))
   if (nativeEnabled) {
     expect(onClose).toHaveBeenCalledTimes(1)
     expect(onSelectNativeSolana).toHaveBeenCalledTimes(1)
