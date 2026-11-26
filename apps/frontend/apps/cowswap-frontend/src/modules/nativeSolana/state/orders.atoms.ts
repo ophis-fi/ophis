@@ -75,6 +75,7 @@ export const savedNativeSolanaOrdersAtom = atomWithStorage<Record<string, SavedN
   'ophisSolanaOrders:v0',
   {},
 )
+export const activeSolanaReceiptAtom = atom<string | null>(null)
 export const visibleNativeSolanaOrdersAtom = atom((get) => {
   const owner = get(solanaConnectionAtom)?.account.address
   const config = OPHIS_SOLANA_CONFIG
@@ -198,8 +199,10 @@ async function getOrderStatus(uid: string, order?: SavedNativeSolanaOrder): Prom
   return result
 }
 
+export type SolanaOrderResult = OrderWithAttempt | { status: 'failed' | 'unconfirmed' }
+
 export const nativeSolanaOrderQueryAtom = atomFamily((uid: string) =>
-  atomWithQuery<OrderWithAttempt | { status: 'failed' | 'unconfirmed' }>((get) => {
+  atomWithQuery<SolanaOrderResult>((get) => {
     const order = get(visibleNativeSolanaOrdersAtom).find((candidate) => candidate.uid === uid)
     return {
       queryKey: ['ophisSolanaOrder', OPHIS_SOLANA_CONFIG?.api, OPHIS_SOLANA_CONFIG?.genesis, uid],

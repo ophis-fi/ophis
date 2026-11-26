@@ -137,6 +137,7 @@ test('looks up the native UID and preserves its fulfilled state and exact fills'
   );
   const order = await fetchOphisSolanaOrder('https://native.ophis.example', fixture.order.uid);
   assert.equal(order.status, 'fulfilled');
+  assert.equal(order.creationDate, fixture.order.creationDate);
   assert.equal(order.executedSellAmount, fixture.order.executedSellAmount);
   assert.equal(order.owner, fixture.order.owner);
   await assert.rejects(fetchOphisSolanaOrder('https://native.ophis.example', '../../other'));
@@ -176,6 +177,7 @@ test('owner history preserves unknown and exact settled fees and rejects a misma
     buyAmount: '200',
     txSignature: '1'.repeat(64),
     instructionIndex: 1,
+    slot: 474204967,
   };
   const fee = { protocolFee: '9007199254740993', feeMint: buyToken };
   t.mock.method(globalThis, 'fetch', async (url) => {
@@ -187,6 +189,7 @@ test('owner history preserves unknown and exact settled fees and rejects a misma
     history.map((v) => v.protocolFee),
     [null, '9007199254740993'],
   );
+  assert.equal(history[0].slot, row.slot);
   fee.feeMint = owner;
   await assert.rejects(fetchOphisSolanaTrades('http://localhost', owner));
 });

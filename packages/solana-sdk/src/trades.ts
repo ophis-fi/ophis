@@ -12,6 +12,7 @@ export interface OphisSolanaTrade {
   feeMint: Address | null;
   txSignature: Signature;
   instructionIndex: number;
+  slot?: number;
 }
 
 export async function fetchOphisSolanaTrades(
@@ -62,6 +63,7 @@ export async function fetchOphisSolanaTrades(
       feeMint,
       txSignature: signature(v.txSignature),
       instructionIndex: v.instructionIndex,
+      ...(typeof v.slot === 'number' && Number.isSafeInteger(v.slot) && v.slot >= 0 ? { slot: v.slot } : {}),
     };
   });
 }

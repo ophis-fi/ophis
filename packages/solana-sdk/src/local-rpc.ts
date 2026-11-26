@@ -195,7 +195,7 @@ export async function readOphisOrderAccount(
   const identity = await identifyOphisSolanaOrder(program, account.intent);
   if (identity.uid !== uid || identity.orderPda !== pda)
     throw Error('Solana order identity mismatch');
-  return { account, slot: context.slot };
+  return { account, slot: context.slot, lamports: value.lamports };
 }
 
 export async function hasConfirmedSolanaPayout(

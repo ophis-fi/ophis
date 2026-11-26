@@ -171,29 +171,30 @@ export function NativeSolanaWidget(): ReactNode {
   }, [review, busy, clearQuote])
   return (
     <styledEl.Stack>
-      {selected && selected === review ? (
-        <NativeSolanaReview
-          onBack={() => {
-            clearError(null)
-            setSelected(null)
-          }}
-        />
-      ) : (
-        <NativeSolanaForm
-          key={wallet?.account.address}
-          onReview={(current) => {
-            clearError(null)
-            setSelected(current)
-          }}
-        />
-      )}
+      <NativeSolanaOrders>
+        {selected && selected === review ? (
+          <NativeSolanaReview
+            onBack={() => {
+              clearError(null)
+              setSelected(null)
+            }}
+          />
+        ) : (
+          <NativeSolanaForm
+            key={wallet?.account.address}
+            onReview={(current) => {
+              clearError(null)
+              setSelected(current)
+            }}
+          />
+        )}
+      </NativeSolanaOrders>
       {busy && (
         <p role="status">
           <Trans>Preparing your trade. Check your wallet for any approval request.</Trans>
         </p>
       )}
       {error && <p role="alert">{error}</p>}
-      <NativeSolanaOrders />
     </styledEl.Stack>
   )
 }

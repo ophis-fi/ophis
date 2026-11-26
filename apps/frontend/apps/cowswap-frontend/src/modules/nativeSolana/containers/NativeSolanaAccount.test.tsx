@@ -88,7 +88,12 @@ jest.mock('modules/account/containers/AccountDetails/ActivitiesList', () => ({
 jest.mock('modules/account/containers/AccountDetails/AccountIcon', () => ({ AccountIcon: () => null }))
 jest.mock('modules/account/containers/AccountDetails/SurplusCard', () => ({ SurplusCard: () => null }))
 jest.mock('modules/account/containers/CowShedInfo', () => ({ CowShedInfo: () => null }))
-jest.mock('../services/assets.service', () => ({ walletMint: (mint: string) => mint }))
+jest.mock('../services/assets.service', () => ({
+  walletMint: (mint: string) => mint,
+  unknownAsset: (mint: string) => ({ mint, symbol: mint }),
+  solanaAssetIdentity: () => ({}),
+}))
+jest.mock('entities/verifiedAsset', () => ({ useAssetVerification: () => undefined, VerifiedAssetBadge: () => null }))
 jest.mock('../state/assets.atoms', () => {
   const { atom } = jest.requireActual('jotai')
   return { walletAssetListAtom: atom([]), solanaMainnetCatalogAtom: atom({}), solanaCachedCatalogAtom: atom({}) }
@@ -97,6 +102,7 @@ jest.mock('../services/privateSettlement.service', () => ({ privateSettlementEna
 jest.mock('../state/orderActions.atoms', () => ({}))
 jest.mock('../state/trade.atoms', () => ({}))
 jest.mock('../state/orders.atoms', () => ({
+  activeSolanaReceiptAtom: jest.requireActual('jotai').atom(null),
   savedNativeSolanaOrdersAtom: jest.requireActual('jotai').atom({}),
   visibleNativeSolanaOrdersAtom: jest.requireActual('jotai').atom([]),
 }))
@@ -112,9 +118,12 @@ it.each([false, true])('opens recent trades from the connected header (EVM conne
     : 'CaseSensitiveBase58KeySo1anaOn1y11111111111'
   mockFetchTrades.mockReset().mockImplementation(async (_api: string, address: string, offset: number) =>
     Array.from({ length: offset === 0 ? 10 : 1 }, (_, index) => ({
-      txSignature: address + (offset + index),
+      txSignature: '2'.repeat(63) + (offset + index + 1).toString().replace(/0/g, '1'),
+      owner: address,
+      sellAmount: '120',
+      sellToken: 'soldMint',
       instructionIndex: 0,
-      orderUid: 'order',
+      orderUid: 'order' + index,
       buyAmount: '100',
       buyToken: 'mint',
       protocolFee: null,
@@ -143,8 +152,10 @@ it.each([false, true])('opens recent trades from the connected header (EVM conne
   expect(await recent.findByText(owner)).toBeTruthy()
   expect(!!recent.queryByText('evm-order')).toBe(evmConnected)
   expect(!!screen.queryByText(/EVM wallet/)).toBe(evmConnected)
+  fireEvent.click((await recent.findAllByRole('button', { name: /View receipt/ }))[0])
   const link = (await recent.findAllByRole('link', { name: /Solana Explorer/ }))[0]
-  expect(link.getAttribute('href')).toBe('https://explorer.solana.com/tx/' + owner + '0')
+  expect(link.getAttribute('href')).toBe('https://explorer.solana.com/tx/' + '2'.repeat(63) + '1')
+  fireEvent.click(recent.getByRole('button', { name: 'Back' }))
   fireEvent.click(recent.getByRole('button', { name: 'Next' }))
   await waitFor(() => expect(mockFetchTrades).toHaveBeenCalledWith(expect.anything(), owner, 10, 10))
   act(() => store.set(solanaConnectionAtom, connection(owner + 'Changed')))
