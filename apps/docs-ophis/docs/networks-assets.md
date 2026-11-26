@@ -53,9 +53,10 @@ The swap app swaps SOL and SPL tokens on Solana at [swap.ophis.fi/#/solana](http
 | Order | You set the amount you sell. One wallet transaction places an order with a minimum received |
 | Settlement | The Ophis solver settles through the Ophis program `BJZ5yma22Km3fsfrEEdZVGygdrcwoschb6uUNqQWaQ9h`, which rejects any settlement below your minimum |
 | Liquidity | Raydium, Orca, Meteora, PumpSwap and Manifest directly, and Jupiter as a router |
-| Unfilled orders | Stay open until they expire. You can cancel, and the order account deposit returns to the wallet that paid it |
+| Unfilled orders | Stay open until they expire, and you can cancel them. Afterwards, **Reclaim account rent** returns the order account deposit to the wallet that paid it |
 | Fees | [Solana fee policy](/fees#solana-fee-policy) |
-| SDK, MCP and Intent API | Not covered. They build EVM orders only |
+| SDK and MCP | Not covered. They build EVM orders only |
+| Intent API | Not covered. It returns a parsed intent, not an order |
 
 A quote appears only when a route exists for your pair and amount. To move between Solana and another network, use a [NEAR Intents swap](#externally-funded-swaps-through-near-intents).
 

@@ -59,7 +59,7 @@ const FAQS = [
   },
   {
     q: 'What happens if my Solana order is not filled?',
-    a: 'It stays open until it expires, and you can cancel it in the app. The deposit paid to open the order account returns to the wallet that paid it. The Ophis program rejects any settlement below your minimum received.',
+    a: 'It stays open until it expires, and you can cancel it in the app. Once it is cancelled or has expired, choose Reclaim account rent and confirm the transaction in your wallet: the deposit paid to open the order account returns to the wallet that paid it. The Ophis program rejects any settlement below your minimum received.',
   },
   {
     q: 'Is a Solana swap on Ophis a bridge?',
@@ -117,10 +117,10 @@ const howToLd = {
 
   <h2>For agents and integrators</h2>
   <p>
-    Native Solana swaps are available in the swap app. The Ophis MCP server, the
-    <code>@ophis/sdk</code> package and the Intent API build orders for EVM chains only; they do not
-    build Solana orders. See the <a href="/ai-agent-crypto-swap-api/">agent swap API guide</a> for
-    what each of them covers.
+    Native Solana swaps are available in the swap app. The Ophis MCP server and the
+    <code>@ophis/sdk</code> package build orders for EVM chains only, and the Intent API returns a
+    parsed intent, not an order. None of them builds a Solana order. See the
+    <a href="/ai-agent-crypto-swap-api/">agent swap API guide</a> for what each of them covers.
   </p>
 
   <h2>Related pages</h2>
