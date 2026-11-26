@@ -98,7 +98,7 @@ it('discards a quote if the wallet or form changed while the request was running
   const second = connection('caseSensitiveOwner')
   store.set(solanaConnectionAtom, first)
   store.set(nativeSolanaFormAtom, { sellMint: 'SOL', buyMint: 'mint', amount: '1', slippageBps: 50 })
-  const quote = { verified: true }
+  const quote = { verified: true, expiration: new Date(Date.now() + 60_000).toISOString() }
   let release: (value: unknown) => void = () => undefined
   jest.mocked(fetchOphisSolanaQuote).mockImplementation(
     () =>

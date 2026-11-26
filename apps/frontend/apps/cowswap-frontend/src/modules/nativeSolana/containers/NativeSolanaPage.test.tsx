@@ -13,7 +13,13 @@ jest.mock(
   { virtual: true },
 )
 jest.mock('entities/solana', () => ({ solanaConnectionAtom: jest.requireActual('jotai').atom(null) }))
-jest.mock('./NativeSolanaForm.container', () => ({ NativeSolanaForm: () => null }))
+jest.mock('./NativeSolanaForm.container', () => ({
+  NativeSolanaForm: ({ onReview }: { onReview(review: unknown): void }) => {
+    const { useAtomValue } = jest.requireActual('jotai')
+    const review = useAtomValue(jest.requireMock('../state/trade.atoms').nativeSolanaReviewAtom)
+    return <button onClick={() => onReview(review)}>Swap</button>
+  },
+}))
 jest.mock('./NativeSolanaOrders.container', () => ({ NativeSolanaOrders: () => null }))
 jest.mock('../state/assets.atoms', () => ({
   walletAssetListAtom: jest.requireActual('jotai').atom([
@@ -29,6 +35,7 @@ jest.mock('../state/placeOrder.atoms', () => ({
 jest.mock('../state/trade.atoms', () => {
   const { atom } = jest.requireActual('jotai')
   return {
+    clearNativeSolanaReviewAtom: atom(null, () => undefined),
     nativeSolanaBusyAtom: atom(false),
     nativeSolanaErrorAtom: atom(null),
     nativeSolanaReviewAtom: atom({
@@ -37,6 +44,7 @@ jest.mock('../state/trade.atoms', () => {
       buy: { address: 'mint', decimals: 6 },
       allowance: { delegate: 'ExistingDelegate', atoms: 1000000n },
       quote: {
+        expiration: new Date(Date.now() + 60_000).toISOString(),
         quote: {
           sellAmount: '20000000',
           feeAmount: '0',
@@ -59,6 +67,8 @@ it('shows the signed benchmark and full cost cap in USDC, and requires review of
       <NativeSolanaWidget />
     </I18nProvider>,
   )
+  expect(screen.queryByText('Review your swap')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Swap' }))
   expect(screen.getByText('Quoted output').nextElementSibling?.textContent).toEqual('2 USDC')
   expect(screen.getByText('Minimum received').nextElementSibling?.textContent).toEqual('1.99 USDC')
   expect(screen.getByText('Maximum settlement cost in USDC').nextElementSibling?.textContent).toEqual('0.0003 USDC')

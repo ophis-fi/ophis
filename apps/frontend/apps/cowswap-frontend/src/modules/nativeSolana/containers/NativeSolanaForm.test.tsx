@@ -1,14 +1,6 @@
-import { createStore, Provider } from 'jotai'
-import type { ReactNode } from 'react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 
-import { setupI18n } from '@lingui/core'
-import { I18nProvider } from '@lingui/react'
-import { fetchOphisNativeSellReserve, solanaAddress } from '@ophis/solana-sdk'
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { solanaConnectionAtom } from 'entities/solana'
-import { queryClientAtom } from 'jotai-tanstack-query'
-
-import { NativeSolanaForm } from './NativeSolanaForm.container'
+import { fetchOphisNativeSellReserve, renderForm, solanaAddress, solanaConnectionAtom } from './solanaForm.test-utils'
 
 import { walletAssetListAtom } from '../state/assets.atoms'
 import { nativeSolanaFormAtom } from '../state/trade.atoms'
@@ -19,59 +11,6 @@ const aapl = 'XsbEhLAtcf6HdfpFZ5xEMdqW8nfAvcsP5bdudRLJzJp'
 const nvda = 'Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh'
 const pyth = 'HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3'
 const wsol = 'So11111111111111111111111111111111111111112'
-jest.mock(
-  '@ophis/solana-sdk',
-  () => ({
-    SOLANA_NATIVE_ASSET: '11111111111111111111111111111111',
-    WRAPPED_SOL_MINT: 'So11111111111111111111111111111111111111112',
-    solanaAddress: (value: string) => {
-      if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value)) throw Error('Invalid address')
-      return value
-    },
-    fetchOphisNativeSellReserve: jest.fn().mockResolvedValue(2646600n),
-    fetchOphisWalletHoldings: async () => [
-      { mint: '11111111111111111111111111111111', atoms: 2822552n, decimals: 9 },
-      { mint: '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R', atoms: 123n, decimals: 2 },
-    ],
-    formatOphisSolanaAmount: (atoms: bigint, decimals: number) => String(Number(atoms) / 10 ** decimals),
-  }),
-  { virtual: true },
-)
-jest.mock('entities/solana', () => ({
-  OPHIS_SOLANA_CONFIG: { api: 'https://example.test', chain: 'solana:mainnet', genesis: 'mainnet' },
-  solanaConnectionAtom: jest.requireActual('jotai').atom({ account: { address: '11111111111111111111111111111111' } }),
-}))
-jest.mock('modules/networkSelector', () => ({ NetworkSelector: () => null }))
-jest.mock('./SolanaWalletAction.container', () => ({ SolanaWalletAction: () => null }))
-jest.mock('ophis/components/AssetSwap/AssetSwapFields', () => ({
-  AssetSwapFieldsLayout: ({ input, output }: { input: ReactNode; output: ReactNode }) => (
-    <>
-      {input}
-      {output}
-    </>
-  ),
-}))
-
-const originalFetch = global.fetch
-afterEach(() => {
-  global.fetch = originalFetch
-})
-
-function renderForm(): ReturnType<typeof createStore> {
-  HTMLDialogElement.prototype.showModal = function (): void {
-    this.open = true
-  }
-  const store = createStore()
-  store.get(queryClientAtom).clear()
-  render(
-    <Provider store={store}>
-      <I18nProvider i18n={setupI18n({ locale: 'en', messages: { en: {} } })}>
-        <NativeSolanaForm />
-      </I18nProvider>
-    </Provider>,
-  )
-  return store
-}
 
 it('loads the mainnet catalog on demand for both pickers and keeps selections keyed by mint', async () => {
   const tokens = [

@@ -8,7 +8,7 @@ import {
   sendOphisSolanaWalletTransaction,
   solanaAddress,
 } from '@ophis/solana-sdk'
-import { OPHIS_SOLANA_CONFIG, solanaConnectionAtom } from 'entities/solana'
+import { OPHIS_SOLANA_CONFIG, solanaConnectionAtom, type OphisSolanaConfig } from 'entities/solana'
 
 import {
   lookupMissingCreation,
@@ -30,7 +30,51 @@ import {
   nativeSolanaContext,
   nativeSolanaErrorMessage,
   prepareReviewedSolanaOrder,
+  type NativeSolanaReview,
 } from '../services/trade.service'
+
+const recheckAllowanceAtom = atom(
+  null,
+  async (get, set, rpc: string, genesis: string, review: NativeSolanaReview, replaceAllowance: boolean) => {
+    const allowance = await readOphisSellAllowance(
+      rpc,
+      genesis,
+      solanaAddress(review.connection.account.address),
+      review.sell,
+    )
+    if (allowance?.delegate !== review.allowance?.delegate || allowance?.atoms !== review.allowance?.atoms) {
+      if (get(nativeSolanaReviewAtom) === review) set(clearNativeSolanaReviewAtom)
+      throw Error('Your token spending allowance changed. Review the updated quote before continuing.')
+    }
+    if (allowance && !replaceAllowance) throw Error('Review the existing token allowance before continuing.')
+  },
+)
+
+async function checkPendingOrders(
+  rpc: string,
+  config: OphisSolanaConfig,
+  savedOrders: readonly SavedNativeSolanaOrder[],
+  sellTokenAccount: string,
+): Promise<void> {
+  const live = savedOrders.filter((saved) => {
+    const intent = getOrderIntentDecoder().decode(Uint8Array.from(saved.intent))
+    return !saved.reclaimed && Date.now() < intent.validTo * 1000 && intent.sellTokenAccount === sellTokenAccount
+  })
+  for (const saved of live) {
+    const { account: current } = await readOphisOrderAccount(
+      rpc,
+      config.genesis,
+      config.program,
+      saved.uid,
+      solanaAddress(saved.orderPda),
+    )
+    const pending = current
+      ? !current.cancelled && current.amountWithdrawn < current.intent.sellAmount
+      : saved.creationLifetime && (await lookupMissingCreation(saved)) === 'pending'
+    if (pending)
+      throw Error('This token account has a pending order. Let it finish or cancel it before placing another.')
+  }
+}
 
 const placeNativeSolanaOrderAtom = atom(null, async (get, set, replaceAllowance: boolean) => {
   const review = get(nativeSolanaReviewAtom)
@@ -44,37 +88,8 @@ const placeNativeSolanaOrderAtom = atom(null, async (get, set, replaceAllowance:
     const order = await prepareReviewedSolanaOrder(config, review)
     const rpc = balanceEndpoint(config)
     if (!rpc) throw Error('Wallet balance service unavailable.')
-    const allowance = await readOphisSellAllowance(
-      rpc,
-      config.genesis,
-      solanaAddress(connection.account.address),
-      review.sell,
-    )
-    if (allowance?.delegate !== review.allowance?.delegate || allowance?.atoms !== review.allowance?.atoms)
-      throw Error('Your token spending allowance changed. Request a new quote.')
-    if (allowance && !replaceAllowance) throw Error('Review the existing token allowance before continuing.')
-    const live = get(visibleNativeSolanaOrdersAtom).filter((saved) => {
-      const intent = getOrderIntentDecoder().decode(Uint8Array.from(saved.intent))
-      return (
-        !saved.reclaimed &&
-        Date.now() < intent.validTo * 1000 &&
-        intent.sellTokenAccount === order.intent.sellTokenAccount
-      )
-    })
-    for (const saved of live) {
-      const { account: current } = await readOphisOrderAccount(
-        rpc,
-        config.genesis,
-        config.program,
-        saved.uid,
-        solanaAddress(saved.orderPda),
-      )
-      const pending = current
-        ? !current.cancelled && current.amountWithdrawn < current.intent.sellAmount
-        : saved.creationLifetime && (await lookupMissingCreation(saved)) === 'pending'
-      if (pending)
-        throw Error('This token account has a pending order. Let it finish or cancel it before placing another.')
-    }
+    await set(recheckAllowanceAtom, rpc, config.genesis, review, replaceAllowance)
+    await checkPendingOrders(rpc, config, get(visibleNativeSolanaOrdersAtom), order.intent.sellTokenAccount)
     const context = await nativeSolanaContext(config)
     if (get(nativeSolanaReviewAtom) !== review) throw Error('The wallet or trade changed. Request a new quote.')
     const record: SavedNativeSolanaOrder = {

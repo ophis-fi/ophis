@@ -1,6 +1,6 @@
 import { atom } from 'jotai'
 
-import { OPHIS_SOLANA_CONFIG, solanaConnectionAtom } from 'entities/solana'
+import { OPHIS_SOLANA_CONFIG, solanaConnectionAtom, type SolanaConnection } from 'entities/solana'
 
 import { privateSettlementEnabled } from '../services/privateSettlement.service'
 import {
@@ -30,23 +30,33 @@ export const nativeSolanaReviewAtom = atom((get) => {
   return review?.form === get(nativeSolanaFormAtom) && review?.connection === get(solanaConnectionAtom) ? review : null
 })
 
-export const clearNativeSolanaReviewAtom = atom(null, (_get, set) => set(reviewAtom, null))
+const quoteFailureAtom = atom<{ form: NativeSolanaForm; connection: SolanaConnection; message: string } | null>(null)
+export const nativeSolanaQuoteErrorAtom = atom((get) => {
+  const failure = get(quoteFailureAtom)
+  return failure?.form === get(nativeSolanaFormAtom) && failure.connection === get(solanaConnectionAtom)
+    ? failure.message
+    : null
+})
 
-export const requestNativeSolanaQuoteAtom = atom(null, async (get, set) => {
+export const clearNativeSolanaReviewAtom = atom(null, (_get, set) => {
+  set(reviewAtom, null)
+  set(quoteFailureAtom, null)
+})
+
+export const requestNativeSolanaQuoteAtom = atom(null, async (get, set, signal?: AbortSignal) => {
   const config = OPHIS_SOLANA_CONFIG
   const connection = get(solanaConnectionAtom)
   const form = get(nativeSolanaFormAtom)
   if (!config || !connection || get(nativeSolanaBusyAtom)) return
-  set(nativeSolanaBusyAtom, true)
-  set(nativeSolanaErrorAtom, null)
-  set(reviewAtom, null)
+  const isCurrent = (): boolean =>
+    !signal?.aborted && get(nativeSolanaFormAtom) === form && get(solanaConnectionAtom) === connection
+  set(clearNativeSolanaReviewAtom)
   try {
-    const review = await loadNativeSolanaQuote(config, connection, form)
-    if (get(nativeSolanaFormAtom) === form && get(solanaConnectionAtom) === connection) set(reviewAtom, review)
+    const review = await loadNativeSolanaQuote(config, connection, form, signal)
+    if (!(Date.parse(review.quote.expiration) > Date.now()))
+      throw Error('The quote expired. Refresh the quote to continue.')
+    if (isCurrent()) set(reviewAtom, review)
   } catch (error: unknown) {
-    if (get(nativeSolanaFormAtom) === form && get(solanaConnectionAtom) === connection)
-      set(nativeSolanaErrorAtom, nativeSolanaErrorMessage(error))
-  } finally {
-    set(nativeSolanaBusyAtom, false)
+    if (isCurrent()) set(quoteFailureAtom, { form, connection, message: nativeSolanaErrorMessage(error) })
   }
 })

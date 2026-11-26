@@ -34,7 +34,11 @@ jest.mock(
     verifyOphisMintMetadata: jest.fn(),
     readOphisSellAllowance: jest.fn().mockResolvedValue(null),
     parseOphisSolanaAmount: () => 1000000000n,
-    fetchOphisSolanaQuote: async () => ({ verified: true, quote: {} }),
+    fetchOphisSolanaQuote: async () => ({
+      verified: true,
+      quote: {},
+      expiration: new Date(Date.now() + 60_000).toISOString(),
+    }),
     checkedQuoteAppData: jest.fn(),
     ophisSolanaWalletSigner: jest.fn(),
     prepareOphisSolanaOrderFromQuote: async () => ({
@@ -192,6 +196,14 @@ it.each([
     const store = await reviewedStore()
     await store.set(createNativeSolanaOrderAtom, replace)
     expect(store.get(nativeSolanaErrorAtom)).toMatch(error)
+    if (reviewed !== current) {
+      expect(store.get(nativeSolanaReviewAtom)).toBeNull()
+      allowance.mockResolvedValueOnce({ delegate, atoms: current })
+      await store.set(requestNativeSolanaQuoteAtom)
+      expect(store.get(nativeSolanaReviewAtom)?.allowance?.atoms).toBe(current)
+    } else {
+      expect(store.get(nativeSolanaReviewAtom)?.allowance?.atoms).toBe(reviewed)
+    }
     expect(send).not.toHaveBeenCalled()
     expect(ordersAfterReload()).toEqual({})
   },
