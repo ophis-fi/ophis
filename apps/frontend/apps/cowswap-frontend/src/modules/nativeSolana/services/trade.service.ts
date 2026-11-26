@@ -38,6 +38,10 @@ export interface NativeSolanaReview {
   solAfterOrder?: bigint
 }
 
+export function minimumSolanaBuyAmount(review: NativeSolanaReview): bigint {
+  return (BigInt(review.quote.quote.buyAmount) * BigInt(10_000 - review.form.slippageBps)) / 10_000n
+}
+
 export function prepareReviewedSolanaOrder(
   config: OphisSolanaConfig,
   review: NativeSolanaReview,
@@ -93,8 +97,10 @@ export async function loadNativeSolanaQuote(
   config: OphisSolanaConfig,
   connection: SolanaConnection,
   form: NativeSolanaForm,
+  signal?: AbortSignal,
 ): Promise<NativeSolanaReview> {
   const context = await nativeSolanaContext(config)
+  signal?.throwIfAborted()
   const [sell, buy] = await Promise.all([
     mintMetadata(config.api, form.sellMint),
     mintMetadata(config.api, form.buyMint),
@@ -102,10 +108,12 @@ export async function loadNativeSolanaQuote(
   if (sell.address === buy.address) throw Error('Choose two different tokens.')
   const rpc = balanceEndpoint(config)
   if (!rpc) throw Error('Wallet balance service unavailable.')
+  signal?.throwIfAborted()
   const [, allowance] = await Promise.all([
     verifyOphisMintMetadata(rpc, config.genesis, [sell, buy]),
     readOphisSellAllowance(rpc, config.genesis, solanaAddress(connection.account.address), sell),
   ])
+  signal?.throwIfAborted()
   const quote = await fetchOphisSolanaQuote(config.api, {
     from: solanaAddress(connection.account.address),
     walletCreatesBuyTokenAccount: true,
@@ -135,7 +143,8 @@ const invalidMintMessage = 'This mint is unavailable for swaps. Check the Solana
 const protocolErrorMessages: Record<string, string | undefined> = {
   SettlementPaused: 'New swaps are paused. You can still cancel an open order or reclaim its rent.',
   NoLiquidity: 'Ophis found no route for this pair and amount. Try a different amount or token.',
-  VerifiedExactInputRequired: 'Ophis could not verify a route for this swap. Your order has not been placed. Get a fresh quote.',
+  VerifiedExactInputRequired:
+    'Ophis could not verify a route for this swap. Your order has not been placed. Get a fresh quote.',
   SellAmountDoesNotCoverFee: 'The quoted amount is too small to cover the cost of this swap.',
   FeeQuoteUnavailable: 'Ophis could not verify the costs for this pair. Request a fresh quote or choose another pair.',
   InvalidMint: invalidMintMessage,
@@ -164,13 +173,11 @@ export function nativeSolanaErrorMessage(error: unknown): string {
   if (error instanceof OphisSolanaHttpError && error.status === 429) return 'Ophis is busy. Try again in a moment.'
   const protocolMessage = protocolErrorMessage(error)
   if (protocolMessage) return protocolMessage
-  const message = errorText(error)
-  if (OPHIS_SOLANA_CONFIG?.chain === 'solana:localnet' && /blockhash\s*not\s*found/i.test(message))
+  const message = errorText(error) || 'The request did not complete. Check your wallet and order status.'
+  if (OPHIS_SOLANA_CONFIG?.chain !== 'solana:localnet') return message
+  if (/blockhash\s*not\s*found/i.test(message))
     return `The blockhash was unavailable during simulation. Check that your wallet uses the local RPC (${OPHIS_LOCAL_WALLET_RPC}), then request a fresh quote and approve it again.`
-  if (
-    OPHIS_SOLANA_CONFIG?.chain === 'solana:localnet' &&
-    /^transaction (?:simulation failed|failed simulation)\.?$/i.test(message)
-  )
+  if (/^transaction (?:simulation failed|failed simulation)\.?$/i.test(message))
     return `Wallet simulation failed. Deny the prompt. Check the wallet’s Solana RPC (${OPHIS_LOCAL_WALLET_RPC}) before requesting a fresh quote.`
-  return message || 'The request did not complete. Check your wallet and order status.'
+  return message
 }

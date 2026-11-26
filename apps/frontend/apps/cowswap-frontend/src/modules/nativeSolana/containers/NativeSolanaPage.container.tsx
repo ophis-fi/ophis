@@ -1,5 +1,5 @@
 import { useAtomValue, useSetAtom } from 'jotai'
-import { ReactNode, useState } from 'react'
+import { ReactNode, useEffect, useState } from 'react'
 
 import { ButtonPrimary } from '@cowprotocol/ui'
 
@@ -15,11 +15,19 @@ import { NativeSolanaForm } from './NativeSolanaForm.container'
 import { NativeSolanaOrders } from './NativeSolanaOrders.container'
 
 import * as styledEl from '../pure/NativeSolana.styled'
+import { SolanaQuoteCosts } from '../pure/SolanaQuoteCosts.pure'
+import { SmallButton } from '../pure/SwapForm.styled'
 import { shortMint } from '../services/assets.service'
 import { privateModeAtom, privateSettlementEnabled } from '../services/privateSettlement.service'
+import { minimumSolanaBuyAmount } from '../services/trade.service'
 import { walletAssetListAtom } from '../state/assets.atoms'
 import { createNativeSolanaOrderAtom } from '../state/placeOrder.atoms'
-import { nativeSolanaBusyAtom, nativeSolanaErrorAtom, nativeSolanaReviewAtom } from '../state/trade.atoms'
+import {
+  clearNativeSolanaReviewAtom,
+  nativeSolanaBusyAtom,
+  nativeSolanaErrorAtom,
+  nativeSolanaReviewAtom,
+} from '../state/trade.atoms'
 
 function PrivateOrderNotice({
   sellsNative,
@@ -59,7 +67,7 @@ function PrivateOrderNotice({
   )
 }
 
-function NativeSolanaReview(): ReactNode {
+function NativeSolanaReview({ onBack }: { onBack(): void }): ReactNode {
   const review = useAtomValue(nativeSolanaReviewAtom)
   const busy = useAtomValue(nativeSolanaBusyAtom)
   const [acceptedReview, setAcceptedReview] = useState<typeof review>(null)
@@ -71,19 +79,18 @@ function NativeSolanaReview(): ReactNode {
   const buySymbol = assets.find((asset) => asset.mint === review.form.buyMint)?.symbol ?? shortMint(review.form.buyMint)
   const { quote } = review.quote
   const { feeTerms } = quote
-  const baseBps = feeTerms?.baseBps
-  const maximumCost = BigInt(quote.costs.networkFees) + BigInt(quote.costs.buyTokenAtaCosts)
-  const improvementCapBps = feeTerms?.improvementCapBps
   const sellAmount = formatOphisSolanaAmount(BigInt(quote.sellAmount) + BigInt(quote.feeAmount), review.sell.decimals)
-  const minimum = formatOphisSolanaAmount(
-    (BigInt(quote.buyAmount) * BigInt(10000 - review.form.slippageBps)) / 10000n,
-    review.buy.decimals,
-  )
+  const minimum = formatOphisSolanaAmount(minimumSolanaBuyAmount(review), review.buy.decimals)
   return (
     <styledEl.Card>
-      <h2>
-        <Trans>Review your swap</Trans>
-      </h2>
+      <styledEl.Row>
+        <SmallButton type="button" onClick={onBack} disabled={busy}>
+          <Trans>Back</Trans>
+        </SmallButton>
+        <h2>
+          <Trans>Review your swap</Trans>
+        </h2>
+      </styledEl.Row>
       <styledEl.Values>
         <dt>
           <Trans>You sell</Trans>
@@ -103,44 +110,7 @@ function NativeSolanaReview(): ReactNode {
         <dd title={review.buy.address}>
           {minimum} {buySymbol}
         </dd>
-        <dt>
-          <Trans>Ophis base fee in the buy token</Trans>
-        </dt>
-        <dd>{formatOphisSolanaAmount(BigInt(quote.costs.protocolFee), review.buy.decimals)}</dd>
-        {feeTerms && (
-          <>
-            <dt>
-              <Trans>Base rate</Trans>
-            </dt>
-            <dd>
-              <Trans>{baseBps} bp</Trans>
-            </dd>
-            <dt>
-              <Trans>Ophis share of price improvement</Trans>
-            </dt>
-            <dd>
-              <Trans>50%, capped at {improvementCapBps} bp of the trade</Trans>
-            </dd>
-          </>
-        )}
-        <dt>
-          <Trans>Maximum settlement cost in {buySymbol}</Trans>
-        </dt>
-        <dd>
-          {formatOphisSolanaAmount(maximumCost, review.buy.decimals)} {buySymbol}
-        </dd>
-        <dt>
-          <Trans>Total quote costs in the buy token</Trans>
-        </dt>
-        <dd>{formatOphisSolanaAmount(BigInt(quote.costs.total), review.buy.decimals)}</dd>
-        {review.solAfterOrder !== undefined && (
-          <>
-            <dt>
-              <Trans>Estimated SOL left after placing the order</Trans>
-            </dt>
-            <dd>{formatOphisSolanaAmount(review.solAfterOrder, 9)} SOL</dd>
-          </>
-        )}
+        <SolanaQuoteCosts review={review} buySymbol={buySymbol} />
       </styledEl.Values>
       <p>
         <Trans>Your wallet pays to place the order and open any required accounts.</Trans>
@@ -188,12 +158,35 @@ function NativeSolanaReview(): ReactNode {
 
 export function NativeSolanaWidget(): ReactNode {
   const wallet = useAtomValue(solanaConnectionAtom)
+  const review = useAtomValue(nativeSolanaReviewAtom)
+  const [selected, setSelected] = useState<typeof review>(null)
+  const clearQuote = useSetAtom(clearNativeSolanaReviewAtom)
+  const clearError = useSetAtom(nativeSolanaErrorAtom)
   const error = useAtomValue(nativeSolanaErrorAtom)
   const busy = useAtomValue(nativeSolanaBusyAtom)
+  useEffect(() => {
+    if (!review || busy) return
+    const timer = window.setTimeout(() => clearQuote(), Math.max(0, Date.parse(review.quote.expiration) - Date.now()))
+    return () => window.clearTimeout(timer)
+  }, [review, busy, clearQuote])
   return (
     <styledEl.Stack>
-      <NativeSolanaForm key={wallet?.account.address} />
-      <NativeSolanaReview />
+      {selected && selected === review ? (
+        <NativeSolanaReview
+          onBack={() => {
+            clearError(null)
+            setSelected(null)
+          }}
+        />
+      ) : (
+        <NativeSolanaForm
+          key={wallet?.account.address}
+          onReview={(current) => {
+            clearError(null)
+            setSelected(current)
+          }}
+        />
+      )}
       {busy && (
         <p role="status">
           <Trans>Preparing your trade. Check your wallet for any approval request.</Trans>

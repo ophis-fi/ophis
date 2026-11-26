@@ -11,6 +11,7 @@ import { NetworkSelector } from 'modules/networkSelector'
 import { BuyPanel, LocalTestFunds, SellPanel } from './SolanaTradePanels.container'
 import { SolanaWalletAction } from './SolanaWalletAction.container'
 
+import { useAutomaticSolanaQuote } from '../hooks/useAutomaticSolanaQuote'
 import { AssetPicker } from '../pure/AssetPicker.pure'
 import * as styledEl from '../pure/SwapForm.styled'
 import { solanaAssetIdentity } from '../services/assets.service'
@@ -22,13 +23,23 @@ import {
   walletAssetListAtom,
   walletHoldingsMapAtom,
 } from '../state/assets.atoms'
-import { nativeSolanaBusyAtom, nativeSolanaFormAtom, requestNativeSolanaQuoteAtom } from '../state/trade.atoms'
+import {
+  clearNativeSolanaReviewAtom,
+  nativeSolanaBusyAtom,
+  nativeSolanaFormAtom,
+  nativeSolanaQuoteErrorAtom,
+  nativeSolanaReviewAtom,
+} from '../state/trade.atoms'
 
-export function NativeSolanaForm(): ReactNode {
+import type { NativeSolanaReview } from '../services/trade.service'
+
+export function NativeSolanaForm({ onReview }: { onReview(review: NativeSolanaReview): void }): ReactNode {
   const [form, setForm] = useAtom(nativeSolanaFormAtom)
   const owner = useAtomValue(solanaConnectionAtom)
   const busy = useAtomValue(nativeSolanaBusyAtom)
-  const request = useSetAtom(requestNativeSolanaQuoteAtom)
+  const clearQuote = useSetAtom(clearNativeSolanaReviewAtom)
+  const review = useAtomValue(nativeSolanaReviewAtom)
+  const quoteError = useAtomValue(nativeSolanaQuoteErrorAtom)
   const [picker, setPicker] = useState<'sell' | 'buy' | null>(null)
   useEffect(() => {
     const url = new URL(window.location.href)
@@ -43,12 +54,15 @@ export function NativeSolanaForm(): ReactNode {
   const holdings = useAtomValue(walletHoldingsMapAtom)
   const { valid, exceeds } = useAtomValue(sellAmountStateAtom)
   const canQuote = !!owner && !!form.buyMint && valid && !exceeds && !busy
+  useAutomaticSolanaQuote(canQuote)
   return (
     <styledEl.Swap
       aria-label="Solana swap"
       onSubmit={(event) => {
         event.preventDefault()
-        if (canQuote) void request()
+        if (!canQuote) return
+        if (review && Date.parse(review.quote.expiration) > Date.now()) onReview(review)
+        else clearQuote()
       }}
     >
       <styledEl.Line>
@@ -92,7 +106,8 @@ export function NativeSolanaForm(): ReactNode {
         }}
       />
       <LocalTestFunds />
-      <SolanaWalletAction canQuote={canQuote} busy={busy} />
+      {quoteError && <p role="alert">{quoteError}</p>}
+      <SolanaWalletAction canQuote={canQuote} busy={busy} reviewReady={!!review} quoteFailed={!!quoteError} />
       {picker && (
         <AssetPicker
           side={picker}

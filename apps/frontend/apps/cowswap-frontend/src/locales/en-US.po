@@ -576,7 +576,7 @@ msgstr "Failed to parse date and time provided"
 msgid "Only executed swaps incur fees."
 msgstr "Only executed swaps incur fees."
 
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/SolanaQuoteCosts.pure.tsx
 msgid "Total quote costs in the buy token"
 msgstr "Total quote costs in the buy token"
 
@@ -843,7 +843,7 @@ msgstr "batch available"
 msgid "Partial approval"
 msgstr "Partial approval"
 
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/SolanaQuoteCosts.pure.tsx
 msgid "50%, capped at {improvementCapBps} bp of the trade"
 msgstr "50%, capped at {improvementCapBps} bp of the trade"
 
@@ -1067,7 +1067,7 @@ msgstr "The transaction could not be sent because the deadline has passed. Pleas
 msgid "Actions"
 msgstr "Actions"
 
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/SolanaQuoteCosts.pure.tsx
 msgid "Ophis base fee in the buy token"
 msgstr "Ophis base fee in the buy token"
 
@@ -2242,6 +2242,7 @@ msgstr "The order remains open. Execution requires sufficient balance."
 
 #: apps/cowswap-frontend/src/modules/bridge/pure/contents/BridgingProgressContent/ReceivedBridgingContent/index.tsx
 #: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaTradePanels.container.tsx
 msgid "Minimum received"
 msgstr "Minimum received"
 
@@ -2347,7 +2348,7 @@ msgstr "Scan with a Solana wallet or <0>open your wallet</0> on this device."
 msgid "This fee helps pay for maintenance & improvements to the trade experience.<0/><1/>The fee is {partnerFeeBps} BPS ({feeAsPercent}%), applied only if the trade is executed."
 msgstr "This fee helps pay for maintenance & improvements to the trade experience.<0/><1/>The fee is {partnerFeeBps} BPS ({feeAsPercent}%), applied only if the trade is executed."
 
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/SolanaQuoteCosts.pure.tsx
 msgid "Estimated SOL left after placing the order"
 msgstr "Estimated SOL left after placing the order"
 
@@ -2868,7 +2869,7 @@ msgstr "Please type the word <0>\"{confirmWord}\"</0> to {action}."
 msgid "Pending..."
 msgstr "Pending..."
 
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/SolanaQuoteCosts.pure.tsx
 msgid "Ophis share of price improvement"
 msgstr "Ophis share of price improvement"
 
@@ -3533,7 +3534,7 @@ msgstr "Found 1 open order in the {limit} most recent ones."
 msgid "Read more about unsupported tokens"
 msgstr "Read more about unsupported tokens"
 
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/SolanaQuoteCosts.pure.tsx
 msgid "{baseBps} bp"
 msgstr "{baseBps} bp"
 
@@ -4324,6 +4325,10 @@ msgstr "Alert"
 #: apps/cowswap-frontend/src/modules/twap/containers/TwapConfirmModal/TwapConfirmDetails.tsx
 msgid "Start time first"
 msgstr "Start time first"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaWalletAction.container.tsx
+msgid "Getting quote…"
+msgstr "Getting quote…"
 
 #: apps/cowswap-frontend/src/modules/ethFlow/pure/EthFlowModalContent/configs.ts
 #: apps/cowswap-frontend/src/modules/ethFlow/pure/EthFlowModalContent/configs.ts
@@ -5434,6 +5439,7 @@ msgstr "Connect your wallet"
 
 #: apps/cowswap-frontend/src/modules/hooksStore/pure/AddCustomHookForm/index.tsx
 #: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketConfirm/BasketConfirm.pure.tsx
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
 msgid "Back"
 msgstr "Back"
 
@@ -5882,6 +5888,7 @@ msgstr "Hook position mismatch:"
 msgid "Signing: {0}."
 msgstr "Signing: {0}."
 
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaWalletAction.container.tsx
 #: apps/cowswap-frontend/src/modules/swap/containers/WholeTokenRoute/WholeTokenRoute.container.tsx
 msgid "Refresh quote"
 msgstr "Refresh quote"
@@ -6167,7 +6174,7 @@ msgstr "for at least"
 msgid "one signature per leg"
 msgstr "one signature per leg"
 
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/SolanaQuoteCosts.pure.tsx
 msgid "Base rate"
 msgstr "Base rate"
 
@@ -6420,7 +6427,7 @@ msgstr "Add Hook"
 msgid "select"
 msgstr "select"
 
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/SolanaQuoteCosts.pure.tsx
 msgid "Maximum settlement cost in {buySymbol}"
 msgstr "Maximum settlement cost in {buySymbol}"
 
@@ -6694,10 +6701,6 @@ msgid "higher"
 msgstr "higher"
 
 #: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaWalletAction.container.tsx
-msgid "Get quote"
-msgstr "Get quote"
-
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaWalletAction.container.tsx
 msgid "Open this page in a Solana wallet browser or install a compatible wallet extension."
 msgstr "Open this page in a Solana wallet browser or install a compatible wallet extension."
 
@@ -6789,6 +6792,7 @@ msgstr "Profile"
 #: apps/cowswap-frontend/src/legacy/utils/trade.ts
 #: apps/cowswap-frontend/src/modules/bridge/pure/BridgeActivitySummary/SwapStepRow.tsx
 #: apps/cowswap-frontend/src/modules/ethFlow/pure/EthFlowModalContent/configs.ts
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaWalletAction.container.tsx
 #: apps/cowswap-frontend/src/modules/swap/containers/SwapConfirmModal/index.tsx
 #: apps/cowswap-frontend/src/modules/trade/hooks/useGetConfirmButtonLabel.ts
 #: apps/cowswap-frontend/src/modules/yield/containers/TradeButtons/index.tsx
