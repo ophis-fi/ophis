@@ -149,9 +149,15 @@ const protocols = [
   @media (max-width: 900px) {
     .protocol-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   }
+  /* Phones: 26 tall tiles ran to two screens of logos. Each venue becomes a pill
+     (logo and name on one line) and the pills wrap, about a third of the height. */
   @media (max-width: 560px) {
     .protocols { padding: 64px 24px; }
-    .protocol-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .protocol-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+    .protocol { flex-direction: row; gap: 8px; padding: 5px 12px 5px 5px; border-radius: 9999px; }
+    .protocol-badge { width: 28px; height: 28px; }
+    .protocol-badge img { width: 18px; height: 18px; }
+    .protocol-name { white-space: nowrap; }
     h2 { font-size: 26px; }
   }
 </style>

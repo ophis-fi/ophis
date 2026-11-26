@@ -111,8 +111,11 @@ const items = [
      and forced horizontal page overflow) to match the .protocols breakpoint. */
   @media (max-width: 560px) {
     .built-on { padding: 64px 20px; }
-  }
-  @media (max-width: 400px) {
-    .built-grid { grid-template-columns: 1fr; }
+    /* Eight stacked cards ran to a screen and a half. Each becomes one tight row:
+       the logo on the left, the name and its line on the right. */
+    .built-grid { grid-template-columns: 1fr; gap: 8px; }
+    .built-item { display: grid; grid-template-columns: 38px 1fr; column-gap: 12px; row-gap: 0; align-items: center; padding: 10px 14px; }
+    .built-head { display: contents; }
+    .built-logo { grid-row: 1 / span 2; }
   }
 </style>
