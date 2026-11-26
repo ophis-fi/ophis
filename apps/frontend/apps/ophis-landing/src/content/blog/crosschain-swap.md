@@ -130,7 +130,7 @@ For an EVM order delivering to Bitcoin or Solana, provide a destination address 
 
 Delivery is a separate stage and is not instant. The [NEAR Intents section of Networks & assets](https://docs.ophis.fi/networks-assets#externally-funded-swaps-through-near-intents) covers deposits, delivery tracking and refunds.
 
-A swap that starts and ends on Solana is not a crosschain swap. Ophis handles it natively with a Solana wallet, without a deposit address: see [Swap on Solana](/swap/solana/).
+A swap that starts and ends on Solana is not a crosschain swap. Ophis handles it natively with a Solana wallet, without a deposit address: see [Swap on Solana](/swap/solana/). For both directions between Solana and Ethereum, Base or Arbitrum, read the [Solana bridge guide](/blog/solana-bridge/).
 
 ## FAQ
 

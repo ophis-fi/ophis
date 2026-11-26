@@ -47,6 +47,8 @@ curl -X POST https://swap.ophis.fi/api/intent \
 - [Stablecoin swaps](https://ophis.fi/stablecoin-swaps/): chain-specific routes and execution guidance for Base, Avalanche, Ink, Robinhood Chain, and the other supported networks.
 - [Tokenized stocks and RWAs](https://ophis.fi/tokenized-stocks-rwa/): the product and legal distinctions between Robinhood Chain Stock Tokens, Coinbase Tokenized Stocks on Base, and other supported real-world assets.
 - [Swap on Solana](https://ophis.fi/swap/solana/): native swaps of SOL and SPL tokens with a Solana wallet: how an order works, venues, fees, wallets and the settlement program address.
+- [Solana DEX aggregators](https://ophis.fi/blog/solana-dex-aggregator/): how aggregators find routes on Solana, how to compare quotes, and how Ophis swaps on Solana and across chains.
+- [Solana bridge](https://ophis.fi/blog/solana-bridge/): moving tokens between Solana and Ethereum, Base or Arbitrum through NEAR Intents, in both directions.
 - [Robinhood Chain swap](https://ophis.fi/swap/robinhood-chain/): canonical-asset checks, Stock Token context, and a direct path to the live chain market.
 - [AI agent crypto swap API](https://ophis.fi/ai-agent-crypto-swap-api/): when to use the hosted MCP server, public Intent API, or @ophis/sdk.
 - [Odos API migration](https://ophis.fi/migrate/odos-api/): the narrow quote-shape compatibility envelope and the SDK path for broader integrations.

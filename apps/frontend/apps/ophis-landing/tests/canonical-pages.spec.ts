@@ -208,6 +208,9 @@ test('Solana has its own page, and the fee, chain and AI surfaces agree with it'
   await expect(body).toContainText(SOLANA_FEE_ANSWER)
   await expect(body.locator('ol > li')).toHaveCount(5)
   await expect(body).toContainText('they do not build Solana orders')
+  // The two Solana guides and this page link to each other.
+  await expect(body.locator('a[href="/blog/solana-dex-aggregator/"]')).toBeVisible()
+  await expect(body.locator('a[href="/blog/solana-bridge/"]')).toBeVisible()
   const ld = (await page.locator('script[type="application/ld+json"]').allTextContents()).map((block) => JSON.parse(block))
   const howTo = ld.find((block) => block['@type'] === 'HowTo')
   expect(howTo.step).toHaveLength(5)
@@ -229,6 +232,11 @@ test('Solana has its own page, and the fee, chain and AI surfaces agree with it'
   await expect(page.locator('#faq')).toContainText('Can I swap on Solana with Ophis?')
   await expect(page.locator('footer a[href="/swap/solana/"]')).toHaveText('Solana swaps')
   await expect(page.locator('#product a[href="/swap/solana/"]')).toHaveCount(1)
+
+  for (const guide of ['/blog/solana-dex-aggregator', '/blog/solana-bridge']) {
+    await page.goto(guide)
+    await expect(page.locator('main a[href="/swap/solana/"]').first()).toBeVisible()
+  }
 
   const llms = await (await request.get('/llms.txt')).text()
   expect(llms).toContain('https://ophis.fi/swap/solana/')

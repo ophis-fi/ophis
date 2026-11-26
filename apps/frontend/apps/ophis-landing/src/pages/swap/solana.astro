@@ -28,7 +28,7 @@ const STEPS = [
   },
   {
     name: 'Review the quote',
-    text: 'Check the quoted output, the minimum received, the Ophis fee and the network costs. A quote appears only when a route exists for your pair and amount.',
+    text: 'Check the quoted output, the minimum received, the Ophis fee and the network costs.',
   },
   {
     name: 'Confirm in your wallet',
@@ -47,7 +47,7 @@ const FAQS = [
   },
   {
     q: 'Which Solana DEXes does Ophis route through?',
-    a: `The Ophis solver prices ${venues} directly, and can also route through Jupiter. A listed token is not a promise of liquidity: a quote appears only when a route exists for your pair and amount.`,
+    a: `The Ophis solver prices ${venues} directly, and can also route through Jupiter. The quote shows the output and the minimum received for your pair and amount before you sign.`,
   },
   {
     q: 'What does a Solana swap cost on Ophis?',
@@ -77,7 +77,7 @@ const howToLd = {
 ---
 
 <ContentPage
-  title="Solana DEX aggregator: swap SOL and SPL tokens | Ophis"
+  title="Swap on Solana: SOL and SPL tokens with your wallet | Ophis"
   description={`Swap SOL and SPL tokens on Solana from your own wallet. Ophis fills across ${venues} at your minimum received or better.`}
   path="/swap/solana/"
   heading="Swap on Solana"
@@ -125,9 +125,11 @@ const howToLd = {
 
   <h2>Related pages</h2>
   <p>
-    Fees for every path are on the <a href="/pricing/">pricing page</a>, and every network is on the
-    <a href="/supported-chains/">supported chains page</a>. To move between Solana and another
-    network, read the <a href="/blog/crosschain-swap/">crosschain swap guide</a>. For dollar pairs,
-    see <a href="/stablecoin-swaps/">stablecoin swaps</a>.
+    To see how aggregators find and compare routes, read the
+    <a href="/blog/solana-dex-aggregator/">Solana DEX aggregator guide</a>. To move between Solana
+    and another network, read the <a href="/blog/solana-bridge/">Solana bridge guide</a>. Fees for
+    every path are on the <a href="/pricing/">pricing page</a>, and every network is on the
+    <a href="/supported-chains/">supported chains page</a>. For dollar pairs, see
+    <a href="/stablecoin-swaps/">stablecoin swaps</a>.
   </p>
 </ContentPage>
