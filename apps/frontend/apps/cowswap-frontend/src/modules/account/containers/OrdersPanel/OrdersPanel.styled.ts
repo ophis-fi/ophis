@@ -1,4 +1,3 @@
-import Close from '@cowprotocol/assets/images/x.svg?react'
 import { Media, UI } from '@cowprotocol/ui'
 
 import { transparentize } from 'color2k'
@@ -63,20 +62,6 @@ export const Header = styled.div`
   }
 `
 
-export const CloseIcon = styled(Close)`
-  --size: 20px;
-  opacity: 0.6;
-  transition: opacity var(${UI.ANIMATION_DURATION}) ease-in-out;
-  color: var(${UI.COLOR_TEXT});
-  width: var(--size);
-  height: var(--size);
-  object-fit: contain;
-
-  &:hover {
-    opacity: 1;
-  }
-`
-
 export const CloseButton = styled.button`
   display: flex;
   align-items: center;
@@ -86,6 +71,20 @@ export const CloseButton = styled.button`
   background: none;
   border: none;
   cursor: pointer;
+
+  > svg {
+    --size: 20px;
+    opacity: 0.6;
+    transition: opacity var(${UI.ANIMATION_DURATION}) ease-in-out;
+    color: var(${UI.COLOR_TEXT});
+    width: var(--size);
+    height: var(--size);
+    object-fit: contain;
+
+    &:hover {
+      opacity: 1;
+    }
+  }
 `
 
 export const Wrapper = styled.div`

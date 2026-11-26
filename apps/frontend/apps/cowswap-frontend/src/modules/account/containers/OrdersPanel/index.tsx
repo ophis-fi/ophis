@@ -1,6 +1,7 @@
 import { useAtomValue, useSetAtom } from 'jotai'
 import { ReactNode, useEffect } from 'react'
 
+import Close from '@cowprotocol/assets/images/x.svg?react'
 import { useBodyScrollbarLocker } from '@cowprotocol/common-hooks'
 import { useWalletDetails, useWalletInfo } from '@cowprotocol/wallet'
 
@@ -54,7 +55,7 @@ export function OrdersPanel(): ReactNode {
               <Trans>Account</Trans>
             </strong>
             <styledEl.CloseButton type="button" aria-label={t`Close account`} onClick={handleCloseOrdersPanel}>
-              <styledEl.CloseIcon aria-hidden="true" />
+              <Close aria-hidden="true" />
             </styledEl.CloseButton>
           </styledEl.Header>
 
