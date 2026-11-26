@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   BEATS,
@@ -164,4 +165,21 @@ test('check: the indexer is judged on its own health report', async () => {
     calls: 2,
   });
   assert.equal((await probe(indexer, health({ ok: 'true' }))).why, 'unhealthy');
+});
+
+test('incidents.json: every hand-written note is one the page will show', () => {
+  // The page drops a malformed note without a word (clean() in public/app.js), and a broken
+  // file hides them all: during an incident that is the worst moment to find out.
+  const file = new URL('../../apps/status/public/incidents.json', import.meta.url);
+  const notes: unknown = JSON.parse(readFileSync(file, 'utf8'));
+  assert.ok(Array.isArray(notes), 'incidents.json holds a list');
+  for (const note of notes as { title?: unknown; status?: unknown; updates?: unknown }[]) {
+    assert.equal(typeof note.title, 'string');
+    assert.ok(note.status === undefined || typeof note.status === 'string', String(note.title));
+    assert.ok(Array.isArray(note.updates) && note.updates.length > 0, String(note.title));
+    for (const update of note.updates as { at?: unknown; text?: unknown }[]) {
+      assert.equal(typeof update.text, 'string', String(note.title));
+      assert.ok(!Number.isNaN(Date.parse(String(update.at))), `${note.title}: ${update.at}`);
+    }
+  }
 });

@@ -22,6 +22,12 @@ export class StatusStore extends DurableObject<Env> {
   }
 }
 
+const JSON_HEADERS = {
+  'content-type': 'application/json; charset=utf-8',
+  'access-control-allow-origin': '*',
+  'x-content-type-options': 'nosniff',
+};
+
 export default {
   async scheduled(controller: ScheduledController, env: Env): Promise<void> {
     const minute = Math.floor(controller.scheduledTime / 60_000);
@@ -40,13 +46,20 @@ export default {
     const key = new Request(`${origin}/status.json`);
     const cached = await caches.default.match(key);
     if (cached) return cached;
-    const response = new Response(await env.STATUS.getByName('status').snapshot(), {
-      headers: {
-        'content-type': 'application/json; charset=utf-8',
-        'cache-control': 'public, max-age=30',
-        'access-control-allow-origin': '*',
-        'x-content-type-options': 'nosniff',
-      },
+    let state: string;
+    try {
+      state = await env.STATUS.getByName('status').snapshot();
+    } catch (error) {
+      // The store is out of reach: say so, and let nothing keep the answer. The page then
+      // reads "Status data is unavailable".
+      console.error(JSON.stringify({ error: 'snapshot failed', detail: String(error) }));
+      return new Response('{"error":"unavailable"}\n', {
+        status: 503,
+        headers: { ...JSON_HEADERS, 'cache-control': 'no-store' },
+      });
+    }
+    const response = new Response(state, {
+      headers: { ...JSON_HEADERS, 'cache-control': 'public, max-age=30' },
     });
     ctx.waitUntil(caches.default.put(key, response.clone()));
     return response;
