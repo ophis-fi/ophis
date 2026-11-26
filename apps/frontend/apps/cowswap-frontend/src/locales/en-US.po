@@ -484,6 +484,10 @@ msgstr "{sellTokenPart} for at least {buyTokenPart}"
 msgid "Run a simulation"
 msgstr "Run a simulation"
 
+#: apps/cowswap-frontend/src/entities/verifiedAsset/VerifiedAssetBadge.tsx
+msgid "The token address matches the issuer’s published address on this network."
+msgstr "The token address matches the issuer’s published address on this network."
+
 #: apps/cowswap-frontend/src/modules/bridge/pure/contents/QuoteSwapContent/index.tsx
 msgid "Max. swap slippage"
 msgstr "Max. swap slippage"
@@ -1197,6 +1201,7 @@ msgstr "Symbol"
 msgid "Bridge transaction costs."
 msgstr "Bridge transaction costs."
 
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/AssetPicker.pure.tsx
 #: apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/hooks/useWidgetMetadata.ts
 #: apps/cowswap-frontend/src/modules/trade/containers/TradeWidget/TradeWidgetForm.tsx
 #: apps/cowswap-frontend/src/modules/trade/containers/TradeWidget/TradeWidgetForm.tsx
@@ -4130,10 +4135,6 @@ msgstr "Token symbol, address"
 msgid "Order Receipt"
 msgstr "Order Receipt"
 
-#: apps/cowswap-frontend/src/modules/nativeSolana/pure/AssetPicker.pure.tsx
-msgid "Choose a token to sell"
-msgstr "Choose a token to sell"
-
 #: apps/cowswap-frontend/src/ophis/components/CoinbaseStockContext/CoinbaseStockContext.container.tsx
 msgid "{listedSymbols} · Coinbase tokenized stock metadata is temporarily unavailable"
 msgstr "{listedSymbols} · Coinbase tokenized stock metadata is temporarily unavailable"
@@ -6055,10 +6056,6 @@ msgstr "The good news"
 msgid "yield"
 msgstr "yield"
 
-#: apps/cowswap-frontend/src/modules/nativeSolana/pure/AssetPicker.pure.tsx
-msgid "Choose a token to buy"
-msgstr "Choose a token to buy"
-
 #: apps/cowswap-frontend/src/modules/swap/hooks/useDirectSwap.ts
 msgid "Swap cancelled by wallet host."
 msgstr "Swap cancelled by wallet host."
@@ -6657,6 +6654,10 @@ msgstr "Confirm Swap"
 msgid "Modified recipient address to"
 msgstr "Modified recipient address to"
 
+#: apps/cowswap-frontend/src/entities/verifiedAsset/VerifiedAssetBadge.tsx
+msgid "This currency is used to pay network fees."
+msgstr "This currency is used to pay network fees."
+
 #: libs/common-const/src/common.ts
 msgid "Order Runner"
 msgstr "Order Runner"
@@ -6939,6 +6940,7 @@ msgstr "Value"
 
 #: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
 #: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaTradePanels.container.tsx
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/AssetPicker.pure.tsx
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/ReceiptModal/ReceiptModal.modal.tsx
 #: apps/cowswap-frontend/src/modules/swap/containers/WholeTokenRoute/WholeTokenReview.container.tsx
 #: apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/hooks/useWidgetMetadata.ts

@@ -7,6 +7,7 @@ import { Nullish } from '@cowprotocol/types'
 
 import { CircleBadge } from './CircleBadge'
 
+export { AssetBadgeTooltip } from './AssetBadgeTooltip'
 export { AssetCheck } from './AssetCheck'
 
 export type TokenNameAndSymbol = Pick<Currency, 'symbol' | 'name'>
