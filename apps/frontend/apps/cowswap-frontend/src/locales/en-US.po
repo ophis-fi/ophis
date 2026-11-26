@@ -2242,6 +2242,7 @@ msgstr "The order remains open. Execution requires sufficient balance."
 
 #: apps/cowswap-frontend/src/modules/bridge/pure/contents/BridgingProgressContent/ReceivedBridgingContent/index.tsx
 #: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaTradePanels.container.tsx
 msgid "Minimum received"
 msgstr "Minimum received"
 
@@ -4325,6 +4326,10 @@ msgstr "Alert"
 msgid "Start time first"
 msgstr "Start time first"
 
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaWalletAction.container.tsx
+msgid "Getting quote…"
+msgstr "Getting quote…"
+
 #: apps/cowswap-frontend/src/modules/ethFlow/pure/EthFlowModalContent/configs.ts
 #: apps/cowswap-frontend/src/modules/ethFlow/pure/EthFlowModalContent/configs.ts
 msgid "Swap with Wrapped {nativeSymbol}"
@@ -5434,6 +5439,7 @@ msgstr "Connect your wallet"
 
 #: apps/cowswap-frontend/src/modules/hooksStore/pure/AddCustomHookForm/index.tsx
 #: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketConfirm/BasketConfirm.pure.tsx
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
 msgid "Back"
 msgstr "Back"
 
@@ -5882,6 +5888,7 @@ msgstr "Hook position mismatch:"
 msgid "Signing: {0}."
 msgstr "Signing: {0}."
 
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaWalletAction.container.tsx
 #: apps/cowswap-frontend/src/modules/swap/containers/WholeTokenRoute/WholeTokenRoute.container.tsx
 msgid "Refresh quote"
 msgstr "Refresh quote"
@@ -6694,10 +6701,6 @@ msgid "higher"
 msgstr "higher"
 
 #: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaWalletAction.container.tsx
-msgid "Get quote"
-msgstr "Get quote"
-
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaWalletAction.container.tsx
 msgid "Open this page in a Solana wallet browser or install a compatible wallet extension."
 msgstr "Open this page in a Solana wallet browser or install a compatible wallet extension."
 
@@ -6789,6 +6792,7 @@ msgstr "Profile"
 #: apps/cowswap-frontend/src/legacy/utils/trade.ts
 #: apps/cowswap-frontend/src/modules/bridge/pure/BridgeActivitySummary/SwapStepRow.tsx
 #: apps/cowswap-frontend/src/modules/ethFlow/pure/EthFlowModalContent/configs.ts
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaWalletAction.container.tsx
 #: apps/cowswap-frontend/src/modules/swap/containers/SwapConfirmModal/index.tsx
 #: apps/cowswap-frontend/src/modules/trade/hooks/useGetConfirmButtonLabel.ts
 #: apps/cowswap-frontend/src/modules/yield/containers/TradeButtons/index.tsx

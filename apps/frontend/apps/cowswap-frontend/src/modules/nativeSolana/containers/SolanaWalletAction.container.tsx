@@ -18,7 +18,17 @@ import { SolanaWalletConnect } from './SolanaWalletConnect.container'
 import * as styledEl from '../pure/SwapForm.styled'
 import { shortMint } from '../services/assets.service'
 
-export function SolanaWalletAction({ canQuote, busy }: { canQuote: boolean; busy: boolean }): ReactNode {
+export function SolanaWalletAction({
+  canQuote,
+  busy,
+  reviewReady,
+  quoteFailed,
+}: {
+  canQuote: boolean
+  busy: boolean
+  reviewReady: boolean
+  quoteFailed: boolean
+}): ReactNode {
   const connection = useAtomValue(solanaConnectionAtom)
   const disconnect = useSetAtom(disconnectSolanaWalletAtom)
   if (!connection) return <SolanaWalletPicker />
@@ -35,8 +45,14 @@ export function SolanaWalletAction({ canQuote, busy }: { canQuote: boolean; busy
           <Trans>Disconnect wallet</Trans>
         </styledEl.SmallButton>
       </styledEl.Line>
-      <ButtonPrimary type="submit" disabled={!canQuote}>
-        <Trans>Get quote</Trans>
+      <ButtonPrimary type="submit" disabled={!canQuote || (!reviewReady && !quoteFailed)} aria-live="polite">
+        {quoteFailed ? (
+          <Trans>Refresh quote</Trans>
+        ) : canQuote && !reviewReady ? (
+          <Trans>Getting quote…</Trans>
+        ) : (
+          <Trans>Swap</Trans>
+        )}
       </ButtonPrimary>
     </>
   )

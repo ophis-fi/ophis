@@ -12,6 +12,7 @@ import { SellAmountPresets } from 'common/pure/CurrencyInputPanel/SellAmountPres
 import { AssetIcon } from '../pure/AssetPicker.pure'
 import * as styledEl from '../pure/SwapForm.styled'
 import { balanceEndpoint, nativeAsset, solanaAssetIdentity, unknownAsset } from '../services/assets.service'
+import { minimumSolanaBuyAmount } from '../services/trade.service'
 import {
   nativeSellReserveAtom,
   solanaHoldingsAtom,
@@ -143,6 +144,12 @@ export function BuyPanel({ open }: { open(): void }): ReactNode {
           <VerifiedAssetBadge verified={verification} /> <ChevronDown size={16} aria-hidden="true" />
         </styledEl.TokenButton>
       </styledEl.Line>
+      {review && (
+        <styledEl.Helper>
+          <Trans>Minimum received</Trans> ·{' '}
+          {formatOphisSolanaAmount(minimumSolanaBuyAmount(review), review.buy.decimals)} {buy?.symbol}
+        </styledEl.Helper>
+      )}
       <styledEl.Helper>
         {network
           .slice(0, 4)

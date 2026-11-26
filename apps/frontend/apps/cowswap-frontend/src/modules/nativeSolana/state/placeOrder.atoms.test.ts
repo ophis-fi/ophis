@@ -34,7 +34,11 @@ jest.mock(
     verifyOphisMintMetadata: jest.fn(),
     readOphisSellAllowance: jest.fn().mockResolvedValue(null),
     parseOphisSolanaAmount: () => 1000000000n,
-    fetchOphisSolanaQuote: async () => ({ verified: true, quote: {} }),
+    fetchOphisSolanaQuote: async () => ({
+      verified: true,
+      quote: {},
+      expiration: new Date(Date.now() + 60_000).toISOString(),
+    }),
     checkedQuoteAppData: jest.fn(),
     ophisSolanaWalletSigner: jest.fn(),
     prepareOphisSolanaOrderFromQuote: async () => ({
