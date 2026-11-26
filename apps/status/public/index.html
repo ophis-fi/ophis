@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ophis status</title>
+    <meta
+      name="description"
+      content="Live status of the Ophis apps, APIs and chains, checked automatically around the clock."
+    />
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="https://ophis.fi/">
+        <img src="/ophis-mono.svg" alt="" width="24" height="24" />Ophis <span>Status</span>
+      </a>
+      <nav>
+        <a href="https://docs.ophis.fi/status/">Docs</a>
+        <a href="https://swap.ophis.fi/">Open app</a>
+      </nav>
+    </header>
+
+    <main>
+      <h1 aria-live="polite"><span id="lamp" class="dot"></span><span id="verdict">Checking every service</span></h1>
+      <p id="summary" class="quiet"></p>
+
+      <section id="notes" hidden></section>
+
+      <section id="board" hidden>
+        <div class="switch" role="group" aria-label="History shown for each service">
+          <button type="button" data-view="recent">Last 60 checks</button>
+          <button type="button" data-view="days">90 days</button>
+        </div>
+        <div id="groups"></div>
+      </section>
+
+      <section id="history" hidden>
+        <h2>Outage history</h2>
+        <ul id="log"></ul>
+      </section>
+    </main>
+
+    <footer class="quiet">
+      <p>
+        Checked automatically: every minute for the chains Ophis operates and the rewards indexer,
+        every 5 or 10 minutes for the rest. Partner-hosted chains and cross-chain routes are run by
+        partners; this page shows whether Ophis can reach them. Times are in your time zone.
+      </p>
+    </footer>
+    <noscript><p class="quiet">This page needs JavaScript to show live status.</p></noscript>
+  </body>
+</html>

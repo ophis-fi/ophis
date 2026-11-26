@@ -36,7 +36,7 @@ class DeploymentBoundaries(unittest.TestCase):
             'cloudflare-deploy.yml', 'safe-app-deploy.yml', 'docs-deploy.yml',
             'landing-deploy.yml', 'mcp-deploy.yml', 'compat-api-deploy.yml',
             'otc-runtime-control.yml', 'mcp-registry-release.yml',
-            'railgun-deploy.yml', 'business-console-deploy.yml',
+            'railgun-deploy.yml', 'business-console-deploy.yml', 'status-deploy.yml',
         })
 
     def test_other_control_plane_credentials_are_environment_scoped(self):
@@ -74,7 +74,7 @@ class DeploymentBoundaries(unittest.TestCase):
                 self.assertIn(MAIN, job['if'])
 
     def test_pull_requests_still_build_without_production_credentials(self):
-        for name in ['landing-deploy', 'mcp-deploy', 'compat-api-deploy', 'business-console-deploy']:
+        for name in ['landing-deploy', 'mcp-deploy', 'compat-api-deploy', 'business-console-deploy', 'status-deploy']:
             workflow = yaml.safe_load((ROOT / f'.github/workflows/{name}.yml').read_text())
             job = workflow['jobs']['build-deploy']
             self.assertNotIn('if', job)

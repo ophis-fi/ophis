@@ -1,0 +1,19 @@
+{
+  "$schema": "https://developers.cloudflare.com/workers/wrangler/config-schema.json",
+  "name": "ophis-status",
+  "main": "worker.ts",
+  // The newest date the repository's pinned wrangler (4.95.0, root lockfile) runs locally.
+  // Raise it together with that pin.
+  "compatibility_date": "2026-06-02",
+  "workers_dev": false,
+  "preview_urls": false,
+  // The page and its files. A request that matches one never runs the Worker, so it is free and
+  // keeps answering when the account's daily requests are spent.
+  "assets": { "directory": "./public" },
+  "triggers": { "crons": ["* * * * *"] },
+  "durable_objects": { "bindings": [{ "name": "STATUS", "class_name": "StatusStore" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["StatusStore"] }],
+  // Logs carry the CPU time of each run: the way to see the 10 ms of the Free plan is held.
+  "observability": { "enabled": true },
+  "routes": [{ "pattern": "status.ophis.fi", "custom_domain": true }],
+}
