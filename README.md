@@ -61,7 +61,7 @@ The EVM order infrastructure supports **13 mainnets** across two settlement mode
 The swap app also offers NEAR-powered routes to supported non-EVM networks.
 Those deposit flows have separate asset, deadline and refund requirements.
 Use the [network guide](https://docs.ophis.fi/networks-assets) for coverage and
-[service status](https://docs.ophis.fi/status) for operational details.
+[service status](https://status.ophis.fi/) for operational details.
 
 ## Integrate
 

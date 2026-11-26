@@ -87,14 +87,24 @@ for (const width of [320, 390, 768, 850, 851, 1024, 1440, 1920]) {
   })
 }
 
-test('network chips switch between external-wallet and same-chain guidance', async ({ page }) => {
+test('chips show one kind of swap at a time: EVM order, native Solana, deposit', async ({ page }) => {
   await page.goto('/')
-  const panel = page.locator('#chainPanel')
+  const evm = page.locator('[data-panel="ethereum"]')
+  const solana = page.locator('[data-panel="solana"]')
+  const bitcoin = page.locator('[data-panel="bitcoin"]')
+  await expect(evm).toBeVisible()
+  await expect(evm).toContainText('more EVM chains')
+  await expect(solana).toBeHidden()
   await page.locator('[data-chain="solana"]').click()
-  await expect(panel.locator('#chainText')).toContainText('Send or receive supported Solana assets')
-  await expect(panel.locator('#chainText')).toContainText('fund the deposit from your Solana wallet')
+  await expect(solana).toBeVisible()
+  await expect(solana).toContainText('settles on Solana through the Ophis program')
+  await expect(evm).toBeHidden()
+  await page.locator('[data-chain="bitcoin"]').click()
+  await expect(bitcoin).toContainText('one-time deposit address')
+  await expect(solana).toBeHidden()
   await page.locator('[data-chain="ethereum"]').click()
-  await expect(panel.locator('#chainTitle')).toContainText('same-chain settlement')
+  await expect(evm).toBeVisible()
+  await expect(page.locator('[data-chain="ethereum"]')).toHaveAttribute('aria-pressed', 'true')
 })
 
  test('static SVG remains coherent without JavaScript', async ({ browser }) => {

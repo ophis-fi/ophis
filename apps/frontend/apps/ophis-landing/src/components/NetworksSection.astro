@@ -1,69 +1,87 @@
 ---
-/* Destination selector: Ethereum same-chain plus Solana and Bitcoin via
-   NEAR Intents. The Ethereum panel renders in markup so the content is
-   complete without JS; the inline module only swaps panels on chip clicks. */
+/* The three kinds of swap, one panel each: an order on an EVM chain, a native
+   Solana swap, and a deposit swap to or from Bitcoin and the other networks.
+   Every panel is in the markup; the inline module only shows one at a time. */
+import { EVM_CHAIN_COUNT } from '../data/chains'
+
+const panels = [
+  {
+    id: 'ethereum',
+    chip: 'EVM chains',
+    icon: '/logos/chain-ethereum.png',
+    title: `Ethereum and ${EVM_CHAIN_COUNT - 1} more EVM chains`,
+    text: 'Pick two tokens on the same chain and sign one order. Solvers compete to fill it with MEV protection, and the tokens you buy arrive in your wallet.',
+    tokens: [
+      { label: 'ETH', icon: '/logos/eth.png' },
+      { label: 'USDC', icon: '/logos/usdc.png' },
+    ],
+  },
+  {
+    id: 'solana',
+    chip: 'Solana',
+    icon: '/logos/solana.svg',
+    title: 'Solana, with your Solana wallet',
+    text: 'Swap SOL and Solana tokens without leaving the network. Your order settles on Solana through the Ophis program, routed across venues such as Raydium, Orca and Meteora.',
+    tokens: [
+      { label: 'SOL', icon: '/logos/solana.svg' },
+      { label: 'USDC', icon: '/logos/usdc.png' },
+    ],
+  },
+  {
+    id: 'bitcoin',
+    chip: 'Bitcoin',
+    icon: '/logos/bitcoin.svg',
+    title: 'Bitcoin and other networks, by deposit',
+    text: 'Trade to or from native BTC. You get a quote and a one-time deposit address, send the funds from your own wallet, and receive the other asset. A refund address covers a swap that cannot complete. The same flow reaches networks such as Sui, Tron and Zcash.',
+    tokens: [{ label: 'BTC', icon: '/logos/bitcoin.svg' }],
+  },
+]
 ---
 <section class="product" id="product" aria-labelledby="productTitle">
   <hr class="rule" />
   <div class="sec-head">
     <p class="eyebrow reveal-up" data-reveal>Product</p>
     <h2 class="serif reveal-up" id="productTitle" data-reveal>One place. <em>Your next swap.</em></h2>
-    <p class="lede reveal-up" data-reveal>Choose where to pay from and where funds should land. Supported assets and live quotes determine each route; external-source swaps need a deposit and refund address.</p>
+    <p class="lede reveal-up" data-reveal>Swap on EVM chains, on Solana, and to or from Bitcoin, all from the same swap box.</p>
   </div>
-  <div class="chips reveal-up" role="group" aria-label="Networks" data-reveal>
-    <button type="button" data-chain="ethereum" aria-pressed="true"><img src="/logos/chain-ethereum.png" alt="" width="20" height="20" />Ethereum</button>
-    <button type="button" data-chain="solana" aria-pressed="false"><img src="/logos/solana.svg" alt="" width="20" height="20" />Solana</button>
-    <button type="button" data-chain="bitcoin" aria-pressed="false"><img src="/logos/bitcoin.svg" alt="" width="20" height="20" />Bitcoin</button>
+  <div class="chips reveal-up" role="group" aria-label="Kinds of swap" data-reveal>
+    {panels.map((panel, index) => (
+      <button type="button" data-chain={panel.id} aria-pressed={index === 0 ? 'true' : 'false'}><img src={panel.icon} alt="" width="20" height="20" />{panel.chip}</button>
+    ))}
   </div>
-  <div class="chain-panel reveal-up" id="chainPanel" data-reveal>
-    <h3 id="chainTitle">Ethereum · same-chain settlement</h3>
-    <p id="chainText">Swap between supported Ethereum assets, with the receiving token delivered to your wallet. Review the quote and spending limit before you sign.</p>
-    <div class="chain-tokens" id="chainTokens">
-      <span><img src="/logos/eth.png" alt="" width="22" height="22" />ETH</span>
-      <span><img src="/logos/usdc.png" alt="" width="22" height="22" />USDC</span>
-    </div>
-    <a class="chain-all" href="/supported-chains/">See all supported chains <span aria-hidden="true">→</span></a>
+  <div class="panels reveal-up" data-reveal>
+    {panels.map((panel, index) => (
+      <div class="chain-panel" data-panel={panel.id} hidden={index !== 0}>
+        <h3>{panel.title}</h3>
+        <p>{panel.text}</p>
+        <div class="chain-tokens">
+          {panel.tokens.map((token) => (
+            <span><img src={token.icon} alt="" width="22" height="22" />{token.label}</span>
+          ))}
+        </div>
+        <a class="chain-all" href="/supported-chains/">See all supported chains <span aria-hidden="true">→</span></a>
+      </div>
+    ))}
   </div>
 </section>
 <script>
-  const chainBtns = document.querySelectorAll<HTMLButtonElement>('[data-chain]')
-  if (chainBtns.length) {
-    const titles: Record<string, string> = {
-      ethereum: 'Ethereum · same-chain settlement',
-      solana: 'Solana · needs a Solana address',
-      bitcoin: 'Bitcoin · native BTC only',
-    }
-    const texts: Record<string, string> = {
-      ethereum: 'Swap between supported Ethereum assets, with the receiving token delivered to your wallet. Review the quote and spending limit before you sign.',
-      solana: 'Send or receive supported Solana assets such as SOL or USDC. To pay from Solana, select it under You sell, review the quote and refund address, then fund the deposit from your Solana wallet.',
-      bitcoin: 'Send or receive native BTC when a route is available. To pay from Bitcoin, review the quote and refund address, then fund the deposit from your Bitcoin wallet. Wrapped BTC tokens belong to other networks.',
-    }
-    const tokens: Record<string, string> = {
-      ethereum: '<span><img src="/logos/eth.png" alt="" width="22" height="22">ETH</span><span><img src="/logos/usdc.png" alt="" width="22" height="22">USDC</span>',
-      solana: '<span><img src="/logos/solana.svg" alt="" width="22" height="22">SOL</span><span><img src="/logos/usdc.png" alt="" width="22" height="22">USDC</span>',
-      bitcoin: '<span><img src="/logos/bitcoin.svg" alt="" width="22" height="22">BTC · native</span>',
-    }
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)')
-    const cTitle = document.getElementById('chainTitle')
-    const cText = document.getElementById('chainText')
-    const cTokens = document.getElementById('chainTokens')
-    const cPanel = document.getElementById('chainPanel')
-    chainBtns.forEach((b) => {
-      b.addEventListener('click', () => {
-        const k = b.getAttribute('data-chain') ?? 'ethereum'
-        chainBtns.forEach((x) => x.setAttribute('aria-pressed', String(x === b)))
-        if (cTitle) cTitle.textContent = titles[k] ?? k
-        if (cText) cText.textContent = texts[k] ?? ''
-        if (cTokens) cTokens.innerHTML = tokens[k] ?? ''
-        if (cPanel && !reduced.matches && cPanel.animate) {
-          cPanel.animate(
+  const chips = document.querySelectorAll<HTMLButtonElement>('[data-chain]')
+  const panels = document.querySelectorAll<HTMLElement>('[data-panel]')
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)')
+  chips.forEach((chip) => {
+    chip.addEventListener('click', () => {
+      chips.forEach((other) => other.setAttribute('aria-pressed', String(other === chip)))
+      panels.forEach((panel) => {
+        panel.hidden = panel.dataset.panel !== chip.dataset.chain
+        if (!panel.hidden && !reduced.matches && panel.animate) {
+          panel.animate(
             [{ opacity: 0.35, transform: 'translateY(6px)' }, { opacity: 1, transform: 'translateY(0)' }],
             { duration: 260, easing: 'cubic-bezier(.22,1,.36,1)' },
           )
         }
       })
     })
-  }
+  })
 </script>
 
 <style>
@@ -78,6 +96,8 @@
   .chips button img { width: 20px; height: 20px; border-radius: 50%; object-fit: contain; display: block; }
   .chips button[aria-pressed="true"] { background: var(--ophis-fg); border-color: var(--ophis-fg); color: #fff; }
   .chain-panel { background: var(--ophis-bg); border: 1px solid var(--ophis-border); border-radius: 20px; padding: 24px; display: grid; gap: 8px; }
+  /* display: grid above would otherwise show a panel marked hidden. */
+  .chain-panel[hidden] { display: none; }
   .chain-panel h3 { margin: 0; font-size: 18px; font-weight: 500; letter-spacing: -0.01em; }
   .chain-panel p { margin: 0; font-size: 15px; color: var(--ophis-fg-muted); max-width: 62ch; }
   .chain-tokens { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }

@@ -25,7 +25,7 @@ test('trade CTA emits a privacy-safe acquisition event and informational links d
     state.analyticsCalls = []
     state.gtag = (...args: unknown[]) => state.analyticsCalls.push(args)
     document.querySelector('.hero .cta-primary')?.addEventListener('click', (event) => event.preventDefault())
-    for (const href of ['https://swap.ophis.fi/#/legal', 'https://docs.ophis.fi/status']) {
+    for (const href of ['https://swap.ophis.fi/#/legal', 'https://status.ophis.fi/']) {
       const link = document.createElement('a')
       link.href = href
       link.dataset.testInformationalLink = href
@@ -35,7 +35,7 @@ test('trade CTA emits a privacy-safe acquisition event and informational links d
   })
 
   await page.locator('[data-test-informational-link="https://swap.ophis.fi/#/legal"]').dispatchEvent('click')
-  await page.locator('[data-test-informational-link="https://docs.ophis.fi/status"]').dispatchEvent('click')
+  await page.locator('[data-test-informational-link="https://status.ophis.fi/"]').dispatchEvent('click')
   await page.locator('.hero .cta-primary').click()
   const calls = await page.evaluate(
     () => (window as unknown as { analyticsCalls: unknown[][] }).analyticsCalls,

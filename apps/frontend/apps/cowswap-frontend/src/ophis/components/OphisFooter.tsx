@@ -48,17 +48,6 @@ function CompactFooter({ borderless }: { borderless: boolean }): ReactNode {
         </styledEl.PreferencesButton>
       </styledEl.CompactLinks>
       <styledEl.CompactCopy>&copy; Ophis 2026</styledEl.CompactCopy>
-      <styledEl.TradeSummary aria-label="About Ophis swaps">
-        <styledEl.CompactLinks aria-label="Swap guides">
-          <styledEl.ExternalLink href="/robinhood-chain/">Swap on Robinhood Chain</styledEl.ExternalLink>
-          <styledEl.ExternalLink href="https://ophis.fi/pricing/">Fees and pricing</styledEl.ExternalLink>
-          <styledEl.ExternalLink href="https://ophis.fi/supported-chains/">Supported chains</styledEl.ExternalLink>
-          <styledEl.ExternalLink href="https://ophis.fi/security/">Security</styledEl.ExternalLink>
-          <styledEl.ExternalLink href="https://ophis.fi/ai-agent-crypto-swap-api/">
-            Agent integrations
-          </styledEl.ExternalLink>
-        </styledEl.CompactLinks>
-      </styledEl.TradeSummary>
     </styledEl.CompactBar>
   )
 }
