@@ -12,13 +12,18 @@
  *
  * Accurate Ophis facts only. No em-dash in rendered copy (commas / colons).
  */
-import { EVM_CHAIN_COUNT, SOVEREIGN_CHAIN_LIST as sovereignList, NEAR_NETWORK_LIST as nearNetworkList } from '../data/chains'
+import {
+  EVM_CHAIN_COUNT,
+  SOVEREIGN_CHAIN_LIST as sovereignList,
+  NEAR_NETWORK_LIST as nearNetworkList,
+  SOLANA_VENUE_LIST as solanaVenues,
+} from '../data/chains'
 import { jsonLdSafe } from '../lib/jsonld'
 
 const faqs: { q: string; a: string }[] = [
   {
     q: 'What is Ophis?',
-    a: `Ophis is an intent-based, MEV-protected DEX aggregator for agents and tokenized markets. Traders can route supported stablecoins, Stock Tokens, tokenized stocks, and other onchain assets; builders can integrate through MCP, SDK, or API. Ophis batch-settles on supported EVM chains, with additional NEAR sources and destinations including ${nearNetworkList}. External-source swaps use a deposit flow in the standalone app. Standard swaps are non-custodial, and Ophis is a CoW Protocol fork.`,
+    a: `Ophis is an intent-based, MEV-protected DEX aggregator for agents and tokenized markets. Traders can route supported stablecoins, Stock Tokens, tokenized stocks, and other onchain assets; builders can integrate through MCP, SDK, or API. Ophis batch-settles on supported EVM chains, swaps SOL and SPL tokens natively on Solana, and adds NEAR sources and destinations including ${nearNetworkList}. External-source swaps use a deposit flow in the standalone app. Standard swaps are non-custodial, and Ophis is a CoW Protocol fork.`,
   },
   {
     q: 'What does Ophis charge?',
@@ -26,7 +31,11 @@ const faqs: { q: string; a: string }[] = [
   },
   {
     q: 'Which chains does Ophis support?',
-    a: `The app covers ${EVM_CHAIN_COUNT} EVM chains, with ${sovereignList} as its operated networks. SDK v0.4.3 and the hosted MCP server include Arc. The standalone app also supports ${nearNetworkList} as NEAR sources and destinations where assets and quotes permit. External-source swaps use a deposit and refund address; SDK/MCP order builders remain scoped to EVM orderbooks.`,
+    a: `The app covers ${EVM_CHAIN_COUNT} EVM chains, with ${sovereignList} as its operated networks, and swaps natively on Solana with a Solana wallet. SDK v0.4.3 and the hosted MCP server include Arc. The standalone app also supports ${nearNetworkList} as NEAR sources and destinations where assets and quotes permit. External-source swaps use a deposit and refund address; SDK/MCP order builders remain scoped to EVM orderbooks.`,
+  },
+  {
+    q: 'Can I swap on Solana with Ophis?',
+    a: `Yes. Ophis swaps SOL and SPL tokens natively on Solana. Connect a Solana wallet in the swap app, review the quote and place one order. The Ophis solver fills it across ${solanaVenues}, and can route through Jupiter, at your minimum received or better.`,
   },
   {
     q: 'How is Ophis different from CoW Swap?',

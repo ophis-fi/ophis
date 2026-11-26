@@ -11,6 +11,10 @@
 - **Hosted-chain upstream pricing**: CoW-hosted swaps additionally pay CoW Protocol's separate upstream volume and price-improvement fees.
 - **Open**: full frontend, intent-parser proxy, and infra runbooks are public.
 
+## Native Solana swaps
+
+The swap app swaps SOL and SPL tokens on Solana at https://swap.ophis.fi/#/solana with a Solana wallet: Wallet Standard browser wallets such as Phantom and Solflare, or a mobile wallet by QR code through WalletConnect. Review the quote, then confirm one transaction that places an order with a minimum received. The Ophis solver settles it through the Ophis program on Solana mainnet, `BJZ5yma22Km3fsfrEEdZVGygdrcwoschb6uUNqQWaQ9h`, which rejects any settlement below that minimum. The solver prices Raydium, Orca, Meteora, PumpSwap and Manifest directly and can also route through Jupiter; a quote appears only when a route exists for the pair and amount. Fees: a 1 bp base when both tokens are recognized stablecoins such as USDC and USDT, or when SOL is swapped against one of them, and 5 bps on every other pair, plus 50% of the improvement over the quoted output after costs and the base fee, capped at 20 bps on stablecoin pairs and 99 bps on other pairs. The wallet also pays the Solana network fee and account deposits. An unfilled order stays open until it expires and can be cancelled; its account deposit is then reclaimed in the app. A Solana swap starts and ends on Solana; it is not a bridge. Guide: https://ophis.fi/swap/solana/
+
 ## External-source swaps
 
 The standalone app supports Bitcoin, Solana, Monad, Hyperliquid (Hypercore), X Layer, Sui, Tron, Starknet and Zcash as NEAR sources and destinations when the live assets and quote permit. Select the source under You sell and destination under You receive, review the quote and source-chain refund address, then fund the deposit before its deadline, including any required memo. Keep the saved transfer for delivery/refund tracking. Zcash uses transparent t1/t3 addresses; Hyperliquid means Hypercore spot balances. These are separate from SDK/MCP orderbook chains, embedded widgets and Hooks.
@@ -18,6 +22,7 @@ The standalone app supports Bitcoin, Solana, Monad, Hyperliquid (Hypercore), X L
 ## Routes
 
 - [/](https://swap.ophis.fi/): Trading app. Choose tokens, review a quote and sign an order with your wallet.
+- [/#/solana](https://swap.ophis.fi/#/solana): Native Solana swap. Connect a Solana wallet, choose SOL or an SPL token, review the quote and place one order. Guide: https://ophis.fi/swap/solana/
 - [Robinhood Chain swaps](https://swap.ophis.fi/robinhood-chain/): Trading entry point, quote checklist, fee and token restrictions; opens chain 4663.
 - [Ophis overview](https://ophis.fi/): Protocol information and integration resources.
 - [Ophis CLI](https://docs.ophis.fi/cli): quote, swap and bridge by typing commands. Install with `npm install -g @ophis/cli` (Node.js 20 or later), run `ophis connect` to link your wallet, then try `ophis quote 5 USDC ETH`. Base is the default chain. Your keys stay in your wallet.

@@ -41,9 +41,11 @@ async function checkStructuredData(page, path) {
       for (const width of [320, 390, 1440]) {
         const page = await browser.newPage({ viewport: { width, height: width < 400 ? 667 : 900 } })
         await page.goto(base, { waitUntil: 'domcontentloaded' })
-        const guides = page.getByRole('navigation', { name: 'Swap guides' })
-        await guides.waitFor({ timeout: 60000 })
-        await guides.scrollIntoViewIfNeeded()
+        const footer = page.getByRole('navigation', { name: 'More from Ophis' })
+        await footer.waitFor({ timeout: 60000 })
+        await footer.scrollIntoViewIfNeeded()
+        // The row of guide links under the footer was removed on 2026-11-26 (owner).
+        assert.equal(await page.getByRole('navigation', { name: 'Swap guides' }).count(), 0)
         assert.equal(
           await page.getByText('How Ophis swaps work: networks, fees and wallet approvals', { exact: true }).count(),
           0,
@@ -52,9 +54,6 @@ async function checkStructuredData(page, path) {
         await checkStructuredData(page, '/')
         await checkStructuredData(page, '/robinhood-chain/')
         assert.equal(await page.locator('#swap-loading').count(), 0, 'app must finish mounting')
-        for (const path of ['pricing', 'supported-chains', 'security', 'ai-agent-crypto-swap-api']) {
-          assert.equal(await guides.locator(`a[href="https://ophis.fi/${path}/"]`).count(), 1)
-        }
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1))
         await page.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 60000 })
         assert.equal((await page.request.get(base + '/missing-seo-page')).status(), 404)
@@ -66,7 +65,7 @@ async function checkStructuredData(page, path) {
         const missing = await page.goto(base + '/missing-seo-page', { waitUntil: 'domcontentloaded' })
         assert.equal(missing.status(), 404, 'controlled navigation must preserve the network 404')
         assert.ok(await page.getByRole('heading', { name: 'Page not found' }).isVisible())
-        console.log('PASS', engine.name(), width, 'footer links, overflow, routes, API discovery')
+        console.log('PASS', engine.name(), width, 'footer, overflow, routes, API discovery')
         await page.close()
       }
       const page = await browser.newPage({ javaScriptEnabled: false, viewport: { width: 320, height: 667 } })

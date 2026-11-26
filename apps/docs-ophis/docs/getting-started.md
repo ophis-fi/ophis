@@ -80,6 +80,8 @@ Use the standalone app to swap from a NEAR Intents source such as Bitcoin or Sol
 
 See [Networks & assets](/networks-assets#externally-funded-swaps-through-near-intents) for address requirements and bridge coverage.
 
+A swap that starts and ends on Solana needs no deposit: connect a Solana wallet and follow [Native Solana swaps](/networks-assets#native-solana-swaps).
+
 ## Supported networks
 
 | Network group | Coverage |
@@ -87,6 +89,7 @@ See [Networks & assets](/networks-assets#externally-funded-swaps-through-near-in
 | App and CLI total | 14 EVM networks, including the Sepolia testnet |
 | EVM mainnets (13) | Ethereum, Arbitrum One, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, and Arc |
 | Testnet | Sepolia |
+| Solana, native swaps | SOL and SPL tokens with a Solana wallet |
 | NEAR Intents sources and destinations | Solana, Bitcoin, Monad, Hyperliquid (Hypercore), X Layer, Sui, Tron, Starknet, Zcash |
 
 Use the token selector to find assets on each network. Arc is available in the swap app (chain ID 5042), uses USDC for gas and connects through Circle bridges.

@@ -20,6 +20,15 @@ const protocols = [
   { name: 'Dexalot',     logo: '/logos/protocols/dexalot.png' },
   { name: 'Native',      logo: '/logos/protocols/native.png' },
   { name: 'Pharaoh',     logo: '/logos/protocols/pharaoh.svg' },
+  // Solana: Raydium, Orca Whirlpools, Meteora DLMM, PumpSwap and Manifest are priced
+  // directly by the native solver; Jupiter is used as a router. `fill` marks a logo that
+  // comes as a full square and is shown as a disc.
+  { name: 'Raydium',     logo: '/logos/protocols/raydium.png', fill: true },
+  { name: 'Orca',        logo: '/logos/protocols/orca.png', fill: true },
+  { name: 'Meteora',     logo: '/logos/protocols/meteora.png', fill: true },
+  { name: 'PumpSwap',    logo: '/logos/protocols/pumpswap.png' },
+  { name: 'Manifest',    logo: '/logos/protocols/manifest.svg' },
+  { name: 'Jupiter',     logo: '/logos/protocols/jupiter.png', fill: true },
 ]
 ---
 <section class="protocols">
@@ -39,7 +48,7 @@ const protocols = [
         {protocols.map(p => (
           <div class="protocol reveal-up" data-reveal>
             <span class="protocol-badge">
-              <img src={p.logo} alt={`${p.name} logo`} width="30" height="30" loading="lazy" decoding="async" />
+              <img class:list={[{ fill: p.fill }]} src={p.logo} alt={`${p.name} logo`} width="30" height="30" loading="lazy" decoding="async" />
             </span>
             <span class="protocol-name">{p.name}</span>
           </div>
@@ -111,11 +120,17 @@ const protocols = [
     background: #f4f4f6;
     box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
     flex-shrink: 0;
+    overflow: hidden;
   }
   .protocol-badge img {
     width: 30px;
     height: 30px;
     object-fit: contain;
+  }
+  .protocol-badge img.fill {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
   }
   .protocol-name {
     font-size: 12.5px;
@@ -134,9 +149,15 @@ const protocols = [
   @media (max-width: 900px) {
     .protocol-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   }
+  /* Phones: 26 tall tiles ran to two screens of logos. Each venue becomes a pill
+     (logo and name on one line) and the pills wrap, about a third of the height. */
   @media (max-width: 560px) {
     .protocols { padding: 64px 24px; }
-    .protocol-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .protocol-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+    .protocol { flex-direction: row; gap: 8px; padding: 5px 12px 5px 5px; border-radius: 9999px; }
+    .protocol-badge { width: 28px; height: 28px; }
+    .protocol-badge img { width: 18px; height: 18px; }
+    .protocol-name { white-space: nowrap; }
     h2 { font-size: 26px; }
   }
 </style>

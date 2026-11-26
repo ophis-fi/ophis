@@ -180,7 +180,7 @@ No. An aggregator searches the routes it can access. Your result depends on the 
 
 ### Why is there no quote for my Robinhood Chain swap?
 
-Check the selected network, token contracts and amount. A pair may lack liquidity, an asset may carry restrictions, a service may be unavailable, or the amount may be too small to cover execution costs. Review the app's error message and the [Ophis service checks](https://docs.ophis.fi/status). Do not sign an order using an expired quote.
+Check the selected network, token contracts and amount. A pair may lack liquidity, an asset may carry restrictions, a service may be unavailable, or the amount may be too small to cover execution costs. Review the app's error message and the [Ophis status page](https://status.ophis.fi/). Do not sign an order using an expired quote.
 
 ### What happens if my order does not fill?
 

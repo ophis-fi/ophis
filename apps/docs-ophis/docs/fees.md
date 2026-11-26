@@ -8,7 +8,7 @@ sidebar_position: 3
 
 # Fees
 
-Public batch-auction orders carry a 0.01% Ophis base fee plus a capped share of price improvement over the reference quote. Direct routes, private swaps and bridges use the fee treatment below.
+Public batch-auction orders carry a 0.01% Ophis base fee plus a capped share of price improvement over the reference quote. Direct routes, private swaps, native Solana swaps and bridges use the fee treatment below.
 
 :::tip[Example]
 
@@ -47,6 +47,17 @@ The ten partner-hosted mainnets use CoW Protocol's orderbooks and solver network
 ## Arc fee policy {/* #arc-price-improvement-policy */}
 
 Arc follows the same rules as the other Ophis-operated chains, and USDC/EURC counts as a stablecoin pair. Whether an order is in-market depends on its price compared with its reference quote, including orders entered as limit orders.
+
+## Solana fee policy {/* #solana-fee-policy */}
+
+[Native Solana swaps](/networks-assets#native-solana-swaps) use their own schedule.
+
+| Component | Stablecoin pairs | SOL against a stablecoin | Other pairs |
+| --- | --- | --- | --- |
+| Ophis base fee | 1 bp (0.01%) | 1 bp (0.01%) | 5 bp (0.05%) |
+| Share of improvement over the quoted output | 50%, capped at 0.20% of the trade | 50%, capped at 0.99% of the trade | 50%, capped at 0.99% of the trade |
+
+Improvement is measured after settlement costs and the base fee, and you keep the rest. Fees are taken in the token you receive and shown in the quote. Your wallet also pays the Solana network fee and the deposit for any account the order opens.
 
 ## Bridge costs {/* #bridge-and-conversion-routes */}
 

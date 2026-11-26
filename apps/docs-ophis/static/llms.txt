@@ -1,6 +1,6 @@
 # Ophis Docs
 
-> Documentation for Ophis: intent-based token swaps authorized with your wallet, with a web app, CLI, SDK, MCP server, Intent API and widget. The app and CLI cover 13 EVM mainnets, plus the Sepolia testnet. The standalone app also supports NEAR Intents sources and destinations and Circle bridges to and from Arc.
+> Documentation for Ophis: intent-based token swaps authorized with your wallet, with a web app, CLI, SDK, MCP server, Intent API and widget. The app and CLI cover 13 EVM mainnets, plus the Sepolia testnet. The swap app also swaps SOL and SPL tokens natively on Solana with a Solana wallet. The standalone app also supports NEAR Intents sources and destinations and Circle bridges to and from Arc.
 
 ## Build with Ophis
 
@@ -30,10 +30,10 @@ Worked examples:
 
 - [Introduction](https://docs.ophis.fi/): choose a trading interface or developer integration.
 - [Getting started](https://docs.ophis.fi/getting-started): choose tokens, sign a swap or fund an external deposit, and track delivery.
-- [Networks & assets](https://docs.ophis.fi/networks-assets): EVM coverage; NEAR swaps from or to Bitcoin, Solana, Monad, Hyperliquid (Hypercore), X Layer, Sui, Tron, Starknet and Zcash; Circle bridges, Ethereum OTC and wallet requirements.
+- [Networks & assets](https://docs.ophis.fi/networks-assets): EVM coverage; native Solana swaps (wallets, venues, settlement program); NEAR swaps from or to Bitcoin, Solana, Monad, Hyperliquid (Hypercore), X Layer, Sui, Tron, Starknet and Zcash; Circle bridges, Ethereum OTC and wallet requirements.
 - [Privacy pools and private swaps](https://docs.ophis.fi/privacy-pools): wallet setup, networks and assets, shielding, swaps, withdrawals, gas credit, refunds, recovery and privacy limits.
 - [Architecture](https://docs.ophis.fi/architecture): order signing, solver competition, batch settlement and developer intent parsing.
-- [Fees](https://docs.ophis.fi/fees): base fees, capped improvement capture, upstream settlement fees, private-swap charges and bridge costs.
+- [Fees](https://docs.ophis.fi/fees): base fees, capped improvement capture, upstream settlement fees, the Solana fee policy, private-swap charges and bridge costs.
 - [Trade rewards](https://docs.ophis.fi/trade-rewards): eligible swaps earn a winning USDG ticket; check https://swap.ophis.fi/#/rewards for current availability and claims.
 - [Comparison](https://docs.ophis.fi/comparison): compare quotes, settlement, fees and interfaces for the same trade.
 - [Audits](https://docs.ophis.fi/audits): wallet custody, settlement contracts and published review scope.

@@ -3,12 +3,16 @@
 // org marks for the rest), used for factual "built with" attribution.
 // Bungee was dropped 2026-09-10: its API is permanently gone and the swap app
 // no longer routes through it.
+// Aleph Cloud was dropped 2026-11-26 (owner): the strip lists what a swap touches today.
 const items = [
-  { name: 'CoW Protocol',    note: 'Settlement stack we forked.',                  logo: '/logos/partners/cow-icon.svg' },
-  { name: 'Aleph Cloud',     note: 'Decentralized compute infra.',                 logo: '/logos/partners/aleph.png' },
-  { name: 'Across',         note: 'Cross-chain transfers between EVM networks.', logo: '/logos/partners/across.svg' },
-  { name: 'Trail of Bits',   note: 'Security review tooling (Slither, Echidna).',  logo: '/logos/partners/trailofbits.png' },
-  { name: 'NEAR Intents',    note: 'Routing to supported destination chains.',    logo: '/logos/partners/near.png' },
+  { name: 'CoW Protocol',  note: 'Settlement stack we forked.',                  logo: '/logos/partners/cow-icon.svg' },
+  { name: 'Trail of Bits', note: 'Security review tooling (Slither, Echidna).',  logo: '/logos/partners/trailofbits.png' },
+  { name: 'NEAR Intents',  note: 'Swaps to and from Bitcoin and other networks.', logo: '/logos/partners/near.png' },
+  { name: 'Across',        note: 'Cross-chain transfers between EVM networks.',  logo: '/logos/partners/across.svg' },
+  { name: 'Relay',         note: 'More bridge routes between EVM networks.',     logo: '/logos/partners/relay.png' },
+  { name: 'Circle CCTP',   note: 'Native USDC transfers to and from Arc.',       logo: '/logos/partners/circle.png' },
+  { name: 'RAILGUN',       note: 'Private mode with shielded balances.',         logo: '/logos/partners/railgun.png' },
+  { name: 'Safe',          note: 'Multisig trading through the Ophis Safe app.', logo: '/logos/partners/safe.svg' },
 ]
 ---
 <section class="built-on">
@@ -17,7 +21,7 @@ const items = [
       Built with the tools and partners <em>that earned our trust.</em>
     </h2>
     <p class="sub reveal-up" data-reveal>
-      Forked from CoW Protocol's settlement stack. Reviewed with Trail of Bits' open-source security tooling. Powered by Aleph Cloud compute. Cross-chain routing via NEAR Intents and Across.
+      Forked from CoW Protocol's settlement stack. Reviewed with Trail of Bits' open-source security tooling. Cross-chain routes through NEAR Intents, Across, Relay and Circle CCTP. Private mode through RAILGUN, multisig trading through Safe.
     </p>
     <div class="built-grid stagger">
       {items.map(item => (
@@ -53,7 +57,7 @@ const items = [
     display: grid;
     /* minmax(0, 1fr) (not bare 1fr) lets columns shrink below the cards'
        min-content so they never force a row wider than the viewport. */
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 20px;
     text-align: left;
   }
@@ -97,16 +101,21 @@ const items = [
     color: var(--ophis-fg-muted);
     line-height: 1.4;
   }
-  @media (max-width: 720px) {
+  @media (max-width: 1000px) {
     .built-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 720px) {
     h2 { font-size: 26px; }
   }
   /* Phones: drop the 56px side padding (it consumed 112px of a 320px viewport
      and forced horizontal page overflow) to match the .protocols breakpoint. */
   @media (max-width: 560px) {
     .built-on { padding: 64px 20px; }
-  }
-  @media (max-width: 400px) {
-    .built-grid { grid-template-columns: 1fr; }
+    /* Eight stacked cards ran to a screen and a half. Each becomes one tight row:
+       the logo on the left, the name and its line on the right. */
+    .built-grid { grid-template-columns: 1fr; gap: 8px; }
+    .built-item { display: grid; grid-template-columns: 38px 1fr; column-gap: 12px; row-gap: 0; align-items: center; padding: 10px 14px; }
+    .built-head { display: contents; }
+    .built-logo { grid-row: 1 / span 2; }
   }
 </style>

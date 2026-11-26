@@ -25,7 +25,11 @@ const tableChains = [...EVM_CHAINS].sort((a, b) => a.name.localeCompare(b.name))
 const FAQS = [
   {
     q: 'Which chains does Ophis support?',
-    a: `Ophis covers ${EVM_CHAIN_COUNT} EVM chains, with ${sovereignList} as its operated sovereign networks, and supports ${nearNetworkList} as additional sources and destinations through NEAR Intents in the standalone app. External-source routes use a deposit flow, not an EVM orderbook.`,
+    a: `Ophis covers ${EVM_CHAIN_COUNT} EVM chains, with ${sovereignList} as its operated sovereign networks, and swaps SOL and SPL tokens natively on Solana. It also supports ${nearNetworkList} as additional sources and destinations through NEAR Intents in the standalone app. External-source routes use a deposit flow, not an EVM orderbook.`,
+  },
+  {
+    q: 'Does Ophis support Solana?',
+    a: `Yes, in two ways. A swap that starts and ends on Solana is native: you connect a Solana wallet and the Ophis solver settles the order on Solana. Moving between Solana and another network is a cross-chain route through NEAR Intents, which uses a deposit flow.`,
   },
   {
     q: 'What does Ophis-operated mean?',
@@ -56,18 +60,18 @@ const itemListLd = {
 ---
 
 <ContentPage
-  title={`Supported chains: ${EVM_CHAIN_COUNT} EVM networks | Ophis`}
-  description={`The canonical list of the ${EVM_CHAIN_COUNT} EVM chains Ophis supports, including the Ophis-operated sovereign networks, plus ${nearNetworkList} sources and destinations through the standalone app’s externally funded NEAR flow.`}
+  title={`Supported chains: ${EVM_CHAIN_COUNT} EVM networks and Solana | Ophis`}
+  description={`Every chain Ophis supports: ${EVM_CHAIN_COUNT} EVM chains with their IDs and settlement mode, native Solana swaps, and the networks reached through NEAR Intents.`}
   path="/supported-chains/"
   heading="Supported chains"
-  lede={`Ophis settles MEV-protected batch auctions on ${EVM_CHAIN_COUNT} EVM chains and supports ${nearNetworkList} through NEAR Intents, including externally funded source swaps. Availability depends on the live assets and quote.`}
+  lede={`Ophis settles MEV-protected batch auctions on ${EVM_CHAIN_COUNT} EVM chains, swaps natively on Solana, and supports ${nearNetworkList} through NEAR Intents, including externally funded source swaps. Availability depends on the live assets and quote.`}
   updated={updated}
   faqs={FAQS}
   extraLd={[itemListLd]}
 >
   <p>
     <strong>The short version:</strong> {EVM_CHAIN_COUNT} EVM chains, {SOVEREIGN_CHAINS.length} of
-    them Ophis-operated ({sovereignList}), plus {nearNetworkList} as NEAR sources and destinations in the standalone app.
+    them Ophis-operated ({sovereignList}), native swaps on Solana, plus {nearNetworkList} as NEAR sources and destinations in the standalone app.
     The full table with chain IDs and settlement mode:
   </p>
 
@@ -93,9 +97,14 @@ const itemListLd = {
           </td>
         </tr>
       ))}
+      <tr>
+        <td><a href="/swap/solana/">Solana</a></td>
+        <td>n/a</td>
+        <td>Native swaps with a Solana wallet, settled by the Ophis program on Solana</td>
+      </tr>
       {NEAR_NETWORKS.map((d) => (
         <tr>
-          <td>{d}</td>
+          <td>{d === 'Solana' ? 'Solana, to or from another network' : d}</td>
           <td>n/a</td>
           <td>NEAR source deposit or destination; route-dependent</td>
         </tr>
@@ -111,6 +120,7 @@ const itemListLd = {
   ))}
 
   <p>
+    For Solana, see <a href="/swap/solana/">swapping on Solana</a>.
     For Arc, see <a href="/blog/swap-on-arc/">how to swap on Arc</a>.
     For Stock Token markets, see <a href="/swap/robinhood-chain/">swapping on Robinhood Chain</a>.
     Token support and executable liquidity must be checked in the live quote.
@@ -119,7 +129,7 @@ const itemListLd = {
   <h2>For agents and integrators</h2>
   <p>
     SDK v{sdkPackage.version} and the hosted MCP server cover the EVM chains above, including Arc (5042).
-    External NEAR deposits are a separate app flow, not orders built by these SDK/MCP tools. Bridge coverage remains route-specific; settled Arc trades are indexed for routed volume and referral attribution.
+    External NEAR deposits and native Solana swaps are separate app flows, not orders built by these SDK/MCP tools. Bridge coverage remains route-specific; settled Arc trades are indexed for routed volume and referral attribution.
   </p>
   <p>
     SDK v0.4.3 already supports Arc trading. Upgrade to v0.4.4 to include referral codes on Arc orders.
