@@ -30,7 +30,7 @@ Sources: https://developers.cloudflare.com/workers/platform/limits/, https://dev
 
 What keeps the cost down:
 
-- The page is a static asset, so a view costs one request (the JSON), and nothing when the browser still holds an answer younger than 30 seconds. A hidden tab asks for nothing.
+- The page is a static asset, so a view costs one request (the JSON), which browsers are told not to keep. A hidden tab asks for nothing.
 - The self-hosted services (the three orderbooks, the indexer) are the likeliest to fail and cost nothing to check, so they get the one-minute cadence. Static sites and partner APIs cost nothing either: 5 minutes.
 - A Durable Object, not D1: the deploy token cannot touch D1, and D1's daily rows are the business console's budget.
 

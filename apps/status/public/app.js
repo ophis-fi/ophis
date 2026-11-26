@@ -266,7 +266,8 @@ function draw() {
 async function load() {
   loadedAt = Date.now();
   try {
-    const response = await fetch('/status.json');
+    // Never from the browser's cache: a status page that shows an old answer is worse than none.
+    const response = await fetch('/status.json', { cache: 'no-store' });
     if (!response.ok) throw new Error(String(response.status));
     state = await response.json();
     failed = false;
