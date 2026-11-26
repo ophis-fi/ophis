@@ -4,11 +4,16 @@ import { ReactNode, useState } from 'react'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { formatOphisSolanaAmount, requestOphisLocalTestSol, solanaAddress } from '@ophis/solana-sdk'
 import { OPHIS_SOLANA_CONFIG, solanaConnectionAtom } from 'entities/solana'
+import { useAssetVerification, VerifiedAssetBadge } from 'entities/verifiedAsset'
+import { ChevronDown } from 'react-feather'
+
+import { SellAmountPresets } from 'common/pure/CurrencyInputPanel/SellAmountPresets.pure'
 
 import { AssetIcon } from '../pure/AssetPicker.pure'
 import * as styledEl from '../pure/SwapForm.styled'
-import { balanceEndpoint, nativeAsset, unknownAsset } from '../services/assets.service'
+import { balanceEndpoint, nativeAsset, solanaAssetIdentity, unknownAsset } from '../services/assets.service'
 import {
+  nativeSellReserveAtom,
   solanaHoldingsAtom,
   solanaNetworkAssetsAtom,
   sellAmountStateAtom,
@@ -23,10 +28,14 @@ export function SellPanel({ open }: { open(): void }): ReactNode {
   const busy = useAtomValue(nativeSolanaBusyAtom)
   const owner = useAtomValue(solanaConnectionAtom)
   const balances = useAtomValue(solanaHoldingsAtom)
+  const reserveQuery = useAtomValue(nativeSellReserveAtom)
   const assets = useAtomValue(walletAssetListAtom)
   const sell = assets.find((asset) => asset.mint === form.sellMint) ?? unknownAsset(form.sellMint)
+  const verification = useAssetVerification(solanaAssetIdentity(sell))
   const symbol = sell.symbol
-  const { balanceKnown, balance, exceeds, needsSolForFees } = useAtomValue(sellAmountStateAtom)
+  const { balanceKnown, balance, exceeds, needsSolForFees, spendable, precision, reserve } =
+    useAtomValue(sellAmountStateAtom)
+  const reservedSol = reserve === undefined ? undefined : formatOphisSolanaAmount(reserve, 9)
   return (
     <styledEl.Panel>
       <styledEl.Caption>
@@ -44,9 +53,27 @@ export function SellPanel({ open }: { open(): void }): ReactNode {
         />
         <styledEl.TokenButton type="button" aria-label={'Sell token: ' + sell.symbol} disabled={busy} onClick={open}>
           <AssetIcon asset={sell} />
-          {sell.symbol} <span aria-hidden="true">⌄</span>
+          {sell.symbol}
+          <VerifiedAssetBadge verified={verification} /> <ChevronDown size={16} aria-hidden="true" />
         </styledEl.TokenButton>
       </styledEl.Line>
+      <SellAmountPresets
+        spendable={owner && !busy && precision !== undefined ? spendable : undefined}
+        onSelect={(atoms) => {
+          if (precision !== undefined) setForm({ ...form, amount: formatOphisSolanaAmount(atoms, precision) })
+        }}
+      />
+      {owner && form.sellMint === 'SOL' && (
+        <styledEl.Helper>
+          {!form.buyMint ? (
+            <Trans>Choose a receive token to calculate fees and rent.</Trans>
+          ) : reservedSol !== undefined ? (
+            <Trans>Estimated fees and rent reserved · {reservedSol} SOL</Trans>
+          ) : (
+            <Trans>Amount shortcuts need a fee and rent estimate.</Trans>
+          )}
+        </styledEl.Helper>
+      )}
       <styledEl.Helper aria-live="polite">
         <span>
           {owner ? (
@@ -66,8 +93,11 @@ export function SellPanel({ open }: { open(): void }): ReactNode {
         {owner && (
           <styledEl.SmallButton
             type="button"
-            disabled={busy || balances.isFetching}
-            onClick={() => void balances.refetch()}
+            disabled={busy || balances.isFetching || reserveQuery.isFetching}
+            onClick={() => {
+              void balances.refetch()
+              if (reserveQuery.isEnabled) void reserveQuery.refetch()
+            }}
           >
             <Trans>Refresh balance</Trans>
           </styledEl.SmallButton>
@@ -93,6 +123,7 @@ export function BuyPanel({ open }: { open(): void }): ReactNode {
   const assets = useAtomValue(walletAssetListAtom)
   const network = useAtomValue(solanaNetworkAssetsAtom).data ?? [nativeAsset]
   const buy = assets.find((asset) => asset.mint === form.buyMint) ?? (form.buyMint ? unknownAsset(form.buyMint) : null)
+  const verification = useAssetVerification(solanaAssetIdentity(buy))
   return (
     <styledEl.Panel>
       <styledEl.Caption>
@@ -109,7 +140,7 @@ export function BuyPanel({ open }: { open(): void }): ReactNode {
           onClick={open}
         >
           {buy && <AssetIcon asset={buy} />} {buy?.symbol ?? <Trans>Select token</Trans>}{' '}
-          <span aria-hidden="true">⌄</span>
+          <VerifiedAssetBadge verified={verification} /> <ChevronDown size={16} aria-hidden="true" />
         </styledEl.TokenButton>
       </styledEl.Line>
       <styledEl.Helper>

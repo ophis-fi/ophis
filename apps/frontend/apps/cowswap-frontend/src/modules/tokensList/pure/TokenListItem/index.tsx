@@ -20,6 +20,8 @@ import { TokenizedAssetProviderTag, TokenSelectionHandler } from '../../types'
 import { TokenInfo } from '../TokenInfo'
 import { TokenTags } from '../TokenTags'
 
+import type { Verification } from 'entities/verifiedAsset'
+
 const LoadingElement = (
   <LoadingRows>
     <LoadingRowSmall />
@@ -28,6 +30,7 @@ const LoadingElement = (
 
 export interface TokenListItemProps {
   token: TokenWithLogo
+  verification?: Verification
   selectedToken?: Nullish<Currency>
   balance: BigNumber | undefined
   balanceError?: boolean
@@ -100,6 +103,7 @@ interface TokenBalanceColumnProps {
 export function TokenListItem(props: TokenListItemProps): ReactNode {
   const {
     token,
+    verification,
     selectedToken,
     balance,
     balanceError = false,
@@ -151,6 +155,7 @@ export function TokenListItem(props: TokenListItemProps): ReactNode {
       >
         <TokenInfo
           token={token}
+          verification={verification}
           showAddress={false}
           showContractInfo={hasIntersected}
           hideNetworkBadge
@@ -163,7 +168,7 @@ export function TokenListItem(props: TokenListItemProps): ReactNode {
                 isPermitCompatible={isPermitCompatible}
                 tags={token.tags}
                 tokenListTags={tokenListTags}
-                tokenizedAssetProvider={tokenizedAssetProvider}
+                tokenizedAssetProvider={verification ? undefined : tokenizedAssetProvider}
               />
             ) : null
           }

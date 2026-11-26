@@ -200,28 +200,3 @@ export const FiatAmountText = styled.span`
     transition: opacity var(${UI.ANIMATION_DURATION}) ease-in-out;
   }
 `
-
-export const SetMaxBtn = styled.button`
-  display: inline-block;
-  cursor: pointer;
-  margin: 0;
-  background: none;
-  border: none;
-  outline: none;
-  color: inherit;
-  font-weight: 600;
-  font-size: 11px;
-  background: var(${UI.COLOR_PAPER});
-  border-radius: 6px;
-  padding: 3px 4px;
-  text-transform: uppercase;
-  white-space: nowrap;
-  transition:
-    background var(${UI.ANIMATION_DURATION}) ease-in-out,
-    color var(${UI.ANIMATION_DURATION}) ease-in-out;
-
-  &:hover {
-    background: var(${UI.COLOR_PRIMARY});
-    color: var(${UI.COLOR_BUTTON_TEXT});
-  }
-`

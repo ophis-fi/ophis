@@ -1,8 +1,4 @@
-import 'inter-ui'
-
 export interface Fonts {
-  fontDefault: string
-  fontVariable: string
   fontThin: string
   fontLight: string
   fontLighter: string
@@ -16,8 +12,6 @@ export interface Fonts {
 }
 
 const fontsVariables: Fonts = {
-  fontDefault: 'Inter',
-  fontVariable: 'Inter var',
   fontThin: '100',
   fontLight: '200',
   fontLighter: '300',

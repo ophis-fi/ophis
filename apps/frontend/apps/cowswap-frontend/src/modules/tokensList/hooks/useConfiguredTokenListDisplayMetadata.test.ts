@@ -18,7 +18,6 @@ import {
 } from './useConfiguredTokenListDisplayMetadata'
 
 import shippedList from '../../../../public/token-lists/ophis.json'
-import { getTokenDisplayName } from '../pure/TokenInfo/getTokenDisplayName.utils'
 
 const MAINNET_SOURCE = ONDO_TOKENS_LIST_SOURCE
 const ARBITRUM_SOURCE = DEFAULT_TOKENS_LISTS[SupportedChainId.ARBITRUM_ONE]?.[0]?.source ?? 'missing-configured-source'
@@ -79,26 +78,13 @@ function createList(
 }
 
 describe('configured token-list display metadata', () => {
-  it('renders curated Arc stocks with the same issuer label and clean names as Ethereum', () => {
-    const result = getConfiguredTokenListDisplayMetadata([
-      { source: OPHIS_TOKENS_LIST_SOURCE, list: shippedList },
-      createList(USER_SOURCE, { ...MAINNET_TOKEN, chainId: ARC_CHAIN_ID, symbol: 'AAPLon' }),
-    ])
-    const stocks = shippedList.tokens.filter((token) => token.chainId === 5042 && token.tags?.includes('ondo'))
-    expect(stocks).toHaveLength(12)
-    for (const token of stocks) {
-      const provider = result.tokenizedAssetProviderByTokenId.get(getTokenId(token))
-      expect(provider).toBe('ondo')
-      expect(getTokenDisplayName(token.name, provider)).not.toContain('(Ondo Tokenized)')
-      const ethereumToken = shippedList.tokens.find((item) => item.chainId === 1 && item.symbol === token.symbol)
-      expect(ethereumToken).toBeDefined()
-      if (ethereumToken) expect(result.tokenizedAssetProviderByTokenId.get(getTokenId(ethereumToken))).toBe(provider)
-    }
-    expect(result.tokenListTags.ondo?.name).toBe('Tokenized by Ondo')
-    expect(result.tokenizedAssetProviderByTokenId.has(getTokenId({ ...MAINNET_TOKEN, chainId: 5042 }))).toBe(false)
-    const ondoGovernance = shippedList.tokens.find((token) => token.chainId === 5042 && token.symbol === 'ONDO')
-    expect(ondoGovernance).toBeDefined()
-    if (ondoGovernance) expect(result.tokenizedAssetProviderByTokenId.has(getTokenId(ondoGovernance))).toBe(false)
+  it('keeps curated Arc contracts listed while leaving issuer verification to the deployment registry', () => {
+    const result = getConfiguredTokenListDisplayMetadata([{ source: OPHIS_TOKENS_LIST_SOURCE, list: shippedList }])
+    const aaplon = shippedList.tokens.find((token) => token.chainId === ARC_CHAIN_ID && token.symbol === 'AAPLon')
+    if (!aaplon) throw new Error('Missing Arc AAPLon fixture')
+    expect(result.listedTokenIds.has(getTokenId(aaplon))).toBe(true)
+    expect(result.tokenizedAssetProviderByTokenId.has(getTokenId(aaplon))).toBe(false)
+    expect(result.tokenListTags.ondo).toBeUndefined()
   })
 
   it('trusts configured list membership and ignores user-added lists', () => {
@@ -112,7 +98,7 @@ describe('configured token-list display metadata', () => {
 
     expect(result.listedTokenIds.has(configuredTokenId)).toBe(true)
     expect(result.tokenizedAssetProviderByTokenId.get(configuredTokenId)).toBe('ondo')
-    expect(result.tokenListTags.ondo?.name).toBe('Tokenized by Ondo')
+    expect(result.tokenListTags.ondo?.name).toBe('Ondo')
     expect(result.listedTokenIds.has(userTokenId)).toBe(false)
     expect(result.tokenizedAssetProviderByTokenId.has(userTokenId)).toBe(false)
   })
@@ -128,7 +114,7 @@ describe('configured token-list display metadata', () => {
 
     expect(result.listedTokenIds.has(getTokenId(ARBITRUM_TOKEN))).toBe(true)
     expect(result.tokenizedAssetProviderByTokenId.get(getTokenId(ARBITRUM_TOKEN))).toBe('xStocks')
-    expect(result.tokenListTags.xStocks?.name).toBe('xStock')
+    expect(result.tokenListTags.xStocks?.name).toBe('xStocks')
     expect(result.listedTokenIds.has(getTokenId(MAINNET_TOKEN))).toBe(false)
   })
 
@@ -141,7 +127,7 @@ describe('configured token-list display metadata', () => {
 
     expect(configured.listedTokenIds.has(stockTokenId)).toBe(true)
     expect(configured.tokenizedAssetProviderByTokenId.get(stockTokenId)).toBe('coinbase')
-    expect(configured.tokenListTags.coinbase?.name).toBe('Coinbase tokenized stock')
+    expect(configured.tokenListTags.coinbase?.name).toBe('Coinbase')
 
     const spoofed = getConfiguredTokenListDisplayMetadata(
       [createList(SPOOFED_PROVIDER_SOURCE, BASE_STOCK_TOKEN)],

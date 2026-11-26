@@ -528,6 +528,10 @@ msgstr "Your order was cancelled"
 msgid "Free"
 msgstr "Free"
 
+#: apps/cowswap-frontend/src/entities/verifiedAsset/VerifiedAssetBadge.tsx
+msgid "Wrapped SOL"
+msgstr "Wrapped SOL"
+
 #: apps/cowswap-frontend/src/modules/account/containers/AccountDetails/SurplusCard.tsx
 msgid "The total surplus Ophis has generated for you in {nativeSymbol} across all your trades since {startDate}"
 msgstr "The total surplus Ophis has generated for you in {nativeSymbol} across all your trades since {startDate}"
@@ -946,6 +950,10 @@ msgstr "icon"
 msgid "Manage token lists"
 msgstr "Manage token lists"
 
+#: apps/cowswap-frontend/src/entities/verifiedAsset/VerifiedAssetBadge.tsx
+msgid "Bridged USDC"
+msgstr "Bridged USDC"
+
 #: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
 msgid "Order actions use fresh verification against the pinned escrow contract."
 msgstr "Order actions use fresh verification against the pinned escrow contract."
@@ -1304,6 +1312,10 @@ msgstr "Allows you to set partial token approvals instead of full approvals."
 msgid "Read-only order detail, verified directly against Ethereum."
 msgstr "Read-only order detail, verified directly against Ethereum."
 
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaTradePanels.container.tsx
+msgid "Estimated fees and rent reserved · {reservedSol} SOL"
+msgstr "Estimated fees and rent reserved · {reservedSol} SOL"
+
 #: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
 msgid "Review your swap"
 msgstr "Review your swap"
@@ -1323,6 +1335,10 @@ msgstr "Claimable amount"
 #: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
 msgid "Backpack places this order with your selected minimum. The private auction can settle it once. If it expires, you can reclaim the order rent."
 msgstr "Backpack places this order with your selected minimum. The private auction can settle it once. If it expires, you can reclaim the order rent."
+
+#: apps/cowswap-frontend/src/common/pure/CurrencyInputPanel/SellAmountPresets.pure.tsx
+msgid "Percentage of spendable balance"
+msgstr "Percentage of spendable balance"
 
 #: apps/cowswap-frontend/src/modules/accountProxy/containers/AccountProxiesPage/index.tsx
 msgid "Select an {accountProxyLabelString} to check for available refunds {chain}"
@@ -1583,7 +1599,7 @@ msgstr "Recent"
 msgid "Market price"
 msgstr "Market price"
 
-#: apps/cowswap-frontend/src/common/pure/CurrencyInputPanel/CurrencyInputPanel.tsx
+#: apps/cowswap-frontend/src/common/pure/CurrencyInputPanel/SellAmountPresets.pure.tsx
 msgid "Max"
 msgstr "Max"
 
@@ -2693,6 +2709,7 @@ msgid "Return to Swap"
 msgstr "Return to Swap"
 
 #: apps/cowswap-frontend/src/common/utils/tradeSettingsTooltips.tsx
+#: apps/cowswap-frontend/src/entities/verifiedAsset/VerifiedAssetBadge.tsx
 msgid "Native currency"
 msgstr "Native currency"
 
@@ -4185,6 +4202,10 @@ msgstr "Target"
 msgid "View on {explorerTitle}"
 msgstr "View on {explorerTitle}"
 
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaTradePanels.container.tsx
+msgid "Choose a receive token to calculate fees and rent."
+msgstr "Choose a receive token to calculate fees and rent."
+
 #: apps/cowswap-frontend/src/modules/bridge/pure/StopStatus/index.tsx
 msgid "Bridge failed on"
 msgstr "Bridge failed on"
@@ -4810,6 +4831,10 @@ msgstr "View transaction"
 #: apps/cowswap-frontend/src/modules/swap/containers/WholeTokenRoute/WholeTokenRouteDetails.container.tsx
 msgid "Uniswap v3 via USDC"
 msgstr "Uniswap v3 via USDC"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaTradePanels.container.tsx
+msgid "Amount shortcuts need a fee and rent estimate."
+msgstr "Amount shortcuts need a fee and rent estimate."
 
 #: apps/cowswap-frontend/src/modules/injectedWidget/pure/WidgetParamsErrorsScreen/index.tsx
 msgid "The are some errors with Ophis widget configuration"
@@ -6074,6 +6099,7 @@ msgid "Network fees and costs"
 msgstr "Network fees and costs"
 
 #: apps/cowswap-frontend/src/common/pure/NetworksList/NetworksList.pure.tsx
+#: apps/cowswap-frontend/src/modules/tokensList/pure/ChainsSelector/ChainButton.tsx
 msgid "NEW"
 msgstr "NEW"
 
@@ -6755,6 +6781,10 @@ msgstr "Partial approval may block <0>{ordersWithPermitLength}</0> other {orderW
 msgid "Destination transaction"
 msgstr "Destination transaction"
 
+#: apps/cowswap-frontend/src/entities/verifiedAsset/VerifiedAssetBadge.tsx
+msgid "Verified asset · {source}"
+msgstr "Verified asset · {source}"
+
 #: apps/cowswap-frontend/src/modules/tradeWidgetAddons/pure/NetworkCostsTooltipSuffix.tsx
 msgid "Because you are using a smart contract wallet"
 msgstr "Because you are using a smart contract wallet"
@@ -6816,6 +6846,10 @@ msgstr "Minimum sell size"
 #: apps/cowswap-frontend/src/modules/bridge/pure/contents/QuoteBridgeContent/index.tsx
 msgid "Min. to deposit"
 msgstr "Min. to deposit"
+
+#: apps/cowswap-frontend/src/entities/verifiedAsset/VerifiedAssetBadge.tsx
+msgid "Bridged USDT"
+msgstr "Bridged USDT"
 
 #: apps/cowswap-frontend/src/pages/games/CowRunner/index.tsx
 msgid "MEV is lethal these days!"

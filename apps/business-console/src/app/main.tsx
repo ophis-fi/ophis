@@ -1,7 +1,6 @@
 // App shell: band, bar, rail, footer line. Routes live in the URL fragment, as in the mockup.
 import { StrictMode, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { createRoot } from 'react-dom/client'
-import './fonts.css'
 import './kit.css'
 import './app.css'
 import mark from './assets/ophis-icon-mono-dark.svg'

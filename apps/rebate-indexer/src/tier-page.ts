@@ -101,7 +101,7 @@ export function renderTierPage(
   * { box-sizing: border-box; }
   body {
     margin: 0; min-height: 100dvh; padding: 32px 16px;
-    font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    font-family: 'Neue Haas Unica Pro', system-ui, sans-serif;
     font-variant-numeric: lining-nums tabular-nums;
     color: #17191c; background: #ffffff; line-height: 1.5;
   }

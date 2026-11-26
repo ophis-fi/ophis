@@ -40,6 +40,7 @@ export function TokenSearchRowRenderer({
       return (
         <ImportTokenItem
           token={row.token}
+          verification={selectTokenContext.verifyAsset(row.token)}
           importToken={row.hideImport ? undefined : importToken}
           shadowed={row.shadowed}
           wrapperId={row.wrapperId}

@@ -1,5 +1,4 @@
 /* Ophis brand kit for the business interface. Values come from origin/main. See brand-kit.md for the source of each rule. */
-/* 1. FONTS (same files as business.ophis.fi): the two @font-face rules are in fonts.css */
 /* 2. TOKENS */
 :root {
   --paper: #ffffff;  --fog: #fafafb;  --mist: #f2f2f3;
@@ -11,7 +10,7 @@
   --bad: #8a2b1a;    --bad-bg: #fbe9e2;  --bad-line: #eec2b6;
   --info: #3d4450;   --info-bg: #eef0f3; --info-line: #d9d9dc;
   --font-display: Georgia, 'Times New Roman', ui-serif, serif;
-  --font-body: 'Ophis Inter', Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-body: 'Neue Haas Unica Pro', system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
   --r-code: 6px; --r-sm: 8px; --r-btn: 12px; --r-row: 14px; --r-card: 16px; --r-panel: 20px; --r-hero: 24px; --r-pill: 9999px;
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 40px; --s8: 48px; --s10: 64px; --s12: 80px;

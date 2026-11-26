@@ -7,7 +7,6 @@
 // the page never chooses an amount, a token, a receiver or a chain. It only asks the wallet.
 import SafeAppsSDK from '@safe-global/safe-apps-sdk'
 import { decodeFunctionResult, encodeFunctionData, parseAbi } from 'viem'
-import '../src/app/fonts.css' // Inter, copied by this build into /sign/assets/: the page's policy has font-src 'self'
 import '../src/app/kit.css'
 import '../src/app/app.css'
 import './sign.css'

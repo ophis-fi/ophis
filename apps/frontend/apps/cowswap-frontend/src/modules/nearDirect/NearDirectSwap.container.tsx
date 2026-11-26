@@ -13,6 +13,7 @@ import { useSetTradeQuoteParams } from 'modules/tradeQuote'
 
 import { CurrencyInfo } from 'common/pure/CurrencyInputPanel/types'
 
+import { useNearFundingBalance } from './hooks/useNearFundingBalance'
 import { useNearSwapSelection } from './hooks/useNearSwapSelection'
 import { nearTokensAtom } from './nearDirect.atoms'
 import * as styledEl from './nearDirect.styled'
@@ -34,6 +35,7 @@ export function NearDirectSwap({ initial, onExit }: { initial: NearSwapSelection
   }, [preview])
   const source = findNearToken(tokens ?? [], selection.input)
   const destination = findNearToken(tokens ?? [], selection.output)
+  const fundingBalance = useNearFundingBalance(source, selection.input, refundTo)
   const tokenOptions = useMemo(() => nearTokenPickerOptions(tokens ?? [], true), [tokens])
   const buyTokenOptions = useMemo(() => nearTokenPickerOptions(tokens ?? []), [tokens])
   const { inputAmount, quoteAmount } = useMemo(() => {
@@ -87,7 +89,7 @@ export function NearDirectSwap({ initial, onExit }: { initial: NearSwapSelection
 
   return (
     <TradeWidget
-      inputCurrencyInfo={currencyInfo(Field.INPUT, selection.input, inputAmount)}
+      inputCurrencyInfo={{ ...currencyInfo(Field.INPUT, selection.input, inputAmount), balance: fundingBalance }}
       outputCurrencyInfo={currencyInfo(Field.OUTPUT, selection.output, null)}
       actions={{
         onCurrencySelection: select,

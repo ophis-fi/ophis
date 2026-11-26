@@ -179,7 +179,7 @@ export function renderStatsPage(s: PublicStats, query = new URLSearchParams()): 
 <style>
 :root{color-scheme:light}
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#ffffff;color:#17191c;font-family:Inter,system-ui,-apple-system,sans-serif;line-height:1.5;padding:32px 16px;font-variant-numeric:lining-nums tabular-nums;-webkit-font-smoothing:antialiased}
+body{background:#ffffff;color:#17191c;font-family:'Neue Haas Unica Pro', system-ui, sans-serif;line-height:1.5;padding:32px 16px;font-variant-numeric:lining-nums tabular-nums;-webkit-font-smoothing:antialiased}
 .wrap{max-width:960px;margin:0 auto}
 .brand{display:flex;align-items:center;gap:12px;margin-bottom:48px}
 .brand a{color:#17191c;font-size:24px;text-decoration:none}

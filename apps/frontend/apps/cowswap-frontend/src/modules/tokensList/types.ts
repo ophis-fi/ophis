@@ -5,11 +5,14 @@ import type { TokenListTags } from '@cowprotocol/tokens'
 
 import { PermitCompatibleTokens } from 'modules/permit'
 
+import type { Verification } from 'entities/verifiedAsset'
+
 export type TokenSelectionHandler = (token: TokenWithLogo) => Promise<void> | void
 export const TOKENIZED_ASSET_PROVIDER_TAGS = ['ondo', 'xStocks', 'coinbase', 'bStocks', 'reality'] as const
 export type TokenizedAssetProviderTag = (typeof TOKENIZED_ASSET_PROVIDER_TAGS)[number]
 
 export interface SelectTokenContext {
+  verifyAsset(token: TokenWithLogo): Verification | undefined
   balancesState: BalancesState
   onTokenListItemClick?(token: TokenWithLogo): void
   unsupportedTokens: { [tokenAddress: string]: { dateAdded: number } }

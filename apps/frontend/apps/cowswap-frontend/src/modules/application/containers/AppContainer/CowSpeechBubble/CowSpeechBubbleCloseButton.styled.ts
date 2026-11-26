@@ -15,7 +15,7 @@ export const CloseButton = styled.button`
   color: var(${UI.COLOR_TEXT_OPACITY_70});
   font-size: 19px;
   line-height: 1;
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--ophis-font-body);
   font-weight: 500;
   display: grid;
   place-items: center;

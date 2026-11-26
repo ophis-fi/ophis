@@ -4,6 +4,8 @@ import { TokenWithLogo } from '@cowprotocol/common-const'
 import { TokenLogo } from '@cowprotocol/tokens'
 import { TokenName, TokenSymbol } from '@cowprotocol/ui'
 
+import { isStockIssuer, VerifiedAssetBadge, type Verification } from 'entities/verifiedAsset'
+
 import { ClickableAddress } from 'common/pure/ClickableAddress'
 
 import { getTokenDisplayName } from './getTokenDisplayName.utils'
@@ -20,6 +22,7 @@ export interface TokenInfoProps {
   showContractInfo?: boolean
   hideNetworkBadge?: boolean
   isContractListed?: boolean
+  verification?: Verification
   tokenizedAssetProvider?: TokenizedAssetProviderTag
 }
 
@@ -33,15 +36,22 @@ export function TokenInfo(props: TokenInfoProps): ReactNode {
     hideNetworkBadge = false,
     isContractListed = false,
     tokenizedAssetProvider,
+    verification,
   } = props
-  const displayName = getTokenDisplayName(token.name, tokenizedAssetProvider)
+  const displayName = getTokenDisplayName(
+    token.name,
+    isStockIssuer(verification) ? verification : tokenizedAssetProvider,
+  )
 
   return (
     <styledEl.Wrapper className={className}>
       <TokenLogo token={token} sizeMobile={32} size={40} hideNetworkBadge={hideNetworkBadge} />
       <styledEl.TokenDetails>
         <styledEl.TokenSymbolWrapper>
-          <TokenSymbol token={token} />
+          <span>
+            <TokenSymbol token={token} />
+            <VerifiedAssetBadge verified={verification} />
+          </span>
           {showContractInfo ? (
             <ClickableAddress
               address={token.address}

@@ -62,12 +62,15 @@ export async function fundNearTransfer(
   return wallet.sendTransaction({ account, chain, to, data, value, gas, gasPrice })
 }
 
+export function nearEvmFundingChain(blockchain?: string): typeof monad | typeof xLayer | undefined {
+  return blockchain === 'monad' ? monad : blockchain === 'xlayer' ? xLayer : undefined
+}
+
 async function getFundingChain(transfer: NearTransfer): Promise<typeof monad | typeof xLayer> {
   validateNearTransfer(transfer)
   if (transfer.response.quoteRequest.confidentiality !== QuoteRequest.confidentiality.BASIC)
     throw new Error(NEAR_CONFIDENTIAL_QUOTE_REQUIRED)
-  const chain =
-    transfer.source.blockchain === 'monad' ? monad : transfer.source.blockchain === 'xlayer' ? xLayer : undefined
+  const chain = nearEvmFundingChain(transfer.source.blockchain)
   if (!chain || transfer.response.quote.depositMemo)
     throw new Error('Use the external wallet deposit instructions for this route.')
   if (!hasCurrentNearAssets(transfer, await getNearTokens()))

@@ -63,7 +63,7 @@ const Logo = styled(Link)`
 `
 
 const Wordmark = styled.span`
-  font-family: var(--cow-font-family, Inter, system-ui, sans-serif);
+  font-family: var(--cow-font-family-primary);
   font-size: 26px;
   font-weight: 600;
   letter-spacing: -0.8px;

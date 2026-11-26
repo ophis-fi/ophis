@@ -14,6 +14,7 @@ jest.mock('modules/tradeQuote', () => ({ useSetTradeQuoteParams: (params: unknow
 const mockInput = new Token(143, '0x1111111111111111111111111111111111111111', 6, 'USDC')
 const mockSelection = { input: mockInput, output: null, amount: '0.123456789' }
 jest.mock('jotai', () => ({ useAtomValue: () => ({ data: [] }) }))
+jest.mock('./hooks/useNearFundingBalance', () => ({ useNearFundingBalance: () => null }))
 jest.mock('./nearDirect.atoms', () => ({ nearTokensAtom: 'tokens' }))
 jest.mock('./hooks/useNearSwapSelection', () => ({ useNearSwapSelection: () => ({ selection: mockSelection }) }))
 jest.mock('./nearSwapAssets.utils', () => ({ findNearToken: jest.fn(), nearTokenPickerOptions: jest.fn() }))

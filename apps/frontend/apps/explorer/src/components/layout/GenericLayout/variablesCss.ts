@@ -14,7 +14,7 @@ const AllColors = css`
   --padding-container-default: 1.2rem;
 
   /* FONTS */
-  --font-default: 'Inter', 'Helvetica Neue', Helvetica, sans-serif;
+  --font-default: var(--cow-font-family-primary);
   --font-arial: Arial, Helvetica, sans-serif;
   --font-avenir: Avenir, Helvetica, sans-serif;
   --font-weight-normal: 400;

@@ -7,7 +7,6 @@ import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { Currency, CurrencyAmount } from '@cowprotocol/currency'
 import { HoverTooltip, TokenAmount } from '@cowprotocol/ui'
 
-import { Trans } from '@lingui/react/macro'
 import { useTheme } from 'styled-components/macro'
 import { Nullish } from 'types'
 
@@ -17,11 +16,11 @@ import { Field } from 'legacy/state/types'
 
 import { useUsdAmount } from 'modules/usdAmount'
 
-import { CowSwapAnalyticsCategory, toCowSwapGtmEvent } from 'common/analytics/types'
+import { CurrencySelectButtonContainer } from 'common/containers/CurrencySelectButton.container'
 import { CurrencyInfo } from 'common/pure/CurrencyInputPanel/types'
-import { CurrencySelectButton } from 'common/pure/CurrencySelectButton'
 import { FiatValue } from 'common/pure/FiatValue'
 
+import { SellAmountPresets } from './SellAmountPresets.pure'
 import * as styledEl from './styled'
 
 import { useConvertUsdToTokenValue } from '../../hooks/useConvertUsdToTokenValue'
@@ -150,23 +149,13 @@ export function CurrencyInputPanel(props: CurrencyInputPanelProps): ReactNode {
     [onUserInput, field, convertUsdToTokenValue, isUsdValuesMode, currency?.decimals],
   )
 
-  const handleMaxInput = useCallback(
-    (e: React.MouseEvent<HTMLButtonElement>) => {
-      e.preventDefault()
-      e.stopPropagation()
-
-      if (!maxBalance) {
-        return
-      }
-
-      const value = isUsdValuesMode ? maxBalanceUsdAmount : maxBalance
-
-      if (value) {
-        onUserInputDispatch(value.toExact(), isUsdValuesMode ? maxBalance.toExact() : undefined)
-      }
-    },
-    [maxBalance, onUserInputDispatch, isUsdValuesMode, maxBalanceUsdAmount],
-  )
+  const setSellAmount = (atoms: bigint): void => {
+    if (!maxBalance) return
+    const raw = atoms.toString()
+    const tokenValue = CurrencyAmount.fromRawAmount(maxBalance.currency, raw).toExact()
+    const usdValue = isUsdValuesMode ? maxBalanceUsdAmount?.divide(maxBalance.quotient).multiply(raw).toExact() : null
+    onUserInputDispatch(usdValue ?? tokenValue, tokenValue)
+  }
 
   useEffect(() => {
     // Compare the actual string values to preserve trailing decimals
@@ -213,17 +202,6 @@ export function CurrencyInputPanel(props: CurrencyInputPanelProps): ReactNode {
           ) : (
             <TokenAmount amount={balance} defaultValue="0" tokenSymbol={currency} />
           )}
-          {showSetMax && balance.greaterThan(0) && (
-            <styledEl.SetMaxBtn
-              data-click-event={toCowSwapGtmEvent({
-                category: CowSwapAnalyticsCategory.TRADE,
-                action: 'Set Maximum Sell Tokens',
-              })}
-              onClick={handleMaxInput}
-            >
-              <Trans>Max</Trans>
-            </styledEl.SetMaxBtn>
-          )}
         </styledEl.BalanceText>
       )}
     </div>
@@ -245,7 +223,7 @@ export function CurrencyInputPanel(props: CurrencyInputPanelProps): ReactNode {
 
   const selectorDisabled = !!props.disabled || (disabled && !props.allowUnsupportedTokenSelection)
   const currencySelector = (
-    <CurrencySelectButton
+    <CurrencySelectButtonContainer
       onClick={onTokenSelectClick}
       currency={selectorDisabled ? undefined : currency || undefined}
       loading={areCurrenciesLoading || selectorDisabled}
@@ -291,6 +269,17 @@ export function CurrencyInputPanel(props: CurrencyInputPanelProps): ReactNode {
           </div>
           <div>{!isOphisMobileSwap && currencySelector}</div>
         </styledEl.CurrencyInputBox>
+
+        {showSetMax && (
+          <SellAmountPresets
+            spendable={
+              !disabled && !inputDisabled && maxBalance && (!isUsdValuesMode || maxBalanceUsdAmount)
+                ? BigInt(maxBalance.quotient.toString())
+                : undefined
+            }
+            onSelect={setSellAmount}
+          />
+        )}
 
         <styledEl.CurrencyInputBox>
           <div>

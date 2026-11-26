@@ -36,7 +36,7 @@ function makeButton(label: string, value: Consent, primary: boolean, onDone: () 
   b.type = 'button'
   b.textContent = label
   b.style.cssText =
-    'cursor:pointer;border-radius:9px;padding:8px 16px;font:600 14px system-ui,sans-serif;border:1px solid ' +
+    'cursor:pointer;border-radius:9px;padding:8px 16px;font:600 14px var(--ifm-font-family-base);border:1px solid ' +
     (primary ? SAFFRON : '#d9d9dc') +
     ';background:' +
     (primary ? SAFFRON : 'transparent') +
@@ -65,7 +65,7 @@ function mountBanner(): void {
   bar.setAttribute('role', 'dialog')
   bar.setAttribute('aria-label', 'Analytics consent')
   bar.style.cssText =
-    'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:2147483647;width:max-content;max-width:calc(100vw - 24px);display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:center;padding:12px 16px;border:1px solid #d9d9dc;border-radius:14px;background:#fff;color:#17191c;font:14px/1.4 system-ui,-apple-system,sans-serif;box-shadow:0 8px 30px rgba(23,25,28,.08)'
+    'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:2147483647;width:max-content;max-width:calc(100vw - 24px);display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:center;padding:12px 16px;border:1px solid #d9d9dc;border-radius:14px;background:#fff;color:#17191c;font:14px/1.4 var(--ifm-font-family-base);box-shadow:0 8px 30px rgba(23,25,28,.08)'
 
   const txt = document.createElement('span')
   txt.style.cssText = 'flex:1 1 240px;min-width:200px'

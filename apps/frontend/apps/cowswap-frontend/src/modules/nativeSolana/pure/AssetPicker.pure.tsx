@@ -2,6 +2,7 @@ import { ReactNode, useEffect, useRef, useState } from 'react'
 
 import { Trans } from '@lingui/react/macro'
 import { formatOphisSolanaAmount, SOLANA_NATIVE_ASSET, solanaAddress, type OphisWalletHolding } from '@ophis/solana-sdk'
+import { VerifiedAssetBadge, type Verification } from 'entities/verifiedAsset'
 
 import * as styledEl from './SwapForm.styled'
 
@@ -25,6 +26,7 @@ export function AssetIcon({ asset }: { asset: SolanaAsset }): ReactNode {
 const maxRowsPerGroup = 50
 
 interface AssetPickerProps {
+  verifyAsset(asset: SolanaAsset): Verification | undefined
   catalogLoading: boolean
   catalogUnavailable: boolean
   side: 'sell' | 'buy'
@@ -70,6 +72,7 @@ export function AssetPicker({
   select,
   close,
   catalogLoading,
+  verifyAsset,
   catalogUnavailable,
 }: AssetPickerProps): ReactNode {
   const dialog = useRef<HTMLDialogElement>(null)
@@ -116,7 +119,10 @@ export function AssetPicker({
                   <styledEl.Option key={asset.mint} type="button" title={asset.mint} onClick={() => select(asset)}>
                     <AssetIcon asset={asset} />
                     <span>
-                      <strong>{asset.symbol}</strong>
+                      <strong>
+                        {asset.symbol}
+                        <VerifiedAssetBadge verified={verifyAsset(asset)} />
+                      </strong>
                       <small>
                         {asset.name}
                         {asset.mint !== nativeAsset.mint && ' · ' + shortMint(asset.mint)}

@@ -1,21 +1,17 @@
 import { ReactNode } from 'react'
 
-import { ARC_CHAIN_ID, getChainInfo } from '@cowprotocol/common-const'
+import { getChainInfo } from '@cowprotocol/common-const'
 import { TargetChainId } from '@cowprotocol/cow-sdk'
 import { Badge, BadgeTypes } from '@cowprotocol/ui'
 
 import { Trans } from '@lingui/react/macro'
 
 import { ActiveRowLinks } from './ActiveRowLinks/ActiveRowLinks.pure'
+import { NEW_NETWORK_IDS } from './NetworksList.constants'
 import * as styledEl from './NetworksList.styled'
 import { getLogo } from './NetworksList.utils'
 
 import { useDeprecatedChains } from '../../hooks/useDeprecatedChains'
-
-const NEW_NETWORK_IDS: Set<TargetChainId> = new Set([
-  ARC_CHAIN_ID,
-  4663 as unknown as TargetChainId, // Ophis fork: Robinhood Chain
-])
 
 export interface NetworksListProps {
   currentChainId: TargetChainId | null

@@ -10,7 +10,10 @@ import { useAddTokenImportCallback } from '../../hooks/useAddTokenImportCallback
 import { TokenizedAssetProviderTag } from '../../types'
 import { ImportTokenItem } from '../ImportTokenItem'
 
+import type { Verification } from 'entities/verifiedAsset'
+
 interface AddIntermediateTokenProps {
+  verification?: Verification
   intermediateBuyToken: TokenWithLogo
   isContractListed: boolean
   tokenizedAssetProvider: TokenizedAssetProviderTag | undefined
@@ -19,6 +22,7 @@ interface AddIntermediateTokenProps {
 }
 
 export function AddIntermediateToken({
+  verification,
   intermediateBuyToken,
   isContractListed,
   tokenizedAssetProvider,
@@ -41,6 +45,7 @@ export function AddIntermediateToken({
       <ImportTokenItem
         key={tokenId}
         token={intermediateBuyToken}
+        verification={verification}
         importToken={handleImport}
         isContractListed={isContractListed}
         tokenizedAssetProvider={tokenizedAssetProvider}

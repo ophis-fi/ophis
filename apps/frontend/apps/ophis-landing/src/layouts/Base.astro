@@ -73,8 +73,6 @@ const howToJsonLd = `{"@context":"https://schema.org","@type":"HowTo","@id":"htt
   <meta name="twitter:image" content={image}>
   <meta name="twitter:image:alt" content={imageAlt}>
 
-  <link rel="preload" href="/fonts/inter-variable.woff2" as="font" type="font/woff2" crossorigin>
-
   <!-- Reveal-up hidden state is gated on `html.reveal-armed`, added by
        src/lib/reveal.ts only after it confirms IntersectionObserver and arms
        the observer (fail-open: a failed/absent reveal module leaves content
@@ -171,7 +169,7 @@ const howToJsonLd = `{"@context":"https://schema.org","@type":"HowTo","@id":"htt
             bar.id = 'ophis-consent';
             bar.setAttribute('role', 'dialog');
             bar.setAttribute('aria-label', 'Analytics consent');
-            bar.style.cssText = 'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:2147483647;width:max-content;max-width:calc(100vw - 24px);display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:center;padding:12px 16px;border:1px solid #d9d9dc;border-radius:14px;background:#fff;color:#17191c;font:14px/1.4 system-ui,-apple-system,sans-serif;box-shadow:0 8px 30px rgba(23,25,28,.08)';
+            bar.style.cssText = 'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:2147483647;width:max-content;max-width:calc(100vw - 24px);display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:center;padding:12px 16px;border:1px solid #d9d9dc;border-radius:14px;background:#fff;color:#17191c;font:14px/1.4 var(--ophis-font-body);box-shadow:0 8px 30px rgba(23,25,28,.08)';
             var txt = document.createElement('span');
             txt.style.cssText = 'flex:1 1 240px;min-width:200px';
             var lead = document.createTextNode('We use privacy-respecting analytics (anonymized IP, no ads). ');
@@ -186,7 +184,7 @@ const howToJsonLd = `{"@context":"https://schema.org","@type":"HowTo","@id":"htt
               var b = document.createElement('button');
               b.type = 'button';
               b.textContent = label;
-              b.style.cssText = 'cursor:pointer;border-radius:9px;padding:8px 16px;font:600 14px system-ui,sans-serif;border:1px solid ' + (primary ? '#17191c' : '#d9d9dc') + ';background:' + (primary ? '#17191c' : 'transparent') + ';color:' + (primary ? '#fff' : '#17191c');
+              b.style.cssText = 'cursor:pointer;border-radius:9px;padding:8px 16px;font:600 14px var(--ophis-font-body);border:1px solid ' + (primary ? '#17191c' : '#d9d9dc') + ';background:' + (primary ? '#17191c' : 'transparent') + ';color:' + (primary ? '#fff' : '#17191c');
               b.addEventListener('click', function () {
                 try { localStorage.setItem('ophis_consent', value); } catch (e) {}
                 window.gtag('consent', 'update', { analytics_storage: value });
@@ -247,7 +245,7 @@ const howToJsonLd = `{"@context":"https://schema.org","@type":"HowTo","@id":"htt
       border-radius: var(--ophis-radius-sm);
       background: var(--ophis-saffron-60);
       color: var(--ophis-bg);
-      font: 600 14px/1 'Inter', system-ui, sans-serif;
+      font: 600 14px/1 var(--ophis-font-body);
       text-decoration: none;
       transition: transform 120ms ease;
     }

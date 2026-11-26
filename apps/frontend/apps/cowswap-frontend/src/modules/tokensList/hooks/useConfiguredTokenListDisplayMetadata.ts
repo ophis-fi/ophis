@@ -11,15 +11,14 @@ import {
   ListSourceConfig,
   ListState,
   ONDO_TOKENS_LIST_SOURCE,
-  OPHIS_TOKENS_LIST_SOURCE,
   TokenListTags,
   XSTOCKS_TOKENS_LIST_SOURCE,
 } from '@cowprotocol/tokens'
 import { StatusColorVariant } from '@cowprotocol/ui'
 
+import { STOCK_LABELS } from 'entities/verifiedAsset/verifiedAsset'
 import { atomWithQuery, type AtomWithQueryResult } from 'jotai-tanstack-query'
 
-import { LISTED_STOCK_PROVIDERS } from '../const/listedStockProviders.const'
 import { TokenizedAssetProviderTag } from '../types'
 
 export interface ConfiguredTokenListDisplayMetadata {
@@ -33,8 +32,6 @@ const EMPTY_CONFIGURED_LISTS: readonly ListSourceConfig[] = []
 const EMPTY_PERSISTED_LISTS: Readonly<Record<string, ListState | 'deleted' | undefined>> = {}
 const TOKENIZED_ASSET_PROVIDER_BY_SOURCE = new Map<string, TokenizedAssetProviderTag>([
   [ONDO_TOKENS_LIST_SOURCE, 'ondo'],
-  // Curated entries identify Ondo assets by contract, including registered Arc mappings.
-  [OPHIS_TOKENS_LIST_SOURCE, 'ondo'],
   [XSTOCKS_TOKENS_LIST_SOURCE, 'xStocks'],
   [COINBASE_TOKENIZED_STOCKS_LIST_SOURCE, 'coinbase'],
 ])
@@ -67,7 +64,7 @@ function addProviderTagInfo(
 
   tokenListTags[providerTag] = {
     id: providerTag,
-    name: providerTagInfo.name,
+    name: STOCK_LABELS[providerTag],
     description: providerTagInfo.description,
     color: StatusColorVariant.Info,
   }
@@ -78,28 +75,12 @@ function addTokenMetadata(
   providerTag: TokenizedAssetProviderTag | undefined,
   tokenIds: Set<string>,
   providerByTokenId: Map<string, TokenizedAssetProviderTag>,
-  tokenListTags: TokenListTags,
 ): void {
   for (const token of tokenList.list.tokens) {
     const tokenId = getTokenId({ chainId: token.chainId, address: token.address })
     tokenIds.add(tokenId)
 
     if (providerTag && token.tags?.includes(providerTag)) providerByTokenId.set(tokenId, providerTag)
-
-    const listedProvider = LISTED_STOCK_PROVIDERS.find(
-      ({ source, chainId, suffixes }) =>
-        tokenList.source === source && token.chainId === chainId && suffixes.some((suffix) => suffix.test(token.name)),
-    )
-    if (listedProvider) {
-      // Consumers match by chain + address, never by a token's displayed name or symbol.
-      providerByTokenId.set(tokenId, listedProvider.id)
-      tokenListTags[listedProvider.id] = {
-        id: listedProvider.id,
-        name: listedProvider.name,
-        description: listedProvider.description,
-        color: StatusColorVariant.Info,
-      }
-    }
   }
 }
 
@@ -116,7 +97,7 @@ export function getConfiguredTokenListDisplayMetadata(
 
     const providerTag = TOKENIZED_ASSET_PROVIDER_BY_SOURCE.get(tokenList.source)
     addProviderTagInfo(tokenList, providerTag, tokenListTags)
-    addTokenMetadata(tokenList, providerTag, tokenIds, providerByTokenId, tokenListTags)
+    addTokenMetadata(tokenList, providerTag, tokenIds, providerByTokenId)
   }
 
   return { listedTokenIds: tokenIds, tokenizedAssetProviderByTokenId: providerByTokenId, tokenListTags }

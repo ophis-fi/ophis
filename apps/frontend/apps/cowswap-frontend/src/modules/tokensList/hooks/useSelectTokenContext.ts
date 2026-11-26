@@ -3,6 +3,8 @@ import { useMemo } from 'react'
 import { TokenWithLogo } from '@cowprotocol/common-const'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
+import { useAssetVerificationResolver } from 'entities/verifiedAsset'
+
 import { useChainsToSelect } from './useChainsToSelect'
 import { useSelectTokenWidgetState } from './useSelectTokenWidgetState'
 
@@ -19,12 +21,14 @@ export function useSelectTokenContext(params?: UseSelectTokenContextParams): Sel
   const widgetState = useSelectTokenWidgetState()
   const chainsToSelect = useChainsToSelect()
   const targetChainId = chainsToSelect?.defaultChainId ?? widgetState.selectedTargetChainId ?? chainId
+  const verifyAsset = useAssetVerificationResolver()
   const tokenData = useTokenDataSources(targetChainId)
 
   const handleSelectToken = useTokenSelectionHandler(widgetState.onSelectToken, widgetState)
 
   return useMemo(
     () => ({
+      verifyAsset,
       balancesState: tokenData.balancesState,
       selectedToken: widgetState.selectedToken,
       onSelectToken: handleSelectToken,
@@ -37,6 +41,7 @@ export function useSelectTokenContext(params?: UseSelectTokenContextParams): Sel
       isWalletConnected: !!account,
     }),
     [
+      verifyAsset,
       tokenData.balancesState,
       widgetState.selectedToken,
       handleSelectToken,

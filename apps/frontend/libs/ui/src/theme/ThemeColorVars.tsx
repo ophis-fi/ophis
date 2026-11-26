@@ -6,6 +6,7 @@ import { darken, lighten, transparentize } from 'color2k'
 import { css } from 'styled-components/macro'
 
 import { Color } from '../colors'
+import { Font } from '../consts'
 import { UI } from '../enum'
 
 /**
@@ -377,7 +378,7 @@ export const ThemeColorVars = css`
     ${UI.FONT_SIZE_LARGE}: 18px;
     ${UI.FONT_SIZE_LARGER}: 20px;
     ${UI.FONT_SIZE_LARGEST}: 24px;
-    ${UI.FONT_FAMILY_PRIMARY}: 'studiofeixen', 'Inter var', 'Inter', Arial, sans-serif;
+    ${UI.FONT_FAMILY_PRIMARY}: ${Font.family};
     ${UI.FONT_FAMILY_MONO}: 'studiofeixenmono', 'IBM Plex Mono', 'Roboto Mono', 'Courier New', monospace;
 
     // Animation

@@ -123,37 +123,14 @@
   --ophis-gradient-sunset-soft: linear-gradient(135deg, #FFE0CE 0%, #FFCABE 35%, #F8B8CC 70%, #D5B6D8 100%);
   --ophis-gradient-sunset-radial: radial-gradient(120% 80% at 20% 20%, #FF8A52 0%, #E66A55 40%, #C73D6C 75%, #5C1D14 100%);
 
-  /* Type families — Steep editorial pairing (approved): Georgia for
-     display/headings (regular + italic only), Inter/system sans for
-     body/UI, system mono for code/data. Inter is self-hosted; Georgia
-     and the system stacks fall back to installed fonts. */
+  /* Editorial headings, body text and financial data use distinct families. */
   --ophis-font-display: Georgia, "Times New Roman", ui-serif, serif;
-  --ophis-font-body: "Inter var", Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ophis-font-body: 'Neue Haas Unica Pro', system-ui, sans-serif;
   --ophis-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
   /* Override CoW's font-family CSS variables so existing components inherit Ophis fonts */
   --cow-font-family-primary: var(--ophis-font-body);
   --cow-font-family-mono: var(--ophis-font-mono);
-}
-
-/*
- * Force body font onto the cow root that ThemedGlobalStyle sets via
- * `font-family: 'Inter', sans-serif`, so the shared self-hosted face also
- * applies to controls that do not read var(--cow-font-family-primary).
- */
-html,
-input,
-textarea,
-button {
-  font-family: var(--ophis-font-body);
-}
-@supports (font-variation-settings: normal) {
-  html,
-  input,
-  textarea,
-  button {
-    font-family: var(--ophis-font-body);
-  }
 }
 
 /* Display class — used on hero/marketing surfaces. Steep keeps the

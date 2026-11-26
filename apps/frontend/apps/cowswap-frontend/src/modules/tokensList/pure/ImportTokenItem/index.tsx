@@ -14,8 +14,11 @@ import { ImportButton } from '../commonElements'
 import { TokenInfo } from '../TokenInfo'
 import { TokenTags } from '../TokenTags'
 
+import type { Verification } from 'entities/verifiedAsset'
+
 export interface ImportTokenItemProps {
   token: TokenWithLogo
+  verification?: Verification
   importToken?(token: TokenWithLogo): void
   existing?: true
   shadowed?: boolean
@@ -31,6 +34,7 @@ export interface ImportTokenItemProps {
 export function ImportTokenItem(props: ImportTokenItemProps): ReactNode {
   const {
     token,
+    verification,
     importToken,
     shadowed,
     existing,
@@ -47,12 +51,13 @@ export function ImportTokenItem(props: ImportTokenItemProps): ReactNode {
     <div style={{ opacity: shadowed ? 0.6 : 1 }}>
       <TokenInfo
         token={token}
+        verification={verification}
         showAddress={false}
         hideNetworkBadge
         isContractListed={isContractListed}
         tokenizedAssetProvider={tokenizedAssetProvider}
         tags={
-          tokenizedAssetProvider ? (
+          tokenizedAssetProvider && !verification ? (
             <TokenTags
               isUnsupported={false}
               tokenListTags={tokenListTags}

@@ -145,7 +145,7 @@ const OpenSwapButton = styled(Link)`
   gap: 6px;
   padding: 9px 18px;
   border-radius: 999px;
-  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
+  font-family: var(--ophis-font-body);
   font-weight: 600;
   font-size: 14px;
   /* Saffron accent, shared with the hero "Swap directly" CTA: both mark the
@@ -229,7 +229,7 @@ const Hero = styled.section`
 
 const Eyebrow = styled.span`
   text-transform: uppercase;
-  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
+  font-family: var(--ophis-font-body);
   font-size: 11px;
   letter-spacing: 0.18em;
   color: rgba(245, 239, 230, 0.6);
@@ -247,7 +247,7 @@ const accentShimmer = keyframes`
 
 const Tagline = styled.h1`
   margin: 0;
-  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
+  font-family: var(--ophis-font-body);
   font-weight: 500;
   /* vh component shrinks the headline on short viewports so the hero never
      forces a scroll; vw keeps it large on tall/wide screens. */
@@ -271,7 +271,7 @@ const Tagline = styled.h1`
 
 const Sub = styled.p`
   margin: 0;
-  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
+  font-family: var(--ophis-font-body);
   font-size: 16px;
   line-height: 1.55;
   color: rgba(245, 239, 230, 0.7);
@@ -286,7 +286,7 @@ const InputBlock = styled.div`
 `
 
 const Helper = styled.div<{ $variant: 'hint' | 'error' }>`
-  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
+  font-family: var(--ophis-font-body);
   font-size: 13px;
   text-align: center;
   color: ${({ $variant }) => ($variant === 'error' ? '#FFB7B7' : 'rgba(245, 239, 230, 0.6)')};
@@ -298,7 +298,7 @@ const ContinueButton = styled.button<{ $active: boolean }>`
   border: none;
   border-radius: 999px;
   padding: 16px 36px;
-  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
+  font-family: var(--ophis-font-body);
   font-size: 15px;
   font-weight: 700;
   letter-spacing: 0.01em;
@@ -358,7 +358,7 @@ const SwapDirectlyButton = styled(Link)`
   gap: 8px;
   border-radius: 999px;
   padding: 16px 30px;
-  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
+  font-family: var(--ophis-font-body);
   font-size: 15px;
   font-weight: 700;
   letter-spacing: 0.01em;

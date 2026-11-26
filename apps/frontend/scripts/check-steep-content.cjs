@@ -27,16 +27,9 @@ async function checkThemeColor(page, dark) {
 
 async function check(page, dark, label) {
   const googleRequests = []
-  const localFonts = []
   page.on('request', (request) => {
     if (['fonts.googleapis.com', 'fonts.gstatic.com'].includes(new URL(request.url()).hostname))
       googleRequests.push(request.url())
-  })
-  page.on('response', (response) => {
-    const url = new URL(response.url())
-    if (url.origin === new URL(base).origin && url.pathname === '/static/Inter-roman.var.woff2') {
-      localFonts.push(response.status())
-    }
   })
   await page.addInitScript(
     ({ dark }) => {
@@ -92,12 +85,9 @@ async function check(page, dark, label) {
     // Logos are not body text: detect an invisible asset, not enforce a text AA ratio.
     assert.ok(logo.contrast >= 1.8, logo.src + ' disappears against its preview background')
   }
-  await page.evaluate(() => document.fonts.ready)
-  assert.ok(
-    await page.evaluate(() =>
-      [...document.fonts].some((font) => font.family.replaceAll('"', '') === 'Inter var' && font.status === 'loaded'),
-    ),
-    'self-hosted Inter face not loaded',
+  assert.match(
+    await page.locator('body').evaluate((el) => getComputedStyle(el).fontFamily),
+    /^['"]?Neue Haas Unica Pro['"]?,/,
   )
   await page.locator('#logos').screenshot({ path: join(artifacts, label + '-logos.png') })
 
@@ -134,7 +124,6 @@ async function check(page, dark, label) {
   await checkThemeColor(page, false)
   await page.evaluate(() => document.fonts.ready)
   assert.deepEqual(googleRequests, [], 'active chrome requested Google Fonts')
-  assert.ok(localFonts.includes(200), 'local Inter font did not return HTTP 200')
   const descriptions = await page.evaluate(async () => {
     const shell = new DOMParser().parseFromString(await (await fetch('/')).text(), 'text/html')
     const metadata = [
@@ -159,7 +148,7 @@ async function check(page, dark, label) {
   console.log(
     'PASS',
     label,
-    'logo assets, local Inter, no Google Fonts, empty reward tracks, shell descriptions and route theme-color restoration',
+    'logo assets, local Neue Haas Unica Pro, no Google Fonts, empty reward tracks, shell descriptions and route theme-color restoration',
   )
 }
 

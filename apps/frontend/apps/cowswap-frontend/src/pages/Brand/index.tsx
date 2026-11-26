@@ -10,7 +10,7 @@
  *
  * Steep refresh: swatches and type samples follow the approved
  * editorial palette (ink / paper / mist / fog / peach / sienna) and
- * the Georgia + Inter/system type pairing.
+ * the Georgia + Neue Haas Unica Pro type pairing.
  */
 import { ReactNode } from 'react'
 
@@ -258,7 +258,7 @@ const BRAND_SECTIONS: ReactNode = (
         </FontSample>
         <FontSample $family={STEEP_FONT.body}>
           <div className="sample">Aa Bb Cc</div>
-          <div className="name">Inter / system sans</div>
+          <div className="name">Neue Haas Unica Pro</div>
           <div className="role">Body, UI, paragraphs, navigation</div>
         </FontSample>
         <FontSample $family={STEEP_FONT.mono}>
@@ -268,8 +268,8 @@ const BRAND_SECTIONS: ReactNode = (
         </FontSample>
       </FeatureGrid>
       <Callout tone="info">
-        Headings use Georgia and data uses the system monospace stack. Body text uses self-hosted Inter with a system-ui
-        fallback.
+        Headings use Georgia and data uses the system monospace stack. Body text uses Neue Haas Unica Pro when installed,
+        with the system sans serif as a fallback.
       </Callout>
     </Section>
 

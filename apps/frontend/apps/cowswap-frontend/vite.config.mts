@@ -225,7 +225,7 @@ export default defineConfig(({ mode }) => {
         output: {
           // Remove hash for font files to enable preloading
           assetFileNames: (assetInfo) => {
-            if (assetInfo.name && (/StudioFeixen/i.test(assetInfo.name) || /Inter-/i.test(assetInfo.name))) {
+            if (assetInfo.name && /StudioFeixen/i.test(assetInfo.name)) {
               return 'static/[name][extname]' // Fonts without hash
             }
             return 'static/[name]-[hash][extname]' // Everything else with hash

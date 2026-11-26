@@ -65,7 +65,7 @@ const Wrap = styled.div`
 `
 
 const Editor = styled.div`
-  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
+  font-family: var(--ophis-font-body);
   font-size: 18px;
   line-height: 32px;
   letter-spacing: 0.01em;

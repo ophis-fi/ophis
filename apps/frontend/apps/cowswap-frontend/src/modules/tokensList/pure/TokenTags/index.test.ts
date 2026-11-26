@@ -7,13 +7,19 @@ const tokenListTags = {
   xStocks: { id: 'xStocks', name: 'xStock', description: 'xStocks asset', color: StatusColorVariant.Info },
   bStocks: { id: 'bStocks', name: 'bStocks', description: 'bStocks asset', color: StatusColorVariant.Info },
   reality: { id: 'reality', name: 'Reality', description: 'Reality asset', color: StatusColorVariant.Info },
+  circle: { id: 'circle', name: 'Official Circle', description: 'Circle asset' },
+  robinhood: { id: 'robinhood', name: 'Robinhood', description: 'Robinhood asset' },
   stablecoin: { id: 'stablecoin', name: 'Stablecoin', description: 'Stablecoin' },
 }
 
 describe('getTrustedTokenTags', () => {
   it('removes provider claims from unvalidated raw token tags', () => {
     expect(
-      getTrustedTokenTags(['ondo', 'xStocks', 'bStocks', 'reality', 'stablecoin'], tokenListTags, undefined),
+      getTrustedTokenTags(
+        ['ondo', 'xStocks', 'bStocks', 'reality', 'circle', 'robinhood', 'stablecoin'],
+        tokenListTags,
+        undefined,
+      ),
     ).toEqual([tokenListTags.stablecoin])
   })
 

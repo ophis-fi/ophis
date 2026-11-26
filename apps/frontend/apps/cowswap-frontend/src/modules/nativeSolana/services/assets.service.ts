@@ -1,4 +1,6 @@
+import type { CircleTokenIdentity } from '@cowprotocol/common-const'
 import { fetchWithTimeout } from '@cowprotocol/common-utils'
+import { AdditionalTargetChainId } from '@cowprotocol/cow-sdk'
 
 import {
   OPHIS_LOCAL_WALLET_RPC,
@@ -7,7 +9,12 @@ import {
   solanaAddress,
   type OphisWalletHolding,
 } from '@ophis/solana-sdk'
-import { OPHIS_SOLANA_MAINNET_API, SOLANA_DEVNET_GENESIS, type OphisSolanaConfig } from 'entities/solana'
+import {
+  OPHIS_SOLANA_CONFIG,
+  OPHIS_SOLANA_MAINNET_API,
+  SOLANA_DEVNET_GENESIS,
+  type OphisSolanaConfig,
+} from 'entities/solana'
 import { z } from 'zod'
 
 export const walletHoldingsKey = (genesis?: string, owner?: string) => ['solana-wallet-assets', genesis, owner] as const
@@ -15,10 +22,17 @@ export const walletHoldingsKey = (genesis?: string, owner?: string) => ['solana-
 export interface SolanaAsset {
   mint: string
   symbol: string
+  symbolIsPlaceholder?: true
   name: string
   decimals?: number
   icon?: string
 }
+
+export function solanaAssetIdentity(asset: SolanaAsset | null): CircleTokenIdentity {
+  const chainId = OPHIS_SOLANA_CONFIG?.chain === 'solana:mainnet' ? AdditionalTargetChainId.SOLANA : undefined
+  return { chainId, address: asset?.mint, symbol: asset?.symbolIsPlaceholder ? undefined : asset?.symbol }
+}
+
 export const nativeAsset: SolanaAsset = {
   mint: 'SOL',
   symbol: 'SOL',
@@ -63,7 +77,7 @@ export function shortMint(value: string): string {
   return value.length > 14 ? value.slice(0, 5) + '…' + value.slice(-5) : value
 }
 export function unknownAsset(mint: string): SolanaAsset {
-  return { mint, symbol: shortMint(mint), name: 'SPL token' }
+  return { mint, symbol: shortMint(mint), symbolIsPlaceholder: true, name: 'SPL token' }
 }
 export function walletMint(mint: string): string {
   return mint === SOLANA_NATIVE_ASSET ? 'SOL' : mint
@@ -171,7 +185,10 @@ export function walletAssets(
   for (const { mint, name, symbol, decimals } of holdings) {
     const id = walletMint(mint)
     const asset = assets.get(id)
-    assets.set(id, { ...(asset ?? (name && symbol ? { mint: id, name, symbol } : unknownAsset(id))), decimals })
+    assets.set(id, {
+      ...(asset ?? (symbol ? { mint: id, name: name || 'SPL token', symbol } : unknownAsset(id))),
+      decimals,
+    })
   }
   return [...assets.values()]
 }
