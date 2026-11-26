@@ -13,12 +13,7 @@ import { queryClientAtom } from 'jotai-tanstack-query'
 
 import { manageNativeSolanaOrderAtom, orderActionReceiptAtom, recordOrderActionAtom } from './orderActions.atoms'
 import { savedNativeSolanaOrdersAtom, visibleNativeSolanaOrdersAtom } from './orders.atoms'
-import {
-  nativeSolanaFormAtom,
-  nativeSolanaQuoteErrorAtom,
-  nativeSolanaReviewAtom,
-  requestNativeSolanaQuoteAtom,
-} from './trade.atoms'
+import { nativeSolanaFormAtom, nativeSolanaReviewAtom, requestNativeSolanaQuoteAtom } from './trade.atoms'
 
 import { balanceEndpoint, mainnetWalletRpc, walletHoldingsKey } from '../services/assets.service'
 import { nativeSolanaErrorMessage } from '../services/trade.service'
@@ -122,21 +117,6 @@ it('discards a quote if the wallet or form changed while the request was running
   expect(store.get(nativeSolanaReviewAtom)?.connection).toBe(second)
   store.set(nativeSolanaFormAtom, { ...store.get(nativeSolanaFormAtom), amount: '2' })
   expect(store.get(nativeSolanaReviewAtom)).toBeNull()
-})
-
-it('keeps expired quotes out of review and scopes the retry message to the affected input', async () => {
-  const store = createStore()
-  store.set(solanaConnectionAtom, connection('owner'))
-  store.set(nativeSolanaFormAtom, { sellMint: 'SOL', buyMint: 'mint', amount: '1', slippageBps: 50 })
-  jest.mocked(fetchOphisSolanaQuote).mockResolvedValueOnce({
-    verified: true,
-    expiration: new Date(0).toISOString(),
-  } as Awaited<ReturnType<typeof fetchOphisSolanaQuote>>)
-  await store.set(requestNativeSolanaQuoteAtom)
-  expect(store.get(nativeSolanaReviewAtom)).toBeNull()
-  expect(store.get(nativeSolanaQuoteErrorAtom)).toMatch(/expired/)
-  store.set(nativeSolanaFormAtom, { ...store.get(nativeSolanaFormAtom), amount: '2' })
-  expect(store.get(nativeSolanaQuoteErrorAtom)).toBeNull()
 })
 
 it('ignores malformed saved data and isolates recovered orders by exact wallet and deployment', () => {

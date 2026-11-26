@@ -196,6 +196,14 @@ it.each([
     const store = await reviewedStore()
     await store.set(createNativeSolanaOrderAtom, replace)
     expect(store.get(nativeSolanaErrorAtom)).toMatch(error)
+    if (reviewed !== current) {
+      expect(store.get(nativeSolanaReviewAtom)).toBeNull()
+      allowance.mockResolvedValueOnce({ delegate, atoms: current })
+      await store.set(requestNativeSolanaQuoteAtom)
+      expect(store.get(nativeSolanaReviewAtom)?.allowance?.atoms).toBe(current)
+    } else {
+      expect(store.get(nativeSolanaReviewAtom)?.allowance?.atoms).toBe(reviewed)
+    }
     expect(send).not.toHaveBeenCalled()
     expect(ordersAfterReload()).toEqual({})
   },

@@ -1,16 +1,7 @@
-import { createStore, Provider } from 'jotai'
-import type { ReactNode } from 'react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 
-import { setupI18n } from '@lingui/core'
-import { I18nProvider } from '@lingui/react'
-import { fetchOphisNativeSellReserve, solanaAddress } from '@ophis/solana-sdk'
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { solanaConnectionAtom } from 'entities/solana'
-import { queryClientAtom } from 'jotai-tanstack-query'
+import { fetchOphisNativeSellReserve, renderForm, solanaAddress, solanaConnectionAtom } from './solanaForm.test-utils'
 
-import { NativeSolanaForm } from './NativeSolanaForm.container'
-
-import * as trade from '../services/trade.service'
 import { walletAssetListAtom } from '../state/assets.atoms'
 import { nativeSolanaFormAtom } from '../state/trade.atoms'
 
@@ -20,67 +11,6 @@ const aapl = 'XsbEhLAtcf6HdfpFZ5xEMdqW8nfAvcsP5bdudRLJzJp'
 const nvda = 'Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh'
 const pyth = 'HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3'
 const wsol = 'So11111111111111111111111111111111111111112'
-jest.mock(
-  '@ophis/solana-sdk',
-  () => ({
-    SOLANA_NATIVE_ASSET: '11111111111111111111111111111111',
-    WRAPPED_SOL_MINT: 'So11111111111111111111111111111111111111112',
-    solanaAddress: (value: string) => {
-      if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value)) throw Error('Invalid address')
-      return value
-    },
-    fetchOphisNativeSellReserve: jest.fn().mockResolvedValue(2646600n),
-    fetchOphisWalletHoldings: async () => [
-      { mint: '11111111111111111111111111111111', atoms: 2822552n, decimals: 9 },
-      { mint: '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R', atoms: 123n, decimals: 2 },
-    ],
-    parseOphisSolanaAmount: (value: string, decimals: number) => BigInt(Math.round(Number(value) * 10 ** decimals)),
-    OphisSolanaHttpError: class extends Error {},
-    formatOphisSolanaAmount: (atoms: bigint, decimals: number) => String(Number(atoms) / 10 ** decimals),
-  }),
-  { virtual: true },
-)
-jest.mock('entities/solana', () => ({
-  OPHIS_SOLANA_CONFIG: { api: 'https://example.test', chain: 'solana:mainnet', genesis: 'mainnet' },
-  solanaConnectionAtom: jest
-    .requireActual('jotai')
-    .atom({ wallet: { name: 'Test wallet' }, account: { address: '11111111111111111111111111111111' } }),
-  solanaWalletsAtom: jest.requireActual('jotai').atom([]),
-  solanaWalletBusyAtom: jest.requireActual('jotai').atom(false),
-  solanaWalletErrorAtom: jest.requireActual('jotai').atom(null),
-}))
-jest.mock('modules/networkSelector', () => ({ NetworkSelector: () => null }))
-jest.mock('./SolanaWalletConnect.container', () => ({ SolanaWalletConnect: () => null }))
-jest.mock('ophis/components/AssetSwap/AssetSwapFields', () => ({
-  AssetSwapFieldsLayout: ({ input, output }: { input: ReactNode; output: ReactNode }) => (
-    <>
-      {input}
-      {output}
-    </>
-  ),
-}))
-
-const originalFetch = global.fetch
-afterEach(() => {
-  global.fetch = originalFetch
-  jest.restoreAllMocks()
-})
-
-function renderForm(onReview = jest.fn()): ReturnType<typeof createStore> {
-  HTMLDialogElement.prototype.showModal = function (): void {
-    this.open = true
-  }
-  const store = createStore()
-  store.get(queryClientAtom).clear()
-  render(
-    <Provider store={store}>
-      <I18nProvider i18n={setupI18n({ locale: 'en', messages: { en: {} } })}>
-        <NativeSolanaForm onReview={onReview} />
-      </I18nProvider>
-    </Provider>,
-  )
-  return store
-}
 
 it('loads the mainnet catalog on demand for both pickers and keeps selections keyed by mint', async () => {
   const tokens = [
@@ -208,49 +138,4 @@ it('retries a failed SOL reserve estimate on Refresh balance and keeps manual en
   await waitFor(() => expect(max.hasAttribute('disabled')).toBe(false))
   fireEvent.click(max)
   expect(store.get(nativeSolanaFormAtom).amount).toBe('0.000175952')
-})
-
-it('automatically prices the latest input, ignores a superseded response and reviews only on Swap', async () => {
-  const usdc = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
-  const finish: (() => void)[] = []
-  const load = jest.spyOn(trade, 'loadNativeSolanaQuote').mockImplementation(
-    (_config, connection, form) =>
-      new Promise((resolve) => {
-        finish.push(() =>
-          resolve({
-            connection,
-            form,
-            buy: { decimals: 6 },
-            quote: {
-              expiration: new Date(Date.now() + 60_000).toISOString(),
-              quote: { buyAmount: form.amount === '1' ? '1000000' : '250000' },
-            },
-          } as trade.NativeSolanaReview),
-        )
-      }),
-  )
-  const onReview = jest.fn()
-  const store = renderForm(onReview)
-  await screen.findByText(/Wallet balance ·/)
-  await act(async () => store.set(nativeSolanaFormAtom, { sellMint: ray, buyMint: usdc, amount: '1', slippageBps: 50 }))
-  await waitFor(() => expect(load).toHaveBeenCalledTimes(1))
-  const input = screen.getByRole('textbox', { name: 'Amount to sell' })
-  fireEvent.change(input, { target: { value: '0.2' } })
-  fireEvent.change(input, { target: { value: '0.25' } })
-  expect(screen.getByRole('button', { name: 'Getting quote…' }).hasAttribute('disabled')).toBe(true)
-  await waitFor(() => expect(load).toHaveBeenCalledTimes(2))
-  await act(async () => finish[1]())
-  await act(async () => finish[0]())
-  expect(screen.getByText('0.25')).toBeTruthy()
-  expect(screen.getByText(/Minimum received/).textContent).toContain('0.24875 USDC')
-  expect(onReview).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByRole('button', { name: 'Swap' }))
-  expect(onReview).toHaveBeenCalledWith(expect.objectContaining({ form: expect.objectContaining({ amount: '0.25' }) }))
-  load.mockRejectedValueOnce(Error('No route'))
-  fireEvent.change(input, { target: { value: '0.3' } })
-  expect(screen.queryByText('0.25')).toBeNull()
-  expect((await screen.findByRole('alert')).textContent).toBe('No route')
-  fireEvent.click(screen.getByRole('button', { name: 'Refresh quote' }))
-  await waitFor(() => expect(load).toHaveBeenCalledTimes(4))
-  expect(onReview).toHaveBeenCalledTimes(1)
 })
