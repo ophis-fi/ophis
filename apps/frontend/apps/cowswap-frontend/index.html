@@ -102,78 +102,26 @@
         background: #ffffff;
         color: #17191c;
       }
+
+      #swap-loading{box-sizing:border-box;min-height:100vh;display:grid;align-content:center;justify-items:center;padding:24px}
+      #swap-loading img{margin-bottom:28px}
+      #swap-loading .skl{box-sizing:border-box;width:min(392px,100%);margin:0 auto;background:#ffffff;border:1px solid #e8e8ea;border-radius:20px;padding:16px;box-shadow:0 8px 40px rgba(23,25,28,.06)}
+      #swap-loading .skl .row{display:flex;align-items:center;justify-content:space-between;background:#f2f2f3;border-radius:14px;padding:16px 18px}
+      #swap-loading .skl .arw{width:34px;height:34px;margin:8px auto;border-radius:50%;background:#f2f2f3;border:1px solid #e8e8ea;display:flex;align-items:center;justify-content:center;color:#5b5f68;font-size:16px}
+      #swap-loading .skl b{display:block;border-radius:8px;background:#e8e8ea;}
+      #swap-loading .skl .pill{width:98px;height:34px;border-radius:999px}
+      #swap-loading .skl .amt{width:120px;max-width:45%;height:22px}
+      #swap-loading .skl .btn{width:100%;height:52px;border-radius:14px;margin-top:12px;background:#fbe1d1;}
     </style>
   </head>
 
   <body>
     <noscript>
-      <style>
-        main {
-          margin: 0 auto;
-          max-width: 640px;
-          padding: 48px 24px;
-          font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-          color: #17191c;
-        }
-        .banner {
-          padding: 16px;
-          background: rgba(245, 239, 230, 0.06);
-          border: 1px solid rgba(242, 166, 62, 0.45);
-          border-radius: 16px;
-          color: #17191c;
-        }
-        a {
-          color: #5d2a1a;
-        }
-      </style>
-      <main>
-        <p><strong>Enable JavaScript to use the swap form.</strong></p>
-        <p class="banner">
-          Ophis is a single-page application. Please
-          <a href="https://support.google.com/adsense/answer/12654?hl=en" target="_blank" rel="noopener noreferrer"
-            >enable JavaScript</a
-          >
-          to continue.
-        </p>
-      </main>
+      <style>#root { display: none }</style>
+      <p>Enable JavaScript to use the swap form.</p>
     </noscript>
-
-    <!-- SEO/AEO content for crawlers and non-JS AI bots (GPTBot/ClaudeBot/
-         PerplexityBot are explicitly allowed in robots.txt). It lives OUTSIDE
-         #root as a real, visible loading view with crawlable copy + internal
-         links, and is REMOVED by /seo-fallback.js the moment React mounts into
-         #root, so JS clients and screen readers see only the app (no stale or
-         duplicate heading, no hidden-text/cloaking signal). This is the
-         indexable surface for a client-rendered SPA with no SSR. The removal
-         script is EXTERNAL because the CSP forbids inline <script> (see
-         public/_headers); the inline <style> below is allowed (style-src
-         'unsafe-inline'). -->
-    <div id="ophis-seo">
-      <style>
-        #ophis-seo{position:fixed;inset:0;z-index:0;overflow-y:auto;display:flex;align-items:flex-start;justify-content:center;background:#ffffff;color:#17191c;font-family:"Inter var",Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
-        #ophis-seo .wrap{box-sizing:border-box;width:100%;max-width:700px;padding:32px 24px;margin:auto;text-align:center}
-        #ophis-seo img{height:32px;width:auto;margin:0 auto 28px;display:block}
-        #ophis-seo h1{font-family:Georgia,serif;font-size:clamp(26px,5vw,40px);line-height:1.12;font-weight:400;letter-spacing:-0.02em;margin:0 0 18px}
-        #ophis-seo p{font-size:16px;line-height:1.6;color:#5b5f68;margin:0 auto 14px;max-width:62ch}
-        #ophis-seo nav{margin-top:26px;display:flex;flex-wrap:wrap;gap:10px 18px;justify-content:center}
-        #ophis-seo a{color:#5d2a1a;text-decoration:none;font-size:15px}
-        #ophis-seo a:hover{text-decoration:underline}
-        #ophis-seo .hint{margin-top:28px;font-size:13px;color:#5b5f68}
-        /* Swap-card skeleton: a human staring at this fallback while the ~1.3MB
-           (brotli) app bundle parses should see the swap widget *loading*, not a
-           marketing wall — so the trade UI "appears" instantly. Purely decorative
-           (aria-hidden) and removed with the rest of #ophis-seo by seo-fallback.js
-           the moment React mounts. No "loading" TEXT (soft-404 classifiers). */
-        #ophis-seo .skl{box-sizing:border-box;width:min(392px,100%);margin:0 auto 30px;background:#ffffff;border:1px solid #e8e8ea;border-radius:20px;padding:16px;box-shadow:0 8px 40px rgba(23,25,28,.06)}
-        #ophis-seo .skl .row{display:flex;align-items:center;justify-content:space-between;background:#f2f2f3;border-radius:14px;padding:16px 18px}
-        #ophis-seo .skl .arw{width:34px;height:34px;margin:8px auto;border-radius:50%;background:#f2f2f3;border:1px solid #e8e8ea;display:flex;align-items:center;justify-content:center;color:#5b5f68;font-size:16px}
-        #ophis-seo .skl b{display:block;border-radius:8px;background:#e8e8ea;}
-        #ophis-seo .skl .pill{width:98px;height:34px;border-radius:999px}
-        #ophis-seo .skl .amt{width:120px;max-width:45%;height:22px}
-        #ophis-seo .skl .btn{width:100%;height:52px;border-radius:14px;margin-top:12px;background:#fbe1d1;}
-        @media(prefers-reduced-motion:reduce){#ophis-seo .skl b,#ophis-seo .skl .btn{animation:none}}
-      </style>
-      <div class="wrap">
+    <div id="root">
+      <div id="swap-loading" role="status" aria-label="Loading swap">
         <img src="/ophis-mono.svg" alt="Ophis" width="118" height="32" />
         <div class="skl" aria-hidden="true">
           <div class="row"><b class="pill"></b><b class="amt"></b></div>
@@ -181,49 +129,8 @@
           <div class="row"><b class="pill"></b><b class="amt"></b></div>
           <b class="btn"></b>
         </div>
-        <h1>Ophis: the intent-based DEX aggregator with MEV-protected swaps</h1>
-        <p>
-          Ophis Swap is the trading app of Ophis, an intent-based DEX aggregator. Select a network,
-          token pair and amount, connect your wallet, and review the available quote before signing.
-          For intent orders, solvers compete to settle the trade through batch auctions.
-        </p>
-        <p>
-          Check the minimum received, destination network and spending allowance in your wallet.
-          A token approval can require an on-chain transaction before the order signature.
-          Signing an order does not guarantee a fill: follow its status until settlement or expiry.
-          MEV protection mitigates common front-running and sandwich attacks; token, price and
-          smart-contract risks remain.
-        </p>
-        <p>
-          Supported EVM networks include Ethereum, Base, Arbitrum, BNB Chain, Optimism
-          and Robinhood Chain. Token availability and executable liquidity depend on the network,
-          pair and amount. The Robinhood Chain guide opens network 4663; it does not bridge a
-          balance from another chain. Ophis is independent of Robinhood Markets.
-        </p>
-        <p>
-          Developers can access Ophis through its API, MCP server and SDK, or embed the swap widget.
-          AI agent integrations and Safe wallet users should also review the selected network,
-          quoted output and approval before submitting a trade.
-        </p>
-        <nav aria-label="Ophis">
-          <a href="/robinhood-chain/">Swap on Robinhood Chain</a>
-          <a href="https://ophis.fi/">Home</a>
-          <a href="https://docs.ophis.fi/">Docs</a>
-          <a href="https://docs.ophis.fi/ai-agents">AI agent swaps</a>
-          <a href="https://docs.ophis.fi/affiliate">Rebates</a>
-          <a href="https://docs.ophis.fi/widget">Widget &amp; SDK</a>
-          <a href="https://safe.ophis.fi/">Safe app</a>
-          <a href="https://ophis.fi/blog">Blog</a>
-        </nav>
-        <!-- No "loading"-style wording here: search engines' soft-404
-             classifiers treat a page ending in "Loading…" as an error page,
-             and this block IS what a crawler sees when the JS render is slow
-             or fails. Keep it a complete, content-bearing line. -->
-        <p class="hint">Ophis charges a 0.01% base fee plus capped price-improvement capture, measured against a reference quote. CoW-hosted swaps also carry upstream fees. Approvals and other on-chain transactions can require network gas. Review the quote and <a href="https://ophis.fi/pricing/">current fee policy</a> before signing.</p>
       </div>
     </div>
-    <div id="root"></div>
-    <script src="/seo-fallback.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

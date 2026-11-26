@@ -30,7 +30,7 @@ const precacheManifest = self.__WB_MANIFEST
 // that share package.json's version also share the name "Ophis-precache-v2-<ver>";
 // cleanupOutdatedCaches() then treats that name as still-current and never purges
 // it, so a stale/corrupt same-version precache survives and can leave the app
-// stuck on the #ophis-seo fallback until the user manually clears site data.
+// stuck on the swap loading screen until the user manually clears site data.
 const buildId = ((): string => {
   let h = 5381
   for (const entry of precacheManifest) {

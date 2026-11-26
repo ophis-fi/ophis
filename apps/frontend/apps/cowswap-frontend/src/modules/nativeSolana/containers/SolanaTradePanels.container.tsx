@@ -114,6 +114,7 @@ export function BuyPanel({ open }: { open(): void }): ReactNode {
       </styledEl.Line>
       <styledEl.Helper>
         {network
+          .slice(0, 4)
           .filter((asset) => asset.mint !== form.sellMint && asset.mint !== buy?.mint)
           .map((asset) => (
             <styledEl.SmallButton

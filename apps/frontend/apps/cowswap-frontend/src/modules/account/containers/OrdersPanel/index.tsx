@@ -1,4 +1,5 @@
-import { useSetAtom } from 'jotai'
+import { useAtomValue, useSetAtom } from 'jotai'
+import { ReactNode, useEffect } from 'react'
 
 import Close from '@cowprotocol/assets/images/x.svg?react'
 import { useBodyScrollbarLocker } from '@cowprotocol/common-hooks'
@@ -7,6 +8,7 @@ import { useWalletDetails, useWalletInfo } from '@cowprotocol/wallet'
 
 import { Trans, useLingui } from '@lingui/react/macro'
 import { transparentize } from 'color2k'
+import { solanaConnectionAtom } from 'entities/solana'
 import styled from 'styled-components/macro'
 
 import { toggleAccountSelectorModalAtom } from 'modules/wallet/containers/AccountSelectorModal/state'
@@ -15,7 +17,7 @@ import { useCategorizeRecentActivity } from 'common/hooks/useCategorizeRecentAct
 
 import { useAccountModalState } from '../../hooks/useAccountModalState'
 import { useCloseAccountModalOnNavigate } from '../../hooks/useCloseAccountModalOnNavigate'
-import { useToggleAccountModal } from '../../hooks/useToggleAccountModal'
+import { useCloseAccountModal } from '../../hooks/useToggleAccountModal'
 import { AccountDetails } from '../AccountDetails'
 
 const SideBar = styled.div`
@@ -145,21 +147,24 @@ const Wrapper = styled.div`
 `
 
 // TODO: rename the component into AccountModal
-// TODO: Add proper return type annotation
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-export function OrdersPanel() {
+export function OrdersPanel(): ReactNode {
   const { t } = useLingui()
   const { active, account } = useWalletInfo()
+  const solana = useAtomValue(solanaConnectionAtom)
   const { ensName } = useWalletDetails()
   const toggleAccountSelectorModal = useSetAtom(toggleAccountSelectorModalAtom)
   const { isOpen } = useAccountModalState()
   const { pendingActivity, confirmedActivity } = useCategorizeRecentActivity()
 
-  const handleCloseOrdersPanel = useToggleAccountModal()
+  const handleCloseOrdersPanel = useCloseAccountModal()
 
   useCloseAccountModalOnNavigate()
 
-  const displayOrdersPanel = !!(active && isOpen && account)
+  const hasAccount = !!((active && account) || solana)
+  const displayOrdersPanel = isOpen && hasAccount
+  useEffect(() => {
+    if (isOpen && !hasAccount) handleCloseOrdersPanel()
+  }, [isOpen, hasAccount, handleCloseOrdersPanel])
 
   useBodyScrollbarLocker(displayOrdersPanel)
 

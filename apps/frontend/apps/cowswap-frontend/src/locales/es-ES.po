@@ -6999,3 +6999,15 @@ msgstr "El solver de Ophis busca ejecutar tu orden a tu precio mínimo o a uno m
 #: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaOrders.container.tsx
 msgid "Waiting for a settlement status update."
 msgstr "Esperando una actualización del estado de la liquidación."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/AssetPicker.pure.tsx
+msgid "Search to narrow the list."
+msgstr "Busca para reducir la lista."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/AssetPicker.pure.tsx
+msgid "Loading more Solana tokens…"
+msgstr "Cargando más tokens de Solana…"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/AssetPicker.pure.tsx
+msgid "The full token list is unavailable. You can still paste a mint address."
+msgstr "La lista completa de tokens no está disponible. Puedes pegar la dirección de mint."

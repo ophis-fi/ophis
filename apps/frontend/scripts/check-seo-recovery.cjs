@@ -51,7 +51,7 @@ async function checkStructuredData(page, path) {
         )
         await checkStructuredData(page, '/')
         await checkStructuredData(page, '/robinhood-chain/')
-        assert.equal(await page.locator('#ophis-seo').count(), 0, 'app must finish mounting')
+        assert.equal(await page.locator('#swap-loading').count(), 0, 'app must finish mounting')
         for (const path of ['pricing', 'supported-chains', 'security', 'ai-agent-crypto-swap-api']) {
           assert.equal(await guides.locator(`a[href="https://ophis.fi/${path}/"]`).count(), 1)
         }
@@ -71,11 +71,9 @@ async function checkStructuredData(page, path) {
       }
       const page = await browser.newPage({ javaScriptEnabled: false, viewport: { width: 320, height: 667 } })
       await page.goto(base, { waitUntil: 'domcontentloaded' })
-      assert.match(await page.locator('#ophis-seo').innerText(), /0\.01% base fee plus capped/)
-      assert.match(await page.locator('#ophis-seo').innerText(), /Signing an order does not guarantee a fill/)
-      assert.equal(await page.getByRole('heading', { level: 1 }).count(), 1)
-      assert.ok(await page.locator('#ophis-seo').evaluate((el) => el.scrollWidth <= el.clientWidth + 1))
-      assert.ok(!(await page.locator('body').innerText()).includes('flat 0.01%'))
+      assert.equal((await page.locator('body').innerText()).trim(), 'Enable JavaScript to use the swap form.')
+      assert.equal(await page.locator('#swap-loading').isVisible(), false)
+      assert.equal(await page.locator('#root h1, #root p, #root nav').count(), 0)
       await page.goto(base + '/robinhood-chain/', { waitUntil: 'domcontentloaded' })
       assert.ok(await page.getByRole('heading', { name: 'Swap on Robinhood Chain', exact: true }).isVisible())
       assert.equal(await page.locator('a[data-trade-cta]').first().getAttribute('href'), '/#/4663/swap')

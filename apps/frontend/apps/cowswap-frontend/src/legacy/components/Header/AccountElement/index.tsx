@@ -1,8 +1,12 @@
+import { useAtomValue } from 'jotai'
 import { ReactNode, useCallback, useRef, useState } from 'react'
 
 import { useFeatureFlags } from '@cowprotocol/common-hooks'
+import { ButtonSecondary } from '@cowprotocol/ui'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
+import { Trans } from '@lingui/react/macro'
+import { solanaConnectionAtom } from 'entities/solana'
 import ReactDOM from 'react-dom'
 
 import { useToggleAccountModal } from 'modules/account'
@@ -32,7 +36,9 @@ interface NotificationSidebarPortalProps {
 }
 
 export function AccountElement({ className }: AccountElementProps): ReactNode {
-  const { account } = useWalletInfo()
+  const { active, account } = useWalletInfo()
+  const evmConnected = !!(active && account)
+  const solana = useAtomValue(solanaConnectionAtom)
   const toggleAccountModal = useToggleAccountModal()
   const unreadNotificationsCount = useUnreadSidebarNotificationsCount()
   const { isDismissed, dismiss } = useNotificationAlertDismissal()
@@ -75,8 +81,13 @@ export function AccountElement({ className }: AccountElementProps): ReactNode {
   // We toggle visibility through `hideConnectButton` instead.
   return (
     <>
-      <Wrapper className={className} active={!!account} ref={wrapperRef}>
-        <Web3Status onClick={() => account && toggleAccountModal()} hideConnectButton={!account} />
+      <Wrapper className={className} active={evmConnected || !!solana} ref={wrapperRef}>
+        <Web3Status onClick={evmConnected ? toggleAccountModal : undefined} hideConnectButton={!account} />
+        {!evmConnected && solana && (
+          <ButtonSecondary type="button" title={solana.account.address} onClick={toggleAccountModal}>
+            <Trans>Account</Trans>
+          </ButtonSecondary>
+        )}
         {account && (
           <NotificationAlertPopover
             show={shouldShowPopover}

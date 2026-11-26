@@ -13,7 +13,13 @@ import { SolanaWalletAction } from './SolanaWalletAction.container'
 import { AssetPicker } from '../pure/AssetPicker.pure'
 import * as styledEl from '../pure/SwapForm.styled'
 import { privateSettlementEnabled } from '../services/privateSettlement.service'
-import { sellAmountStateAtom, walletAssetListAtom, walletHoldingsMapAtom } from '../state/assets.atoms'
+import {
+  sellAmountStateAtom,
+  solanaCachedCatalogAtom,
+  solanaMainnetCatalogAtom,
+  walletAssetListAtom,
+  walletHoldingsMapAtom,
+} from '../state/assets.atoms'
 import { nativeSolanaBusyAtom, nativeSolanaFormAtom, requestNativeSolanaQuoteAtom } from '../state/trade.atoms'
 
 export function NativeSolanaForm(): ReactNode {
@@ -29,6 +35,7 @@ export function NativeSolanaForm(): ReactNode {
     url.searchParams.delete('pick')
     window.history.replaceState(window.history.state, '', url)
   }, [])
+  const catalog = useAtomValue(picker ? solanaMainnetCatalogAtom : solanaCachedCatalogAtom)
   const assets = useAtomValue(walletAssetListAtom)
   const holdings = useAtomValue(walletHoldingsMapAtom)
   const { valid, exceeds } = useAtomValue(sellAmountStateAtom)
@@ -86,6 +93,8 @@ export function NativeSolanaForm(): ReactNode {
       {picker && (
         <AssetPicker
           side={picker}
+          catalogLoading={catalog.isFetching}
+          catalogUnavailable={catalog.isError && !catalog.data}
           assets={assets}
           holdings={holdings}
           other={picker === 'sell' ? form.buyMint : form.sellMint}

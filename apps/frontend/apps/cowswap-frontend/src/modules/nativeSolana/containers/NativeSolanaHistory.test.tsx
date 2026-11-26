@@ -25,10 +25,13 @@ jest.mock(
 )
 jest.mock('entities/solana', () => ({
   OPHIS_SOLANA_CONFIG: { api: 'https://example.invalid', chain: 'solana:mainnet', genesis: 'mainnet' },
-  solanaConnectionAtom: jest.requireActual('jotai').atom({ account: { address: 'owner' } }),
+  solanaConnectionAtom: jest.requireActual('jotai').atom({ wallet: { name: 'Wallet' }, account: { address: 'owner' } }),
 }))
 jest.mock('../services/assets.service', () => ({ walletMint: (mint: string) => mint }))
-jest.mock('../state/assets.atoms', () => ({ walletAssetListAtom: jest.requireActual('jotai').atom([]) }))
+jest.mock('../state/assets.atoms', () => {
+  const { atom } = jest.requireActual('jotai')
+  return { walletAssetListAtom: atom([]), solanaMainnetCatalogAtom: atom({}), solanaCachedCatalogAtom: atom({}) }
+})
 
 it('opens the settlement transaction from the mainnet wallet history', async () => {
   render(

@@ -11,7 +11,7 @@ import { atomWithQuery } from 'jotai-tanstack-query'
 
 import * as styledEl from '../pure/NativeSolana.styled'
 import { walletMint, type SolanaAsset } from '../services/assets.service'
-import { walletAssetListAtom } from '../state/assets.atoms'
+import { solanaCachedCatalogAtom, solanaMainnetCatalogAtom, walletAssetListAtom } from '../state/assets.atoms'
 
 const pageSize = 10
 const historyAtom = atomFamily((page: number) =>
@@ -44,14 +44,20 @@ function tradeAmount(amount: string, mint: string, assets: SolanaAsset[]): React
 }
 
 export function NativeSolanaHistory(): ReactNode {
+  const connection = useAtomValue(solanaConnectionAtom)
   const [page, setPage] = useState(0)
   const { data, isFetching, isError, refetch } = useAtomValue(historyAtom(page))
+  useAtomValue(data?.length ? solanaMainnetCatalogAtom : solanaCachedCatalogAtom)
   const assets = useAtomValue(walletAssetListAtom)
+  if (!connection) return null
   return (
     <styledEl.Card>
       <h3>
-        <Trans>Settled trades</Trans>
+        Solana · <Trans>Settled trades</Trans>
       </h3>
+      <p>
+        {connection.wallet.name} · <code>{connection.account.address}</code>
+      </p>
       {isError && (
         <p role="alert">
           <Trans>Could not load wallet trades.</Trans>

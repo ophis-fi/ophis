@@ -6999,3 +6999,15 @@ msgstr "Солвер Ophis ищет возможность исполнить о
 #: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaOrders.container.tsx
 msgid "Waiting for a settlement status update."
 msgstr "Ожидаем обновления статуса исполнения."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/AssetPicker.pure.tsx
+msgid "Search to narrow the list."
+msgstr "Введите запрос, чтобы сузить список."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/AssetPicker.pure.tsx
+msgid "Loading more Solana tokens…"
+msgstr "Загружаются другие токены Solana…"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/AssetPicker.pure.tsx
+msgid "The full token list is unavailable. You can still paste a mint address."
+msgstr "Полный список токенов недоступен. Можно вставить адрес минта."
