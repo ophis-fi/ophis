@@ -10,6 +10,8 @@ name: Deploy business console (pro.ophis.fi)
 # Secrets are never set here: `wrangler secret put --env production` (README).
 
 on:
+  schedule:
+    - cron: '31 3 * * *' # Refresh the public name lists daily.
   workflow_dispatch: {}
   push:
     branches: [main]
@@ -57,6 +59,10 @@ jobs:
       - run: pnpm typecheck
       # Builds dist/ (console + signing page), then the unit tests.
       - run: pnpm test
+
+      - name: Build the index from official sanctions lists
+        if: github.ref == 'refs/heads/main'
+        run: node scripts/build-name-index.mjs
 
       - name: wrangler deploy
         if: github.ref == 'refs/heads/main'
