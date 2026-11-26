@@ -8,7 +8,7 @@ import { queryClientAtom } from 'jotai-tanstack-query'
 
 import { NativeSolanaForm } from './NativeSolanaForm.container'
 
-export { fetchOphisNativeSellReserve, solanaAddress } from '@ophis/solana-sdk'
+export { fetchOphisOrderSolReserve, fetchOphisWalletHoldings, solanaAddress } from '@ophis/solana-sdk'
 export { solanaConnectionAtom } from 'entities/solana'
 
 jest.mock(
@@ -20,11 +20,11 @@ jest.mock(
       if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value)) throw Error('Invalid address')
       return value
     },
-    fetchOphisNativeSellReserve: jest.fn().mockResolvedValue(2646600n),
-    fetchOphisWalletHoldings: async () => [
+    fetchOphisOrderSolReserve: jest.fn().mockResolvedValue(2646600n),
+    fetchOphisWalletHoldings: jest.fn().mockResolvedValue([
       { mint: '11111111111111111111111111111111', atoms: 2822552n, decimals: 9 },
       { mint: '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R', atoms: 123n, decimals: 2 },
-    ],
+    ]),
     parseOphisSolanaAmount: (value: string, decimals: number) => BigInt(Math.round(Number(value) * 10 ** decimals)),
     OphisSolanaHttpError: class extends Error {},
     formatOphisSolanaAmount: (atoms: bigint, decimals: number) => String(Number(atoms) / 10 ** decimals),

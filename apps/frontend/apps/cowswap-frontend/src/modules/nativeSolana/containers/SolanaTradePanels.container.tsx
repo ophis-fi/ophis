@@ -14,7 +14,7 @@ import * as styledEl from '../pure/SwapForm.styled'
 import { balanceEndpoint, nativeAsset, solanaAssetIdentity, unknownAsset } from '../services/assets.service'
 import { minimumSolanaBuyAmount } from '../services/trade.service'
 import {
-  nativeSellReserveAtom,
+  orderSolReserveAtom,
   solanaHoldingsAtom,
   solanaNetworkAssetsAtom,
   sellAmountStateAtom,
@@ -29,12 +29,12 @@ export function SellPanel({ open }: { open: MouseEventHandler<HTMLButtonElement>
   const busy = useAtomValue(nativeSolanaBusyAtom)
   const owner = useAtomValue(solanaConnectionAtom)
   const balances = useAtomValue(solanaHoldingsAtom)
-  const reserveQuery = useAtomValue(nativeSellReserveAtom)
+  const reserveQuery = useAtomValue(orderSolReserveAtom)
   const assets = useAtomValue(walletAssetListAtom)
   const sell = assets.find((asset) => asset.mint === form.sellMint) ?? unknownAsset(form.sellMint)
   const verification = useAssetVerification(solanaAssetIdentity(sell))
   const symbol = sell.symbol
-  const { balanceKnown, balance, exceeds, needsSolForFees, spendable, precision, reserve } =
+  const { balanceKnown, balance, exceeds, needsSolForFees, solShortfall, spendable, precision, reserve } =
     useAtomValue(sellAmountStateAtom)
   const reservedSol = reserve === undefined ? undefined : formatOphisSolanaAmount(reserve, 9)
   return (
@@ -107,6 +107,14 @@ export function SellPanel({ open }: { open: MouseEventHandler<HTMLButtonElement>
       {exceeds && (
         <styledEl.Helper role="alert">
           <Trans>Amount exceeds your wallet balance.</Trans>
+        </styledEl.Helper>
+      )}
+      {solShortfall !== undefined && (
+        <styledEl.Helper role="alert">
+          <Trans>
+            Your wallet needs {formatOphisSolanaAmount(solShortfall, 9)} more SOL for fees and refundable deposits. You
+            can reclaim deposits from completed orders in Account.
+          </Trans>
         </styledEl.Helper>
       )}
       {needsSolForFees && (

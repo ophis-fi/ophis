@@ -74,41 +74,47 @@ export async function fetchOphisWalletHoldings(
 }
 
 /** The order builder pays one signature, keeps the payer rent-exempt, and creates missing ATAs. */
-export async function fetchOphisNativeSellReserve(
+export async function fetchOphisOrderSolReserve(
   endpoint: string,
   genesis: string,
   owner: Address,
   buyMint: Address,
+  sellFromNativeSol = true,
 ): Promise<bigint> {
   const rpc = await matchingRpc(endpoint, genesis);
   const ata = async (mint: Address, tokenProgram: Address) =>
     (await findAssociatedTokenPda({ owner, mint, tokenProgram }))[0];
-  const [wrapped, classicBuy, extendedBuy] = await Promise.all([
-    ata(WRAPPED_SOL_MINT, TOKEN_PROGRAM_ADDRESS),
-    ata(buyMint, TOKEN_PROGRAM_ADDRESS),
-    ata(buyMint, TOKEN_2022_PROGRAM_ADDRESS),
-  ]);
-  // The hosted wallet RPC serves bounded account reads, including the rent and per-signature fee sysvars.
+  const nativeBuy = buyMint === SOLANA_NATIVE_ASSET;
+  const accounts: Address[] = [
+    address('SysvarRent111111111111111111111111111111111'),
+    address('SysvarRecentB1ockHashes11111111111111111111'),
+  ];
+  if (!nativeBuy)
+    accounts.push(
+      buyMint,
+      ...(await Promise.all([
+        ata(buyMint, TOKEN_PROGRAM_ADDRESS),
+        ata(buyMint, TOKEN_2022_PROGRAM_ADDRESS),
+      ])),
+    );
+  if (sellFromNativeSol) accounts.push(await ata(WRAPPED_SOL_MINT, TOKEN_PROGRAM_ADDRESS));
   const { value } = await rpc
-    .getMultipleAccounts(
-      [
-        address('SysvarRent111111111111111111111111111111111'),
-        address('SysvarRecentB1ockHashes11111111111111111111'),
-        buyMint,
-        wrapped,
-        classicBuy,
-        extendedBuy,
-      ],
-      { commitment: 'confirmed', encoding: 'base64', dataSlice: { offset: 0, length: 48 } },
-    )
+    .getMultipleAccounts(accounts, {
+      commitment: 'confirmed',
+      encoding: 'base64',
+      dataSlice: { offset: 0, length: 48 },
+    })
     .send();
-  if (value.length !== 6) throw Error('Incomplete Solana order account data.');
-  const [rent, hashes, mint, wrappedAccount, classicAccount, extendedAccount] = value;
+  if (value.length !== accounts.length) throw Error('Incomplete Solana order account data.');
+  const [rent, hashes, mint, classicAccount, extendedAccount] = value;
+  const wrappedAccount = sellFromNativeSol ? value.at(-1) : null;
   const sysvarOwner = 'Sysvar1111111111111111111111111111111111111';
   if (
     rent?.owner !== sysvarOwner ||
     hashes?.owner !== sysvarOwner ||
-    (mint?.owner !== TOKEN_PROGRAM_ADDRESS && mint?.owner !== TOKEN_2022_PROGRAM_ADDRESS)
+    (!nativeBuy &&
+      mint?.owner !== TOKEN_PROGRAM_ADDRESS &&
+      mint?.owner !== TOKEN_2022_PROGRAM_ADDRESS)
   )
     throw Error('Order rent is unavailable.');
   const view = (data: string) => {
@@ -123,16 +129,16 @@ export async function fetchOphisNativeSellReserve(
   if ((threshold !== 1 && threshold !== 2) || !recent.getBigUint64(0, true))
     throw Error('Order rent or fee schedule is unavailable.');
   const rentPerByte = rentData.getBigUint64(0, true) * BigInt(threshold);
-  const buyAccount = mint.owner === TOKEN_PROGRAM_ADDRESS ? classicAccount : extendedAccount;
+  const buyAccount = mint?.owner === TOKEN_PROGRAM_ADDRESS ? classicAccount : extendedAccount;
   if (
     (wrappedAccount && wrappedAccount.owner !== TOKEN_PROGRAM_ADDRESS) ||
-    (buyAccount && buyAccount.owner !== mint.owner)
+    (buyAccount && buyAccount.owner !== mint?.owner)
   )
     throw Error('Unexpected Solana token account owner.');
-  if (!buyAccount && mint.owner === TOKEN_2022_PROGRAM_ADDRESS)
+  if (!buyAccount && mint?.owner === TOKEN_2022_PROGRAM_ADDRESS)
     throw Error('Cannot estimate rent for an unallocated Token-2022 account.');
   const storageOverhead = 128;
-  const missing = Number(!wrappedAccount) + Number(!buyAccount);
+  const missing = Number(sellFromNativeSol && !wrappedAccount) + Number(!nativeBuy && !buyAccount);
   const bytes =
     storageOverhead * 2 + getOrderAccountSize() + missing * (storageOverhead + getTokenSize());
   // RecentBlockhashes stores a u64 length, then (32-byte blockhash, u64 signature fee) entries, newest first.

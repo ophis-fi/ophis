@@ -325,7 +325,8 @@ export { fetchOphisSolanaTrades, type OphisSolanaTrade } from './trades.js';
 
 export {
   fetchOphisWalletHoldings,
-  fetchOphisNativeSellReserve,
+  fetchOphisOrderSolReserve,
+  fetchOphisOrderSolReserve as fetchOphisNativeSellReserve,
   requestOphisLocalTestSol,
   type OphisWalletHolding,
 } from './holdings.js';

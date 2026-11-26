@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 
-import { renderForm } from './solanaForm.test-utils'
+import { fetchOphisWalletHoldings, renderForm, solanaAddress } from './solanaForm.test-utils'
 
 import * as trade from '../services/trade.service'
 import { nativeSolanaFormAtom } from '../state/trade.atoms'
@@ -70,4 +70,28 @@ it('shows a retry for an expired quote and clears the message on edit', async ()
   expect(screen.queryByRole('button', { name: 'Swap' })).toBeNull()
   fireEvent.change(screen.getByRole('textbox', { name: 'Amount to sell' }), { target: { value: '' } })
   expect(screen.queryByRole('alert')).toBeNull()
+})
+
+it('shows the SOL shortfall on an SPL sale and quotes after a balance refresh covers it', async () => {
+  const usdc = solanaAddress('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v')
+  const sol = solanaAddress('11111111111111111111111111111111')
+  const holdings = (atoms: bigint) => [
+    { mint: sol, decimals: 9, atoms },
+    { mint: usdc, decimals: 6, atoms: 273239n },
+  ]
+  jest
+    .mocked(fetchOphisWalletHoldings)
+    .mockResolvedValueOnce(holdings(826192n))
+    .mockResolvedValueOnce(holdings(2812552n))
+  const load = jest.spyOn(trade, 'loadNativeSolanaQuote').mockRejectedValue(Error('Quote service reached'))
+  const store = renderForm()
+  await act(async () =>
+    store.set(nativeSolanaFormAtom, { sellMint: usdc, buyMint: 'SOL', amount: '0.273239', slippageBps: 50 }),
+  )
+  expect((await screen.findByRole('alert')).textContent).toContain('0.001820408 more SOL')
+  expect(screen.getByRole('button', { name: 'Swap' }).hasAttribute('disabled')).toBe(true)
+  expect(load).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh balance' }))
+  await waitFor(() => expect(load).toHaveBeenCalledTimes(1))
+  expect(screen.queryByText(/more SOL/)).toBeNull()
 })
