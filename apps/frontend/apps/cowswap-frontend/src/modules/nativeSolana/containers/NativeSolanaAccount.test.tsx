@@ -96,7 +96,10 @@ jest.mock('../services/assets.service', () => ({
   unknownAsset: (mint: string) => ({ mint, symbol: mint }),
   solanaAssetIdentity: () => ({}),
 }))
-jest.mock('entities/verifiedAsset', () => ({ useAssetVerification: () => undefined, VerifiedAssetBadge: () => null }))
+jest.mock('entities/verifiedAsset', () => ({
+  useAssetVerificationResolver: () => () => undefined,
+  VerifiedAssetBadge: () => null,
+}))
 jest.mock('../state/assets.atoms', () => {
   const { atom } = jest.requireActual('jotai')
   return { walletAssetListAtom: atom([]), solanaMainnetCatalogAtom: atom({}), solanaCachedCatalogAtom: atom({}) }
@@ -130,7 +133,7 @@ it.each([false, true])('opens recent trades from the connected header (EVM conne
     : 'CaseSensitiveBase58KeySo1anaOn1y11111111111'
   mockFetchTrades.mockReset().mockImplementation(async (_api: string, address: string, offset: number) =>
     Array.from({ length: offset === 0 ? 10 : 1 }, (_, index) => ({
-      txSignature: '2'.repeat(63) + '123456789ABC'[offset + index],
+      txSignature: '2'.repeat(63) + '123456789A'[(offset + index) % 10],
       owner: address,
       sellAmount: '120',
       sellToken: 'soldMint',

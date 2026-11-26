@@ -30,7 +30,11 @@ export const walletActivityAtom = atomFamily((page: number) =>
   atom((get) => {
     const pages = Array.from({ length: page + 1 }, (_, index) => get(historyAtom(index)))
     const fills = pages.flatMap((result) => result.data ?? [])
-    const trades = [...new Map(fills.map((fill) => [fill.txSignature + ':' + fill.instructionIndex, fill])).values()]
+    const trades = [
+      ...new Map(
+        fills.map((fill) => [fill.txSignature + ':' + fill.instructionIndex + ':' + fill.orderUid, fill]),
+      ).values(),
+    ]
     const indexed = new Set(trades.map((fill) => fill.orderUid))
     const saved = get(visibleNativeSolanaOrdersAtom)
       .filter((order) => !indexed.has(order.uid))

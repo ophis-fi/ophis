@@ -5,7 +5,7 @@ import { ArrowLeft, ArrowUpRight, CheckCircle, ChevronDown } from 'react-feather
 
 import { Values } from './NativeSolana.styled'
 import * as styledEl from './SolanaReceipt.styled'
-import { ReceiptSlabs, ReceiptAmount } from './SolanaReceiptAmounts.pure'
+import { ReceiptSlabs, ReceiptAmount, type VerifyReceiptAsset } from './SolanaReceiptAmounts.pure'
 import { Back, Line } from './SwapForm.styled'
 
 import { type SolanaAsset } from '../services/assets.service'
@@ -49,6 +49,7 @@ export function ReceiptStatusBadge({ status }: { status: ReceiptStatus }): React
 }
 
 interface ReceiptProps {
+  verifyAsset: VerifyReceiptAsset
   saved?: SavedNativeSolanaOrder
   data?: OphisSolanaOrder
   trade?: OphisSolanaTrade
@@ -119,6 +120,7 @@ function ReceiptDetails({
 }
 
 export function SolanaReceipt({
+  verifyAsset,
   saved,
   data,
   trade,
@@ -154,7 +156,7 @@ export function SolanaReceipt({
         <img src="/logos/token-sol.svg" alt="" />
         Solana
       </styledEl.Network>
-      <ReceiptSlabs trade={trade} data={data} assets={assets} intent={intent} />
+      <ReceiptSlabs verifyAsset={verifyAsset} trade={trade} data={data} assets={assets} intent={intent} />
       {timing}
       {notice}
       {settlement && (

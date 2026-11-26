@@ -5,12 +5,14 @@ import { ButtonSecondary } from '@cowprotocol/ui'
 
 import { Trans } from '@lingui/react/macro'
 import { solanaConnectionAtom } from 'entities/solana'
+import { useAssetVerificationResolver } from 'entities/verifiedAsset'
 
 import { ReceiptAction, ReclaimDeposit, WalletActionNotice } from './SolanaReceiptActions.container'
 import { SolanaSettlementTime } from './SolanaSettlementTime.container'
 
 import { useReceiptTrade } from '../hooks/useReceiptTrade'
 import { SolanaReceipt } from '../pure/SolanaReceipt.pure'
+import { isSolanaMainnet } from '../services/assets.service'
 import { privateAction, privateSettlementEnabled } from '../services/privateSettlement.service'
 import { savedReceiptStatus, type ReceiptStatus } from '../services/receipt.service'
 import { solanaMainnetCatalogAtom, walletAssetListAtom } from '../state/assets.atoms'
@@ -112,8 +114,10 @@ export function NativeSolanaOrderCard({
     !order.reclaimed &&
     ['fulfilled', 'cancelled', 'expired'].includes(status) &&
     !(data?.status === 'open' && data.payoutConfirmed && !trade)
+  const verifyAsset = useAssetVerificationResolver(isSolanaMainnet)
   return (
     <SolanaReceipt
+      verifyAsset={verifyAsset}
       timing={
         trade && (
           <SolanaSettlementTime slot={trade.slot} created={data && 'uid' in data ? data.creationDate : undefined} />

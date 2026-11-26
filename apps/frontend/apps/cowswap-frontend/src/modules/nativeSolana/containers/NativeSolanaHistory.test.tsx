@@ -56,7 +56,10 @@ jest.mock('../services/assets.service', () => ({
   unknownAsset: (mint: string) => ({ mint, symbol: mint }),
   solanaAssetIdentity: () => ({}),
 }))
-jest.mock('entities/verifiedAsset', () => ({ useAssetVerification: () => undefined, VerifiedAssetBadge: () => null }))
+jest.mock('entities/verifiedAsset', () => ({
+  useAssetVerificationResolver: () => () => undefined,
+  VerifiedAssetBadge: () => null,
+}))
 jest.mock('../state/assets.atoms', () => {
   const { atom } = jest.requireActual('jotai')
   return { walletAssetListAtom: atom([]), solanaMainnetCatalogAtom: atom({}), solanaCachedCatalogAtom: atom({}) }
@@ -97,6 +100,7 @@ it('keeps the signed minimum distinct from a fill while indexing and links only 
   ): import('react').ReactElement => (
     <I18nProvider i18n={setupI18n({ locale: 'en', messages: { en: {} } })}>
       <SolanaReceipt
+        verifyAsset={() => undefined}
         saved={{ ...order, signature }}
         data={status === 'unconfirmed' ? undefined : data}
         status={status}

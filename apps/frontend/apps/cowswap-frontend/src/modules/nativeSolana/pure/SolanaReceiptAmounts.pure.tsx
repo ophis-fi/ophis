@@ -1,7 +1,7 @@
 import { ReactNode } from 'react'
 
 import { Trans } from '@lingui/react/macro'
-import { useAssetVerification, VerifiedAssetBadge } from 'entities/verifiedAsset'
+import { VerifiedAssetBadge, type Verification } from 'entities/verifiedAsset'
 import { ArrowDown } from 'react-feather'
 
 import { AssetIcon } from './AssetPicker.pure'
@@ -13,19 +13,23 @@ import { receiptAmount, type ReceiptAmounts } from '../services/receipt.service'
 
 import type { OphisSolanaOrder, OphisSolanaTrade } from '@ophis/solana-sdk'
 
+export type VerifyReceiptAsset = (token: ReturnType<typeof solanaAssetIdentity>) => Verification | undefined
+
 function AssetSlab({
+  verifyAsset,
   label,
   amount,
   mint,
   assets,
 }: {
+  verifyAsset: VerifyReceiptAsset
   label: ReactNode
   amount: string
   mint: string
   assets: SolanaAsset[]
 }): ReactNode {
   const { asset, value } = receiptAmount(amount, mint, assets)
-  const verified = useAssetVerification(solanaAssetIdentity(asset))
+  const verified = verifyAsset(solanaAssetIdentity(asset))
   return (
     <styledEl.Slab>
       <Line>
@@ -75,11 +79,13 @@ export function ReceiptAmount({
 }
 
 export function ReceiptSlabs({
+  verifyAsset,
   trade,
   data,
   intent,
   assets,
 }: {
+  verifyAsset: VerifyReceiptAsset
   trade?: OphisSolanaTrade
   data?: OphisSolanaOrder
   assets: SolanaAsset[]
@@ -96,12 +102,19 @@ export function ReceiptSlabs({
         amount={sold ?? amounts.sellAmount}
         mint={amounts.sellToken}
         assets={assets}
+        verifyAsset={verifyAsset}
       />
       <styledEl.Flow aria-hidden="true">
         <ArrowDown size={15} />
       </styledEl.Flow>
       {received !== undefined ? (
-        <AssetSlab label={<Trans>You received</Trans>} amount={received} mint={amounts.buyToken} assets={assets} />
+        <AssetSlab
+          label={<Trans>You received</Trans>}
+          amount={received}
+          mint={amounts.buyToken}
+          assets={assets}
+          verifyAsset={verifyAsset}
+        />
       ) : (
         intent && (
           <AssetSlab
@@ -109,6 +122,7 @@ export function ReceiptSlabs({
             amount={intent.buyAmount}
             mint={intent.buyToken}
             assets={assets}
+            verifyAsset={verifyAsset}
           />
         )
       )}

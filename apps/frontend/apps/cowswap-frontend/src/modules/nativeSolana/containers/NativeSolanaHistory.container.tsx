@@ -5,6 +5,7 @@ import { ButtonSecondary } from '@cowprotocol/ui'
 
 import { Trans } from '@lingui/react/macro'
 import { solanaConnectionAtom } from 'entities/solana'
+import { useAssetVerificationResolver } from 'entities/verifiedAsset'
 
 import { NativeSolanaOrderCard } from './NativeSolanaOrders.container'
 import { SolanaSettlementTime } from './SolanaSettlementTime.container'
@@ -13,7 +14,7 @@ import { Card, Row } from '../pure/NativeSolana.styled'
 import { ReceiptStatusBadge, SolanaReceipt } from '../pure/SolanaReceipt.pure'
 import { Activity } from '../pure/SolanaReceipt.styled'
 import { ReceiptAmount } from '../pure/SolanaReceiptAmounts.pure'
-import { shortMint, type SolanaAsset } from '../services/assets.service'
+import { isSolanaMainnet, shortMint, type SolanaAsset } from '../services/assets.service'
 import { savedReceiptAmounts, savedReceiptStatus } from '../services/receipt.service'
 import { solanaCachedCatalogAtom, solanaMainnetCatalogAtom, walletAssetListAtom } from '../state/assets.atoms'
 import { indexedOrderAtom, pageSize, walletActivityAtom } from '../state/history.atoms'
@@ -66,8 +67,10 @@ function IndexedReceipt({ trade, onBack }: { trade: OphisSolanaTrade; onBack(): 
   const { data } = useAtomValue(indexedOrderAtom(trade.orderUid))
   const assets = useAtomValue(walletAssetListAtom)
   const order = data?.sellToken === trade.sellToken && data.buyToken === trade.buyToken ? data : undefined
+  const verifyAsset = useAssetVerificationResolver(isSolanaMainnet)
   return (
     <SolanaReceipt
+      verifyAsset={verifyAsset}
       timing={<SolanaSettlementTime slot={trade.slot} created={order?.creationDate} />}
       trade={trade}
       data={order}
