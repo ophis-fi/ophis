@@ -42,6 +42,7 @@ const { positionals: [command, id, decision], values } = parseArgs({
   allowPositionals: true,
   options: {
     tier: { type: 'string' }, source: { type: 'string' }, reason: { type: 'string' }, evidence: { type: 'string' }, sha256: { type: 'string' }, 'next-review': { type: 'string' }, submission: { type: 'string' }, out: { type: 'string' },
+    signatory: { type: 'string' }, revision: { type: 'string' }, resolution: { type: 'string' },
     screening: { type: 'string' }, outcome: { type: 'string' }, list: { type: 'string', multiple: true }, wallet: { type: 'string' }, production: { type: 'boolean' },
   },
 })
@@ -191,7 +192,8 @@ const answer = load ? await call('POST', '/api/operator/sanctions', load)
   : command === 'list' ? await call('GET', base)
   : command === 'invite' ? await call('POST', '/api/operator/invites', {})
   : command === 'sync' ? await call('POST', '/api/operator/sanctions/sync', {})
-  : command === 'decide' && id && decision ? await call('POST', `${base}/${id}/decision`, { decision, tier: values.tier, source: values.source, reason: values.reason, evidenceRef: values.evidence, evidenceSha256: values.sha256, nextReview: values['next-review'], submission: values.submission, screening: values.screening && { outcome: values.screening, lists } })
+  : command === 'names' && id ? await call('POST', `${base}/${id}/name-screening`, { signatory: values.signatory })
+  : command === 'decide' && id && decision ? await call('POST', `${base}/${id}/decision`, { decision, tier: values.tier, source: values.source, reason: values.reason, evidenceRef: values.evidence, evidenceSha256: values.sha256, nextReview: values['next-review'], submission: values.submission, signatory: values.signatory, revision: values.revision, resolution: values.resolution, screening: values.screening && { outcome: values.screening, lists } })
   : command === 'screen' && id ? await call('POST', `${base}/${id}/screening`, { outcome: values.outcome, lists, nextReview: values['next-review'], tier: values.tier, source: values.source })
   : (command === 'freeze' || command === 'unfreeze') && id ? await call('POST', `${base}/${id}/${command}`, {})
   : command === 'reporting' && id ? await call('POST', `${base}/${id}/reporting`, { wallet: values.wallet, included: decision === 'include' })
@@ -199,7 +201,7 @@ const answer = load ? await call('POST', '/api/operator/sanctions', load)
   : command === 'get' && id && values.reason && values.out ? await call('POST', `/api/operator/items/${id}/download`, { reason: values.reason })
   : null
 if (!answer) {
-  console.error('usage: node scripts/operator.mjs invite | list | decide <id> approve|more|refuse [--submission --tier --source --reason --evidence --sha256 --next-review --screening clear|review|hit --list eu=<file> --list un=<file> --list ofac=<file>]'
+  console.error('usage: node scripts/operator.mjs invite | list | names <id> [--signatory <name>] | decide <id> approve|more|refuse [--submission --tier --source --reason --evidence --sha256 --next-review --screening clear|review|hit --list eu=<file> --list un=<file> --list ofac=<file>]'
     + ' | sync | screen <id> --outcome clear|review|hit --list eu=<file> [--list un=<file>] [--list ofac=<file>] --next-review YYYY-MM-DD [--tier --source] | addresses eu|un|ofac=<file> | freeze <id> | unfreeze <id> | items <id>'
     + ' | reporting <id> include|exclude --wallet <address> | get <item id> --reason kyb_review|periodic_review|authority_request|client_request|incident --out <file> | token --production. Add --production for operator.ophis.fi.')
   process.exit(1)
@@ -207,8 +209,10 @@ if (!answer) {
 if (answer.status !== 200) {
   const WHY = {
     submission_changed: 'the organisation changed and was submitted again since that list. Run "list" and compare again.',
-    screening_required: 'an approval needs --screening clear and --list eu=<file>.',
+    screening_required: 'run names <id> and supply its --revision at approval.',
     screening_not_clear: 'the screening does not say "clear" (an approval: the one given; an unfreeze: the newest one recorded).',
+    screening_incomplete: 'the automatic check needs current lists and the full name on the signed declaration.',
+    screening_changed: 'check the names again and review the new results.',
     wallet_listed: 'a linked or pending wallet of the organisation is on a loaded address list.',
     no_record: 'the organisation has no record to copy from: give --tier and --source.',
     access_required: 'the console did not take the Cloudflare Access proof: ACCESS_TEAM and ACCESS_AUD (wrangler.jsonc) must be those of the Access application.',
@@ -230,7 +234,8 @@ const HELD = {
 const count = (n) => `${n} ${n === 1 ? 'address' : 'addresses'}`
 const hitLines = (hits) => (hits.length ? hits.map((h) => `HIT  ${h.id}  ${h.name}  was ${h.state}  ${h.address}  ${h.frozen ? 'frozen now' : h.later ? 'frozen at the next run: run "sync" to do it now' : 'not changed'}`).join('\n') : 'No linked or pending wallet is on a loaded list.')
 const sealed = (i) => `${i.id}  ${i.kind}  ${i.size} bytes  ${new Date(i.at).toISOString()}  sha256 ${i.sha256}  sealed to key ${i.key.slice(0, 16)} (${i.generation})`
-if (command === 'items') console.log(answer.body.items.length ? answer.body.items.map(sealed).join('\n') : 'No sealed item.')
+if (command === 'names') console.log(JSON.stringify(answer.body, null, 2))
+else if (command === 'items') console.log(answer.body.items.length ? answer.body.items.map(sealed).join('\n') : 'No sealed item.')
 else if (command === 'get') {
   // The hash is computed here again and compared with the server's: a file that differs is not written.
   const sha256 = createHash('sha256').update(answer.bytes).digest('hex')

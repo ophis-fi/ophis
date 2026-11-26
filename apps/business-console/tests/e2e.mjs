@@ -23,7 +23,7 @@
 import { execFileSync, spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer, request as httpRequest } from 'node:http'
 import { DatabaseSync } from 'node:sqlite' // the sealed file, read back from the local D1's own SQLite file
 import { Decrypter } from 'age-encryption' // milestone 5b: opens the downloaded file with the local test identity, as the operator would offline
@@ -32,6 +32,7 @@ import { mnemonicToAccount } from 'viem/accounts'
 import { CONTRACT, PORT as INDEXER_PORT, start as startIndexer } from '../scripts/indexer-stub.mjs' // partner figures: the local stand-in for the rebate indexer
 import { PORT as LIST_PORT, start as startLists } from '../scripts/list-stub.mjs' // M10: the local stand-in for the place where the OFAC list file lives
 import { start as startTurnstile } from '../scripts/turnstile-stub.mjs' // the local stand-in for Cloudflare Turnstile
+import { nameKeys, shardOf } from '../src/shared/sanctions-names.ts'
 import { hear, verdict } from './operator-live.mjs' // the operator's command with --production, heard locally
 import { PORT as ORDERBOOK_PORT, start as startOrderbook, TEST_BALANCES } from '../scripts/orderbook-stub.mjs' // the real desk: the local stand-in for the public orderbooks and the chains' endpoints
 const ETHFLOW_OP = '0x764fE4aa1FF493cf39931c7923C8ff5837596504' // the EthFlow contract of OP Mainnet: an ETH sale's one transaction goes to it
@@ -57,6 +58,17 @@ if (await reachable()) throw new Error(`port ${PORT} is in use: stop the other s
 rmSync(STATE, { recursive: true, force: true })
 mkdirSync('.shots', { recursive: true })
 run('node_modules/.bin/wrangler', ['d1', 'migrations', 'apply', 'DB', '--local', '--persist-to', STATE])
+const e2eNames = { eu: '1'.repeat(64), un: '2'.repeat(64), ofac: '3'.repeat(64) }
+const testAssets = `${STATE}/assets`
+cpSync('dist', testAssets, { recursive: true })
+mkdirSync(`${testAssets}/sanctions-names`, { recursive: true })
+const fixtureName = 'Screening Test Signer'
+const [fixtureKey] = nameKeys(fixtureName)
+for (let i = 0; i < 128; i++) {
+  const shard = String(i) === shardOf(fixtureKey) ? { [fixtureKey]: [['un', 'TEST.123', fixtureName]] } : {}
+  writeFileSync(`${testAssets}/sanctions-names/${i}.json`, JSON.stringify(shard))
+}
+writeFileSync(`${testAssets}/sanctions-names/manifest.json`, JSON.stringify({ schema: 1, updatedAt: Date.now(), lists: e2eNames }))
 const link = run('node', ['scripts/dev.mjs', 'seed', '--persist', STATE]).match(/http\S+\/#\/enrol\/\S+/)?.[0]
 check('seed printed an enrolment link', Boolean(link))
 
@@ -65,7 +77,7 @@ const stopLists = startLists() // port 8794
 const stopOrderbook = startOrderbook() // port 8795
 const stopTurnstile = startTurnstile() // port 8796: the bot check of /recover
 // detached: the server gets its own process group, so the whole group can be stopped at the end.
-const serve = (...more) => spawn('node_modules/.bin/wrangler', ['dev', '--persist-to', STATE, '--port', PORT, ...more], { env, detached: true, stdio: 'ignore' })
+const serve = (...more) => spawn('node_modules/.bin/wrangler', ['dev', '--assets', testAssets, '--persist-to', STATE, '--port', PORT, ...more], { env, detached: true, stdio: 'ignore' })
 const stopServer = async () => {
   try {
     process.kill(-server.pid, 'SIGTERM')
@@ -881,6 +893,7 @@ try {
   await on.getByLabel('LEI, if the company has one').fill('5493001KJTIIGC8Y1R12')
   await on.getByLabel('Registered address').fill('2 rue de la Gare, L-1611 Luxembourg')
   await on.getByLabel('Your name').fill('Ada Applicant')
+  await on.getByLabel('Name of the person signing the declaration').fill('Ada Applicant')
   await on.getByLabel('Your position').fill('Chief Executive Officer')
   await on.getByLabel('Your work email', { exact: true }).fill(`ops@${domain}`)
   check('the company domain is filled in from the work email', await on.getByLabel('Company domain').inputValue() === domain)
@@ -1046,8 +1059,19 @@ try {
   await opCard.getByLabel(/^Next review/).fill('2030-01-01')
   await opCard.getByLabel(/^SHA-256 of the evidence/).fill('ab'.repeat(32)) // the field takes another document's hash, as the command's --sha256
   await opCard.getByLabel(/^Evidence reference/).fill('e2e register extract')
-  await opCard.getByLabel(/I searched these files/).check()
-  await opCard.getByLabel(/^EU consolidated list/).setInputFiles(LIST.eu)
+  await opCard.getByText('No matching name found.').waitFor()
+  check('the operator sees all registered names without uploading files', await opCard.locator('input[type=file]').count() === 0 && (await opCard.locator('[data-coverage]').innerText()).includes('Ben Okoro'))
+  const approveOnPage = opCard.getByRole('button', { name: 'Approve', exact: true })
+  const signerField = opCard.getByLabel('Name on the signed declaration')
+  await signerField.fill(fixtureName)
+  await opCard.getByRole('button', { name: 'Check names again' }).click()
+  await opCard.getByRole('link', { name: 'UN TEST.123' }).waitFor()
+  check('a possible match shows the source entry and needs a disposition', await approveOnPage.isDisabled())
+  await opCard.getByLabel('Why are the flagged entries different').fill('Different birth date')
+  check('a reviewed possible match permits an operator decision', await approveOnPage.isEnabled())
+  await signerField.fill('Ada Applicant')
+  await opCard.getByRole('button', { name: 'Check names again' }).click()
+  await opCard.getByText('No matching name found.').waitFor()
   opPage.once('dialog', (dialog) => dialog.accept())
   await opCard.getByRole('button', { name: 'Approve', exact: true }).click()
   await opPage.getByText('Approved: Alder Custody S.A. is now active.').waitFor()
@@ -1113,7 +1137,7 @@ try {
   const section = on.locator('#screening')
   await section.getByText('Result: no match.').waitFor()
   check('Compliance shows the screening of the approval: the date, the list, "no match", the list version, the next review; and that no address list is loaded yet',
-    (await section.innerText()).includes(`Checked on ${today} against: EU consolidated financial sanctions list. Result: no match. List version ${version({ eu: fileSha(LIST.eu) })}. Next review by 2030-01-01.`)
+    (await section.innerText()).includes(`Checked on ${today} against: EU consolidated financial sanctions list, OFAC SDN list, UN Security Council consolidated list. Result: no match. List version ${version({ eu: e2eNames.eu, ofac: e2eNames.ofac, un: e2eNames.un })}. Next review by 2030-01-01.`)
     && await section.getByText('No address list is loaded yet. Wallets have not been compared.').isVisible() && (await section.locator('table').count()) === 0
     && await section.getByText('A check is a search of public lists on that date. It is repeated at each review.').isVisible())
   const loadedList = operator('addresses', `un=${LIST.addresses}`) // by hand, under the code "un": "ofac" is left to the list file (M10, below)

@@ -50,7 +50,11 @@ const INVITES = 'invites'
 const db = env.DB
 // The challenge key is made per run: no secret lives in the repository.
 // The static files: a stand-in that answers every path, with a header only the console's pages may keep.
-const ASSETS = { fetch: async (request: Request) => new Response(`file ${new URL(request.url).pathname}`, { headers: { 'content-type': 'text/html', 'x-frame-options': 'DENY', etag: '"1"' } }) }
+const testHashes = { eu: '1'.repeat(64), un: '2'.repeat(64), ofac: '3'.repeat(64) }
+const ASSETS = { fetch: async (request: Request) => {
+  const path = new URL(request.url).pathname
+  if (path.startsWith('/sanctions-names/')) return Response.json(path.endsWith('manifest.json') ? { schema: 1, updatedAt: now, lists: testHashes } : { 'doe jane': [['un', 'TEST.123', 'Jane Doe']] })
+  return new Response(`file ${new URL(request.url).pathname}`, { headers: { 'content-type': 'text/html', 'x-frame-options': 'DENY', etag: '"1"' } }) } }
 // Milestone 5b: the sealing key pair of this run, made here: no key lives in the repository. The Worker gets the recipient only.
 const IDENTITY = await age.generateHybridIdentity()
 const RECIPIENT = await age.identityToRecipient(IDENTITY)
@@ -6016,7 +6020,7 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
   const fieldsOf = <T,>(sealed: string) => JSON.parse(new TextDecoder().decode(fromBase64Url(sealed.split('.')[0]))) as T
   const resealed = (sealed: string, change: object) => `${toBase64Url(new TextEncoder().encode(JSON.stringify({ ...fieldsOf<object>(sealed), ...change })))}.${sealed.split('.')[1]}`
   let domains = 0
-  const form = (domain: string) => ({ invite: INVITE, legalName: 'Alder Custody S.A.', country: 'LU', registration: 'B123456', address: '2 rue de la Gare, L-1611 Luxembourg', businessType: 'fund', domain, email: `ops@${domain}`, name: 'Maren Okafor', position: 'Chief Operating Officer', phone: '+352 621 123 456' })
+  const form = (domain: string) => ({ invite: INVITE, legalName: 'Alder Custody S.A.', country: 'LU', registration: 'B123456', address: '2 rue de la Gare, L-1611 Luxembourg', businessType: 'fund', domain, email: `ops@${domain}`, name: 'Maren Okafor', signatory: 'Maren Okafor', position: 'Chief Operating Officer', phone: '+352 621 123 456' })
   // The applicant: the form, then a new passkey. Nothing is written.
   async function applyFor(domain = `alder${++domains}.example`, more: Record<string, unknown> = {}, keyOptions: { backupEligible?: boolean } = {}, answer: Answer = {}) {
     const key = await softwareAuthenticator(SITE, keyOptions)
@@ -6842,7 +6846,7 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
   it('A8: the operator\'s routes answer on their own hostname only, locally to the token only, in production behind Cloudflare Access, and nowhere else', async () => {
     const a = await underReview()
     expect(onboarding.operatorRoutes.map((r) => `${r.method} ${r.path}`)).toEqual([
-      'GET /api/operator/organisations', 'GET /api/operator/organisations/:id/application', 'POST /api/operator/organisations/:id/decision', 'POST /api/operator/organisations/:id/freeze', 'POST /api/operator/organisations/:id/unfreeze', 'POST /api/operator/organisations/:id/reporting', 'POST /api/operator/invites',
+      'GET /api/operator/organisations', 'GET /api/operator/organisations/:id/application', 'POST /api/operator/organisations/:id/name-screening', 'POST /api/operator/organisations/:id/decision', 'POST /api/operator/organisations/:id/freeze', 'POST /api/operator/organisations/:id/unfreeze', 'POST /api/operator/organisations/:id/reporting', 'POST /api/operator/invites',
       'GET /api/operator/organisations/:id/items', 'POST /api/operator/items/:id/download', // milestone 5b
       'POST /api/operator/organisations/:id/screening', 'POST /api/operator/sanctions', 'POST /api/operator/sanctions/sync', // sanctions screening; M10: the read of the list file
     ])
@@ -6973,7 +6977,7 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
     expect((await ask(good, { env: page, headers: { authorization: 'Bearer wrong' } })).body).toEqual({ error: 'operator_token' })
     expect((await ask(good, { env: page, headers: { authorization: '' } })).body).toEqual({ error: 'operator_token' }) // an empty header is a token, a wrong one
     // Only routes used by the operator page take no token (Trail of Bits, PR #1670): every other one still needs it, right email or not.
-    expect(onboarding.operatorRoutes.filter((route) => route.page).map((route) => `${route.method} ${route.path}`)).toEqual(['GET /api/operator/organisations', 'GET /api/operator/organisations/:id/application', 'POST /api/operator/organisations/:id/decision', 'POST /api/operator/organisations/:id/freeze', 'POST /api/operator/organisations/:id/unfreeze', 'POST /api/operator/invites'])
+    expect(onboarding.operatorRoutes.filter((route) => route.page).map((route) => `${route.method} ${route.path}`)).toEqual(['GET /api/operator/organisations', 'GET /api/operator/organisations/:id/application', 'POST /api/operator/organisations/:id/name-screening', 'POST /api/operator/organisations/:id/decision', 'POST /api/operator/organisations/:id/freeze', 'POST /api/operator/organisations/:id/unfreeze', 'POST /api/operator/invites'])
     const id = '0'.repeat(32)
     for (const [method, path] of [['POST', `/api/operator/organisations/${id}/reporting`], ['GET', `/api/operator/organisations/${id}/items`], ['POST', `/api/operator/items/${id}/download`], ['POST', `/api/operator/organisations/${id}/screening`], ['POST', '/api/operator/sanctions'], ['POST', '/api/operator/sanctions/sync']]) {
       expect((await ask(good, { env: page, body: {}, headers: { authorization: null } }, method, path)).body, path).toEqual({ error: 'operator_identity' })
@@ -8117,7 +8121,7 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
       const text = `{"eu":"${H('e')}","ofac":"${H('c')}","un":"${H('b')}"}`
       const [first] = await kybOf(o.orgId)
       expect(first).toEqual({
-        id: expect.stringMatching(/^[0-9a-f]{32}$/), org_id: o.orgId, legal_name: o.name, registration_number: null, country: 'LU', tier: 'enhanced', source: 'gleif', evidence_ref: null, evidence_sha256: null, signer_cert_sha256: null,
+        id: expect.stringMatching(/^[0-9a-f]{32}$/), org_id: o.orgId, legal_name: o.name, registration_number: null, country: 'LU', tier: 'enhanced', source: 'gleif', evidence_ref: null, evidence_sha256: null, signer_cert_sha256: null, name_review: null,
         screening_outcome: 'clear', screening_lists: text, screening_list_version_hash: await data.sha256Hex(text), screened_at: now, decision: 'approved', decided_at: now, recheck_at: Date.UTC(2031, 10, 9), reason: null, created_at: now,
       })
       expect(await row('SELECT actor_kind, actor_id, session_id, action, subject_id, detail FROM audit_log WHERE org_id = ? ORDER BY seq DESC', o.orgId))
@@ -8139,6 +8143,30 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
         decision: 'approved', decided_at: approvedAt, screening_outcome: 'clear', screened_at: now, reason: null,
       })
       expect(await breaches()).toBe(0)
+    })
+
+    it('screens registrations and rechecks the names, source version, availability and match disposition at approval', async () => {
+      const a = await underReview()
+      const path = `/api/operator/organisations/${a.orgId}/name-screening`
+      const preview = (body = {}) => op('POST', path, { body })
+      const stored = await row<{ report: string }>('SELECT registration_screening AS report FROM organisations WHERE id = ?', a.orgId)
+      expect(JSON.parse(stored!.report)).toMatchObject({ status: 'clear', names: ['Alder Custody S.A.', 'Maren Okafor'], lists: testHashes })
+      expect((await preview()).body.status).toBe('clear')
+      await db.prepare("INSERT INTO application_people (org_id, email, display_name, role) VALUES (?, 'test@example.org', 'JANE Dóe', 'admin')").bind(a.orgId).run()
+      const hit = (await preview()).body
+      expect(hit).toMatchObject({ status: 'review', matches: [{ subject: 'JANE Dóe', entries: [['un', 'TEST.123', 'Jane Doe']] }] })
+      const decision = { ...APPROVE, screening: undefined, revision: hit.revision }
+      expect((await decideOn(a.orgId, APPROVE)).body.error).toBe('screening_not_clear')
+      expect((await decideOn(a.orgId, decision)).body.error).toBe('screening_not_clear')
+      expect((await decideOn(a.orgId, { ...decision, revision: '0'.repeat(64), resolution: 'Different identity' })).body.error).toBe('screening_changed')
+      const unavailable = { ...opEnv, ASSETS: { fetch: () => new Response('', { status: 503 }) } } as unknown as Env
+      expect((await decideOn(a.orgId, { ...decision, resolution: 'Different identity' }, { env: unavailable })).body.error).toBe('screening_incomplete')
+      await db.prepare('UPDATE organisations SET registration_screening = NULL WHERE id = ?').bind(a.orgId).run()
+      expect((await preview()).body).toMatchObject({ status: 'incomplete', signatory: null })
+      const legacy = (await preview({ signatory: 'Another Signer' })).body
+      expect((await decideOn(a.orgId, { ...decision, revision: legacy.revision, signatory: 'Another Signer', resolution: 'Different registry identifier' })).body).toEqual({ state: 'active' })
+      const saved = await row<{ review: string }>('SELECT name_review AS review FROM kyb_records WHERE org_id = ?', a.orgId)
+      expect(JSON.parse(saved!.review)).toMatchObject({ status: 'review', resolution: 'Different registry identifier', signatory: 'Another Signer', matches: hit.matches })
     })
 
     it('S2b: an approval needs a screening with the outcome "clear", stored on the KYB row of that decision; "more" and "refuse" take one or none', async () => {
@@ -8928,7 +8956,7 @@ describe('E. onboarding: a company applies, is activated and reviewed', () => {
       const applying = await applicantWithTwoKeys()
       await put(`UPDATE seats SET state = 'removed' WHERE org_id = ?`, edge.orgId) // a removed seat is no member
       const listed = new Map(((await op('GET', '/api/operator/organisations')).body.all as { id: string; state: string; members: number }[]).map((o) => [o.id, o]))
-      expect(listed.get(far.orgId)).toEqual({ id: far.orgId, name: 'Ac Far', kind: 'partner', country: 'LU', state: 'active', members: 1, nextReview: Date.UTC(2027, 10, 11) })
+      expect(listed.get(far.orgId)).toEqual({ id: far.orgId, name: 'Ac Far', registrationCheck: null, kind: 'partner', country: 'LU', state: 'active', members: 1, nextReview: Date.UTC(2027, 10, 11) })
       expect([cold, early, gone, applying].map((m) => listed.get(m.orgId)?.state)).toEqual(['frozen', 'under review', 'archived', 'applying'])
       expect(listed.get(edge.orgId)?.members).toBe(0)
       // A day later the next one is within 14 days; a year later every date is passed. The newest record decides: a new screening takes an active organisation out.
