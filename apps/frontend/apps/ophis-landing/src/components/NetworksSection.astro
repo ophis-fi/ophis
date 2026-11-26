@@ -15,6 +15,7 @@ const panels = [
       { label: 'ETH', icon: '/logos/eth.png' },
       { label: 'USDC', icon: '/logos/usdc.png' },
     ],
+    link: { href: '/supported-chains/', label: 'See all supported chains' },
   },
   {
     id: 'solana',
@@ -26,6 +27,7 @@ const panels = [
       { label: 'SOL', icon: '/logos/solana.svg' },
       { label: 'USDC', icon: '/logos/usdc.png' },
     ],
+    link: { href: '/swap/solana/', label: 'How Solana swaps work' },
   },
   {
     id: 'bitcoin',
@@ -34,6 +36,7 @@ const panels = [
     title: 'Bitcoin and other networks, by deposit',
     text: 'Trade to or from native BTC. You get a quote and a one-time deposit address, send the funds from your own wallet, and receive the other asset. A refund address covers a swap that cannot complete. The same flow reaches networks such as Sui, Tron and Zcash.',
     tokens: [{ label: 'BTC', icon: '/logos/bitcoin.svg' }],
+    link: { href: '/supported-chains/', label: 'See all supported chains' },
   },
 ]
 ---
@@ -59,7 +62,7 @@ const panels = [
             <span><img src={token.icon} alt="" width="22" height="22" />{token.label}</span>
           ))}
         </div>
-        <a class="chain-all" href="/supported-chains/">See all supported chains <span aria-hidden="true">→</span></a>
+        <a class="chain-all" href={panel.link.href}>{panel.link.label} <span aria-hidden="true">→</span></a>
       </div>
     ))}
   </div>

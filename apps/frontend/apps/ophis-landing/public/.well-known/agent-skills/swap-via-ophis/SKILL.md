@@ -10,7 +10,7 @@ Ophis is an intent-based DEX aggregator built on CoW Protocol. The swap app
 supports 13 EVM mainnets including Arc; the current SDK source and MCP
 server cover the same mainnets, plus Sepolia for testing. Reject Unichain (130)
 regardless of SDK version: published versions from before retirement still map it. Supported NEAR routes add Solana, Bitcoin, Monad, Hyperliquid,
-X Layer, Sui, Tron, Starknet and Zcash sources and destinations, subject to route availability. This MCP workflow describes same-chain
+X Layer, Sui, Tron, Starknet and Zcash sources and destinations, subject to route availability. The swap app also swaps SOL and SPL tokens natively on Solana with a Solana wallet (https://swap.ophis.fi/#/solana); that flow is outside this skill, because the Intent API and the MCP server do not build Solana orders. This MCP workflow describes same-chain
 signed ERC-20 orders, not every bridge flow. Batch auctions mitigate common MEV;
 they do not eliminate every execution risk. Signing happens in the user's wallet.
 

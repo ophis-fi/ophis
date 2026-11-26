@@ -1,0 +1,133 @@
+---
+/**
+ * /swap/solana/: native Solana swaps in the swap app. The fee wording, the
+ * program address and the venue list come from src/data/chains.ts (its Solana
+ * block names the code they are read from), so this page, /pricing/ and
+ * /supported-chains/ cannot disagree. The steps render twice from one array:
+ * the visible list and the HowTo JSON-LD.
+ */
+import ContentPage from '../../layouts/ContentPage.astro'
+import { canonicalPage } from '../../data/canonicalPages'
+import {
+  SOLANA_FEE_ANSWER,
+  SOLANA_PROGRAM,
+  SOLANA_SWAP_URL,
+  SOLANA_VENUE_LIST as venues,
+} from '../../data/chains'
+
+const { updated } = canonicalPage('/swap/solana/')
+
+const STEPS = [
+  {
+    name: 'Connect a Solana wallet',
+    text: 'Open the Solana swap and connect a browser wallet that supports the Wallet Standard, such as Phantom or Solflare. A mobile wallet can connect by QR code through WalletConnect.',
+  },
+  {
+    name: 'Choose the tokens and the amount',
+    text: 'Pick the token you sell and the token you receive. Search by symbol or name, or paste the mint address of a token, then enter the amount you sell.',
+  },
+  {
+    name: 'Review the quote',
+    text: 'Check the quoted output, the minimum received, the Ophis fee and the network costs. A quote appears only when a route exists for your pair and amount.',
+  },
+  {
+    name: 'Confirm in your wallet',
+    text: 'One transaction places your order on Solana with its minimum received. If you sell SOL, the same transaction wraps it.',
+  },
+  {
+    name: 'Receive your tokens',
+    text: 'The Ophis solver settles the order on Solana. The receipt links to the settlement on Solana Explorer.',
+  },
+]
+
+const FAQS = [
+  {
+    q: 'Can I swap on Solana with Ophis?',
+    a: 'Yes. Ophis swaps SOL and SPL tokens natively on Solana in the swap app at swap.ophis.fi. You connect a Solana wallet, review a quote and place one order, and the Ophis solver settles it on Solana at your minimum received or better.',
+  },
+  {
+    q: 'Which Solana DEXes does Ophis route through?',
+    a: `The Ophis solver prices ${venues} directly, and can also route through Jupiter. A listed token is not a promise of liquidity: a quote appears only when a route exists for your pair and amount.`,
+  },
+  {
+    q: 'What does a Solana swap cost on Ophis?',
+    a: SOLANA_FEE_ANSWER,
+  },
+  {
+    q: 'Which wallets can I use to swap on Solana?',
+    a: 'Browser wallets that support the Wallet Standard connect directly, such as Phantom and Solflare. A mobile wallet can connect by QR code through WalletConnect. Your keys stay in your wallet: Ophis prepares the order and your wallet signs it.',
+  },
+  {
+    q: 'What happens if my Solana order is not filled?',
+    a: 'It stays open until it expires, and you can cancel it in the app. The deposit paid to open the order account returns to the wallet that paid it. The Ophis program rejects any settlement below your minimum received.',
+  },
+  {
+    q: 'Is a Solana swap on Ophis a bridge?',
+    a: 'No. A Solana swap starts and ends on Solana. Moving value between Solana and an EVM chain, or to and from Bitcoin, is a separate cross-chain route in the same app, which uses a deposit flow through NEAR Intents.',
+  },
+]
+
+const howToLd = {
+  '@context': 'https://schema.org',
+  '@type': 'HowTo',
+  '@id': 'https://ophis.fi/swap/solana/#howto',
+  name: 'How to swap on Solana with Ophis',
+  step: STEPS.map((step, index) => ({ '@type': 'HowToStep', position: index + 1, name: step.name, text: step.text })),
+}
+---
+
+<ContentPage
+  title="Solana DEX aggregator: swap SOL and SPL tokens | Ophis"
+  description={`Swap SOL and SPL tokens on Solana from your own wallet. Ophis fills across ${venues} at your minimum received or better.`}
+  path="/swap/solana/"
+  heading="Swap on Solana"
+  lede="Ophis swaps SOL and SPL tokens natively on Solana. You connect a Solana wallet, review a quote with its minimum received, and place one order. The Ophis solver fills it across Solana venues at that minimum or better."
+  updated={updated}
+  faqs={FAQS}
+  extraLd={[howToLd]}
+>
+  <p>
+    <a href={SOLANA_SWAP_URL}><strong>Open the Solana swap →</strong></a>
+  </p>
+
+  <h2>How a Solana swap works</h2>
+  <ol>
+    {STEPS.map((step) => (
+      <li><strong>{step.name}.</strong> {step.text}</li>
+    ))}
+  </ol>
+
+  <h2>The Ophis program on Solana</h2>
+  <p>
+    Solana orders settle through the Ophis settlement program on Solana mainnet:
+  </p>
+  <p><code>{SOLANA_PROGRAM}</code></p>
+  <p>
+    Your order records the amount you sell and the minimum you accept, and the program rejects any
+    settlement below that minimum. Ophis operates the program and the solver that fills your order.
+    A Solana swap does not use an EVM orderbook or EIP-712 signing.
+  </p>
+
+  {FAQS.map((faq) => (
+    <section>
+      <h2>{faq.q}</h2>
+      <p>{faq.a}</p>
+    </section>
+  ))}
+
+  <h2>For agents and integrators</h2>
+  <p>
+    Native Solana swaps are available in the swap app. The Ophis MCP server, the
+    <code>@ophis/sdk</code> package and the Intent API build orders for EVM chains only; they do not
+    build Solana orders. See the <a href="/ai-agent-crypto-swap-api/">agent swap API guide</a> for
+    what each of them covers.
+  </p>
+
+  <h2>Related pages</h2>
+  <p>
+    Fees for every path are on the <a href="/pricing/">pricing page</a>, and every network is on the
+    <a href="/supported-chains/">supported chains page</a>. To move between Solana and another
+    network, read the <a href="/blog/crosschain-swap/">crosschain swap guide</a>. For dollar pairs,
+    see <a href="/stablecoin-swaps/">stablecoin swaps</a>.
+  </p>
+</ContentPage>

@@ -5,7 +5,7 @@ slug: "crosschain-swap"
 primaryKeyword: "crosschain swap"
 author: "Ophis"
 pubDate: 2026-09-06
-updatedDate: 2026-11-22
+updatedDate: 2026-11-26
 tags: [crosschain-swap, cross-chain, swaps, bridging]
 draft: false
 cover: ./crosschain-swap.cover.webp
@@ -129,6 +129,8 @@ Yes. The standalone app supports Bitcoin and Solana as NEAR sources and destinat
 For an EVM order delivering to Bitcoin or Solana, provide a destination address you control and authorize the source flow. Receiving does not require a second wallet connection. To start with BTC or a supported Solana balance, select it under **You sell**; review the quote and refund address, then fund the deposit from your source wallet.
 
 Delivery is a separate stage and is not instant. The [NEAR Intents section of Networks & assets](https://docs.ophis.fi/networks-assets#externally-funded-swaps-through-near-intents) covers deposits, delivery tracking and refunds.
+
+A swap that starts and ends on Solana is not a crosschain swap. Ophis handles it natively with a Solana wallet, without a deposit address: see [Swap on Solana](/swap/solana/).
 
 ## FAQ
 

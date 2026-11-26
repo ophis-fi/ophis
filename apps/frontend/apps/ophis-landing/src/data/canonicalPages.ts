@@ -13,6 +13,7 @@ export interface CanonicalPage {
     | '/tokenized-stocks-rwa/'
     | '/ai-agent-crypto-swap-api/'
     | '/swap/robinhood-chain/'
+    | '/swap/solana/'
     | '/migrate/odos-api/'
     | '/learn/'
     | '/learn/intent-based-dex-aggregator/'
@@ -32,13 +33,14 @@ export interface CanonicalPage {
 }
 
 export const CANONICAL_PAGES: CanonicalPage[] = [
-  { path: '/pricing/', updated: new Date('2026-11-22') },
-  { path: '/supported-chains/', updated: new Date('2026-11-22') },
+  { path: '/pricing/', updated: new Date('2026-11-26') },
+  { path: '/supported-chains/', updated: new Date('2026-11-26') },
   { path: '/security/', updated: new Date('2026-11-22') },
   { path: '/stablecoin-swaps/', updated: new Date('2026-09-30') },
   { path: '/tokenized-stocks-rwa/', updated: new Date('2026-11-22') },
   { path: '/ai-agent-crypto-swap-api/', updated: new Date('2026-09-14') },
   { path: '/swap/robinhood-chain/', updated: new Date('2026-09-27') },
+  { path: '/swap/solana/', updated: new Date('2026-11-26') },
   { path: '/migrate/odos-api/', updated: new Date('2026-11-22') },
   { path: '/learn/', updated: new Date('2026-11-22') },
   { path: '/learn/intent-based-dex-aggregator/', updated: new Date('2026-11-22') },

@@ -25,7 +25,7 @@ export const faqLd = {
       "name": "Do I need to connect a wallet?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Connect an EVM wallet for batch-auction orders. For an external NEAR source, use your source wallet to fund the quoted deposit and provide a source-chain refund address. Standard ERC-20 orders keep funds in your wallet until settlement."
+        "text": "Connect an EVM wallet for batch-auction orders, or a Solana wallet for native Solana swaps. For an external NEAR source, use your source wallet to fund the quoted deposit and provide a source-chain refund address. Standard ERC-20 orders keep funds in your wallet until settlement."
       }
     },
     {
@@ -33,7 +33,7 @@ export const faqLd = {
       "name": "Which networks are supported?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "The swap app and CLI support 13 EVM chains on mainnet, plus the Sepolia testnet. The standalone app also accepts NEAR Intents sources and destinations. Interface: Networks. App and CLI: 14 EVM networks, including Sepolia. EVM mainnets: Ethereum, Arbitrum One, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, Arc. NEAR Intents: Bitcoin, Solana, Monad, X Layer, Sui, Tron, Hyperliquid (Hypercore), Starknet, Zcash. SDK source and hosted MCP: 13 EVM mainnets, including Arc."
+        "text": "The swap app and CLI support 13 EVM chains on mainnet, plus the Sepolia testnet. The swap app also swaps SOL and SPL tokens natively on Solana. The standalone app also accepts NEAR Intents sources and destinations. Interface: Networks. App and CLI: 14 EVM networks, including Sepolia. EVM mainnets: Ethereum, Arbitrum One, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, Arc. Solana, native swaps: SOL and SPL tokens with a Solana wallet. NEAR Intents: Bitcoin, Solana, Monad, X Layer, Sui, Tron, Hyperliquid (Hypercore), Starknet, Zcash. SDK source and hosted MCP: 13 EVM mainnets, including Arc."
       }
     },
     {
@@ -107,19 +107,20 @@ Ophis public batch-auction orders use solver competition and signed price limits
 <details id="do-i-need-to-connect-a-wallet">
 <summary>Do I need to connect a wallet?</summary>
 
-Connect an EVM wallet for batch-auction orders. For an external NEAR source, use your source wallet to fund the quoted deposit and provide a source-chain refund address. Standard ERC-20 orders keep funds in your wallet until settlement.
+Connect an EVM wallet for batch-auction orders, or a Solana wallet for native Solana swaps. For an external NEAR source, use your source wallet to fund the quoted deposit and provide a source-chain refund address. Standard ERC-20 orders keep funds in your wallet until settlement.
 
 </details>
 
 <details id="which-networks-are-supported">
 <summary>Which networks are supported?</summary>
 
-The swap app and CLI support 13 EVM chains on mainnet, plus the Sepolia testnet. The standalone app also accepts NEAR Intents sources and destinations.
+The swap app and CLI support 13 EVM chains on mainnet, plus the Sepolia testnet. The swap app also swaps SOL and SPL tokens natively on Solana. The standalone app also accepts NEAR Intents sources and destinations.
 
 | Interface | Networks |
 | --- | --- |
 | App and CLI | 14 EVM networks, including Sepolia |
 | EVM mainnets | Ethereum, Arbitrum One, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, Arc |
+| Solana, native swaps | SOL and SPL tokens with a Solana wallet |
 | NEAR Intents | Bitcoin, Solana, Monad, X Layer, Sui, Tron, Hyperliquid (Hypercore), Starknet, Zcash |
 | SDK source and hosted MCP | 13 EVM mainnets, including Arc |
 

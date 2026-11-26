@@ -21,6 +21,7 @@ Published packages from before retirement can still map chain 130. Reject it exp
 | SDK source and hosted MCP | 13 EVM mainnets, including Arc (5042), with chain-specific orderbook and signing-domain helpers |
 | Vault-order builder | Current `@ophis/safe-swap` source uses the SDK for ERC-20 presigned orders on 13 EVM mainnets, including Arc |
 | Intent parser | 13 chain slugs, including `arc` |
+| Swap app, native Solana swaps | SOL and SPL tokens with a Solana wallet; see [Native Solana swaps](#native-solana-swaps) |
 | Standalone app through NEAR Intents | Bitcoin, Solana, Monad, Hyperliquid (Hypercore), X Layer, Sui, Tron, Starknet, Zcash |
 
 | Orderbook operator | Networks |
@@ -40,6 +41,23 @@ Use the SDK's chain-specific orderbook and signing-domain helpers for Arc orders
 | ERC-20 USDC decimals | 6 |
 
 Arc's native and ERC-20 USDC interfaces access the same balance. Use the ERC-20 interface for token amounts and bridging. See [Arc fees](/fees#arc-price-improvement-policy).
+
+## Native Solana swaps {/* #native-solana-swaps */}
+
+The swap app swaps SOL and SPL tokens on Solana at [swap.ophis.fi/#/solana](https://swap.ophis.fi/#/solana). A Solana swap starts and ends on Solana. It is not a bridge and uses no deposit address.
+
+| Item | Details |
+| --- | --- |
+| Wallet | A Solana wallet: Wallet Standard browser wallets such as Phantom and Solflare, or a mobile wallet by QR code through WalletConnect |
+| Assets | SOL and SPL tokens. Search by symbol or name, or paste a mint address |
+| Order | You set the amount you sell. One wallet transaction places an order with a minimum received |
+| Settlement | The Ophis solver settles through the Ophis program `BJZ5yma22Km3fsfrEEdZVGygdrcwoschb6uUNqQWaQ9h`, which rejects any settlement below your minimum |
+| Liquidity | Raydium, Orca, Meteora, PumpSwap and Manifest directly, and Jupiter as a router |
+| Unfilled orders | Stay open until they expire. You can cancel, and the order account deposit returns to the wallet that paid it |
+| Fees | [Solana fee policy](/fees#solana-fee-policy) |
+| SDK, MCP and Intent API | Not covered. They build EVM orders only |
+
+A quote appears only when a route exists for your pair and amount. To move between Solana and another network, use a [NEAR Intents swap](#externally-funded-swaps-through-near-intents).
 
 ## NEAR Intents swaps {/* #externally-funded-swaps-through-near-intents */}
 
