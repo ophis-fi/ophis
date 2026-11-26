@@ -1,0 +1,6 @@
+{
+  "extends": "../../functions/tsconfig.json",
+  // No "WebWorker" lib: its CacheStorage hides the Workers one (caches.default).
+  "compilerOptions": { "lib": ["ES2022"] },
+  "include": ["*.ts"]
+}

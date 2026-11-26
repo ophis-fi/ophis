@@ -7,7 +7,9 @@ description: Check Ophis services, health endpoints and settlement providers.
 
 # Status
 
-Check service availability through the Ophis apps and health endpoints below.
+Live status of every Ophis service is on [status.ophis.fi](https://status.ophis.fi). Each service is checked automatically around the clock, with its history over the last 90 days.
+
+To check a service yourself, use the apps and health endpoints below.
 
 ## Service checks {/* #services */}
 

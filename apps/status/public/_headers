@@ -1,0 +1,14 @@
+# Same set as docs.ophis.fi and ophis.fi. The page loads same-origin files only, so the policy
+# starts from nothing. HSTS: the zone-level setting is authoritative; this line is its fallback.
+/*
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Resource-Policy: same-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+
+/incidents.json
+  Cache-Control: public, max-age=60
