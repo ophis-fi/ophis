@@ -682,7 +682,7 @@ msgstr "Ophis"
 msgid "I received surplus on"
 msgstr "I received surplus on"
 
-#: libs/ui/src/pure/TokenSymbol/index.tsx
+#: libs/ui/src/pure/TokenSymbol/CircleBadge.tsx
 msgid "Official Circle token"
 msgstr "Official Circle token"
 
@@ -2379,7 +2379,7 @@ msgstr "On-chain verification failed, so order data is hidden rather than shown 
 msgid "Pool analytics"
 msgstr "Pool analytics"
 
-#: libs/ui/src/pure/TokenSymbol/index.tsx
+#: libs/ui/src/pure/TokenSymbol/CircleBadge.tsx
 msgid "Contract verified against Circle's registry."
 msgstr "Contract verified against Circle's registry."
 
@@ -2399,10 +2399,6 @@ msgstr "The price of this pool is outside of your selected range. Your position 
 #: apps/cowswap-frontend/src/modules/erc20Approve/pure/LegacyApproveButton/index.tsx
 msgid "Allow Ophis to use your <0/>"
 msgstr "Allow Ophis to use your <0/>"
-
-#: apps/cowswap-frontend/src/entities/verifiedAsset/VerifiedAssetBadge.tsx
-msgid "This contract matches the stablecoin issuer’s published address on this network."
-msgstr "This contract matches the stablecoin issuer’s published address on this network."
 
 #: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketWidget/BasketWidget.pure.tsx
 msgid "Swap several tokens at once. Ophis splits your basket into up to {MAX_BASKET_LEGS} single-pair orders that share one deadline. Best-effort together, not atomic."
@@ -2779,10 +2775,6 @@ msgstr "Estimated bridge transaction time: {bridgeEstimatedTime} minutes"
 #: apps/cowswap-frontend/src/common/containers/CoWAmmBanner/index.tsx
 msgid "Booooost APR gas-free!"
 msgstr "Booooost APR gas-free!"
-
-#: apps/cowswap-frontend/src/entities/verifiedAsset/VerifiedAssetBadge.tsx
-msgid "This is the network’s native coin."
-msgstr "This is the network’s native coin."
 
 #: apps/cowswap-frontend/src/modules/volumeFee/hooks/useVolumeFeeTooltip.ts
 msgid "The Ophis base fee is {OPHIS_BOOSTED_VOLUME_BPS} bp on this swap, plus capped price-improvement capture."
@@ -6469,7 +6461,7 @@ msgstr "for"
 msgid "Default approve"
 msgstr "Default approve"
 
-#: libs/ui/src/pure/TokenSymbol/index.tsx
+#: libs/ui/src/pure/TokenSymbol/CircleBadge.tsx
 msgid "Contract verified against Circle's registry. USYC requires an eligible, allowlisted wallet."
 msgstr "Contract verified against Circle's registry. USYC requires an eligible, allowlisted wallet."
 
