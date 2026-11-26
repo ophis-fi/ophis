@@ -1,5 +1,4 @@
-@font-face { font-family: 'Ophis Inter'; src: url('/fonts/inter-variable.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
-:root { color-scheme: light; color: #17191c; background: #fff; font: 16px/1.5 'Ophis Inter', Inter, system-ui, sans-serif; font-variant-numeric: lining-nums tabular-nums; }
+:root { color-scheme: light; color: #17191c; background: #fff; font: 16px/1.5 'Neue Haas Unica Pro', system-ui, sans-serif; font-variant-numeric: lining-nums tabular-nums; }
 * { box-sizing: border-box; }
 body { margin: 0; }
 main { margin: 32px auto; width: calc(100% - 32px); max-width: 560px; padding: 24px; display: grid; gap: 16px; border: 1px solid #e8e8ea; border-radius: 20px; overflow-wrap: anywhere; }

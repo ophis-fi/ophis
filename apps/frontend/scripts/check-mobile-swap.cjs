@@ -201,7 +201,10 @@ async function checkDesign(engine) {
     })
     await page.goto(base + '/#/1/swap/_/_', { waitUntil: 'domcontentloaded' })
     await page.locator('#input-currency-input').waitFor()
-    await page.waitForFunction(() => document.fonts.check('16px "Ophis Inter"'))
+    assert.match(
+      await page.locator('#input-currency-input').evaluate((el) => getComputedStyle(el).fontFamily),
+      /^['"]?Neue Haas Unica Pro['"]?,/,
+    )
     assert.equal((await page.locator('h1:visible').innerText()).trim(), 'Swap with\nclarity.')
     await assertSwapLayout(page, { width: 390, phone: true, empty: true })
     const button = page.getByRole('button', { name: 'Connect Wallet', exact: true })

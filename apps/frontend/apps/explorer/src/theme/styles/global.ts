@@ -55,30 +55,13 @@ export const ThemedGlobalStyle = createGlobalStyle`
   // Global CoW DAO styles
   ${ThemeColorVars}
 
-  input,
-  textarea,
-  button,
-  select {
-    font-family: ${({ theme }): string => theme.fontDefault}, sans-serif;
-  }
-  @supports (font-variation-settings: normal) {
-    input,
-    textarea,
-    button,
-    select {
-      font-family: ${({ theme }): string => theme.fontVariable}, sans-serif;
-    }
+  html, body, input, textarea, button, select {
+    font-family: var(--cow-font-family-primary);
   }
   html, body {
     background: ${Color.explorer_bg};
     color: ${Color.explorer_textPrimary};
-    /* StyleLint fights you for the sans-serif as it requires a fallback and can't detect it from the theme prop */
-    font-family: ${({ theme }): string => theme.fontDefault}, sans-serif;
     font-variant-numeric: lining-nums tabular-nums;
-
-    @supports (font-variation-settings: normal) {
-      font-family: ${({ theme }): string => theme.fontVariable}, sans-serif;
-    }
   }
 
   /* TODO: move closer to <a> element */

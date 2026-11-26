@@ -66,7 +66,7 @@ pub fn render_svg(
     // Root. `xmlns` is a namespace declaration, not a fetchable reference.
     let _ = write!(
         s,
-        r#"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}" role="img" aria-label="Ophis route visualization" font-family="Geist, Inter, system-ui, sans-serif">"#,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}" role="img" aria-label="Ophis route visualization" font-family="'Neue Haas Unica Pro', system-ui, sans-serif">"#,
         w = fmt_num(width),
         h = fmt_num(height),
     );

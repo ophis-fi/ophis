@@ -2,7 +2,7 @@ import { baseTheme } from '@cowprotocol/ui'
 
 import { CoWSwapTheme } from 'styled-components'
 
-// Validated Refero / Steep reference. Georgia and Inter are its documented font fallbacks.
+// Validated Refero / Steep reference. Ophis uses its shared body and display fonts.
 export const mobileSwapTheme: CoWSwapTheme = {
   ...baseTheme('light'),
   isWidget: false,

@@ -1,23 +1,16 @@
 /* Imports tokens.css (generated). MUST be first. */
 @import './tokens.css';
 
-@font-face {
-  font-family: 'Inter';
-  font-style: normal;
-  font-weight: 100 900;
-  font-display: swap;
-  src: url('/fonts/inter-variable.woff2') format('woff2-variations'),
-       url('/fonts/inter-variable.woff2') format('woff2');
-}
-
+:root { --ophis-font-body: 'Neue Haas Unica Pro', system-ui, sans-serif; }
 * { box-sizing: border-box; }
+button, input, select, textarea { font-family: inherit; }
 html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; overflow-x: clip; scroll-behavior: smooth; }
 body {
   margin: 0;
   position: relative;
   background: var(--ophis-bg);
   color: var(--ophis-fg);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-family: var(--ophis-font-body);
   font-size: 17px;
   line-height: 1.5;
   font-variant-numeric: tabular-nums;
@@ -26,7 +19,7 @@ body {
 :focus-visible { outline: 2px solid var(--ophis-fg); outline-offset: 3px; border-radius: 8px; }
 
 /* Shared editorial type: Georgia display serif (regular, italic for emphasis),
-// Inter body with tabular figures for financial numerals. */
+   body text with tabular figures for financial numerals. */
 .serif {
   font-family: Georgia, 'Times New Roman', ui-serif, serif;
   font-weight: 400;

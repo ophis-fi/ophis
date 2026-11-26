@@ -117,9 +117,7 @@ export const fontFamily = {
   // Display face — Fraunces (OFL, variable). Warm humanist serif with a SOFT
   // axis that complements the sunset palette. Used for Display 1/2 and H1.
   display: '"Fraunces", ui-serif, Georgia, "Times New Roman", serif',
-  // Body face — Plus Jakarta Sans (OFL, variable). Geometric humanist sans,
-  // tabular figures available, pairs cleanly with Fraunces.
-  primary: '"Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+  primary: '"Neue Haas Unica Pro", system-ui, sans-serif',
   mono: '"JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
 } as const
 

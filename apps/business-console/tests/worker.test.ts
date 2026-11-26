@@ -4353,7 +4353,7 @@ describe('z. attacks tried by the review of milestone 4a', () => {
 
 // ---- milestone 4b, part 1: hardening. Each test was seen to fail with its control removed. ----
 const builtSign = import.meta.glob('../dist/sign/index.html', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
-const builtSignFiles = Object.keys(import.meta.glob('../dist/sign/assets/*'))
+const builtSignFonts = Object.keys(import.meta.glob('../dist/sign/assets/*.{woff,woff2,ttf,otf}'))
 
 describe('A. hardening after milestone 4a', () => {
   // An Owner alone, whose recovery wallet is this contract, in force. What the list and the readiness block say of it.
@@ -4412,11 +4412,10 @@ describe('A. hardening after milestone 4a', () => {
     expect((await call('GET', '/api/me', { cookie: m.cookie })).status).toBe(200)
   })
 
-  it('H4: the signing page shows the console\'s black logo and loads Inter from its own folder, which its policy allows', () => {
+  it('H4: the signing page shows the console\'s black logo and uses the local brand font under its own policy', () => {
     const html = builtSign['../dist/sign/index.html']
     expect(html, 'build first: pnpm build').toMatch(/<img src="\/sign\/assets\/ophis-icon-mono-dark-[\w-]+\.svg"/)
-    // The font files are in the page's own folder (tests/e2e.mjs sees the page load them, with no policy violation).
-    for (const font of ['Inter-roman', 'Inter-italic']) expect(builtSignFiles.filter((name) => new RegExp(`/dist/sign/assets/${font}\\.var-[\\w-]+\\.woff2$`).test(name)), font).toHaveLength(1)
+    expect(builtSignFonts).toHaveLength(0)
     expect(routerSource).toMatch(/SIGN_HEADERS = \{\s+'content-security-policy': "[^"]*font-src 'self'/)
   })
   it('H2: "custodian" is shown as a declaration, in the wallet list and on both approval cards (they share one sentence)', () => {

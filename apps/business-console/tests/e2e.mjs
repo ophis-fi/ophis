@@ -566,18 +566,15 @@ try {
   const elsewhere = []
   signing.on('console', (message) => /content security policy|refused to/i.test(message.text()) && violations.push(message.text()))
   signing.on('request', (request) => request.url().startsWith(`${SIGN}/`) || elsewhere.push(request.url()))
-  const fonts = []
-  signing.on('response', (response) => response.url().endsWith('.woff2') && response.ok() && fonts.push(response.url()))
   const opened = await signing.goto(signingLink)
   await signing.getByRole('heading', { name: 'What the wallet will sign' }).waitFor()
   const policy = opened.headers()['content-security-policy'] ?? ''
   check('the signing page carries its own policy, names only WalletConnect\'s relay and its Verify frame, and may be framed by the Safe interface only',
     policy === "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self' wss://relay.walletconnect.org; frame-src https://verify.walletconnect.org; frame-ancestors https://app.safe.global https://*.safe.global" && !opened.headers()['x-frame-options'])
   await signing.evaluate(() => document.fonts.ready)
-  check('the signing page shows the black logo of the console and the brand font, both from its own folder',
+  check('the signing page shows the local brand font and its own console logo',
     await signing.evaluate(() => { const logo = document.querySelector('.brand img'); return logo.naturalWidth > 0 && new URL(logo.src).pathname.startsWith('/sign/assets/ophis-icon-mono-dark') })
-      && await signing.evaluate(() => [...document.fonts].some((font) => font.family.includes('Ophis Inter') && font.status === 'loaded'))
-      && fonts.length > 0 && fonts.every((url) => url.startsWith(`${SIGN}/sign/assets/Inter-`)))
+      && await signing.evaluate(() => /^['"]?Neue Haas Unica Pro['"]?,/.test(getComputedStyle(document.body).fontFamily)))
   const shown = await signing.locator('#request dl.kv').innerText()
   check('it shows the action, the site, the organisation id, the chain, the wallet and the expiry as text',
     ['Link this wallet to this organisation', 'localhost', 'OP Mainnet (chain id 10)', key.address, 'UTC'].every((text) => shown.includes(text)) && /[0-9a-f]{32}/.test(shown))

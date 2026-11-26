@@ -4,7 +4,7 @@ const variables = css`
   /* General styles */
   :root {
     /* FONTS */
-    --font-default: 'Inter', 'Helvetica Neue', Helvetica, sans-serif;
+    --font-default: var(--cow-font-family-primary);
     --font-mono: 'Roboto Mono', monospace;
     --font-arial: Arial, Helvetica, sans-serif;
     --font-weight-normal: 400;

@@ -48,7 +48,7 @@ export const Media = {
 }
 
 export const Font = {
-  family: `'studiofeixen', 'Inter var', 'Inter', Arial, sans-serif`,
+  family: `'Neue Haas Unica Pro', system-ui, sans-serif`,
   familySerif: `'studiofeixenserif', Arial, serif`,
   familyMono: `'studiofeixenmono', monospace, sans-serif`,
   weight: {

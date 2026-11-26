@@ -100,7 +100,7 @@ const Chip = styled.button`
   color: rgba(245, 239, 230, 0.78);
   padding: 8px 14px;
   border-radius: 999px;
-  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
+  font-family: var(--ophis-font-body);
   font-size: 13px;
   font-weight: 500;
   line-height: 1.2;

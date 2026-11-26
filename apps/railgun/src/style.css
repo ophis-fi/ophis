@@ -1,4 +1,4 @@
-:root { color-scheme: light; font: 14px/1.45 Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #fff; color: #17191c; }
+:root { color-scheme: light; font: 14px/1.45 'Neue Haas Unica Pro', system-ui, sans-serif; background: #fff; color: #17191c; }
 body { margin: 0; }
 main { max-width: 470px; margin: 0 auto; padding: 18px; box-sizing: border-box; }
 header, header strong { display: flex; align-items: center; gap: 7px; }

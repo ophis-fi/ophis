@@ -2,7 +2,6 @@
 // in a browser on the operator's host. It holds no token: Cloudflare Access signs the operator in, and the Worker checks
 // that the email Access signed is the operator's (onboarding.ts, operate). Every value is set as text, never as markup.
 // The list files of a screening are hashed here; only their SHA-256 leaves the computer, as with the command.
-import '../src/app/fonts.css' // Inter, copied by this build into /operator/assets/: the page's policy has font-src 'self'
 import '../src/app/kit.css'
 import '../src/app/app.css'
 import './operator.css'

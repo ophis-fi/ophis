@@ -54,10 +54,7 @@ const config: Config = {
     locales: ['en'],
   },
 
-  // Inter is self-hosted; headings and code use system fonts in custom.css.
   headTags: [
-    // Preload the self-hosted body font so first paint is not gated on it.
-    {tagName: 'link', attributes: {rel: 'preload', href: '/fonts/inter-variable.woff2', as: 'font', type: 'font/woff2', crossorigin: 'anonymous'}},
     // GA4 (gtag) + Consent Mode v2, REGION-SCOPED. Done manually rather than via
     // the preset `gtag` option so the consent-default is GUARANTEED to run before
     // gtag('config') (so GA4 never sets cookies pre-consent). GA4 Enhanced
@@ -100,8 +97,6 @@ const config: Config = {
       }),
     },
   ],
-  // Inter is self-hosted via @font-face in src/css/custom.css (see the
-  // headTags preload above); no external font stylesheet is loaded.
 
   // Client-side opt-in/opt-out consent banner. Runs on every page; upgrades or
   // revokes Consent Mode analytics_storage and persists the choice. Pairs with

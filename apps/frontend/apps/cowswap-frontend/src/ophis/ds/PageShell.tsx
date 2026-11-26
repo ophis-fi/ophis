@@ -12,7 +12,7 @@
  *   - `medium` (~960px): institutional + dashboard-style pages
  *   - `wide` (~1200px): brand kit, dashboards, learn hub
  *
- * Steep editorial system: Georgia regular headings, Inter/system body,
+ * Steep editorial system: Georgia regular headings, Neue Haas Unica Pro body,
  * ink-on-paper light default with a neutral-ink dark variant selected
  * via theme.darkMode.
  */

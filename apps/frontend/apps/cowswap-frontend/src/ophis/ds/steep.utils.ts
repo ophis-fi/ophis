@@ -159,6 +159,6 @@ export function steep(theme?: SteepThemeFlag | null): SteepPalette {
 
 export const STEEP_FONT = {
   display: `var(--ophis-font-display, Georgia, 'Times New Roman', ui-serif, serif)`,
-  body: `var(--ophis-font-body, Inter, system-ui, -apple-system, 'Segoe UI', sans-serif)`,
+  body: `var(--ophis-font-body, 'Neue Haas Unica Pro', system-ui, sans-serif)`,
   mono: `var(--ophis-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace)`,
 } as const

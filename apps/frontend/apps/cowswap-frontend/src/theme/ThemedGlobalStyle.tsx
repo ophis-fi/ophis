@@ -8,16 +8,9 @@ export const ThemedGlobalStyle = createGlobalStyle`
   html,
   input,
   textarea,
+  select,
   button {
-    font-family: 'Inter', sans-serif;
-  }
-  @supports (font-variation-settings: normal) {
-    html,
-    input,
-    textarea,
-    button {
-      font-family: 'Inter var', sans-serif;
-    }
+    font-family: var(${UI.FONT_FAMILY_PRIMARY});
   }
 
   html,

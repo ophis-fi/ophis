@@ -11,10 +11,9 @@ test('Base layout renders Ophis meta + redirect script', async ({ page }) => {
   expect(html).toContain("'https://swap.ophis.fi/'")
 })
 
-test('Inter font is preloaded', async ({ page }) => {
+test('body text prefers local Neue Haas Unica Pro and headings retain Georgia', async ({ page }) => {
   await page.goto('/')
-  const links = page.locator('link[rel="preload"][as="font"]')
-  await expect(links).toHaveCount(1)
-  const href = await links.getAttribute('href')
-  expect(href).toContain('inter-variable')
+  await expect(page.locator('body')).toHaveCSS('font-family', /^["']?Neue Haas Unica Pro["']?, system-ui, sans-serif$/)
+  await expect(page.locator('#heroTitle')).toHaveCSS('font-family', /^Georgia,/)
+  await expect(page.locator('link[rel="preload"][as="font"]')).toHaveCount(0)
 })
