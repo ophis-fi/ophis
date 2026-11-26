@@ -562,6 +562,11 @@ msgstr " · transfers paused for {pausedSymbols}"
 msgid "Considering current network costs (<0><1/></0> per chunk), you could save more by reducing the number of parts or switch to a {swapOrderLink}."
 msgstr "Considering current network costs (<0><1/></0> per chunk), you could save more by reducing the number of parts or switch to a {swapOrderLink}."
 
+#. placeholder {0}: formatOphisSolanaAmount(solShortfall, 9)
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaTradePanels.container.tsx
+msgid "Your wallet needs {0} more SOL for fees and refundable deposits. You can reclaim deposits from completed orders in Account."
+msgstr "Your wallet needs {0} more SOL for fees and refundable deposits. You can reclaim deposits from completed orders in Account."
+
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/steps/FinishedStep.tsx
 msgid "via {route}"
 msgstr "via {route}"

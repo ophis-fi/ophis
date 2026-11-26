@@ -63,8 +63,8 @@ export function NativeSolanaForm({ onReview }: { onReview(review: NativeSolanaRe
   const catalog = useAtomValue(picker ? solanaMainnetCatalogAtom : solanaCachedCatalogAtom)
   const assets = useAtomValue(walletAssetListAtom)
   const holdings = useAtomValue(walletHoldingsMapAtom)
-  const { valid, exceeds } = useAtomValue(sellAmountStateAtom)
-  const canQuote = !!owner && !!form.buyMint && valid && !exceeds && !busy
+  const { valid, exceeds, solShortfall, estimatingTokenOrder } = useAtomValue(sellAmountStateAtom)
+  const canQuote = !!owner && !!form.buyMint && valid && !exceeds && !solShortfall && !estimatingTokenOrder && !busy
   useAutomaticSolanaQuote(canQuote)
   return (
     <styledEl.Swap
@@ -101,7 +101,7 @@ export function NativeSolanaForm({ onReview }: { onReview(review: NativeSolanaRe
           }}
         />
         <LocalTestFunds />
-        {quoteError && <p role="alert">{quoteError}</p>}
+        {!solShortfall && quoteError && <p role="alert">{quoteError}</p>}
         <SolanaWalletAction canQuote={canQuote} busy={busy} reviewReady={!!review} quoteFailed={!!quoteError} />
       </styledEl.Fields>
       {picker && (

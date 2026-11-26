@@ -3,7 +3,7 @@ import { atom } from 'jotai'
 import {
   type OphisWalletHolding,
   fetchOphisWalletHoldings,
-  fetchOphisNativeSellReserve,
+  fetchOphisOrderSolReserve,
   OPHIS_LOCAL_WALLET_RPC,
   SOLANA_NATIVE_ASSET,
   formatOphisSolanaAmount,
@@ -87,27 +87,27 @@ export const walletAssetListAtom = atom((get) =>
 export const walletHoldingsMapAtom = atom(
   (get) => new Map(get(solanaHoldingsAtom).data?.map((row) => [walletMint(row.mint), row])),
 )
-export const nativeSellReserveAtom = atomWithQuery((get) => {
+export const orderSolReserveAtom = atomWithQuery((get) => {
   const config = OPHIS_SOLANA_CONFIG
   const rpc = balanceEndpoint(config)
   const owner = get(solanaConnectionAtom)?.account.address
   const { sellMint, buyMint } = get(nativeSolanaFormAtom)
   return {
-    queryKey: ['solana-order-reserve', config?.genesis, owner, buyMint],
-    enabled: !!(config && rpc && owner && sellMint === 'SOL' && buyMint && buyMint !== 'SOL'),
+    queryKey: ['solana-order-reserve', config?.genesis, owner, sellMint === 'SOL', buyMint],
+    enabled: !!(config && rpc && owner && buyMint && buyMint !== sellMint),
     queryFn: () => {
       if (!config || !rpc || !owner) throw Error('Wallet balance service unavailable.')
-      return fetchOphisNativeSellReserve(rpc, config.genesis, solanaAddress(owner), solanaAddress(buyMint))
+      return fetchOphisOrderSolReserve(
+        rpc,
+        config.genesis,
+        solanaAddress(owner),
+        buyMint === 'SOL' ? SOLANA_NATIVE_ASSET : solanaAddress(buyMint),
+        sellMint === 'SOL',
+      )
     },
     staleTime: 30_000,
     retry: false,
   }
-})
-
-const sellReserveAtom = atom((get) => {
-  if (get(nativeSolanaFormAtom).sellMint !== 'SOL') return 0n
-  const estimate = get(nativeSellReserveAtom)
-  return estimate.isError ? undefined : estimate.data
 })
 
 function spendableAfterReserve(balance?: bigint, reserve?: bigint): bigint | undefined {
@@ -118,16 +118,26 @@ function spendableAfterReserve(balance?: bigint, reserve?: bigint): bigint | und
 export const sellAmountStateAtom = atom((get) => {
   const form = get(nativeSolanaFormAtom)
   const balances = get(solanaHoldingsAtom)
-  const holding = get(walletHoldingsMapAtom).get(form.sellMint)
+  const holdings = get(walletHoldingsMapAtom)
+  const holding = holdings.get(form.sellMint)
   const balanceKnown = !!balances.data && !balances.isError
   const balance = holding ? formatOphisSolanaAmount(holding.atoms, holding.decimals) : '0'
   const native = form.sellMint === 'SOL'
   const precision = holding?.decimals ?? (native ? 9 : undefined)
   const atoms = balanceKnown ? (holding?.atoms ?? 0n) : undefined
-  const reserve = get(sellReserveAtom)
+  const estimate = get(orderSolReserveAtom)
+  const solReserve = estimate.isError ? undefined : estimate.data
+  const reserve = native ? solReserve : 0n
+  const nativeBalance = holdings.get('SOL')?.atoms
+  const solShortfall =
+    !native && balanceKnown && solReserve !== undefined && nativeBalance !== undefined && solReserve > nativeBalance
+      ? solReserve - nativeBalance
+      : undefined
   const spendable = spendableAfterReserve(atoms, reserve)
   return {
     ...amountAvailability(form.amount, precision, atoms, reserve ?? 1n),
+    solShortfall,
+    estimatingTokenOrder: !native && estimate.isLoading,
     balanceKnown,
     balance,
     spendable,

@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 
-import { fetchOphisNativeSellReserve, renderForm, solanaAddress, solanaConnectionAtom } from './solanaForm.test-utils'
+import { fetchOphisOrderSolReserve, renderForm, solanaAddress, solanaConnectionAtom } from './solanaForm.test-utils'
 
 import { walletAssetListAtom } from '../state/assets.atoms'
 import { nativeSolanaFormAtom } from '../state/trade.atoms'
@@ -133,7 +133,7 @@ it('applies whole-atom presets, reserves live SOL costs and disables them when t
 })
 
 it('retries a failed SOL reserve estimate on Refresh balance and keeps manual entry available', async () => {
-  const reserve = jest.mocked(fetchOphisNativeSellReserve)
+  const reserve = jest.mocked(fetchOphisOrderSolReserve)
   let recover: (lamports: bigint) => void = () => undefined
   reserve
     .mockClear()
