@@ -1,9 +1,12 @@
+import { useAtomValue } from 'jotai'
+import { useMemo } from 'react'
+
 import { areAddressesEqual } from '@cowprotocol/cow-sdk'
 import { Currency, CurrencyAmount } from '@cowprotocol/currency'
 import { useWalletInfo } from '@cowprotocol/wallet'
 import { useWalletChainId } from '@cowprotocol/wallet-provider'
 
-import useSWR from 'swr'
+import { atomWithQuery } from 'jotai-tanstack-query'
 import { createPublicClient, custom, erc20Abi, getAddress } from 'viem'
 
 import { useBridgeWallet } from 'modules/cctp'
@@ -20,30 +23,32 @@ export function useNearFundingBalance(
   const { account } = useWalletInfo()
   const chainId = useWalletChainId()
   const supported = source && ['monad', 'xlayer'].includes(source.blockchain)
-  const { data, error } = useSWR(
+  const fundingAccount =
     wallet && account && chainId === currency.chainId && supported && areAddressesEqual(account, refundTo)
-      ? ([
-          'near-funding-balance',
-          wallet.uid,
-          chainId,
-          account,
-          source.assetId,
-          source.contractAddress,
-          source.decimals,
-        ] as const)
-      : null,
-    async ([, , id, address, , contract, precision]) => {
-      if (!wallet || (await wallet.getChainId()) !== id) return null
-      const client = createPublicClient({ transport: custom({ request: wallet.request }, { retryCount: 0 }) })
-      if (!contract) return client.getBalance({ address })
-      const token = getAddress(contract)
-      const [balance, decimals] = await Promise.all([
-        client.readContract({ address: token, abi: erc20Abi, functionName: 'balanceOf', args: [address] }),
-        client.readContract({ address: token, abi: erc20Abi, functionName: 'decimals' }),
-      ])
-      return decimals === precision ? balance : null
-    },
-    { keepPreviousData: false, shouldRetryOnError: false },
+      ? account
+      : undefined
+  const { assetId, contractAddress, decimals } = source ?? {}
+  const balanceAtom = useMemo(
+    () =>
+      atomWithQuery(() => ({
+        queryKey: ['nearFundingBalance', wallet?.uid, chainId, fundingAccount, assetId, contractAddress, decimals],
+        enabled: !!fundingAccount,
+        retry: false,
+        queryFn: async ({ signal }) => {
+          if (!wallet || !fundingAccount || (await wallet.getChainId()) !== chainId) return null
+          signal.throwIfAborted()
+          const client = createPublicClient({ transport: custom({ request: wallet.request }, { retryCount: 0 }) })
+          if (!contractAddress) return client.getBalance({ address: fundingAccount })
+          const token = getAddress(contractAddress)
+          const [balance, precision] = await Promise.all([
+            client.readContract({ address: token, abi: erc20Abi, functionName: 'balanceOf', args: [fundingAccount] }),
+            client.readContract({ address: token, abi: erc20Abi, functionName: 'decimals' }),
+          ])
+          return decimals === precision ? balance : null
+        },
+      })),
+    [wallet, chainId, fundingAccount, assetId, contractAddress, decimals],
   )
-  return data == null || error ? null : CurrencyAmount.fromRawAmount(currency, data.toString())
+  const { data, isError } = useAtomValue(balanceAtom)
+  return data == null || isError ? null : CurrencyAmount.fromRawAmount(currency, data.toString())
 }
