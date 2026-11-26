@@ -1,5 +1,5 @@
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
-import { ReactNode, useEffect, useState } from 'react'
+import { ReactNode, useEffect, useRef, useState } from 'react'
 
 import { Trans } from '@lingui/react/macro'
 import { OPHIS_SOLANA_CONFIG, solanaConnectionAtom } from 'entities/solana'
@@ -41,6 +41,17 @@ export function NativeSolanaForm({ onReview }: { onReview(review: NativeSolanaRe
   const review = useAtomValue(nativeSolanaReviewAtom)
   const quoteError = useAtomValue(nativeSolanaQuoteErrorAtom)
   const [picker, setPicker] = useState<'sell' | 'buy' | null>(null)
+  const pickerTrigger = useRef<HTMLButtonElement | null>(null)
+  useEffect(() => {
+    if (!picker && pickerTrigger.current) {
+      pickerTrigger.current.focus()
+      pickerTrigger.current = null
+    }
+  }, [picker])
+  function openPicker(side: 'sell' | 'buy', trigger: HTMLButtonElement): void {
+    pickerTrigger.current = trigger
+    setPicker(side)
+  }
   useEffect(() => {
     const url = new URL(window.location.href)
     if (!privateSettlementEnabled || url.searchParams.get('pick') !== 'sell') return
@@ -60,54 +71,39 @@ export function NativeSolanaForm({ onReview }: { onReview(review: NativeSolanaRe
       aria-label="Solana swap"
       onSubmit={(event) => {
         event.preventDefault()
-        if (!canQuote) return
+        if (picker || !canQuote) return
         if (review && Date.parse(review.quote.expiration) > Date.now()) onReview(review)
         else clearQuote()
       }}
     >
-      <styledEl.Line>
-        <NetworkSelector nativeSolanaSelected disabled={busy} />
-        {OPHIS_SOLANA_CONFIG?.chain === 'solana:localnet' && (
-          <span>
-            <Trans>Local test network</Trans>
-          </span>
-        )}
-        {OPHIS_SOLANA_CONFIG?.chain === 'solana:devnet' && (
-          <span>
-            <Trans>Solana devnet · Test tokens</Trans>
-          </span>
-        )}
-        {privateSettlementEnabled && (
-          <span>
-            <Trans>Private mainnet test · Real funds</Trans>
-          </span>
-        )}
-      </styledEl.Line>
-      <styledEl.Settings>
-        <Trans>Slippage limit</Trans>
-        <select
-          aria-label="Slippage limit"
-          disabled={busy}
-          value={form.slippageBps}
-          onChange={(event) => setForm({ ...form, slippageBps: Number(event.target.value) })}
-        >
-          <option value={10}>0.1%</option>
-          <option value={50}>0.5%</option>
-          <option value={100}>1%</option>
-        </select>
-      </styledEl.Settings>
-      <AssetSwapFieldsLayout
-        input={<SellPanel open={() => setPicker('sell')} />}
-        output={<BuyPanel open={() => setPicker('buy')} />}
-        reverse={{
-          loading: false,
-          disabled: !form.buyMint || busy,
-          onClick: () => setForm({ ...form, sellMint: form.buyMint, buyMint: form.sellMint, amount: '' }),
-        }}
-      />
-      <LocalTestFunds />
-      {quoteError && <p role="alert">{quoteError}</p>}
-      <SolanaWalletAction canQuote={canQuote} busy={busy} reviewReady={!!review} quoteFailed={!!quoteError} />
+      <SolanaNetworkHeader busy={busy} />
+      <styledEl.Fields hidden={!!picker}>
+        <styledEl.Settings>
+          <Trans>Slippage limit</Trans>
+          <select
+            aria-label="Slippage limit"
+            disabled={busy}
+            value={form.slippageBps}
+            onChange={(event) => setForm({ ...form, slippageBps: Number(event.target.value) })}
+          >
+            <option value={10}>0.1%</option>
+            <option value={50}>0.5%</option>
+            <option value={100}>1%</option>
+          </select>
+        </styledEl.Settings>
+        <AssetSwapFieldsLayout
+          input={<SellPanel open={(event) => openPicker('sell', event.currentTarget)} />}
+          output={<BuyPanel open={(event) => openPicker('buy', event.currentTarget)} />}
+          reverse={{
+            loading: false,
+            disabled: !form.buyMint || busy,
+            onClick: () => setForm({ ...form, sellMint: form.buyMint, buyMint: form.sellMint, amount: '' }),
+          }}
+        />
+        <LocalTestFunds />
+        {quoteError && <p role="alert">{quoteError}</p>}
+        <SolanaWalletAction canQuote={canQuote} busy={busy} reviewReady={!!review} quoteFailed={!!quoteError} />
+      </styledEl.Fields>
       {picker && (
         <AssetPicker
           side={picker}
@@ -127,5 +123,28 @@ export function NativeSolanaForm({ onReview }: { onReview(review: NativeSolanaRe
         />
       )}
     </styledEl.Swap>
+  )
+}
+
+function SolanaNetworkHeader({ busy }: { busy: boolean }): ReactNode {
+  return (
+    <styledEl.Line>
+      <NetworkSelector nativeSolanaSelected disabled={busy} />
+      {OPHIS_SOLANA_CONFIG?.chain === 'solana:localnet' && (
+        <span>
+          <Trans>Local test network</Trans>
+        </span>
+      )}
+      {OPHIS_SOLANA_CONFIG?.chain === 'solana:devnet' && (
+        <span>
+          <Trans>Solana devnet · Test tokens</Trans>
+        </span>
+      )}
+      {privateSettlementEnabled && (
+        <span>
+          <Trans>Private mainnet test · Real funds</Trans>
+        </span>
+      )}
+    </styledEl.Line>
   )
 }

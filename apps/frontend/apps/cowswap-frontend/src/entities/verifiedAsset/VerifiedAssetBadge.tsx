@@ -1,6 +1,6 @@
 import { ReactNode } from 'react'
 
-import { AssetCheck } from '@cowprotocol/ui'
+import { AssetBadgeTooltip } from '@cowprotocol/ui'
 
 import { t } from '@lingui/core/macro'
 import styled from 'styled-components/macro'
@@ -22,10 +22,15 @@ const Label = styled.span`
 export function VerifiedAssetBadge({ verified }: { verified: Verification | undefined }): ReactNode {
   if (!verified || verified === 'circleSymbol' || verified === 'mismatch') return null
   if (isStockIssuer(verified)) return <Label>{STOCK_LABELS[verified]}</Label>
-  const label = verified === 'native' ? t`Native currency` : t`Issued by ${verified}`
+  const native = verified === 'native'
   return (
-    <Label title={label}>
-      <AssetCheck label={label} />
-    </Label>
+    <AssetBadgeTooltip
+      label={native ? t`Native currency` : t`Issued by ${verified}`}
+      description={
+        native
+          ? t`This currency is used to pay network fees.`
+          : t`The token address matches the issuer’s published address on this network.`
+      }
+    />
   )
 }

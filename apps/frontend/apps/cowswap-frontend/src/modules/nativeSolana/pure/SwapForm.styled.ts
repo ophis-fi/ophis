@@ -10,6 +10,11 @@ export const Swap = styled.form`
   box-shadow: 0 10px 36px rgb(30 26 46 / 5%);
   min-width: 0;
 `
+export const Fields = styled.div`
+  &:not([hidden]) {
+    display: contents;
+  }
+`
 export const Line = styled.div`
   display: flex;
   align-items: center;
@@ -133,17 +138,36 @@ export const Dialog = styled.dialog`
     margin-top: 12px;
   }
 `
+export const PickerHeading = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  h2 {
+    margin: 0;
+    font-size: 20px;
+  }
+`
+export const Back = styled(SmallButton)`
+  border: 0;
+  padding: 8px;
+`
+export const TokenList = styled.div`
+  max-height: min(52vh, 420px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+`
 export const Search = styled.input`
   width: 100%;
   box-sizing: border-box;
   font: inherit;
   font-size: 16px;
-  margin-top: 14px;
+  margin: 12px 0 8px;
   border: 1px solid var(--cow-color-border);
   padding: 12px;
-  background: var(--cow-color-paper);
+  background: var(--cow-color-paper-darker);
   color: inherit;
-  border-radius: 10px;
+  border-radius: 24px;
 `
 export const Option = styled.button`
   display: flex;

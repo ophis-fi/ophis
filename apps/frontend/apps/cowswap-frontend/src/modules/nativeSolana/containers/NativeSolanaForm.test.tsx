@@ -12,6 +12,30 @@ const nvda = 'Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh'
 const pyth = 'HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3'
 const wsol = 'So11111111111111111111111111111111111111112'
 
+it('opens inside the swap card, explains checks without selecting, and restores keyboard focus', async () => {
+  global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ tokens: [] }) })
+  renderForm()
+  const form = within(screen.getByRole('form', { name: 'Solana swap' }))
+  const sell = form.getByRole('button', { name: 'Sell token: SOL' })
+  fireEvent.click(sell)
+  const picker = within(form.getByRole('region', { name: 'You sell' }))
+  const search = picker.getByRole('textbox', { name: 'Search tokens' })
+  expect(document.activeElement).toBe(search)
+  expect(screen.queryByRole('dialog')).toBeNull()
+  expect(form.queryByRole('textbox', { name: 'Amount to sell' })).toBeNull()
+  const usdc = await picker.findByRole('img', { name: /Issued by Circle/ })
+  fireEvent.mouseEnter(usdc)
+  expect((await screen.findByRole('tooltip')).textContent).toContain('issuer’s published address')
+  fireEvent.click(usdc)
+  expect(picker.getByRole('textbox')).toBe(search)
+  fireEvent.keyDown(search, { key: 'Escape' })
+  expect(screen.queryByRole('tooltip')).toBeNull()
+  expect(form.getByRole('region', { name: 'You sell' })).toBeTruthy()
+  fireEvent.keyDown(search, { key: 'Escape' })
+  expect(document.activeElement).toBe(sell)
+  expect(screen.queryByRole('region', { name: 'You sell' })).toBeNull()
+})
+
 it('loads the mainnet catalog on demand for both pickers and keeps selections keyed by mint', async () => {
   const tokens = [
     { address: ray, symbol: 'RAY', name: 'Raydium', decimals: 6, logoURI: 'https://untrusted.test/image' },
@@ -26,11 +50,11 @@ it('loads the mainnet catalog on demand for both pickers and keeps selections ke
   const store = renderForm()
   await screen.findByRole('button', { name: 'USDC' })
   expect(global.fetch).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByRole('button', { name: 'Buy token: Select token' }))
-  await screen.findByTitle(orca)
   expect(
     within(screen.getByRole('button', { name: 'Sell token: SOL' })).getByRole('img', { name: /Native currency/ }),
   ).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Buy token: Select token' }))
+  await screen.findByTitle(orca)
   const stock = screen.getByTitle(nvda)
   expect(await within(stock).findByText('xStocks')).toBeTruthy()
   expect(within(screen.getByTitle(aapl)).queryByText('xStocks')).toBeNull()
@@ -48,6 +72,7 @@ it('loads the mainnet catalog on demand for both pickers and keeps selections ke
   expect(screen.queryByTitle('SOL')).toBeNull()
   fireEvent.click(stock)
   const selectedStock = await screen.findByRole('button', { name: 'Buy token: NVDAx' })
+  expect(document.activeElement).toBe(selectedStock)
   expect(within(selectedStock).getByText('xStocks')).toBeTruthy()
   fireEvent.click(selectedStock)
   const search = screen.getByRole('textbox', { name: 'Search tokens' })
@@ -56,7 +81,7 @@ it('loads the mainnet catalog on demand for both pickers and keeps selections ke
   expect(await screen.findByRole('button', { name: 'Buy token: RAY' })).toBeTruthy()
   expect(screen.queryByRole('button', { name: 'ORCA' })).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: 'Sell token: SOL' }))
-  const dialog = within(screen.getByRole('dialog'))
+  const dialog = within(screen.getByRole('region', { name: 'You sell' }))
   expect(dialog.queryByTitle(ray)).toBeNull()
   fireEvent.change(dialog.getByRole('textbox'), { target: { value: orca } })
   fireEvent.click(dialog.getByTitle(orca))
@@ -69,14 +94,14 @@ it('keeps the presets and manual mint entry usable when the catalog is down', as
   renderForm()
   fireEvent.click(screen.getByRole('button', { name: 'Buy token: Select token' }))
   expect(await screen.findByText(/full token list is unavailable/)).toBeTruthy()
-  const dialog = within(screen.getByRole('dialog'))
+  const dialog = within(screen.getByRole('region', { name: 'You buy' }))
   for (const symbol of ['JUP', 'BONK', 'JitoSOL']) expect(dialog.getByText(symbol)).toBeTruthy()
   fireEvent.change(dialog.getByRole('textbox'), { target: { value: solanaAddress(pyth) } })
   expect(within(dialog.getByTitle(pyth)).queryByText('xStocks')).toBeNull()
   fireEvent.click(dialog.getByTitle(pyth))
   const selected = await screen.findByRole('button', { name: 'Buy token: HZ1Jo…QBCt3' })
   fireEvent.click(selected)
-  const picker = within(screen.getByRole('dialog'))
+  const picker = within(screen.getByRole('region', { name: 'You buy' }))
   fireEvent.change(picker.getByRole('textbox'), { target: { value: nvda } })
   const stock = picker.getByTitle(nvda)
   expect(await within(stock).findByText('xStocks')).toBeTruthy()
