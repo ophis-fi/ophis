@@ -7,6 +7,8 @@
 import { checksum, colour, parseAddress, readCapped, safeState, verify, verifyDigest, type SafeState } from './chain.ts'
 import { commit, DOMAIN, emailAt, freezing, gone, LISTED, listed, listedWallet, SINGLE_KEY_RECOVERY, randomId, REVIEWED, sha256Hex, type Actor, type WalletKind } from './data.ts'
 import { challengeIsOurs, creationOptions, credentialHash, fromBase64Url, newChallenge, seal, unseal, verifyRegistration, type Config } from './passkeys.ts'
+import { checkNames, applicationNames } from './name-screening.ts'
+import type { NameReport } from '../shared/sanctions-names.ts'
 import { indexerBase } from './partner.ts'
 import { standIn } from './orders.ts'
 import { CHAIN_NAME, LISTS, typedProof } from './typed.ts'
@@ -24,10 +26,7 @@ const LABEL = /^[\p{L}\p{N} ._()-]{1,40}$/u
 export const REASONS = ['entity_not_found', 'details_differ', 'authority_unclear', 'wallet_differs', 'declaration_needed', 'not_eligible'] as const
 export const SOURCES = ['registry', 'gleif', 'supervisor_register', 'declaration'] as const
 const TIERS = ['standard', 'enhanced']
-// Sanctions screening: manual, at no cost. The operator downloads the official lists, searches them offline and records
-// the result with its command. The server holds, per organisation only: the outcome, which lists, the SHA-256 of each
-// list file searched, the date. No name of a person, no detail of a hit and no list file reaches it, and the Worker
-// calls no outside service. The codes of the lists, with the names the pages show: LISTS (typed.ts).
+// The automatic name check and manual periodic reviews share these list codes.
 export { LISTS }
 const OUTCOMES = ['clear', 'review', 'hit']
 const SHA256 = /^[0-9a-f]{64}$/
@@ -98,7 +97,7 @@ interface Passkey { id: string; publicKey: string; counter: number; transports: 
 // 2026-11-17 (7 days at most) has none of the new fields: they are stored as NULL.
 interface Contact { position: string; phone: string; telegram: string | null }
 interface Person extends Contact { name: string; email: string; role: 'owner' | 'admin' }
-interface Applicant extends Contact { businessType: string; legalName: string; country: string; registration: string; lei: string | null; address: string; kind: 'partner' | 'institution'; domain: string; email: string; name: string; people: Person[] }
+interface Applicant extends Contact { signatory?: string; businessType: string; legalName: string; country: string; registration: string; lei: string | null; address: string; kind: 'partner' | 'institution'; domain: string; email: string; name: string; people: Person[] }
 /** What /apply asked for, signed by the server and held nowhere: nothing is written before "Create the organisation". Times are Unix seconds. */
 interface ApplyIntent extends Applicant { inviteHash: string; seat: string; credential: Passkey; credentialHash: string; issuedAt: number; expiresAt: number; site: string }
 
@@ -108,15 +107,15 @@ interface ApplyIntent extends Applicant { inviteHash: string; seat: string; cred
 // index of 0006), and so are "an intent makes one organisation, once" (the primary keys of its seat and passkey) and
 // "an application code makes one organisation, once" (the unique index of 0007 on its hash).
 // The domain is stored, not proved (owner, 2026-11-18: no DNS record; the invitation and Ophis's review stand for it).
-async function createOrganisation(db: D1Database, a: ApplyIntent, now: number) {
+async function createOrganisation(db: D1Database, a: ApplyIntent, now: number, names: NameReport) {
   const orgId = randomId()
   let outcome = 'not_stored'
   try {
     await commit(db, orgId, () => {
       outcome = 'ok'
       return [{ at: now, actorKind: 'seat', actorId: a.seat, sessionId: null, action: 'organisation.apply', subjectId: a.credential.id, detail: a.credentialHash }, [
-        db.prepare(`INSERT INTO organisations (id, kind, business_type, name, state, email_domain, country, registration_number, lei, registered_address, invite_hash, synced_keys_allowed, created_at)
-                    VALUES (?, ?, ?, ?, 'unverified', ?, ?, ?, ?, ?, ?, 1, ?)`).bind(orgId, a.kind, a.businessType ?? null, a.legalName, a.domain, a.country, a.registration, a.lei ?? null, a.address ?? null, a.inviteHash, now),
+        db.prepare(`INSERT INTO organisations (id, kind, business_type, name, state, email_domain, country, registration_number, lei, registered_address, invite_hash, synced_keys_allowed, created_at, registration_screening)
+                    VALUES (?, ?, ?, ?, 'unverified', ?, ?, ?, ?, ?, ?, 1, ?, ?)`).bind(orgId, a.kind, a.businessType ?? null, a.legalName, a.domain, a.country, a.registration, a.lei ?? null, a.address ?? null, a.inviteHash, now, JSON.stringify(names)),
         db.prepare(`INSERT INTO seats (id, org_id, display_name, email, role, state, position, phone, telegram, created_at) VALUES (?, ?, ?, ?, 'owner', 'active', ?, ?, ?, ?)`)
           .bind(a.seat, orgId, a.name, a.email, a.position ?? null, a.phone ?? null, a.telegram ?? null, now),
         db.prepare(`INSERT INTO credentials (id, org_id, seat_id, public_key, counter, device_bound, transports, label, state, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'First key', 'active', ?)`)
@@ -222,8 +221,8 @@ const walletOf = (db: D1Database, orgId: string, now: number) =>
               FROM wallets w JOIN organisations o ON o.id = w.org_id WHERE w.org_id = ?1 AND ((o.state = 'unverified' AND w.state = 'pending') OR (o.state <> 'unverified' AND w.anchor IS NOT NULL))
               ORDER BY w.rowid DESC LIMIT 1`).bind(orgId, now).first<WalletRow>()
 
-interface Company { id: string; legalName: string; kind: string; businessType: string | null; state: string; country: string | null; registration: string | null; lei: string | null; address: string | null; domain: string | null; reviewAt: number | null; print: string | null }
-const COMPANY = `id, name AS legalName, kind, business_type AS businessType, state, country, registration_number AS registration, lei, registered_address AS address, email_domain AS domain, review_at AS reviewAt, review_print AS print FROM organisations`
+interface Company { signatory: string | null; id: string; legalName: string; kind: string; businessType: string | null; state: string; country: string | null; registration: string | null; lei: string | null; address: string | null; domain: string | null; reviewAt: number | null; print: string | null }
+const COMPANY = `id, json_extract(registration_screening, '$.signatory') AS signatory, name AS legalName, kind, business_type AS businessType, state, country, registration_number AS registration, lei, registered_address AS address, email_domain AS domain, review_at AS reviewAt, review_print AS print FROM organisations`
 interface KybRow { legalName: string; registration: string | null; country: string; tier: string; source: string; evidenceSha256: string | null; decision: string; reason: string | null; decidedAt: number | null; nextReview: number | null }
 /** The newest KYB row of one organisation (bind its id): the row that says how the organisation stands. */
 const NEWEST = `FROM kyb_records WHERE org_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`
@@ -257,7 +256,9 @@ const refusedOf = async (db: D1Database, orgId: string) =>
 // a recovery replaced for good (data.ts, gone; CodeRabbit, PR #1672).
 // ponytail: the whole list in one D1 query at each call. Page it when the organisations pass some hundreds.
 const everyOrganisation = async (db: D1Database, now: number) =>
-  (await db.prepare(`SELECT o.id, o.name, o.kind, o.country, k.recheck_at AS nextReview, (SELECT count(*) FROM seats s WHERE s.org_id = o.id AND s.state = 'active' AND NOT ${gone('s')}) AS members,
+  (await db.prepare(`SELECT o.id, o.name, o.kind, o.country,
+                            CASE WHEN o.state = 'unverified' THEN CASE WHEN json_array_length(o.registration_screening, '$.matches') > 0 THEN 'possible match' ELSE coalesce(json_extract(o.registration_screening, '$.status'), 'incomplete') END END AS registrationCheck,
+                            k.recheck_at AS nextReview, (SELECT count(*) FROM seats s WHERE s.org_id = o.id AND s.state = 'active' AND NOT ${gone('s')}) AS members,
                             CASE WHEN o.state <> 'unverified' THEN o.state WHEN o.review_at IS NULL THEN 'applying' ELSE 'under review' END AS state
                      FROM organisations o LEFT JOIN kyb_records k ON k.rowid = (SELECT rowid FROM kyb_records WHERE org_id = o.id ORDER BY created_at DESC, rowid DESC LIMIT 1)
                      ORDER BY o.name, o.id`).bind(now).all<{ id: string; name: string; kind: string; country: string | null; nextReview: number | null; members: number; state: string }>()).results
@@ -268,14 +269,14 @@ const underReview = async (db: D1Database) =>
 const submissionOf = async (print: string | null, wallet: WalletRow | null) => (await sha256Hex(JSON.stringify([print ?? '', wallet?.recoveryEligible ?? null]))).slice(0, 16)
 /** A screening as it is stored: the outcome, the lists as one JSON text (code to SHA-256 of the file searched, sorted keys) and the SHA-256 of that exact text. */
 interface Screening { outcome: string; lists: string; hash: string }
-interface Kyb { decision: Decision; submission: string | null; reason: string | null; tier: string; source: string; evidenceRef: string | null; evidenceSha256: string | null; nextReview: number | null; screening: Screening | null }
+interface Kyb { decision: Decision; submission: string | null; reason: string | null; tier: string; source: string; evidenceRef: string | null; evidenceSha256: string | null; nextReview: number | null; screening: Screening | null; nameReview?: string }
 interface KybFields extends Omit<Kyb, 'decision' | 'submission'> { name: string; registration: string | null; country: string; decision: string; decidedAt: number | null }
 // The one statement that writes a KYB row: the result of a review or of a screening, never a document. A screening is dated now.
 const kybRow = (db: D1Database, id: string, orgId: string, k: KybFields, now: number) =>
   db.prepare(`INSERT INTO kyb_records (id, org_id, legal_name, registration_number, country, tier, source, evidence_ref, evidence_sha256, screening_outcome, screening_lists, screening_list_version_hash, screened_at,
-                                       decision, decided_at, recheck_at, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+                                       decision, decided_at, recheck_at, reason, created_at, name_review) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .bind(id, orgId, k.name, k.registration, k.country, k.tier, k.source, k.evidenceRef, k.evidenceSha256, k.screening?.outcome ?? null, k.screening?.lists ?? null, k.screening?.hash ?? null, k.screening ? now : null,
-      k.decision, k.decidedAt, k.nextReview, k.reason, now)
+      k.decision, k.decidedAt, k.nextReview, k.reason, now, k.nameReview ?? null)
 // The operator's decision, in one commit with its row in the client's own audit log (actor kind "operator"). Read
 // inside the plan, all of it again: the organisation is unverified and under review (any change to its Owner seats,
 // their passkeys or the named wallet since the submit has taken it out of review: G3), for an approval the submission
@@ -285,7 +286,7 @@ const kybRow = (db: D1Database, id: string, orgId: string, k: KybFields, now: nu
 // approved by Ophis (the operator names nobody: the rows of the application do). Refuse: archived. More information:
 // back to the Owner. The KYB row copies the organisation's own name, number and country: the operator sets no field of
 // the organisation, no member, no passkey and no wallet address.
-async function decideKyb(db: D1Database, orgId: string, d: Kyb, checked: { id: string; snapshot: string | null } | null, now: number) {
+async function decideKyb(db: D1Database, orgId: string, d: Kyb, checked: { id: string; snapshot: string | null } | null, now: number, verifyNames: () => Promise<string | null>) {
   const id = randomId()
   let outcome = 'not_found'
   await commit(db, orgId, async () => {
@@ -296,6 +297,10 @@ async function decideKyb(db: D1Database, orgId: string, d: Kyb, checked: { id: s
       : d.decision !== 'approve' ? 'ok' : (await missing(db, orgId)) ? 'not_ready' : (wallet?.id ?? null) !== (checked?.id ?? null) ? 'try_again'
       : (await submissionOf(o.print, wallet)) !== d.submission ? 'submission_changed' : (await listedWallet(db, orgId, now)) ? 'wallet_listed' : 'ok'
     if (outcome !== 'ok' || !o) return null
+    if (d.decision === 'approve') {
+      const issue = await verifyNames()
+      if (issue) { outcome = issue; return null }
+    }
     const people = d.decision === 'approve' ? await peopleOf(db, orgId) : []
     return [{ at: now, actorKind: 'operator', actorId: null, sessionId: null, action: KYB_ACTION[d.decision], subjectId: id, detail: d.decision === 'approve' ? d.evidenceSha256 : d.reason }, [
       kybRow(db, id, orgId, { ...d, name: o.name, registration: o.registration, country: o.country, decision: { approve: 'approved', refuse: 'rejected', more: 'pending' }[d.decision], decidedAt: now }, now),
@@ -484,8 +489,8 @@ async function storeSealed(db: D1Database, actor: Actor, item: { id: string; siz
 
 // The route's context, as much as these handlers read (index.ts builds it).
 interface Ctx {
-  env: { DB: D1Database; ENVIRONMENT: string; CHALLENGE_KEY: string; SEAL_RECIPIENT?: string; SANCTIONS_URL?: string; TELEGRAM_BOT_TOKEN?: string; TELEGRAM_CHAT_ID?: string; TELEGRAM_URL?: string }
-  now: number; config: Config; body: Record<string, unknown>; params: Record<string, string | undefined>; ctx?: ExecutionContext
+  env: { DB: D1Database; ASSETS?: Fetcher; ENVIRONMENT: string; CHALLENGE_KEY: string; SEAL_RECIPIENT?: string; SANCTIONS_URL?: string; TELEGRAM_BOT_TOKEN?: string; TELEGRAM_CHAT_ID?: string; TELEGRAM_URL?: string }
+  operatorPage?: boolean; now: number; config: Config; body: Record<string, unknown>; params: Record<string, string | undefined>; ctx?: ExecutionContext
 }
 interface Member extends Ctx { actor: Actor }
 
@@ -526,6 +531,7 @@ function contactOf(x: Record<string, unknown>): Contact | null {
 function applicant(body: Record<string, unknown>): Applicant | string {
   const field = (key: string) => (typeof body[key] === 'string' ? (body[key] as string).trim() : '')
   const a = {
+    ...(body.signatory !== undefined && { signatory: field('signatory') }),
     legalName: field('legalName'), country: field('country').toUpperCase(), registration: field('registration'), lei: field('lei').toUpperCase() || null,
     address: field('address').replace(/\s+/g, ' '), businessType: field('businessType'), kind: BUSINESS[field('businessType')] ?? '', domain: field('domain').toLowerCase(), email: field('email').toLowerCase(), name: field('name'),
   }
@@ -544,6 +550,7 @@ function applicant(body: Record<string, unknown>): Applicant | string {
     : !DOMAIN.test(a.domain) ? 'domain_invalid'
     : !emailAt(a.email, a.domain) ? 'email_not_at_domain'
     : !NAME.test(a.name) ? 'name_invalid'
+    : a.signatory !== undefined && !NAME.test(a.signatory) ? 'signatory_invalid'
     : !contact ? 'contact_invalid'
     : !people || people.some((p) => !NAME.test(p.name) || (p.role !== 'owner' && p.role !== 'admin')) ? 'people_invalid'
     : people.some((p, i) => !p.email || p.email === a.email || people.findIndex((q) => q.email === p.email) < i) ? 'person_email_invalid'
@@ -610,7 +617,8 @@ export async function applyCheck(c: Ctx) {
   const intent = (await unseal(c.env.CHALLENGE_KEY, APPLY, typeof c.body.intent === 'string' ? c.body.intent : '')) as ApplyIntent | null
   if (!intent) return fail(400, 'intent_invalid')
   if (intent.expiresAt * 1000 <= c.now) return fail(410, 'intent_expired')
-  const outcome = await createOrganisation(c.env.DB, intent, c.now)
+  const names = await checkNames(c.env.ASSETS, [intent.legalName, intent.name, ...(intent.people ?? []).map(p => p.name)], intent.signatory ?? null, c.now)
+  const outcome = await createOrganisation(c.env.DB, intent, c.now, names)
   return outcome === 'ok' ? json(200, { state: 'unverified' }) : refuse(outcome)
 }
 
@@ -630,7 +638,7 @@ export async function onboarding(c: Member) {
   const sealed = await sealedOf(c.env.DB, orgId)
   const status = company.state !== 'unverified' ? 'verified' : company.reviewAt !== null ? 'under_review' : record?.decision === 'pending' ? 'more_information' : 'not_submitted'
   return json(200, {
-    company: { legalName: company.legalName, kind: company.kind, businessType: company.businessType, country: company.country, registration: company.registration, lei: company.lei, address: company.address, domain: company.domain },
+    company: { ...(company.signatory && { signatory: company.signatory }), legalName: company.legalName, kind: company.kind, businessType: company.businessType, country: company.country, registration: company.registration, lei: company.lei, address: company.address, domain: company.domain },
     first: first && { credentialHash: first.hash, active: first.active === 1, name: first.name, position: first.position },
     people: await peopleOf(c.env.DB, orgId), // the people the application named besides the first Owner: Ophis approves them with the organisation
     // Milestone 5b: the sealing key of this environment (its fingerprint; null: none configured), and the sealed declaration as the server knows it.
@@ -857,7 +865,7 @@ async function tellOperator(env: Ctx['env'], orgId: string) {
 // of an organisation and take one, still sealed, for a stated reason, and (sanctions screening) record a screening and
 // load the addresses of a public list. Nothing else: no route here takes a passkey, a member or a client's wallet address.
 
-interface OperatorEnv { DB: D1Database; ENVIRONMENT: string; CHALLENGE_KEY: string; OPERATOR_TOKEN?: string; OPERATOR_EMAIL?: string; SANCTIONS_URL?: string; ACCESS_TEAM?: string; ACCESS_AUD?: string }
+interface OperatorEnv { DB: D1Database; ASSETS?: Fetcher; ENVIRONMENT: string; CHALLENGE_KEY: string; OPERATOR_TOKEN?: string; OPERATOR_EMAIL?: string; SANCTIONS_URL?: string; ACCESS_TEAM?: string; ACCESS_AUD?: string }
 
 // What the operator compares before a decision: the domain, the first Owner's passkey hash, the people the application
 // named besides the first Owner (an approval approves them too), the recovery wallet with its kind and its colour (read
@@ -894,6 +902,13 @@ async function application(c: Ctx) {
     id, legalName: o.legalName, kind: o.kind, country: o.country, registration: o.registration, domain: o.domain,
     submittedAt: null, missing: await missing(c.env.DB, id),
   })
+}
+
+async function nameScreening(c: Ctx) {
+  const id = c.params.id ?? '', signer = c.body.signatory
+  if (signer !== undefined && (typeof signer !== 'string' || !NAME.test(signer))) return fail(400, 'invalid')
+  if (!ID.test(id) || !await c.env.DB.prepare("SELECT 1 FROM organisations WHERE id = ? AND state = 'unverified'").bind(id).first()) return fail(404, 'not_found')
+  return json(200, await applicationNames(c.env.DB, c.env.ASSETS, id, typeof signer === 'string' ? signer : null, c.now))
 }
 
 async function list(c: Ctx) {
@@ -937,11 +952,13 @@ async function decide(c: Ctx) {
     || (approve ? reason !== undefined || day === null || typeof submission !== 'string' || !/^[0-9a-f]{16}$/.test(submission) : !REASONS.includes(reason as never) || nextReview !== undefined)
     || (evidenceRef === undefined ? approve : typeof evidenceRef !== 'string' || !/^[\w ./:#-]{1,120}$/.test(evidenceRef))
     || (evidenceSha256 === undefined ? approve : typeof evidenceSha256 !== 'string' || !SHA256.test(evidenceSha256))) return fail(400, 'invalid')
-  // S2b: an approval carries a screening whose outcome is "clear"; for the other decisions one is optional, and stored when given.
-  const screened = screening === undefined ? null : await screeningOf(screening)
-  if (screening !== undefined && !screened) return fail(400, 'invalid')
-  if (approve && !screened) return fail(400, 'screening_required')
-  if (approve && screened!.outcome !== 'clear') return fail(409, 'screening_not_clear')
+  const manual = screening === undefined ? null : await screeningOf(screening)
+  if (screening !== undefined && !manual) return fail(400, 'invalid')
+  if (approve && manual && manual.outcome !== 'clear') return fail(409, 'screening_not_clear')
+  const { revision, signatory, resolution } = c.body
+  if ((signatory !== undefined && (typeof signatory !== 'string' || !NAME.test(signatory))) ||
+      (resolution !== undefined && (typeof resolution !== 'string' || !resolution.trim() || resolution.length > 240 || /[\p{C}<>]/u.test(resolution)))) return fail(400, 'invalid')
+  if (approve && (c.operatorPage || !manual) && (typeof revision !== 'string' || !SHA256.test(revision))) return fail(400, 'screening_required')
   let checked: { id: string; snapshot: string | null } | null = null
   const wallet = approve ? await walletOf(c.env.DB, id, c.now) : null
   if (wallet) {
@@ -951,10 +968,19 @@ async function decide(c: Ctx) {
     if (!proved || (wallet.kind === 'safe' && !live)) return fail(409, 'wallet_unreadable')
     checked = { id: wallet.id, snapshot: live ? JSON.stringify(live) : wallet.snapshot }
   }
-  const outcome = await decideKyb(c.env.DB, id, {
+  const decisionRecord: Kyb = {
     decision: decision as Decision, submission: approve ? (submission as string) : null, reason: approve ? null : (reason as string), tier: tier as string, source: source as string,
-    evidenceRef: (evidenceRef as string | undefined) ?? null, evidenceSha256: (evidenceSha256 as string | undefined) ?? null, nextReview: day, screening: screened,
-  }, checked, c.now)
+    evidenceRef: (evidenceRef as string | undefined) ?? null, evidenceSha256: (evidenceSha256 as string | undefined) ?? null, nextReview: day, screening: manual,
+  }
+  const outcome = await decideKyb(c.env.DB, id, decisionRecord, checked, c.now, async () => {
+    const result = await applicationNames(c.env.DB, c.env.ASSETS, id, typeof signatory === 'string' ? signatory : null, c.now)
+    if (result.status === 'incomplete') return 'screening_incomplete'
+    if (revision !== undefined && revision !== result.revision) return 'screening_changed'
+    if (result.matches.length && (revision !== result.revision || !resolution)) return 'screening_not_clear'
+    decisionRecord.screening = manual && !c.operatorPage ? manual : await screeningOf({ outcome: 'clear', lists: result.lists })
+    decisionRecord.nameReview = JSON.stringify({ ...result, resolution: result.matches.length ? resolution : null })
+    return null
+  })
   return outcome === 'ok' ? json(200, { state: { approve: 'active', refuse: 'archived', more: 'unverified' }[decision as Decision] }) : refuse(outcome)
 }
 // S2c. POST .../organisations/:id/screening with {outcome, lists, nextReview, tier?, source?}: the result of a search the
@@ -1038,6 +1064,7 @@ async function reporting(c: Ctx) {
 export const operatorRoutes: { method: 'GET' | 'POST'; path: string; handler: (c: Ctx) => Promise<Response>; page?: true }[] = [
   { method: 'GET', path: '/api/operator/organisations', handler: list, page: true },
   { method: 'GET', path: '/api/operator/organisations/:id/application', handler: application, page: true },
+  { method: 'POST', path: '/api/operator/organisations/:id/name-screening', handler: nameScreening, page: true },
   { method: 'POST', path: '/api/operator/organisations/:id/decision', handler: decide, page: true },
   { method: 'POST', path: '/api/operator/organisations/:id/freeze', handler: freeze(true), page: true },
   { method: 'POST', path: '/api/operator/organisations/:id/unfreeze', handler: freeze(false), page: true },
@@ -1113,7 +1140,7 @@ async function operate(request: Request, env: OperatorEnv, clock: () => number, 
     }
     if (!body || typeof body !== 'object' || Array.isArray(body)) return fail(400, 'bad_json')
   }
-  return operatorRoutes[index].handler({ env, now: clock(), config, body, params: patterns[index].exec({ pathname })?.pathname.groups ?? {} })
+  return operatorRoutes[index].handler({ env, operatorPage: sent === null, now: clock(), config, body, params: patterns[index].exec({ pathname })?.pathname.groups ?? {} })
 }
 /** Every request that arrives on the operator's hostname. `headers`: the API headers of index.ts, set on every answer. */
 export async function operator(request: Request, env: OperatorEnv, clock: () => number, config: Config, headers: Record<string, string>) {

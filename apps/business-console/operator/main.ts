@@ -1,7 +1,7 @@
 // The operator's review page (owner, 2026-11-19): what "operator list" prints, and the decisions of "operator decide",
 // in a browser on the operator's host. It holds no token: Cloudflare Access signs the operator in, and the Worker checks
 // that the email Access signed is the operator's (onboarding.ts, operate). Every value is set as text, never as markup.
-// The list files of a screening are hashed here; only their SHA-256 leaves the computer, as with the command.
+import type { NameReport } from '../src/shared/sanctions-names.ts'
 import '../src/app/fonts.css' // Inter, copied by this build into /operator/assets/: the page's policy has font-src 'self'
 import '../src/app/kit.css'
 import '../src/app/app.css'
@@ -20,7 +20,7 @@ interface Draft {
 }
 interface Review { id: string; name: string; state: string; outcome: string | null; screenedAt: number | null; nextReview: number | null; lastAction?: string | null; lastDetail?: string | null }
 interface List { list: string; entries: number; published: string | null; loadedAt: number | null; stale?: boolean; held?: string | null }
-interface Organisation { id: string; name: string; kind: string; country: string | null; state: string; members: number; nextReview: number | null }
+interface Organisation { registrationCheck: string | null; id: string; name: string; kind: string; country: string | null; state: string; members: number; nextReview: number | null }
 
 const $ = (id: string) => document.getElementById(id)!
 const day = (time: number | null | undefined) => (time ? new Date(time).toISOString().slice(0, 10) : 'none')
@@ -36,6 +36,8 @@ const WORDS: Record<string, string> = {
   try_again: 'The recovery wallet changed meanwhile. The list was read again: check it, then decide.',
   not_under_review: 'This organisation is no longer under review.',
   wrong_state: 'The organisation has changed state. Check its current status before trying again.',
+  screening_changed: 'The names or sanctions lists changed. Review the refreshed results before approving.',
+  screening_incomplete: 'Screening is incomplete. Check the names again before approving.',
   screening_not_clear: 'The screening result blocks this action. Record a clear screening to proceed.',
   invalid: 'A value was refused: check the evidence reference, the SHA-256 and the date of the next review.',
 }
@@ -55,9 +57,53 @@ async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown): Pr
 const failed = (error?: string) => WORDS[error ?? ''] ?? `Refused (${error ?? 'no answer'}). Nothing was changed.`
 const NETWORK = 'The network failed, or the Cloudflare sign-in has expired. Reload the page.'
 
-async function hashOf(file: File) {
-  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', await file.arrayBuffer()))
-  return [...digest].map((byte) => byte.toString(16).padStart(2, '0')).join('')
+const SOURCES: Record<string, [string, string]> = {
+  eu: ['EU', 'https://data.europa.eu/data/datasets/consolidated-list-of-persons-groups-and-entities-subject-to-eu-financial-sanctions'],
+  un: ['UN', 'https://main.un.org/securitycouncil/en/content/un-sc-consolidated-list'],
+  ofac: ['OFAC SDN', 'https://ofac.treasury.gov/sanctions-list-service'],
+}
+
+function nameCheck(node: DocumentFragment, id: string, changed: (result: NameReport | null) => void) {
+  const section = ($('name-check') as HTMLTemplateElement).content.cloneNode(true) as DocumentFragment
+  const signer = section.querySelector<HTMLInputElement>('[data-signer]')!
+  const status = section.querySelector<HTMLElement>('[data-result]')!
+  const coverage = section.querySelector<HTMLElement>('[data-coverage]')!
+  const matches = section.querySelector<HTMLElement>('[data-matches]')!
+  let sequence = 0
+  const invalidate = () => {
+    sequence++
+    changed(null)
+    matches.replaceChildren()
+    coverage.textContent = ''
+    status.textContent = 'Run the check for the name entered.'
+  }
+  async function refresh() {
+    invalidate()
+    const request = sequence
+    status.textContent = 'Checking registered names…'
+    const response = await call<NameReport>('POST', `/api/operator/organisations/${id}/name-screening`, signer.value.trim() ? { signatory: signer.value.trim() } : {}).catch(() => null)
+    if (request !== sequence) return
+    if (!response?.ok) { status.textContent = 'Check incomplete. Check the name and try again.'; return }
+    const result = response.data
+    signer.value = result.signatory ?? ''
+    status.textContent = result.status === 'incomplete' ? `Check incomplete. ${result.problem}` : result.matches.length ? 'Possible match — review the entries below.' : 'No matching name found.'
+    coverage.textContent = `Names: ${result.names.join(', ')}. ${result.lists ? `EU, UN and OFAC SDN lists downloaded ${day(result.updatedAt)}.` : 'Lists unavailable.'}`
+    for (const match of result.matches) for (const [code, reference, alias] of match.entries) {
+      const item = line(`${match.subject} — ${alias} · `)
+      const link = document.createElement('a')
+      link.href = SOURCES[code][1]
+      link.target = '_blank'
+      link.rel = 'noopener noreferrer'
+      link.textContent = `${SOURCES[code][0]} ${reference}`
+      item.append(link)
+      matches.append(item)
+    }
+    changed(result)
+  }
+  signer.addEventListener('input', invalidate)
+  section.querySelector('button')!.addEventListener('click', () => void refresh())
+  node.querySelector('[data-name-check]')!.append(section)
+  void refresh()
 }
 
 function card(o: Application) {
@@ -91,21 +137,32 @@ function card(o: Application) {
   field('next').value = next.toISOString().slice(0, 10)
   if (o.missing) for (const control of approve.elements) (control as HTMLButtonElement).disabled = true
 
+  let result: NameReport | null = null
+  const resolution = field('resolution')
+  const button = approve.querySelector('button')!
+  function ready() {
+    button.disabled = !!o.missing || !result || result.status === 'incomplete' || (!!result.matches.length && !resolution.value.trim())
+  }
+  resolution.addEventListener('input', ready)
+  nameCheck(node, o.id, (next) => {
+    result = next
+    resolution.value = ''
+    resolution.required = !!next?.matches.length
+    approve.querySelector<HTMLElement>('[data-resolution]')!.hidden = !resolution.required
+    ready()
+  })
+
   approve.addEventListener('submit', (event) => {
     event.preventDefault()
     void act(async () => {
       const evidence = field('evidence').value.trim(), sha256 = field('sha256').value.trim().toLowerCase()
       if (!EVIDENCE.test(evidence)) return say('The evidence reference takes letters, digits, spaces and . / : # - only, 120 at most.', 'bad')
       if (!/^[0-9a-f]{64}$/.test(sha256)) return say('The SHA-256 is 64 characters: digits and the letters a to f.', 'bad')
-      const lists: Record<string, string> = {}
-      for (const code of ['eu', 'un', 'ofac']) {
-        const file = field(code).files?.[0]
-        if (file) lists[code] = await hashOf(file)
-      }
+      if (!result || result.status === 'incomplete' || (result.matches.length && !resolution.value.trim())) return
       if (!confirm(`Approve ${o.legalName}? The organisation becomes active, with the people its application named.`)) return
       const done = await call<{ state: string }>('POST', `/api/operator/organisations/${o.id}/decision`, {
         decision: 'approve', tier: tier.value, source: source.value, evidenceRef: evidence, evidenceSha256: sha256, nextReview: field('next').value,
-        submission: o.submission, screening: { outcome: 'clear', lists },
+        submission: o.submission, revision: result.revision, signatory: result.signatory, resolution: resolution.value.trim() || undefined,
       })
       await settle(done, `Approved: ${o.legalName} is now ${done.data.state}.`)
     })
@@ -133,6 +190,8 @@ function line(text: string, tone?: string) {
 function organisationRow(o: Organisation) {
   const row = line(`${o.name} (${[o.kind, o.country].filter(Boolean).join(', ')}): ${o.state}, ${o.members} active ${o.members === 1 ? 'member' : 'members'}, next review ${day(o.nextReview)}. ${o.id}`)
   if (o.state === 'applying' || o.state === 'under review') {
+    if (o.registrationCheck === 'possible match') row.append(' · Possible sanctions match at registration. ')
+    else if (o.registrationCheck === 'incomplete') row.append(' · Registration screening incomplete. ')
     const link = document.createElement('a')
     link.href = `/operator/applications/${o.id}`
     link.textContent = o.state === 'applying' ? 'View application progress' : 'Review application'
@@ -157,6 +216,7 @@ function organisationRow(o: Organisation) {
 
 function draftCard(o: Draft) {
   const node = ($('draft') as HTMLTemplateElement).content.cloneNode(true) as DocumentFragment
+  nameCheck(node, o.id, () => {})
   node.querySelector('h2')!.textContent = `${o.legalName} · Awaiting submission`
   node.querySelector('[data-summary]')!.textContent = [o.kind, o.country, o.registration, o.domain, o.id].filter(Boolean).join(' · ')
   const steps: Record<string, string> = {

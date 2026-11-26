@@ -16,6 +16,7 @@ const SAY: Record<string, string> = {
   kind_invalid: 'Choose the type of business from the list.',
   domain_invalid: 'Enter the company domain, for example ophis.fi: the part of your work email after the @. No address, no https.',
   email_not_at_domain: 'Your work email must be at the company domain, or at a subdomain of it.',
+  signatory_invalid: 'Enter the full name of the person signing the declaration.',
   name_invalid: 'Enter your own name, 60 characters at most.',
   contact_invalid: 'Enter your position (2 to 60 characters) and your phone in international form, for example +352 621 123 456. A Telegram username, if you give one, has 5 to 32 letters, digits or underscores.',
   people_invalid: 'Name at most 4 more people. Each needs a name of 60 characters at most and the role Owner or Admin.',
@@ -82,7 +83,7 @@ const keep = (intent: string) => {
     // storage is blocked: the application lasts as long as this page
   }
 }
-const FIELDS = { invite: '', legalName: '', businessType: '', country: '', registration: '', lei: '', address: '', name: '', position: '', email: '', domain: '', phone: '', telegram: '' }
+const FIELDS = { signatory: '', invite: '', legalName: '', businessType: '', country: '', registration: '', lei: '', address: '', name: '', position: '', email: '', domain: '', phone: '', telegram: '' }
 interface Person { name: string; position: string; email: string; phone: string; telegram: string; role: string }
 const NOBODY: Person = { name: '', position: '', email: '', phone: '', telegram: '', role: 'admin' }
 const after = (email: string) => email.split('@')[1] ?? ''
@@ -201,6 +202,9 @@ export function Apply() {
           <label className="field">Your position
             <input className="input" value={form.position} required maxLength={60} placeholder="Chief Executive Officer" autoComplete="organization-title" onChange={set('position')} />
           </label>
+          <label className="field">Name of the person signing the declaration
+            <input className="input" value={form.signatory} required maxLength={60} onChange={set('signatory')} />
+          </label>
           <label className="field">Your work email
             <input className="input" type="email" value={form.email} required maxLength={254} autoComplete="email" onChange={setEmail} />
           </label>
@@ -260,7 +264,7 @@ export function Apply() {
 
 interface KybRow { legalName: string; registration: string | null; country: string; tier: string; source: string; evidenceSha256: string | null; decision: string; reason: string | null; decidedAt: number | null; nextReview: number | null }
 interface View {
-  company: { legalName: string; kind: string; businessType: string | null; country: string | null; registration: string | null; lei: string | null; address: string | null; domain: string | null; }
+  company: { signatory?: string; legalName: string; kind: string; businessType: string | null; country: string | null; registration: string | null; lei: string | null; address: string | null; domain: string | null; }
   first: { credentialHash: string; active: boolean; name: string; position: string | null } | null
   people: { name: string; email: string; role: string; position: string | null; phone: string | null; telegram: string | null }[]
   wallet: { chainId: number; chain: string; address: string; kind: string; label: string; inForce: boolean; recoveryEligible: boolean; threshold?: number; owners?: number } | null
@@ -336,7 +340,7 @@ function Declaration({ view }: { view: View }) {
         </dl>
         <p>The undersigned declares that the details above are those of the company, that each person named above acts for the company in the Ophis Business console, in the role shown, and that the undersigned may bind the company.</p>
         <dl className="kv sign">
-          <dt>Name of the signatory</dt><dd />
+          <dt>Name of the signatory</dt><dd>{company.signatory}</dd>
           <dt>Role</dt><dd />
           <dt>Date</dt><dd />
           <dt>Signature</dt><dd />

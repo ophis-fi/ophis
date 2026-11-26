@@ -40,11 +40,24 @@
 </main>
 <footer class="foot-line">Ophis © 2026</footer>
 
+<template id="name-check">
+  <section class="stack" aria-label="Sanctions screening">
+    <h3 class="h-card">Sanctions screening</h3>
+    <p role="status" data-result>Checking registered names…</p>
+    <ul data-matches></ul>
+    <p class="fine" data-coverage></p>
+    <label class="field">Name on the signed declaration
+      <input class="input" data-signer maxlength="60" autocomplete="off">
+    </label>
+    <div><button type="button" class="btn ghost sm" data-recheck>Check names again</button></div>
+  </section>
+</template>
 <template id="draft">
   <article class="panel">
     <h2 class="h-panel"></h2>
     <p class="mono" data-summary></p>
     <p data-next></p>
+    <div data-name-check></div>
   </article>
 </template>
 <template id="application">
@@ -63,6 +76,7 @@
       <dt>Ready</dt><dd data-f="ready"></dd>
     </dl>
     <p class="note warn" data-f="refused" hidden></p>
+    <div data-name-check></div>
     <div class="grid2">
       <label class="field">Source of the check
         <select class="input" data-f="source">
@@ -90,17 +104,9 @@
       <label class="field">Next review
         <input class="input" type="date" name="next" required>
       </label>
-      <p class="fine">Sanctions screening: choose the list files you searched offline. They stay on this computer: only their SHA-256 is sent.</p>
-      <label class="field">EU consolidated list (required)
-        <input class="input" type="file" name="eu" required>
+      <label class="field" data-resolution hidden>Why are the flagged entries different from this applicant?
+        <input class="input" name="resolution" maxlength="240" autocomplete="off">
       </label>
-      <label class="field">UN consolidated list
-        <input class="input" type="file" name="un">
-      </label>
-      <label class="field">OFAC SDN list
-        <input class="input" type="file" name="ofac">
-      </label>
-      <label class="check"><input type="checkbox" name="clear" required><span>I searched these files for the company, the first Owner, the other people named and the signatory of the declaration, and no entry resembles any of them.</span></label>
       <div><button class="btn primary md" type="submit">Approve</button></div>
     </form>
     <form class="stack" data-f="other">
