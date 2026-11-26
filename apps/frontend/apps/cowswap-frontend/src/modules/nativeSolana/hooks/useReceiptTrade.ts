@@ -1,5 +1,5 @@
 import { useAtomValue } from 'jotai'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { historyAtom, pageSize } from '../state/history.atoms'
 
@@ -30,10 +30,14 @@ export function useReceiptTrade(
       window.clearTimeout(end)
     }
   }, [lookup, trade, page, order.reclaimed, refetch])
-  return {
-    trade,
-    isFetchingTrade: history.isFetching,
-    refreshTrade: lookup ? refetch : undefined,
-    checkOlder: !trade && history.data?.length === pageSize ? () => setPage(page + 1) : undefined,
-  }
+  const hasOlder = !trade && history.data?.length === pageSize
+  return useMemo(
+    () => ({
+      trade,
+      isFetchingTrade: history.isFetching,
+      refreshTrade: lookup ? refetch : undefined,
+      checkOlder: hasOlder ? () => setPage((current) => current + 1) : undefined,
+    }),
+    [trade, history.isFetching, lookup, refetch, hasOlder],
+  )
 }
