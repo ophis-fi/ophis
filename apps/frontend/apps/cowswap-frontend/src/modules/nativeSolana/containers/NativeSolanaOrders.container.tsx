@@ -1,5 +1,5 @@
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
-import { ReactNode, useEffect, useState } from 'react'
+import { ReactNode, useEffect } from 'react'
 
 import { ButtonSecondary } from '@cowprotocol/ui'
 
@@ -9,11 +9,11 @@ import { solanaConnectionAtom } from 'entities/solana'
 import { ReceiptAction, ReclaimDeposit, WalletActionNotice } from './SolanaReceiptActions.container'
 import { SolanaSettlementTime } from './SolanaSettlementTime.container'
 
+import { useReceiptTrade } from '../hooks/useReceiptTrade'
 import { SolanaReceipt } from '../pure/SolanaReceipt.pure'
 import { privateAction, privateSettlementEnabled } from '../services/privateSettlement.service'
 import { savedReceiptStatus, type ReceiptStatus } from '../services/receipt.service'
 import { solanaMainnetCatalogAtom, walletAssetListAtom } from '../state/assets.atoms'
-import { historyAtom, pageSize } from '../state/history.atoms'
 import { orderActionReceiptAtom } from '../state/orderActions.atoms'
 import {
   activeSolanaReceiptAtom,
@@ -44,38 +44,6 @@ function SolverAttempt({ attempt, stale }: { attempt?: { state: SolverAttemptSta
       return <Trans>The Ophis solver is looking for a fill at your minimum price or better.</Trans>
     default:
       return <Trans>Waiting for a settlement status update.</Trans>
-  }
-}
-
-function useReceiptTrade(
-  order: SavedNativeSolanaOrder,
-  hasFill: boolean,
-  indexed?: OphisSolanaTrade,
-): {
-  trade?: OphisSolanaTrade
-  isFetchingTrade: boolean
-  refreshTrade?: () => Promise<unknown>
-  checkOlder?: () => void
-} {
-  const [page, setPage] = useState(0)
-  const history = useAtomValue(historyAtom(hasFill && !indexed ? page : -1))
-  const trade = indexed ?? history.data?.find((row) => row.owner === order.owner && row.orderUid === order.uid)
-  const { refetch } = history
-  const waiting = hasFill && !trade && page === 0 && !order.reclaimed
-  useEffect(() => {
-    if (!waiting) return
-    const timer = window.setInterval(() => void refetch(), 4000)
-    const end = window.setTimeout(() => window.clearInterval(timer), 60_000)
-    return () => {
-      window.clearInterval(timer)
-      window.clearTimeout(end)
-    }
-  }, [waiting, refetch])
-  return {
-    trade,
-    isFetchingTrade: history.isFetching,
-    refreshTrade: hasFill && !indexed ? refetch : undefined,
-    checkOlder: !trade && history.data?.length === pageSize ? () => setPage(page + 1) : undefined,
   }
 }
 

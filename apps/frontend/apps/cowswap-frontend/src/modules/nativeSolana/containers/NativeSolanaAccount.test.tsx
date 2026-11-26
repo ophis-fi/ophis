@@ -14,6 +14,8 @@ import { OrdersPanel } from 'modules/account'
 
 import { NativeSolanaOrders } from './NativeSolanaOrders.container'
 
+import { savedNativeSolanaOrdersAtom } from '../state/orders.atoms'
+
 const mockFetchTrades = jest.fn()
 const mockEvm = '0x00000000000000000000000000000000000000f1'
 let mockEvmConnected = false
@@ -89,6 +91,7 @@ jest.mock('modules/account/containers/AccountDetails/AccountIcon', () => ({ Acco
 jest.mock('modules/account/containers/AccountDetails/SurplusCard', () => ({ SurplusCard: () => null }))
 jest.mock('modules/account/containers/CowShedInfo', () => ({ CowShedInfo: () => null }))
 jest.mock('../services/assets.service', () => ({
+  shortMint: (mint: string) => mint,
   walletMint: (mint: string) => mint,
   unknownAsset: (mint: string) => ({ mint, symbol: mint }),
   solanaAssetIdentity: () => ({}),
@@ -101,11 +104,20 @@ jest.mock('../state/assets.atoms', () => {
 jest.mock('../services/privateSettlement.service', () => ({ privateSettlementEnabled: false }))
 jest.mock('../state/orderActions.atoms', () => ({}))
 jest.mock('../state/trade.atoms', () => ({}))
-jest.mock('../state/orders.atoms', () => ({
-  activeSolanaReceiptAtom: jest.requireActual('jotai').atom(null),
-  savedNativeSolanaOrdersAtom: jest.requireActual('jotai').atom({}),
-  visibleNativeSolanaOrdersAtom: jest.requireActual('jotai').atom([]),
-}))
+jest.mock('../state/orders.atoms', () => {
+  const { atom } = jest.requireActual<typeof import('jotai')>('jotai')
+  const { solanaConnectionAtom } = jest.requireMock<typeof import('entities/solana')>('entities/solana')
+  const saved = atom<Record<string, import('../state/orders.atoms').SavedNativeSolanaOrder>>({})
+  const status = atom({ data: undefined, isError: false })
+  return {
+    activeSolanaReceiptAtom: atom(null),
+    savedNativeSolanaOrdersAtom: saved,
+    visibleNativeSolanaOrdersAtom: atom((get) =>
+      Object.values(get(saved)).filter((order) => order.owner === get(solanaConnectionAtom)?.account.address),
+    ),
+    nativeSolanaOrderQueryAtom: () => status,
+  }
+})
 
 function connection(address: string): SolanaConnection {
   return { account: { address }, wallet: { name: 'Solana wallet' } } as SolanaConnection
@@ -118,12 +130,12 @@ it.each([false, true])('opens recent trades from the connected header (EVM conne
     : 'CaseSensitiveBase58KeySo1anaOn1y11111111111'
   mockFetchTrades.mockReset().mockImplementation(async (_api: string, address: string, offset: number) =>
     Array.from({ length: offset === 0 ? 10 : 1 }, (_, index) => ({
-      txSignature: '2'.repeat(63) + (offset + index + 1).toString().replace(/0/g, '1'),
+      txSignature: '2'.repeat(63) + '123456789ABC'[offset + index],
       owner: address,
       sellAmount: '120',
       sellToken: 'soldMint',
       instructionIndex: 0,
-      orderUid: 'order' + index,
+      orderUid: 'order' + (offset + index),
       buyAmount: '100',
       buyToken: 'mint',
       protocolFee: null,
@@ -132,6 +144,19 @@ it.each([false, true])('opens recent trades from the connected header (EVM conne
   )
   const store = createStore()
   store.set(solanaConnectionAtom, connection(owner))
+  store.set(savedNativeSolanaOrdersAtom, {
+    order10: {
+      uid: 'order10',
+      owner,
+      intent: [],
+      signature: null,
+      reclaimed: false,
+      program: 'program',
+      genesis: 'genesis',
+      orderPda: 'pda',
+      createdBy: owner,
+    },
+  })
   render(
     <Provider store={store}>
       <I18nProvider i18n={setupI18n({ locale: 'en', messages: { en: {} } })}>
@@ -156,12 +181,15 @@ it.each([false, true])('opens recent trades from the connected header (EVM conne
   const link = (await recent.findAllByRole('link', { name: /Solana Explorer/ }))[0]
   expect(link.getAttribute('href')).toBe('https://explorer.solana.com/tx/' + '2'.repeat(63) + '1')
   fireEvent.click(recent.getByRole('button', { name: 'Back' }))
-  fireEvent.click(recent.getByRole('button', { name: 'Next' }))
+  expect(recent.getByRole('button', { name: /View order.*order10/ })).toBeTruthy()
+  fireEvent.click(recent.getByRole('button', { name: 'Show more trades' }))
   await waitFor(() => expect(mockFetchTrades).toHaveBeenCalledWith(expect.anything(), owner, 10, 10))
+  await waitFor(() => expect(recent.getAllByRole('button', { name: /View receipt/ })).toHaveLength(11))
+  expect(recent.queryByRole('button', { name: /View order.*order10/ })).toBeNull()
   act(() => store.set(solanaConnectionAtom, connection(owner + 'Changed')))
   await waitFor(() => expect(mockFetchTrades).toHaveBeenCalledWith(expect.anything(), owner + 'Changed', 0, 10))
   expect(recent.queryByText(owner)).toBeNull()
-  expect(recent.queryByRole('button', { name: 'Previous' })).toBeNull()
+  expect(recent.queryByRole('button', { name: 'Show fewer trades' })).toBeNull()
   act(() => store.set(solanaConnectionAtom, null))
   if (evmConnected) {
     expect(recent.getByText('evm-order')).toBeTruthy()

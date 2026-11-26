@@ -1710,10 +1710,6 @@ msgstr "Apply"
 msgid "Price Updated"
 msgstr "Price Updated"
 
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaHistory.container.tsx
-msgid "Previous"
-msgstr "Previous"
-
 #: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaOrders.container.tsx
 msgid "Checking whether the order reached Solana."
 msgstr "Checking whether the order reached Solana."
@@ -3337,6 +3333,10 @@ msgstr "Connect your wallet first"
 msgid "Trade alerts"
 msgstr "Trade alerts"
 
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaHistory.container.tsx
+msgid "Show more trades"
+msgstr "Show more trades"
+
 #: apps/cowswap-frontend/src/modules/tradeWidgetAddons/containers/TransactionSlippageInput/TransactionSlippageInput.container.tsx
 msgid "Auto"
 msgstr "Auto"
@@ -4528,6 +4528,10 @@ msgstr "User rejected approval transaction"
 msgid "Swap on"
 msgstr "Swap on"
 
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaHistory.container.tsx
+msgid "Show fewer trades"
+msgstr "Show fewer trades"
+
 #: apps/cowswap-frontend/src/ophis/mobile/MobileSwapHeading.pure.tsx
 msgid "with"
 msgstr "with"
@@ -5342,10 +5346,6 @@ msgstr "Account Overview"
 #: apps/cowswap-frontend/src/modules/limitOrders/containers/LimitOrdersWidget/index.tsx
 msgid "FREE order placement and cancellation"
 msgstr "FREE order placement and cancellation"
-
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaHistory.container.tsx
-msgid "Next"
-msgstr "Next"
 
 #: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
 #: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx

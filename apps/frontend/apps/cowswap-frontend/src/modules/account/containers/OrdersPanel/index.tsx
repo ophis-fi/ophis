@@ -19,41 +19,7 @@ import { useAccountModalState } from '../../hooks/useAccountModalState'
 import { useCloseAccountModalOnNavigate } from '../../hooks/useCloseAccountModalOnNavigate'
 import { useCloseAccountModal } from '../../hooks/useToggleAccountModal'
 import { AccountDetails } from '../AccountDetails'
-
-const SideBar = styled.div`
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-start;
-  flex-flow: row wrap;
-  position: fixed;
-  top: 0;
-  right: 0;
-  width: 100%;
-  max-width: 850px;
-  height: 80vh;
-  height: 80dvh;
-  border-radius: 24px;
-  margin: auto;
-  bottom: 0;
-  left: 0;
-  z-index: 100;
-  padding: 0;
-  cursor: default;
-  overflow-y: hidden;
-  box-shadow: ${({ theme }) => theme.boxShadow1};
-  background: var(${UI.COLOR_PAPER});
-
-  ${Media.upToMedium()} {
-    width: 100%;
-    height: 100%;
-    max-width: 100%;
-    border-radius: ${({ theme }) => (theme.isWidget ? '24px' : '0')};
-  }
-
-  ${Media.upToSmall()} {
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-  }
-`
+import { LowerSection, Wrapper as AccountContent } from '../AccountDetails/styled'
 
 const SidebarBackground = styled.div`
   position: fixed;
@@ -67,6 +33,9 @@ const SidebarBackground = styled.div`
 
   ${Media.upToSmall()} {
     display: none;
+    &:has(+ [role='dialog'] [data-swap-receipt]) {
+      display: block;
+    }
   }
 `
 
@@ -146,6 +115,77 @@ const Wrapper = styled.div`
   ${({ theme }) => theme.colorScrollbar};
 `
 
+const SideBar = styled.div`
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  flex-flow: row wrap;
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 100%;
+  max-width: 850px;
+  height: 80vh;
+  height: 80dvh;
+  border-radius: 24px;
+  margin: auto;
+  bottom: 0;
+  left: 0;
+  z-index: 100;
+  padding: 0;
+  cursor: default;
+  overflow-y: hidden;
+  box-shadow: ${({ theme }) => theme.boxShadow1};
+  background: var(${UI.COLOR_PAPER});
+
+  ${Media.upToMedium()} {
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    border-radius: ${({ theme }) => (theme.isWidget ? '24px' : '0')};
+  }
+
+  ${Media.upToSmall()} {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  &:has([data-swap-receipt]) {
+    display: block;
+    width: min(470px, calc(100% - 24px));
+    height: fit-content;
+    max-height: calc(100dvh - 24px);
+    overflow-y: auto;
+    border-radius: 20px;
+
+    ${Wrapper}, ${LowerSection} {
+      height: auto;
+      overflow: visible;
+    }
+
+    ${Header} {
+      height: auto;
+      padding: 4px 12px 0 20px;
+    }
+
+    ${Header} > strong {
+      font-size: 16px;
+    }
+
+    ${AccountContent} {
+      padding: 0;
+    }
+
+    ${AccountContent} > :not(${LowerSection}), ${LowerSection} > :not([data-swap-receipt]) {
+      display: none;
+    }
+
+    [data-swap-receipt] {
+      border: 0;
+      padding-top: 4px;
+    }
+  }
+`
+
 // TODO: rename the component into AccountModal
 export function OrdersPanel(): ReactNode {
   const { t } = useLingui()
@@ -175,10 +215,10 @@ export function OrdersPanel(): ReactNode {
   return (
     <>
       <SidebarBackground onClick={handleCloseOrdersPanel} />
-      <SideBar>
+      <SideBar role="dialog" aria-labelledby="account-panel-title">
         <Wrapper>
           <Header>
-            <strong>
+            <strong id="account-panel-title">
               <Trans>Account</Trans>
             </strong>
             <CloseButton type="button" aria-label={t`Close account`} onClick={handleCloseOrdersPanel}>

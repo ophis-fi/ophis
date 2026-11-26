@@ -138,7 +138,7 @@ export function SolanaReceipt({
   const placement = receiptTxLink(saved?.signature)
   const uid = trade?.orderUid ?? saved?.uid
   return (
-    <styledEl.Receipt aria-label="Swap receipt">
+    <styledEl.Receipt data-swap-receipt="" aria-label="Swap receipt">
       <Line>
         <Line>
           <Back type="button" onClick={onBack} aria-label="Back">

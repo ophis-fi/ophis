@@ -16,7 +16,7 @@ import { ReceiptAmount } from '../pure/SolanaReceiptAmounts.pure'
 import { shortMint, type SolanaAsset } from '../services/assets.service'
 import { savedReceiptAmounts, savedReceiptStatus } from '../services/receipt.service'
 import { solanaCachedCatalogAtom, solanaMainnetCatalogAtom, walletAssetListAtom } from '../state/assets.atoms'
-import { historyAtom, indexedOrderAtom, pageSize } from '../state/history.atoms'
+import { indexedOrderAtom, pageSize, walletActivityAtom } from '../state/history.atoms'
 import {
   nativeSolanaOrderQueryAtom,
   visibleNativeSolanaOrdersAtom,
@@ -83,9 +83,9 @@ export function NativeSolanaHistory(): ReactNode {
   const [visibleSaved, setVisibleSaved] = useState(pageSize)
   const [page, setPage] = useState(0)
   const [selected, select] = useState<{ uid: string; trade?: OphisSolanaTrade }>()
-  const { data, isFetching, isError, refetch } = useAtomValue(historyAtom(page))
+  const { trades, saved: local, hasMore, isFetching, isError, refresh } = useAtomValue(walletActivityAtom(page))
   const saved = useAtomValue(visibleNativeSolanaOrdersAtom)
-  useAtomValue(data?.length || saved.length ? solanaMainnetCatalogAtom : solanaCachedCatalogAtom)
+  useAtomValue(trades.length || saved.length ? solanaMainnetCatalogAtom : solanaCachedCatalogAtom)
   const assets = useAtomValue(walletAssetListAtom)
   if (!connection) return null
   const order = saved.find((entry) => entry.uid === selected?.uid)
@@ -93,12 +93,6 @@ export function NativeSolanaHistory(): ReactNode {
   const back = (): void => select(undefined)
   if (order) return <NativeSolanaOrderCard key={order.uid} order={order} indexed={trade} onBack={back} />
   if (trade?.owner === connection.account.address) return <IndexedReceipt trade={trade} onBack={back} />
-  const local =
-    page === 0
-      ? saved
-          .filter((order) => !data?.some((row) => row.orderUid === order.uid))
-          .sort((a, b) => (b.creationLifetime?.requestedAt ?? 0) - (a.creationLifetime?.requestedAt ?? 0))
-      : []
   return (
     <Card>
       <h3>
@@ -112,12 +106,12 @@ export function NativeSolanaHistory(): ReactNode {
           <Trans>Could not load wallet trades.</Trans>
         </p>
       )}
-      {data?.length === 0 && !local.length && (
+      {!isFetching && !isError && !trades.length && !local.length && (
         <p>
           <Trans>No trades on this page.</Trans>
         </p>
       )}
-      {data?.map((row) => (
+      {trades.map((row) => (
         <Activity
           key={row.txSignature + row.instructionIndex + row.orderUid}
           type="button"
@@ -144,17 +138,17 @@ export function NativeSolanaHistory(): ReactNode {
         </ButtonSecondary>
       )}
       <Row>
-        <ButtonSecondary type="button" disabled={isFetching} onClick={() => void refetch()}>
+        <ButtonSecondary type="button" disabled={isFetching} onClick={() => void refresh()}>
           <Trans>Refresh trades</Trans>
         </ButtonSecondary>
         {page > 0 && (
           <ButtonSecondary type="button" onClick={() => setPage(page - 1)}>
-            <Trans>Previous</Trans>
+            <Trans>Show fewer trades</Trans>
           </ButtonSecondary>
         )}
-        {data?.length === pageSize && (
+        {hasMore && (
           <ButtonSecondary type="button" onClick={() => setPage(page + 1)}>
-            <Trans>Next</Trans>
+            <Trans>Show more trades</Trans>
           </ButtonSecondary>
         )}
       </Row>

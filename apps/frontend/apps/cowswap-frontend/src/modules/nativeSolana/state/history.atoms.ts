@@ -1,3 +1,4 @@
+import { atom } from 'jotai'
 import { atomFamily } from 'jotai/utils'
 
 import { fetchWithTimeout } from '@cowprotocol/common-utils'
@@ -21,6 +22,26 @@ export const historyAtom = atomFamily((page: number) =>
       enabled: !!owner && !!config && page >= 0,
       retry: false,
       refetchOnWindowFocus: false,
+    }
+  }),
+)
+
+export const walletActivityAtom = atomFamily((page: number) =>
+  atom((get) => {
+    const pages = Array.from({ length: page + 1 }, (_, index) => get(historyAtom(index)))
+    const fills = pages.flatMap((result) => result.data ?? [])
+    const trades = [...new Map(fills.map((fill) => [fill.txSignature + ':' + fill.instructionIndex, fill])).values()]
+    const indexed = new Set(trades.map((fill) => fill.orderUid))
+    const saved = get(visibleNativeSolanaOrdersAtom)
+      .filter((order) => !indexed.has(order.uid))
+      .sort((a, b) => (b.creationLifetime?.requestedAt ?? 0) - (a.creationLifetime?.requestedAt ?? 0))
+    return {
+      trades,
+      saved,
+      hasMore: pages[page].data?.length === pageSize,
+      isFetching: pages.some((result) => result.isFetching),
+      isError: pages.some((result) => result.isError),
+      refresh: () => Promise.all(pages.map((result) => result.refetch())),
     }
   }),
 )
