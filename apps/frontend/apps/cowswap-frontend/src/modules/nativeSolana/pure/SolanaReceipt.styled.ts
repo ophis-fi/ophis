@@ -1,9 +1,9 @@
 import styled from 'styled-components/macro'
 
-import { Card } from './NativeSolana.styled'
-import { AmountText } from './SwapForm.styled'
+import * as styledEl from './NativeSolana.styled'
+import * as formStyles from './SwapForm.styled'
 
-export const Receipt = styled(Card)`
+export const Receipt = styled(styledEl.Card)`
   width: min(100%, 470px);
   box-sizing: border-box;
   margin-inline: auto;
@@ -85,7 +85,7 @@ export const Slab = styled.section`
   border-radius: 18px;
   background: var(--cow-color-paper-darker);
   overflow-wrap: anywhere;
-  ${AmountText} {
+  ${formStyles.AmountText} {
     display: block;
     margin-top: 10px;
     line-height: 1.15;

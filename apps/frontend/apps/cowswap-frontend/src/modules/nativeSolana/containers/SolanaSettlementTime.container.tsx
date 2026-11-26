@@ -3,7 +3,7 @@ import { ReactNode } from 'react'
 
 import { Trans } from '@lingui/react/macro'
 
-import { Line } from '../pure/SwapForm.styled'
+import * as formStyles from '../pure/SwapForm.styled'
 import { blockTimeAtom } from '../state/history.atoms'
 
 export function SolanaSettlementTime({ slot, created }: { slot?: number; created?: string }): ReactNode {
@@ -12,13 +12,13 @@ export function SolanaSettlementTime({ slot, created }: { slot?: number; created
   if (data === undefined || !Number.isFinite(start) || data < start) return null
   const seconds = data - start
   return (
-    <Line>
+    <formStyles.Line>
       <small>
         <Trans>Settlement time</Trans>
       </small>
       <strong>
         <Trans>{seconds} s</Trans>
       </strong>
-    </Line>
+    </formStyles.Line>
   )
 }

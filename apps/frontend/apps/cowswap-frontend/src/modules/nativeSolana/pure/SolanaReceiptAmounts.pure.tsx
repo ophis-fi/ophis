@@ -6,7 +6,7 @@ import { ArrowDown } from 'react-feather'
 
 import { AssetIcon } from './AssetPicker.pure'
 import * as styledEl from './SolanaReceipt.styled'
-import { AmountText, Line } from './SwapForm.styled'
+import * as formStyles from './SwapForm.styled'
 
 import { solanaAssetIdentity, type SolanaAsset } from '../services/assets.service'
 import { receiptAmount, type ReceiptAmounts } from '../services/receipt.service'
@@ -32,7 +32,7 @@ function AssetSlab({
   const verified = verifyAsset(solanaAssetIdentity(asset))
   return (
     <styledEl.Slab>
-      <Line>
+      <formStyles.Line>
         <small>{label}</small>
         <styledEl.Token title={mint}>
           <styledEl.CoinStack>
@@ -41,8 +41,8 @@ function AssetSlab({
           {asset.symbol}
           <VerifiedAssetBadge verified={verified} />
         </styledEl.Token>
-      </Line>
-      <AmountText>
+      </formStyles.Line>
+      <formStyles.AmountText>
         {value}
         {asset.decimals === undefined && (
           <>
@@ -50,7 +50,7 @@ function AssetSlab({
             <Trans>base units</Trans>
           </>
         )}
-      </AmountText>
+      </formStyles.AmountText>
     </styledEl.Slab>
   )
 }

@@ -10,9 +10,9 @@ import { useAssetVerificationResolver } from 'entities/verifiedAsset'
 import { NativeSolanaOrderCard } from './NativeSolanaOrders.container'
 import { SolanaSettlementTime } from './SolanaSettlementTime.container'
 
-import { Card, Row } from '../pure/NativeSolana.styled'
+import * as styledEl from '../pure/NativeSolana.styled'
 import { ReceiptStatusBadge, SolanaReceipt } from '../pure/SolanaReceipt.pure'
-import { Activity } from '../pure/SolanaReceipt.styled'
+import * as receiptStyles from '../pure/SolanaReceipt.styled'
 import { ReceiptAmount } from '../pure/SolanaReceiptAmounts.pure'
 import { isSolanaMainnet, shortMint, type SolanaAsset } from '../services/assets.service'
 import { savedReceiptAmounts, savedReceiptStatus } from '../services/receipt.service'
@@ -39,7 +39,7 @@ function SavedActivity({
   const amounts = data && 'uid' in data ? data : savedReceiptAmounts(order)
   const status = savedReceiptStatus(order, data)
   return (
-    <Activity type="button" onClick={select}>
+    <receiptStyles.Activity type="button" onClick={select}>
       <span>
         <strong>
           {amounts ? (
@@ -59,7 +59,7 @@ function SavedActivity({
       ) : (
         <Trans>Checking status</Trans>
       )}
-    </Activity>
+    </receiptStyles.Activity>
   )
 }
 
@@ -97,7 +97,7 @@ export function NativeSolanaHistory(): ReactNode {
   if (order) return <NativeSolanaOrderCard key={order.uid} order={order} indexed={trade} onBack={back} />
   if (trade?.owner === connection.account.address) return <IndexedReceipt trade={trade} onBack={back} />
   return (
-    <Card>
+    <styledEl.Card>
       <h3>
         <Trans>Solana activity</Trans>
       </h3>
@@ -115,7 +115,7 @@ export function NativeSolanaHistory(): ReactNode {
         </p>
       )}
       {trades.map((row) => (
-        <Activity
+        <receiptStyles.Activity
           key={row.txSignature + row.instructionIndex + row.orderUid}
           type="button"
           onClick={() => select({ uid: row.orderUid, trade: row })}
@@ -130,7 +130,7 @@ export function NativeSolanaHistory(): ReactNode {
             </small>
           </span>
           <ReceiptStatusBadge status="fulfilled" />
-        </Activity>
+        </receiptStyles.Activity>
       ))}
       {local.slice(0, visibleSaved).map((entry) => (
         <SavedActivity key={entry.uid} order={entry} assets={assets} select={() => select({ uid: entry.uid })} />
@@ -140,7 +140,7 @@ export function NativeSolanaHistory(): ReactNode {
           <Trans>Show more orders</Trans>
         </ButtonSecondary>
       )}
-      <Row>
+      <styledEl.Row>
         <ButtonSecondary type="button" disabled={isFetching} onClick={() => void refresh()}>
           <Trans>Refresh trades</Trans>
         </ButtonSecondary>
@@ -154,7 +154,7 @@ export function NativeSolanaHistory(): ReactNode {
             <Trans>Show more trades</Trans>
           </ButtonSecondary>
         )}
-      </Row>
-    </Card>
+      </styledEl.Row>
+    </styledEl.Card>
   )
 }

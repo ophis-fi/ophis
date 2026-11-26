@@ -3,10 +3,10 @@ import { ReactNode, useEffect, useRef, useState } from 'react'
 import { Trans } from '@lingui/react/macro'
 import { ArrowLeft, ArrowUpRight, CheckCircle, ChevronDown } from 'react-feather'
 
-import { Values } from './NativeSolana.styled'
+import * as nativeStyles from './NativeSolana.styled'
 import * as styledEl from './SolanaReceipt.styled'
 import { ReceiptSlabs, ReceiptAmount, type VerifyReceiptAsset } from './SolanaReceiptAmounts.pure'
-import { Back, Line } from './SwapForm.styled'
+import * as formStyles from './SwapForm.styled'
 
 import { type SolanaAsset } from '../services/assets.service'
 import {
@@ -84,7 +84,7 @@ function ReceiptDetails({
   uid?: string
 }): ReactNode {
   return (
-    <Values>
+    <nativeStyles.Values>
       {intent && (
         <Detail label={<Trans>Minimum received</Trans>}>
           <ReceiptAmount amount={intent.buyAmount} mint={intent.buyToken} assets={assets} />
@@ -115,7 +115,7 @@ function ReceiptDetails({
       <Detail label={<Trans>Order ID</Trans>}>
         <code>{uid}</code>
       </Detail>
-    </Values>
+    </nativeStyles.Values>
   )
 }
 
@@ -141,17 +141,17 @@ export function SolanaReceipt({
   const uid = trade?.orderUid ?? saved?.uid
   return (
     <styledEl.Receipt data-swap-receipt="" aria-label="Swap receipt">
-      <Line>
-        <Line>
-          <Back type="button" onClick={onBack} aria-label="Back">
+      <formStyles.Line>
+        <formStyles.Line>
+          <formStyles.Back type="button" onClick={onBack} aria-label="Back">
             <ArrowLeft size={18} />
-          </Back>
+          </formStyles.Back>
           <h2 ref={heading} tabIndex={-1}>
             <Trans>Swap receipt</Trans>
           </h2>
-        </Line>
+        </formStyles.Line>
         <ReceiptStatusBadge status={status} />
-      </Line>
+      </formStyles.Line>
       <styledEl.Network>
         <img src="/logos/token-sol.svg" alt="" />
         Solana

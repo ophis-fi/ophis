@@ -16,7 +16,7 @@ import { NativeSolanaOrders } from './NativeSolanaOrders.container'
 
 import * as styledEl from '../pure/NativeSolana.styled'
 import { SolanaQuoteCosts } from '../pure/SolanaQuoteCosts.pure'
-import { SmallButton } from '../pure/SwapForm.styled'
+import * as formStyles from '../pure/SwapForm.styled'
 import { shortMint } from '../services/assets.service'
 import { privateModeAtom, privateSettlementEnabled } from '../services/privateSettlement.service'
 import { minimumSolanaBuyAmount } from '../services/trade.service'
@@ -84,9 +84,9 @@ function NativeSolanaReview({ onBack }: { onBack(): void }): ReactNode {
   return (
     <styledEl.Card>
       <styledEl.Row>
-        <SmallButton type="button" onClick={onBack} disabled={busy}>
+        <formStyles.SmallButton type="button" onClick={onBack} disabled={busy}>
           <Trans>Back</Trans>
-        </SmallButton>
+        </formStyles.SmallButton>
         <h2>
           <Trans>Review your swap</Trans>
         </h2>
