@@ -30,6 +30,7 @@ it('opens inside the swap card, explains checks without selecting, and restores 
   expect(picker.getByRole('textbox')).toBe(search)
   fireEvent.keyDown(search, { key: 'Escape' })
   expect(screen.queryByRole('tooltip')).toBeNull()
+  expect(form.getByRole('region', { name: 'You sell' })).toBeTruthy()
   fireEvent.keyDown(search, { key: 'Escape' })
   expect(document.activeElement).toBe(sell)
   expect(screen.queryByRole('region', { name: 'You sell' })).toBeNull()
