@@ -91,6 +91,7 @@ export function checkedQuoteAppData(
 }
 
 export interface OphisSolanaOrder {
+  creationDate?: string;
   uid: string;
   owner: Address;
   sellToken: Address;
@@ -301,6 +302,9 @@ export async function fetchOphisSolanaOrder(
     throw Error('Invalid native order status');
   return {
     uid: orderUid,
+    ...(typeof value.creationDate === 'string' && Number.isFinite(Date.parse(value.creationDate))
+      ? { creationDate: value.creationDate }
+      : {}),
     owner: key(value.owner),
     sellToken: key(value.sellToken),
     buyToken: key(value.buyToken),

@@ -28,8 +28,10 @@ export interface SolanaAsset {
   icon?: string
 }
 
+export const isSolanaMainnet = OPHIS_SOLANA_CONFIG?.chain === 'solana:mainnet'
+
 export function solanaAssetIdentity(asset: SolanaAsset | null): CircleTokenIdentity {
-  const chainId = OPHIS_SOLANA_CONFIG?.chain === 'solana:mainnet' ? AdditionalTargetChainId.SOLANA : undefined
+  const chainId = isSolanaMainnet ? AdditionalTargetChainId.SOLANA : undefined
   return { chainId, address: asset?.mint, symbol: asset?.symbolIsPlaceholder ? undefined : asset?.symbol }
 }
 

@@ -20,7 +20,9 @@ jest.mock('./NativeSolanaForm.container', () => ({
     return <button onClick={() => onReview(review)}>Swap</button>
   },
 }))
-jest.mock('./NativeSolanaOrders.container', () => ({ NativeSolanaOrders: () => null }))
+jest.mock('./NativeSolanaOrders.container', () => ({
+  NativeSolanaOrders: ({ children }: { children: import('react').ReactNode }) => children,
+}))
 jest.mock('../state/assets.atoms', () => ({
   walletAssetListAtom: jest.requireActual('jotai').atom([
     { mint: 'SOL', symbol: 'SOL' },

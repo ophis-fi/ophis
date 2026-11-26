@@ -16,7 +16,7 @@ import { NativeSolanaOrders } from './NativeSolanaOrders.container'
 
 import * as styledEl from '../pure/NativeSolana.styled'
 import { SolanaQuoteCosts } from '../pure/SolanaQuoteCosts.pure'
-import { SmallButton } from '../pure/SwapForm.styled'
+import * as formStyles from '../pure/SwapForm.styled'
 import { shortMint } from '../services/assets.service'
 import { privateModeAtom, privateSettlementEnabled } from '../services/privateSettlement.service'
 import { minimumSolanaBuyAmount } from '../services/trade.service'
@@ -84,9 +84,9 @@ function NativeSolanaReview({ onBack }: { onBack(): void }): ReactNode {
   return (
     <styledEl.Card>
       <styledEl.Row>
-        <SmallButton type="button" onClick={onBack} disabled={busy}>
+        <formStyles.SmallButton type="button" onClick={onBack} disabled={busy}>
           <Trans>Back</Trans>
-        </SmallButton>
+        </formStyles.SmallButton>
         <h2>
           <Trans>Review your swap</Trans>
         </h2>
@@ -171,29 +171,30 @@ export function NativeSolanaWidget(): ReactNode {
   }, [review, busy, clearQuote])
   return (
     <styledEl.Stack>
-      {selected && selected === review ? (
-        <NativeSolanaReview
-          onBack={() => {
-            clearError(null)
-            setSelected(null)
-          }}
-        />
-      ) : (
-        <NativeSolanaForm
-          key={wallet?.account.address}
-          onReview={(current) => {
-            clearError(null)
-            setSelected(current)
-          }}
-        />
-      )}
+      <NativeSolanaOrders>
+        {selected && selected === review ? (
+          <NativeSolanaReview
+            onBack={() => {
+              clearError(null)
+              setSelected(null)
+            }}
+          />
+        ) : (
+          <NativeSolanaForm
+            key={wallet?.account.address}
+            onReview={(current) => {
+              clearError(null)
+              setSelected(current)
+            }}
+          />
+        )}
+      </NativeSolanaOrders>
       {busy && (
         <p role="status">
           <Trans>Preparing your trade. Check your wallet for any approval request.</Trans>
         </p>
       )}
       {error && <p role="alert">{error}</p>}
-      <NativeSolanaOrders />
     </styledEl.Stack>
   )
 }

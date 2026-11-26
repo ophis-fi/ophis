@@ -11,6 +11,7 @@ import {
 import { OPHIS_SOLANA_CONFIG, solanaConnectionAtom, type OphisSolanaConfig } from 'entities/solana'
 
 import {
+  activeSolanaReceiptAtom,
   lookupMissingCreation,
   savedNativeSolanaOrdersAtom,
   visibleNativeSolanaOrdersAtom,
@@ -116,6 +117,7 @@ const placeNativeSolanaOrderAtom = atom(null, async (get, set, replaceAllowance:
       chain: config.chain,
       instructions: order.instructions,
       onBeforeBroadcast: () => {
+        set(activeSolanaReceiptAtom, order.uid)
         if (!get(savedNativeSolanaOrdersAtom)[order.uid])
           set(savedNativeSolanaOrdersAtom, { ...get(savedNativeSolanaOrdersAtom), [order.uid]: record })
       },
