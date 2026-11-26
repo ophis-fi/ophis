@@ -17,6 +17,7 @@ import { NativeSolanaOrders } from './NativeSolanaOrders.container'
 import { savedNativeSolanaOrdersAtom } from '../state/orders.atoms'
 
 const mockFetchTrades = jest.fn()
+const mockRecordAction = jest.fn()
 const mockWatchOrder = jest.fn()
 const mockStopWatching = jest.fn()
 const mockEvm = '0x00000000000000000000000000000000000000f1'
@@ -107,7 +108,14 @@ jest.mock('../state/assets.atoms', () => {
   return { walletAssetListAtom: atom([]), solanaMainnetCatalogAtom: atom({}), solanaCachedCatalogAtom: atom({}) }
 })
 jest.mock('../services/privateSettlement.service', () => ({ privateSettlementEnabled: false }))
-jest.mock('../state/orderActions.atoms', () => ({}))
+jest.mock('../state/orderActions.atoms', () => {
+  const { atom } = jest.requireActual<typeof import('jotai')>('jotai')
+  const receipt = atom({ data: 'confirmed' })
+  return {
+    orderActionReceiptAtom: () => receipt,
+    recordOrderActionAtom: atom(null, (_get, _set, result: unknown) => mockRecordAction(result)),
+  }
+})
 jest.mock('../state/trade.atoms', () => ({}))
 jest.mock('../state/orders.atoms', () => {
   const { atom } = jest.requireActual<typeof import('jotai')>('jotai')
@@ -133,6 +141,7 @@ function connection(address: string): SolanaConnection {
 }
 
 it.each([false, true])('opens recent trades from the connected header (EVM connected: %s)', async (evmConnected) => {
+  mockRecordAction.mockClear()
   mockWatchOrder.mockClear()
   mockStopWatching.mockClear()
   mockEvmConnected = evmConnected
@@ -158,6 +167,7 @@ it.each([false, true])('opens recent trades from the connected header (EVM conne
   store.set(savedNativeSolanaOrdersAtom, {
     order10: {
       uid: 'order10',
+      walletAction: { reclaim: true, signature: null, lastHeight: '1', status: 'pending' },
       owner,
       intent: [],
       signature: null,
@@ -184,6 +194,12 @@ it.each([false, true])('opens recent trades from the connected header (EVM conne
   expect(screen.queryByText('Settled trades')).toBeNull()
   expect(mockFetchTrades).not.toHaveBeenCalled()
   expect(mockWatchOrder).toHaveBeenCalled()
+  expect(mockRecordAction).toHaveBeenCalledWith({
+    uid: 'order10',
+    signature: null,
+    lastHeight: '1',
+    status: 'confirmed',
+  })
   expect(mockStopWatching).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('button', { name: evmConnected ? mockEvm : 'Account' }))
   const recent = within(await screen.findByRole('region', { name: 'Recent Activity' }))

@@ -1,19 +1,15 @@
 import { useAtomValue, useSetAtom } from 'jotai'
-import { ReactNode, useEffect } from 'react'
+import { ReactNode } from 'react'
 
 import { ButtonSecondary } from '@cowprotocol/ui'
 
 import { Trans } from '@lingui/react/macro'
 import { formatOphisSolanaAmount } from '@ophis/solana-sdk'
 
+import { useWalletActionReceipt } from '../hooks/useWalletActionReceipt'
 import { receiptTxLink } from '../services/receipt.service'
 import { orderDepositAtom } from '../state/history.atoms'
-import {
-  manageNativeSolanaOrderAtom,
-  orderActionMessageAtom,
-  orderActionReceiptAtom,
-  recordOrderActionAtom,
-} from '../state/orderActions.atoms'
+import { manageNativeSolanaOrderAtom, orderActionMessageAtom } from '../state/orderActions.atoms'
 import { nativeSolanaBusyAtom } from '../state/trade.atoms'
 
 import type { SavedNativeSolanaOrder } from '../state/orders.atoms'
@@ -34,14 +30,9 @@ export function ReceiptAction({ order, reclaim }: { order: SavedNativeSolanaOrde
 
 export function WalletActionNotice({ order }: { order: SavedNativeSolanaOrder }): ReactNode {
   const message = useAtomValue(orderActionMessageAtom(order.uid))
-  const receipt = useAtomValue(orderActionReceiptAtom(order.uid))
-  const record = useSetAtom(recordOrderActionAtom)
+  const receipt = useWalletActionReceipt(order)
   const action = order.walletAction
   const pending = action?.status === 'pending'
-  useEffect(() => {
-    if (pending && action && receipt.data && receipt.data !== 'pending')
-      record({ uid: order.uid, signature: action.signature, lastHeight: action.lastHeight, status: receipt.data })
-  }, [record, order.uid, action, pending, receipt.data])
   const actionUrl = receiptTxLink(action?.signature)
   return (
     <>

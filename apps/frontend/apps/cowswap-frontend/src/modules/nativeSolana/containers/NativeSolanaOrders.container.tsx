@@ -11,6 +11,7 @@ import { ReceiptAction, ReclaimDeposit, WalletActionNotice } from './SolanaRecei
 import { SolanaSettlementTime } from './SolanaSettlementTime.container'
 
 import { useReceiptTrade } from '../hooks/useReceiptTrade'
+import { useWalletActionReceipt } from '../hooks/useWalletActionReceipt'
 import { SolanaReceipt } from '../pure/SolanaReceipt.pure'
 import { isSolanaMainnet } from '../services/assets.service'
 import { privateAction, privateSettlementEnabled } from '../services/privateSettlement.service'
@@ -167,8 +168,9 @@ export function NativeSolanaOrderCard({
   )
 }
 
-function OrderStatusObserver({ uid }: { uid: string }): null {
-  useAtomValue(nativeSolanaOrderQueryAtom(uid))
+function OrderStatusObserver({ order }: { order: SavedNativeSolanaOrder }): null {
+  useAtomValue(nativeSolanaOrderQueryAtom(order.uid))
+  useWalletActionReceipt(order)
   return null
 }
 
@@ -194,7 +196,7 @@ export function NativeSolanaOrders({ children }: { children?: ReactNode }): Reac
   const order = orders.find((entry) => entry.uid === uid)
   return (
     <>
-      {orders.map((entry) => (entry.reclaimed ? null : <OrderStatusObserver key={entry.uid} uid={entry.uid} />))}
+      {orders.map((entry) => (entry.reclaimed ? null : <OrderStatusObserver key={entry.uid} order={entry} />))}
       {order ? (
         <NativeSolanaOrderCard
           key={order.uid}
