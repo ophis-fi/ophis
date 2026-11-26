@@ -17,6 +17,8 @@ import { NativeSolanaOrders } from './NativeSolanaOrders.container'
 import { savedNativeSolanaOrdersAtom } from '../state/orders.atoms'
 
 const mockFetchTrades = jest.fn()
+const mockWatchOrder = jest.fn()
+const mockStopWatching = jest.fn()
 const mockEvm = '0x00000000000000000000000000000000000000f1'
 let mockEvmConnected = false
 
@@ -112,6 +114,10 @@ jest.mock('../state/orders.atoms', () => {
   const { solanaConnectionAtom } = jest.requireMock<typeof import('entities/solana')>('entities/solana')
   const saved = atom<Record<string, import('../state/orders.atoms').SavedNativeSolanaOrder>>({})
   const status = atom({ data: undefined, isError: false })
+  status.onMount = () => {
+    mockWatchOrder()
+    return mockStopWatching
+  }
   return {
     activeSolanaReceiptAtom: atom(null),
     savedNativeSolanaOrdersAtom: saved,
@@ -127,6 +133,8 @@ function connection(address: string): SolanaConnection {
 }
 
 it.each([false, true])('opens recent trades from the connected header (EVM connected: %s)', async (evmConnected) => {
+  mockWatchOrder.mockClear()
+  mockStopWatching.mockClear()
   mockEvmConnected = evmConnected
   const owner = evmConnected
     ? 'CaseSensitiveBase58KeyWithBothWa11ets111111'
@@ -175,6 +183,8 @@ it.each([false, true])('opens recent trades from the connected header (EVM conne
   )
   expect(screen.queryByText('Settled trades')).toBeNull()
   expect(mockFetchTrades).not.toHaveBeenCalled()
+  expect(mockWatchOrder).toHaveBeenCalled()
+  expect(mockStopWatching).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('button', { name: evmConnected ? mockEvm : 'Account' }))
   const recent = within(await screen.findByRole('region', { name: 'Recent Activity' }))
   expect(await recent.findByText(owner)).toBeTruthy()
@@ -191,6 +201,7 @@ it.each([false, true])('opens recent trades from the connected header (EVM conne
   expect(recent.queryByRole('button', { name: /View order.*order10/ })).toBeNull()
   act(() => store.set(solanaConnectionAtom, connection(owner + 'Changed')))
   await waitFor(() => expect(mockFetchTrades).toHaveBeenCalledWith(expect.anything(), owner + 'Changed', 0, 10))
+  expect(mockStopWatching).toHaveBeenCalled()
   expect(recent.queryByText(owner)).toBeNull()
   expect(recent.queryByRole('button', { name: 'Show fewer trades' })).toBeNull()
   act(() => store.set(solanaConnectionAtom, null))

@@ -167,6 +167,11 @@ export function NativeSolanaOrderCard({
   )
 }
 
+function OrderStatusObserver({ uid }: { uid: string }): null {
+  useAtomValue(nativeSolanaOrderQueryAtom(uid))
+  return null
+}
+
 export function NativeSolanaOrders({ children }: { children?: ReactNode }): ReactNode {
   const [uid, select] = useAtom(activeSolanaReceiptAtom)
   const clearReview = useSetAtom(clearNativeSolanaReviewAtom)
@@ -187,17 +192,22 @@ export function NativeSolanaOrders({ children }: { children?: ReactNode }): Reac
     }
   }, [owner, save])
   const order = orders.find((entry) => entry.uid === uid)
-  return order ? (
-    <NativeSolanaOrderCard
-      key={order.uid}
-      order={order}
-      onBack={() => {
-        select(null)
-        clearReview()
-        clearError(null)
-      }}
-    />
-  ) : (
-    children
+  return (
+    <>
+      {orders.map((entry) => (entry.reclaimed ? null : <OrderStatusObserver key={entry.uid} uid={entry.uid} />))}
+      {order ? (
+        <NativeSolanaOrderCard
+          key={order.uid}
+          order={order}
+          onBack={() => {
+            select(null)
+            clearReview()
+            clearError(null)
+          }}
+        />
+      ) : (
+        children
+      )}
+    </>
   )
 }
