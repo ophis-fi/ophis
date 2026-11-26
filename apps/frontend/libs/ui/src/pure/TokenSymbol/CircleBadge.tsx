@@ -1,7 +1,10 @@
 import { ReactNode, useEffect, useRef, useState } from 'react'
 
 import { t } from '@lingui/core/macro'
+import { Info } from 'react-feather'
 import styled from 'styled-components/macro'
+
+import { AssetCheck } from './AssetCheck'
 
 import Popover from '../Popover'
 
@@ -27,7 +30,7 @@ const Description = styled.span`
   line-height: 1.4;
 `
 
-export function CircleBadge({ restricted }: { restricted: boolean }): ReactNode {
+export function CircleBadge({ symbol }: { symbol: string | undefined }): ReactNode {
   const [show, setShow] = useState(false)
   const [standalone, setStandalone] = useState(false)
   const ref = useRef<HTMLSpanElement>(null)
@@ -64,9 +67,11 @@ export function CircleBadge({ restricted }: { restricted: boolean }): ReactNode 
     }
   }, [show])
   const label = t`Official Circle token`
-  const description = restricted
-    ? t`Contract verified against Circle's registry. USYC requires an eligible, allowlisted wallet.`
-    : t`Contract verified against Circle's registry.`
+  const stablecoin = symbol === 'USDC' || symbol === 'EURC'
+  const description =
+    symbol === 'USYC'
+      ? t`Contract verified against Circle's registry. USYC requires an eligible, allowlisted wallet.`
+      : t`Contract verified against Circle's registry.`
 
   return (
     <Popover
@@ -103,16 +108,11 @@ export function CircleBadge({ restricted }: { restricted: boolean }): ReactNode 
           if (!ref.current?.closest('button, a, [role="button"]')?.matches(':focus')) setShow(false)
         }}
       >
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" role="img" aria-label={`${label}. ${description}`}>
-          <circle cx="8" cy="8" r="8" fill="currentColor" />
-          <path
-            d="m4.5 8 2.25 2.25 4.75-4.75"
-            stroke="white"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
+        {stablecoin ? (
+          <AssetCheck label={`${label}. ${description}`} />
+        ) : (
+          <Info size={14} color="var(--cow-color-text-secondary)" role="img" aria-label={`${label}. ${description}`} />
+        )}
       </Badge>
     </Popover>
   )

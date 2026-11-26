@@ -7,6 +7,8 @@ import { Nullish } from '@cowprotocol/types'
 
 import { CircleBadge } from './CircleBadge'
 
+export { AssetCheck } from './AssetCheck'
+
 export type TokenNameAndSymbol = Pick<Currency, 'symbol' | 'name'>
 
 export type TokenSymbolProps = {
@@ -32,7 +34,7 @@ export function TokenSymbol(props: TokenSymbolProps): ReactNode {
   return (
     <span className={props.className} title={title}>
       {abbreviateSymbol}
-      {verified && <CircleBadge restricted={props.token?.symbol === 'USYC'} />}
+      {verified && <CircleBadge symbol={props.token?.symbol} />}
     </span>
   )
 }

@@ -528,10 +528,6 @@ msgstr "Your order was cancelled"
 msgid "Free"
 msgstr "Free"
 
-#: apps/cowswap-frontend/src/entities/verifiedAsset/VerifiedAssetBadge.tsx
-msgid "Wrapped SOL"
-msgstr "Wrapped SOL"
-
 #: apps/cowswap-frontend/src/modules/account/containers/AccountDetails/SurplusCard.tsx
 msgid "The total surplus Ophis has generated for you in {nativeSymbol} across all your trades since {startDate}"
 msgstr "The total surplus Ophis has generated for you in {nativeSymbol} across all your trades since {startDate}"
@@ -949,10 +945,6 @@ msgstr "icon"
 #: apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/internal/slots/Header.tsx
 msgid "Manage token lists"
 msgstr "Manage token lists"
-
-#: apps/cowswap-frontend/src/entities/verifiedAsset/VerifiedAssetBadge.tsx
-msgid "Bridged USDC"
-msgstr "Bridged USDC"
 
 #: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
 msgid "Order actions use fresh verification against the pinned escrow contract."
@@ -5519,6 +5511,10 @@ msgstr "Claim your ticket"
 msgid "Filter by maker address"
 msgstr "Filter by maker address"
 
+#: apps/cowswap-frontend/src/entities/verifiedAsset/VerifiedAssetBadge.tsx
+msgid "Issued by {verified}"
+msgstr "Issued by {verified}"
+
 #: apps/cowswap-frontend/src/modules/tokensList/containers/ManageListsAndTokens/index.tsx
 msgid "https:// or ipfs:// or ENS name"
 msgstr "https:// or ipfs:// or ENS name"
@@ -6781,10 +6777,6 @@ msgstr "Partial approval may block <0>{ordersWithPermitLength}</0> other {orderW
 msgid "Destination transaction"
 msgstr "Destination transaction"
 
-#: apps/cowswap-frontend/src/entities/verifiedAsset/VerifiedAssetBadge.tsx
-msgid "Verified asset · {source}"
-msgstr "Verified asset · {source}"
-
 #: apps/cowswap-frontend/src/modules/tradeWidgetAddons/pure/NetworkCostsTooltipSuffix.tsx
 msgid "Because you are using a smart contract wallet"
 msgstr "Because you are using a smart contract wallet"
@@ -6846,10 +6838,6 @@ msgstr "Minimum sell size"
 #: apps/cowswap-frontend/src/modules/bridge/pure/contents/QuoteBridgeContent/index.tsx
 msgid "Min. to deposit"
 msgstr "Min. to deposit"
-
-#: apps/cowswap-frontend/src/entities/verifiedAsset/VerifiedAssetBadge.tsx
-msgid "Bridged USDT"
-msgstr "Bridged USDT"
 
 #: apps/cowswap-frontend/src/pages/games/CowRunner/index.tsx
 msgid "MEV is lethal these days!"

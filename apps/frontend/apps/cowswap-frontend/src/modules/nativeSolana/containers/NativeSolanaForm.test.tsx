@@ -90,12 +90,12 @@ it('loads the mainnet catalog on demand for both pickers and keeps selections ke
   fireEvent.click(screen.getByRole('button', { name: 'Buy token: Select token' }))
   await screen.findByTitle(orca)
   expect(
-    within(screen.getByRole('button', { name: 'Sell token: SOL' })).getByRole('img', { name: /Verified asset/ }),
+    within(screen.getByRole('button', { name: 'Sell token: SOL' })).getByRole('img', { name: /Native currency/ }),
   ).toBeTruthy()
   const stock = screen.getByTitle(nvda)
-  expect(await within(stock).findByRole('img', { name: /xStocks/ })).toBeTruthy()
-  expect(within(screen.getByTitle(aapl)).queryByRole('img', { name: /Verified asset/ })).toBeNull()
-  expect(within(screen.getByTitle(ray)).queryByRole('img', { name: /Verified asset/ })).toBeNull()
+  expect(await within(stock).findByText('xStocks')).toBeTruthy()
+  expect(within(screen.getByTitle(aapl)).queryByText('xStocks')).toBeNull()
+  expect(within(screen.getByTitle(ray)).queryByText('xStocks')).toBeNull()
   expect(screen.getByTitle(ray).closest('section')?.textContent).toContain('In your wallet')
   expect(screen.getByTitle(ray).textContent).toContain('1.23')
   expect(store.get(walletAssetListAtom).find((token) => token.mint === ray)).toMatchObject({
@@ -109,7 +109,7 @@ it('loads the mainnet catalog on demand for both pickers and keeps selections ke
   expect(screen.queryByTitle('SOL')).toBeNull()
   fireEvent.click(stock)
   const selectedStock = await screen.findByRole('button', { name: 'Buy token: NVDAx' })
-  expect(within(selectedStock).getByRole('img', { name: /Verified asset · xStocks/ })).toBeTruthy()
+  expect(within(selectedStock).getByText('xStocks')).toBeTruthy()
   fireEvent.click(selectedStock)
   const search = screen.getByRole('textbox', { name: 'Search tokens' })
   fireEvent.change(search, { target: { value: 'RaYdIuM' } })
@@ -133,17 +133,17 @@ it('keeps the presets and manual mint entry usable when the catalog is down', as
   const dialog = within(screen.getByRole('dialog'))
   for (const symbol of ['JUP', 'BONK', 'JitoSOL']) expect(dialog.getByText(symbol)).toBeTruthy()
   fireEvent.change(dialog.getByRole('textbox'), { target: { value: solanaAddress(pyth) } })
-  expect(within(dialog.getByTitle(pyth)).queryByRole('img', { name: /Verified asset/ })).toBeNull()
+  expect(within(dialog.getByTitle(pyth)).queryByText('xStocks')).toBeNull()
   fireEvent.click(dialog.getByTitle(pyth))
   const selected = await screen.findByRole('button', { name: 'Buy token: HZ1Jo…QBCt3' })
   fireEvent.click(selected)
   const picker = within(screen.getByRole('dialog'))
   fireEvent.change(picker.getByRole('textbox'), { target: { value: nvda } })
   const stock = picker.getByTitle(nvda)
-  expect(await within(stock).findByRole('img', { name: 'Verified asset · xStocks' })).toBeTruthy()
+  expect(await within(stock).findByText('xStocks')).toBeTruthy()
   fireEvent.click(stock)
   const selectedStock = await screen.findByRole('button', { name: 'Buy token: Xsc9q…x9qEh' })
-  expect(within(selectedStock).getByRole('img', { name: 'Verified asset · xStocks' })).toBeTruthy()
+  expect(within(selectedStock).getByText('xStocks')).toBeTruthy()
 })
 
 it('applies whole-atom presets, reserves live SOL costs and disables them when the wallet disconnects', async () => {
