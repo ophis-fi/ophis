@@ -1,16 +1,11 @@
-import { Fragment, ReactNode } from 'react'
+import { useAtomValue } from 'jotai'
+import { ReactNode } from 'react'
 
 import { CHAIN_INFO } from '@cowprotocol/common-const'
 import { styled } from '@cowprotocol/common-hooks'
-import {
-  getEtherscanLink,
-  getExplorerAddressLink,
-  getExplorerLabel,
-  isInjectedWidget,
-  shortenAddress,
-} from '@cowprotocol/common-utils'
+import { getEtherscanLink, getExplorerLabel, isInjectedWidget, shortenAddress } from '@cowprotocol/common-utils'
 import { Command } from '@cowprotocol/types'
-import { ExternalLink, StyledLink } from '@cowprotocol/ui'
+import { StyledLink } from '@cowprotocol/ui'
 import {
   ConnectionType,
   getIsHardWareWallet,
@@ -22,13 +17,12 @@ import {
   useWalletInfo,
 } from '@cowprotocol/wallet'
 
-import { i18n } from '@lingui/core'
 import { t } from '@lingui/core/macro'
 import { Trans } from '@lingui/react/macro'
+import { solanaConnectionAtom } from 'entities/solana'
 import { Link } from 'react-router'
 
 import Copy from 'legacy/components/Copy'
-import { groupActivitiesByDay, useMultipleActivityDescriptors } from 'legacy/hooks/useRecentActivity'
 import { useAppDispatch } from 'legacy/state/hooks'
 import { updateSelectedWallet } from 'legacy/state/user/reducer'
 
@@ -38,15 +32,13 @@ import { useIsProviderNetworkUnsupported } from 'common/hooks/useIsProviderNetwo
 import { UnsupportedNetworksText } from 'common/pure/UnsupportedNetworksText'
 
 import { AccountIcon } from './AccountIcon'
-import { ActivitiesList } from './ActivitiesList'
+import { RecentActivity } from './RecentActivity.container'
 import {
   AccountControl,
   AccountGroupingRow,
   AddressLink,
   InfoCard,
-  LowerSection,
   NetworkCard,
-  NoActivityMessage,
   UnsupportedWalletBox,
   WalletAction,
   WalletActions,
@@ -61,15 +53,10 @@ import { SurplusCard } from './SurplusCard'
 
 import { useCloseAccountModal } from '../../hooks/useToggleAccountModal'
 import { CowShedInfo } from '../CowShedInfo'
-import { CreationDateText } from '../Transaction/styled'
 
 const CowShedInfoStyled = styled(CowShedInfo)`
   margin-top: 10px;
 `
-
-const DATE_FORMAT_OPTION: Intl.DateTimeFormatOptions = {
-  dateStyle: 'long',
-}
 
 export interface AccountDetailsProps {
   pendingTransactions: string[]
@@ -80,33 +67,53 @@ export interface AccountDetailsProps {
   handleCloseOrdersPanel: Command
 }
 
-// TODO: Break down this large function into smaller functions
-// TODO: Add proper return type annotation
-// TODO: Reduce function complexity by extracting logic
-// eslint-disable-next-line max-lines-per-function, complexity
 export function AccountDetails({
-  pendingTransactions = [],
-  confirmedTransactions = [],
+  pendingTransactions,
+  confirmedTransactions,
+  ...walletProps
+}: AccountDetailsProps): ReactNode {
+  const { active, account } = useWalletInfo()
+  const solanaOwner = useAtomValue(solanaConnectionAtom)?.account.address
+  const unsupported = useIsProviderNetworkUnsupported()
+  const evmAccount = active ? account : undefined
+  const evmActivityAccount = unsupported ? undefined : evmAccount
+
+  return (
+    <Wrapper>
+      {evmAccount && <EvmAccountDetails {...walletProps} account={evmAccount} isChainIdUnsupported={unsupported} />}
+      {(evmActivityAccount || solanaOwner) && (
+        <RecentActivity
+          evmAccount={evmActivityAccount}
+          pendingTransactions={pendingTransactions}
+          confirmedTransactions={confirmedTransactions}
+          solanaOwner={solanaOwner}
+        />
+      )}
+    </Wrapper>
+  )
+}
+
+function EvmAccountDetails({
+  account,
+  isChainIdUnsupported,
   ENSName,
   toggleAccountSelectorModal,
   handleCloseOrdersPanel,
   forceHardwareWallet,
-}: AccountDetailsProps): ReactNode {
-  const { account, chainId } = useWalletInfo()
+}: Omit<AccountDetailsProps, 'pendingTransactions' | 'confirmedTransactions'> & {
+  account: string
+  isChainIdUnsupported: boolean
+}): ReactNode {
+  const { chainId } = useWalletInfo()
   const connectionType = useConnectionType()
   const walletDetails = useWalletDetails()
   const dispatch = useAppDispatch()
   const disconnectWallet = useDisconnectWallet()
-  const isChainIdUnsupported = useIsProviderNetworkUnsupported()
   const closeAccountModal = useCloseAccountModal()
   const { standaloneMode } = useInjectedWidgetParams()
 
-  const explorerOrdersLink = account && getExplorerAddressLink(chainId, account)
-  const explorerLabel = account ? getExplorerLabel(chainId, 'address', account) : undefined
-
-  const activities = useMultipleActivityDescriptors({ chainId, ids: pendingTransactions.concat(confirmedTransactions) })
-  const activitiesGroupedByDate = groupActivitiesByDay(activities)
-  const activityTotalCount = activities?.length || 0
+  const explorerLabel = getExplorerLabel(chainId, 'address', account)
+  const walletAddress = ENSName || account
 
   const isWalletConnect = useIsWalletConnect()
   const isInjectedMobileBrowser = getIsInjectedMobileBrowser()
@@ -126,27 +133,21 @@ export function AccountDetails({
   const isHardWareWallet = forceHardwareWallet || getIsHardWareWallet(connectionType)
 
   return (
-    <Wrapper>
+    <>
       <InfoCard>
         <AccountGroupingRow id="web3-account-identifier-row">
           <AccountControl>
             <WalletWrapper>
               <WalletSelector
                 isHardWareWallet={isHardWareWallet}
-                onClick={() => {
-                  if (isHardWareWallet) {
-                    toggleAccountSelectorModal()
-                  }
-                }}
+                onClick={isHardWareWallet ? toggleAccountSelectorModal : undefined}
               >
                 <AccountIcon size={24} account={account} />
 
-                {(ENSName || account) && (
-                  <WalletNameAddress>{ENSName ? ENSName : account && shortenAddress(account)}</WalletNameAddress>
-                )}
+                <WalletNameAddress>{ENSName || shortenAddress(account)}</WalletNameAddress>
               </WalletSelector>
 
-              {(ENSName || account) && <Copy toCopy={ENSName ? ENSName : account ? account : ''} />}
+              <Copy toCopy={walletAddress} />
             </WalletWrapper>
 
             <WalletActions>
@@ -168,11 +169,11 @@ export function AccountDetails({
                   <Trans>Profile</Trans>
                 </StyledLink>
               )}
-              {!isInjectedMobileBrowser && account && !isChainIdUnsupported && (
+              {!isInjectedMobileBrowser && !isChainIdUnsupported && (
                 <AddressLink
                   hasENS={!!ENSName}
                   isENS={!!ENSName}
-                  href={getEtherscanLink(chainId, 'address', ENSName ? ENSName : account)}
+                  href={getEtherscanLink(chainId, 'address', walletAddress)}
                 >
                   {explorerLabel} ↗
                 </AddressLink>
@@ -193,49 +194,8 @@ export function AccountDetails({
           <UnsupportedNetworksText />
         </UnsupportedWalletBox>
       ) : (
-        <>
-          <SurplusCard />
-
-          {activityTotalCount ? (
-            <LowerSection>
-              <span>
-                {' '}
-                <h5>
-                  <Trans>Recent Activity</Trans> <span>{`(${activityTotalCount})`}</span>
-                </h5>
-                {explorerOrdersLink && (
-                  <ExternalLink href={explorerOrdersLink}>
-                    <Trans>View all orders</Trans> ↗
-                  </ExternalLink>
-                )}
-              </span>
-
-              <div>
-                {activitiesGroupedByDate.map(({ date, activities }) => (
-                  <Fragment key={date.getTime()}>
-                    {/* TODO: style me! */}
-                    <CreationDateText>{date.toLocaleString(i18n.locale, DATE_FORMAT_OPTION)}</CreationDateText>
-                    <ActivitiesList activities={activities} />
-                  </Fragment>
-                ))}
-                {explorerOrdersLink && (
-                  <ExternalLink href={explorerOrdersLink}>
-                    <Trans>View all orders</Trans> ↗
-                  </ExternalLink>
-                )}
-              </div>
-            </LowerSection>
-          ) : (
-            <LowerSection>
-              <NoActivityMessage>
-                <span>
-                  <Trans>Your activity will appear here...</Trans>
-                </span>
-              </NoActivityMessage>
-            </LowerSection>
-          )}
-        </>
+        <SurplusCard />
       )}
-    </Wrapper>
+    </>
   )
 }

@@ -14,7 +14,15 @@ import { atomWithQuery } from 'jotai-tanstack-query'
 
 import { nativeSolanaFormAtom } from './trade.atoms'
 
-import { balanceEndpoint, nativeAsset, networkAssets, walletAssets, walletHoldingsKey, walletMint } from '../services/assets.service'
+import {
+  balanceEndpoint,
+  fetchMainnetCatalog,
+  nativeAsset,
+  networkAssets,
+  walletAssets,
+  walletHoldingsKey,
+  walletMint,
+} from '../services/assets.service'
 import { privateAction, privateSettlementEnabled } from '../services/privateSettlement.service'
 
 export const solanaNetworkAssetsAtom = atomWithQuery(() => ({
@@ -24,6 +32,20 @@ export const solanaNetworkAssetsAtom = atomWithQuery(() => ({
   refetchOnWindowFocus: false,
   retry: false,
 }))
+
+const catalogQuery = {
+  queryKey: ['solana-mainnet-coingecko-tokens'],
+  queryFn: fetchMainnetCatalog,
+  staleTime: 30 * 60_000,
+  retry: false,
+  refetchOnWindowFocus: false,
+}
+// Both observers share the same cache. The form can read cached metadata without starting a request.
+export const solanaMainnetCatalogAtom = atomWithQuery(() => ({
+  ...catalogQuery,
+  enabled: OPHIS_SOLANA_CONFIG?.chain === 'solana:mainnet',
+}))
+export const solanaCachedCatalogAtom = atomWithQuery(() => ({ ...catalogQuery, enabled: false }))
 
 export const solanaHoldingsAtom = atomWithQuery<OphisWalletHolding[]>((get) => {
   const owner = get(solanaConnectionAtom)?.account.address
@@ -55,7 +77,11 @@ export const solanaHoldingsAtom = atomWithQuery<OphisWalletHolding[]>((get) => {
 })
 
 export const walletAssetListAtom = atom((get) =>
-  walletAssets(get(solanaNetworkAssetsAtom).data ?? [nativeAsset], get(solanaHoldingsAtom).data ?? []),
+  walletAssets(
+    get(solanaNetworkAssetsAtom).data ?? [nativeAsset],
+    get(solanaHoldingsAtom).data ?? [],
+    get(solanaCachedCatalogAtom).data,
+  ),
 )
 export const walletHoldingsMapAtom = atom(
   (get) => new Map(get(solanaHoldingsAtom).data?.map((row) => [walletMint(row.mint), row])),

@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from '@cowprotocol/common-utils'
+
 import {
   OPHIS_LOCAL_WALLET_RPC,
   SOLANA_NATIVE_ASSET,
@@ -6,6 +8,7 @@ import {
   type OphisWalletHolding,
 } from '@ophis/solana-sdk'
 import { OPHIS_SOLANA_MAINNET_API, SOLANA_DEVNET_GENESIS, type OphisSolanaConfig } from 'entities/solana'
+import { z } from 'zod'
 
 export const walletHoldingsKey = (genesis?: string, owner?: string) => ['solana-wallet-assets', genesis, owner] as const
 
@@ -39,6 +42,21 @@ const mainnetAssets: SolanaAsset[] = [
     icon: '/logos/token-usdt.png',
   },
   { mint: WRAPPED_SOL_MINT, symbol: 'wSOL', name: 'Wrapped SOL', decimals: 9, icon: '/logos/token-sol.svg' },
+  {
+    mint: 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN',
+    symbol: 'JUP',
+    name: 'Jupiter',
+    decimals: 6,
+    icon: '/logos/token-jup.svg',
+  },
+  {
+    mint: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263',
+    symbol: 'BONK',
+    name: 'Bonk',
+    decimals: 5,
+    icon: '/logos/token-bonk.png',
+  },
+  { mint: 'J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn', symbol: 'JitoSOL', name: 'Jito Staked SOL', decimals: 9 },
 ]
 
 export function shortMint(value: string): string {
@@ -96,12 +114,63 @@ async function localPreviewAssets(genesis: string): Promise<SolanaAsset[]> {
   return [nativeAsset]
 }
 
-export function walletAssets(network: SolanaAsset[], holdings: readonly OphisWalletHolding[]): SolanaAsset[] {
+const catalogLabel = z
+  .string()
+  .trim()
+  .min(1)
+  .regex(/^[^\p{Cc}\p{Bidi_Control}]+$/u)
+const catalogToken = z.object({
+  chainId: z.literal(101).nullish(),
+  address: z.string().min(32).max(44),
+  name: catalogLabel.max(128),
+  symbol: catalogLabel.max(64),
+  decimals: z.number().int().min(0).max(255),
+  logoURI: z.string().optional().catch(undefined),
+})
+
+export async function fetchMainnetCatalog(): Promise<SolanaAsset[]> {
+  const response = await fetchWithTimeout('https://tokens.coingecko.com/solana/all.json', {
+    credentials: 'omit',
+    referrerPolicy: 'no-referrer',
+    timeout: 15_000,
+  })
+  if (!response.ok) throw Error('Solana token list unavailable.')
+  const { tokens } = z.object({ tokens: z.array(z.unknown()) }).parse(await response.json())
+  const assets: SolanaAsset[] = []
+  for (const entry of tokens) {
+    const result = catalogToken.safeParse(entry)
+    if (!result.success || result.data.address === SOLANA_NATIVE_ASSET) continue
+    const token = result.data
+    try {
+      assets.push({
+        mint: solanaAddress(token.address),
+        name: token.name,
+        symbol: token.symbol,
+        decimals: token.decimals,
+        icon: token.logoURI?.startsWith('https://assets.coingecko.com/coins/images/') ? token.logoURI : undefined,
+      })
+    } catch {
+      // A malformed listing must not hide the rest of the catalog.
+    }
+  }
+  if (!assets.length) throw Error('Empty Solana token list.')
+  return assets
+}
+
+export function walletAssets(
+  network: SolanaAsset[],
+  holdings: readonly OphisWalletHolding[],
+  catalog: readonly SolanaAsset[] = [],
+): SolanaAsset[] {
   const assets = new Map(network.map((asset) => [asset.mint, asset]))
+  for (const asset of catalog) {
+    const existing = assets.get(asset.mint)
+    if (!existing) assets.set(asset.mint, asset)
+    else if (!existing.icon && asset.icon) assets.set(asset.mint, { ...existing, icon: asset.icon })
+  }
   for (const { mint, name, symbol, decimals } of holdings) {
     const id = walletMint(mint)
     const asset = assets.get(id)
-    if (asset?.decimals !== undefined) continue
     assets.set(id, { ...(asset ?? (name && symbol ? { mint: id, name, symbol } : unknownAsset(id))), decimals })
   }
   return [...assets.values()]

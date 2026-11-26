@@ -6,8 +6,6 @@ import { ButtonPrimary, ButtonSecondary } from '@cowprotocol/ui'
 import { Trans } from '@lingui/react/macro'
 import { solanaConnectionAtom } from 'entities/solana'
 
-import { NativeSolanaHistory } from './NativeSolanaHistory.container'
-
 import * as styledEl from '../pure/NativeSolana.styled'
 import { privateAction, privateSettlementEnabled } from '../services/privateSettlement.service'
 import {
@@ -170,9 +168,8 @@ export function NativeSolanaOrders(): ReactNode {
       current = false
     }
   }, [owner, save])
-  return owner ? (
+  return owner && orders.length > 0 ? (
     <styledEl.Stack aria-label="Solana orders">
-      <NativeSolanaHistory key={owner} />
       {orders.map((order) => (
         <NativeSolanaOrderCard key={order.uid} order={order} />
       ))}

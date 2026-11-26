@@ -165,7 +165,7 @@ msgstr "Bridging failed"
 msgid "What is {accountProxyLabel}?"
 msgstr "What is {accountProxyLabel}?"
 
-#: apps/cowswap-frontend/src/modules/account/containers/AccountDetails/index.tsx
+#: apps/cowswap-frontend/src/modules/account/containers/AccountDetails/RecentActivity.container.tsx
 msgid "Your activity will appear here..."
 msgstr "Your activity will appear here..."
 
@@ -1420,6 +1420,7 @@ msgstr "The first approval wraps {sellAmount} SOL in your wallet and places your
 msgid "No route found for this token"
 msgstr "No route found for this token"
 
+#: apps/cowswap-frontend/src/legacy/components/Header/AccountElement/index.tsx
 #: apps/cowswap-frontend/src/modules/account/containers/OrdersPanel/index.tsx
 #: apps/cowswap-frontend/src/modules/application/containers/App/menuConsts.tsx
 msgid "Account"
@@ -1647,8 +1648,8 @@ msgstr "The settlement transaction failed. Your order is still open."
 msgid "Connect Wallet"
 msgstr "Connect Wallet"
 
-#: apps/cowswap-frontend/src/modules/account/containers/AccountDetails/index.tsx
-#: apps/cowswap-frontend/src/modules/account/containers/AccountDetails/index.tsx
+#: apps/cowswap-frontend/src/modules/account/containers/AccountDetails/RecentActivity.container.tsx
+#: apps/cowswap-frontend/src/modules/account/containers/AccountDetails/RecentActivity.container.tsx
 msgid "View all orders"
 msgstr "View all orders"
 
@@ -2148,6 +2149,10 @@ msgstr "MEV Slicer"
 #: apps/cowswap-frontend/src/common/pure/ReceiveAmount/index.tsx
 msgid "From (incl. fees)"
 msgstr "From (incl. fees)"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/AssetPicker.pure.tsx
+msgid "Loading more Solana tokens…"
+msgstr "Loading more Solana tokens…"
 
 #: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaWalletConnect.container.tsx
 msgid "No Solana connection was confirmed. Check that your wallet supports this network, then try again."
@@ -3227,6 +3232,10 @@ msgstr "This way, you'll take advantage of"
 msgid "Your combined balance"
 msgstr "Your combined balance"
 
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/AssetPicker.pure.tsx
+msgid "Search to narrow the list."
+msgstr "Search to narrow the list."
+
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/ReceiptModal/ReceiptModal.modal.tsx
 msgid "Orders on Ophis can either be market orders (which fill at the market price within the slippage tolerance you set) or limit orders (which fill at a price you specify)."
 msgstr "Orders on Ophis can either be market orders (which fill at the market price within the slippage tolerance you set) or limit orders (which fill at a price you specify)."
@@ -4086,7 +4095,7 @@ msgstr "Received {tokenLabel}"
 msgid "Please, make sure your address follows the format <0>{addressPrefix}:<your-address></0> or double-check if it is compatible with <1>{label}</1> network."
 msgstr "Please, make sure your address follows the format <0>{addressPrefix}:<your-address></0> or double-check if it is compatible with <1>{label}</1> network."
 
-#: apps/cowswap-frontend/src/modules/account/containers/AccountDetails/index.tsx
+#: apps/cowswap-frontend/src/modules/account/containers/AccountDetails/RecentActivity.container.tsx
 msgid "Recent Activity"
 msgstr "Recent Activity"
 
@@ -6289,6 +6298,10 @@ msgstr "Public transactions may be raced by other participants."
 #: apps/cowswap-frontend/src/modules/trade/const/common.ts
 msgid "When enabled, the orders table will be displayed on the left side on desktop screens. On mobile, the orders table will always be stacked below."
 msgstr "When enabled, the orders table will be displayed on the left side on desktop screens. On mobile, the orders table will always be stacked below."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/AssetPicker.pure.tsx
+msgid "The full token list is unavailable. You can still paste a mint address."
+msgstr "The full token list is unavailable. You can still paste a mint address."
 
 #: apps/cowswap-frontend/src/modules/application/containers/AppContainer/RecoveryBanner/RecoveryBanner.container.tsx
 msgid "Dismiss incident notice"
