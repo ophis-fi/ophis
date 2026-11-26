@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useRef, useState } from 'react'
 
-import { Trans } from '@lingui/react/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { ArrowLeft, ArrowUpRight, CheckCircle, ChevronDown } from 'react-feather'
 
 import * as nativeStyles from './NativeSolana.styled'
@@ -132,6 +132,7 @@ export function SolanaReceipt({
   actions,
   details,
 }: ReceiptProps): ReactNode {
+  const { t } = useLingui()
   const [expanded, expand] = useState(false)
   const heading = useRef<HTMLHeadingElement>(null)
   useEffect(() => heading.current?.focus({ preventScroll: true }), [])
@@ -140,10 +141,10 @@ export function SolanaReceipt({
   const placement = receiptTxLink(saved?.signature)
   const uid = trade?.orderUid ?? saved?.uid
   return (
-    <styledEl.Receipt data-swap-receipt="" aria-label="Swap receipt">
+    <styledEl.Receipt data-swap-receipt="" aria-label={t`Swap receipt`}>
       <formStyles.Line>
         <formStyles.Line>
-          <formStyles.Back type="button" onClick={onBack} aria-label="Back">
+          <formStyles.Back type="button" onClick={onBack} aria-label={t`Back`}>
             <ArrowLeft size={18} />
           </formStyles.Back>
           <h2 ref={heading} tabIndex={-1}>
@@ -162,7 +163,7 @@ export function SolanaReceipt({
       {settlement && (
         <styledEl.ExplorerAction
           href={settlement}
-          aria-label="View settlement on Solana Explorer"
+          aria-label={t`View settlement on Solana Explorer`}
           target="_blank"
           rel="noopener noreferrer"
         >

@@ -1,33 +1,34 @@
 import { setupI18n } from '@lingui/core'
 import { I18nProvider } from '@lingui/react'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fetchOphisSolanaTrades } from '@ophis/solana-sdk'
+import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react'
 
 import { NativeSolanaHistory } from './NativeSolanaHistory.container'
 
+import { useReceiptTrade } from '../hooks/useReceiptTrade'
 import { SolanaReceipt } from '../pure/SolanaReceipt.pure'
 
 import type { SavedNativeSolanaOrder } from '../state/orders.atoms'
 import type { OphisSolanaOrder } from '@ophis/solana-sdk'
 
 const mockSignature = '1'.repeat(64)
+const mockFill = {
+  txSignature: mockSignature,
+  instructionIndex: 0,
+  slot: 474204967,
+  orderUid: 'order',
+  owner: 'owner',
+  sellAmount: '120',
+  sellToken: 'soldMint',
+  buyAmount: '100',
+  buyToken: 'mint',
+  feeMint: 'mint',
+  protocolFee: '1',
+}
 jest.mock(
   '@ophis/solana-sdk',
   () => ({
-    fetchOphisSolanaTrades: async () => [
-      {
-        txSignature: mockSignature,
-        instructionIndex: 0,
-        slot: 474204967,
-        orderUid: 'order',
-        owner: 'owner',
-        sellAmount: '120',
-        sellToken: 'soldMint',
-        buyAmount: '100',
-        buyToken: 'mint',
-        feeMint: 'mint',
-        protocolFee: '1',
-      },
-    ],
+    fetchOphisSolanaTrades: jest.fn(async () => [mockFill]),
     fetchOphisSolanaOrder: async () => ({
       uid: 'order',
       creationDate: '2026-11-26T15:51:31Z',
@@ -121,4 +122,22 @@ it('keeps the signed minimum distinct from a fill while indexing and links only 
   rerender(receipt('unconfirmed', null))
   expect(screen.getByRole('status').textContent?.trim()).toBe('Unconfirmed')
   expect(screen.queryByRole('link')).toBeNull()
+})
+
+it('finds a newly indexed fill when refreshing from an older history page', async () => {
+  const fetchTrades = jest.mocked(fetchOphisSolanaTrades)
+  let settled = false
+  fetchTrades.mockImplementation(async (_api, _owner, offset) =>
+    offset ? [] : settled ? [{ ...mockFill, orderUid: 'target' }] : Array(10).fill(mockFill),
+  )
+  const order = { owner: 'owner', uid: 'target', reclaimed: false } as SavedNativeSolanaOrder
+  const { result } = renderHook(() => useReceiptTrade(order, true))
+  await waitFor(() => expect(result.current.checkOlder).toBeDefined())
+  act(() => result.current.checkOlder?.())
+  await waitFor(() => expect(fetchTrades).toHaveBeenCalledWith(expect.anything(), 'owner', 10, 10))
+  settled = true
+  await act(async () => {
+    await result.current.refreshTrade?.()
+  })
+  await waitFor(() => expect(result.current.trade?.orderUid).toBe('target'))
 })

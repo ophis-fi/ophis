@@ -1,4 +1,4 @@
-import { useAtomValue } from 'jotai'
+import { useAtomValue, useStore } from 'jotai'
 import { useEffect, useMemo, useState } from 'react'
 
 import { historyAtom, pageSize } from '../state/history.atoms'
@@ -16,6 +16,7 @@ export function useReceiptTrade(
   refreshTrade?: () => Promise<unknown>
   checkOlder?: () => void
 } {
+  const store = useStore()
   const [page, setPage] = useState(0)
   const lookup = hasFill && !indexed
   const history = useAtomValue(historyAtom(lookup ? page : -1))
@@ -31,13 +32,19 @@ export function useReceiptTrade(
     }
   }, [lookup, trade, page, order.reclaimed, refetch])
   const hasOlder = !trade && history.data?.length === pageSize
+  const refreshPage = trade ? page : 0
   return useMemo(
     () => ({
       trade,
       isFetchingTrade: history.isFetching,
-      refreshTrade: lookup ? refetch : undefined,
+      refreshTrade: lookup
+        ? () => {
+            setPage(refreshPage)
+            return store.get(historyAtom(refreshPage)).refetch({ cancelRefetch: false })
+          }
+        : undefined,
       checkOlder: hasOlder ? () => setPage(page + 1) : undefined,
     }),
-    [trade, history.isFetching, lookup, refetch, hasOlder, page],
+    [trade, history.isFetching, lookup, store, refreshPage, hasOlder, page],
   )
 }

@@ -2080,6 +2080,7 @@ msgid "This approval allows unlimited spending."
 msgstr "This approval allows unlimited spending."
 
 #: apps/cowswap-frontend/src/modules/nativeSolana/pure/SolanaReceipt.pure.tsx
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/SolanaReceipt.pure.tsx
 msgid "Swap receipt"
 msgstr "Swap receipt"
 
@@ -3006,6 +3007,10 @@ msgstr "Browse"
 #: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketBadge/BasketBadge.pure.tsx
 msgid "Basket {leg}/{legs}"
 msgstr "Basket {leg}/{legs}"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/SolanaReceipt.pure.tsx
+msgid "View settlement on Solana Explorer"
+msgstr "View settlement on Solana Explorer"
 
 #: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaWalletConnect.container.tsx
 msgid "Waiting for your wallet…"
@@ -5479,6 +5484,7 @@ msgstr "Connect your wallet"
 #: apps/cowswap-frontend/src/modules/hooksStore/pure/AddCustomHookForm/index.tsx
 #: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketConfirm/BasketConfirm.pure.tsx
 #: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/SolanaReceipt.pure.tsx
 msgid "Back"
 msgstr "Back"
 
