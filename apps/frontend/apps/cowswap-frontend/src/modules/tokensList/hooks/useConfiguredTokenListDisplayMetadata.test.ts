@@ -94,7 +94,7 @@ describe('configured token-list display metadata', () => {
       expect(ethereumToken).toBeDefined()
       if (ethereumToken) expect(result.tokenizedAssetProviderByTokenId.get(getTokenId(ethereumToken))).toBe(provider)
     }
-    expect(result.tokenListTags.ondo?.name).toBe('Tokenized by Ondo')
+    expect(result.tokenListTags.ondo?.name).toBe('Ondo')
     expect(result.tokenizedAssetProviderByTokenId.has(getTokenId({ ...MAINNET_TOKEN, chainId: 5042 }))).toBe(false)
     const ondoGovernance = shippedList.tokens.find((token) => token.chainId === 5042 && token.symbol === 'ONDO')
     expect(ondoGovernance).toBeDefined()
@@ -112,7 +112,7 @@ describe('configured token-list display metadata', () => {
 
     expect(result.listedTokenIds.has(configuredTokenId)).toBe(true)
     expect(result.tokenizedAssetProviderByTokenId.get(configuredTokenId)).toBe('ondo')
-    expect(result.tokenListTags.ondo?.name).toBe('Tokenized by Ondo')
+    expect(result.tokenListTags.ondo?.name).toBe('Ondo')
     expect(result.listedTokenIds.has(userTokenId)).toBe(false)
     expect(result.tokenizedAssetProviderByTokenId.has(userTokenId)).toBe(false)
   })
@@ -128,7 +128,7 @@ describe('configured token-list display metadata', () => {
 
     expect(result.listedTokenIds.has(getTokenId(ARBITRUM_TOKEN))).toBe(true)
     expect(result.tokenizedAssetProviderByTokenId.get(getTokenId(ARBITRUM_TOKEN))).toBe('xStocks')
-    expect(result.tokenListTags.xStocks?.name).toBe('xStock')
+    expect(result.tokenListTags.xStocks?.name).toBe('xStocks')
     expect(result.listedTokenIds.has(getTokenId(MAINNET_TOKEN))).toBe(false)
   })
 
@@ -141,7 +141,7 @@ describe('configured token-list display metadata', () => {
 
     expect(configured.listedTokenIds.has(stockTokenId)).toBe(true)
     expect(configured.tokenizedAssetProviderByTokenId.get(stockTokenId)).toBe('coinbase')
-    expect(configured.tokenListTags.coinbase?.name).toBe('Coinbase tokenized stock')
+    expect(configured.tokenListTags.coinbase?.name).toBe('Coinbase')
 
     const spoofed = getConfiguredTokenListDisplayMetadata(
       [createList(SPOOFED_PROVIDER_SOURCE, BASE_STOCK_TOKEN)],

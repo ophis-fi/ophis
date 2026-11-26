@@ -5,6 +5,7 @@ import { TokenListTags } from '@cowprotocol/tokens'
 import { HoverTooltip } from '@cowprotocol/ui'
 
 import { Trans } from '@lingui/react/macro'
+import { useAssetVerification } from 'entities/verifiedAsset'
 import { CheckCircle } from 'react-feather'
 
 import * as styledEl from './styled'
@@ -43,16 +44,18 @@ export function ImportTokenItem(props: ImportTokenItemProps): ReactNode {
     tokenListTags,
   } = props
 
+  const verification = useAssetVerification(token)
   const tokenInfo = (
     <div style={{ opacity: shadowed ? 0.6 : 1 }}>
       <TokenInfo
         token={token}
+        verification={verification}
         showAddress={false}
         hideNetworkBadge
         isContractListed={isContractListed}
         tokenizedAssetProvider={tokenizedAssetProvider}
         tags={
-          tokenizedAssetProvider ? (
+          tokenizedAssetProvider && !verification ? (
             <TokenTags
               isUnsupported={false}
               tokenListTags={tokenListTags}

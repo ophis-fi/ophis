@@ -156,8 +156,14 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
   const hasRecipientInUrl = !!tradeStateFromUrl?.recipient
   const withRecipient =
     !isWrapOrUnwrap && (showRecipient || hasRecipientInUrl || !!recipient || isNonEvmRecipientChain(buyToken?.chainId))
-  const maxBalance = maxAmountSpend(inputCurrencyInfo.balance || undefined, isSafeWallet)
-  const showSetMax = maxBalance?.greaterThan(0) && !inputCurrencyInfo.amount?.equalTo(maxBalance)
+  const maxBalance =
+    account &&
+    sellToken &&
+    (params.externalFunding || sellToken.chainId === chainId) &&
+    inputCurrencyInfo.balance?.currency.equals(sellToken)
+      ? maxAmountSpend(inputCurrencyInfo.balance, !params.externalFunding && isSafeWallet)
+      : undefined
+  const showSetMax = isMarketOrderWidget || !!maxBalance?.greaterThan(0)
 
   const disablePriceImpact =
     !!params.disablePriceImpact ||
@@ -245,7 +251,7 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
       allowUnsupportedTokenSelection={!!params.inputTokenOptions}
       inputDisabled={params.inputsDisabled}
       currencyInfo={inputCurrencyInfo}
-      showSetMax={showSetMax && !params.inputsDisabled}
+      showSetMax={showSetMax}
       maxBalance={maxBalance}
       topLabel={
         assetSwapLayout

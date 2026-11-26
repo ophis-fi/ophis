@@ -4,12 +4,14 @@ import type { ReactNode } from 'react'
 import { setupI18n } from '@lingui/core'
 import { I18nProvider } from '@lingui/react'
 import { solanaAddress } from '@ophis/solana-sdk'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { solanaConnectionAtom } from 'entities/solana'
 import { queryClientAtom } from 'jotai-tanstack-query'
 
 import { NativeSolanaForm } from './NativeSolanaForm.container'
 
 import { walletAssetListAtom } from '../state/assets.atoms'
+import { nativeSolanaFormAtom } from '../state/trade.atoms'
 
 const ray = '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R'
 const orca = 'orcaEKTdK7LKz57vaAYr9QeNsVEPfiu6QeMU1kektZE'
@@ -24,7 +26,9 @@ jest.mock(
       if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value)) throw Error('Invalid address')
       return value
     },
+    fetchOphisNativeSellReserve: async () => 2646600n,
     fetchOphisWalletHoldings: async () => [
+      { mint: '11111111111111111111111111111111', atoms: 2822552n, decimals: 9 },
       { mint: '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R', atoms: 123n, decimals: 2 },
     ],
     formatOphisSolanaAmount: (atoms: bigint, decimals: number) => String(Number(atoms) / 10 ** decimals),
@@ -72,6 +76,7 @@ it('loads the mainnet catalog on demand for both pickers and keeps selections ke
     { address: ray, symbol: 'RAY', name: 'Raydium', decimals: 6, logoURI: 'https://untrusted.test/image' },
     { address: ray, symbol: 'Duplicate', name: 'Duplicate', decimals: 8 },
     { address: orca, symbol: 'ORCA', name: 'Orca', decimals: 6 },
+    { address: 'Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh', symbol: 'NVDAx', name: 'NVIDIA xStock', decimals: 8 },
     { address: wsol, symbol: 'SOL', name: 'Solana', decimals: 9 },
     { address: 'invalid!', symbol: 'Invalid', name: 'Invalid', decimals: 7 },
   ]
@@ -81,6 +86,12 @@ it('loads the mainnet catalog on demand for both pickers and keeps selections ke
   expect(global.fetch).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('button', { name: 'Buy token: Select token' }))
   await screen.findByTitle(orca)
+  expect(
+    within(screen.getByRole('button', { name: 'Sell token: SOL' })).getByRole('img', { name: /Verified asset/ }),
+  ).toBeTruthy()
+  const stock = screen.getByTitle('Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh')
+  expect(await within(stock).findByRole('img', { name: /xStocks/ })).toBeTruthy()
+  expect(within(screen.getByTitle(ray)).queryByRole('img', { name: /Verified asset/ })).toBeNull()
   expect(screen.getByTitle(ray).closest('section')?.textContent).toContain('In your wallet')
   expect(screen.getByTitle(ray).textContent).toContain('1.23')
   expect(store.get(walletAssetListAtom).find((token) => token.mint === ray)).toMatchObject({
@@ -92,6 +103,10 @@ it('loads the mainnet catalog on demand for both pickers and keeps selections ke
   expect(screen.queryByText('Invalid')).toBeNull()
   expect(screen.getByTitle(wsol).textContent).toContain('wSOL')
   expect(screen.queryByTitle('SOL')).toBeNull()
+  fireEvent.click(stock)
+  const selectedStock = await screen.findByRole('button', { name: 'Buy token: NVDAx' })
+  expect(within(selectedStock).getByRole('img', { name: /Verified asset · xStocks/ })).toBeTruthy()
+  fireEvent.click(selectedStock)
   const search = screen.getByRole('textbox', { name: 'Search tokens' })
   fireEvent.change(search, { target: { value: 'RaYdIuM' } })
   fireEvent.click(screen.getByTitle(ray))
@@ -116,4 +131,26 @@ it('keeps the presets and manual mint entry usable when the catalog is down', as
   fireEvent.change(dialog.getByRole('textbox'), { target: { value: solanaAddress(pyth) } })
   fireEvent.click(dialog.getByTitle(pyth))
   expect(await screen.findByRole('button', { name: 'Buy token: HZ1Jo…QBCt3' })).toBeTruthy()
+})
+
+it('applies whole-atom presets, reserves live SOL costs and disables them when the wallet disconnects', async () => {
+  const store = renderForm()
+  const max = screen.getByRole('button', { name: 'Max' })
+  const quarter = screen.getByRole('button', { name: '25%' })
+  expect(max.hasAttribute('disabled')).toBe(true)
+  fireEvent.click(await screen.findByRole('button', { name: 'USDC' }))
+  await waitFor(() => expect(max.hasAttribute('disabled')).toBe(false))
+  fireEvent.click(max)
+  expect(store.get(nativeSolanaFormAtom).amount).toBe('0.000175952')
+  fireEvent.click(quarter)
+  expect(store.get(nativeSolanaFormAtom).amount).toBe('0.000043988')
+  act(() => store.set(nativeSolanaFormAtom, (form) => ({ ...form, sellMint: ray, amount: '' })))
+  fireEvent.click(quarter)
+  expect(store.get(nativeSolanaFormAtom).amount).toBe('0.3')
+  fireEvent.click(screen.getByRole('button', { name: '50%' }))
+  expect(store.get(nativeSolanaFormAtom).amount).toBe('0.61')
+  fireEvent.click(max)
+  expect(store.get(nativeSolanaFormAtom).amount).toBe('1.23')
+  await act(async () => store.set(solanaConnectionAtom, null))
+  expect(max.hasAttribute('disabled')).toBe(true)
 })

@@ -9,6 +9,7 @@ import { FiatAmount, HoverTooltip, LoadingRows, LoadingRowSmall, TokenAmount } f
 import { BigNumber } from '@ethersproject/bignumber'
 
 import { t } from '@lingui/core/macro'
+import { useAssetVerification } from 'entities/verifiedAsset'
 import { Nullish } from 'types'
 
 import { isNonEvmRecipientChain } from 'common/utils/recipientAddress.utils'
@@ -117,6 +118,7 @@ export function TokenListItem(props: TokenListItemProps): ReactNode {
     tokenizedAssetProvider,
   } = props
 
+  const verification = useAssetVerification(token)
   const { ref: visibilityRef, isVisible: hasIntersected } = useDeferredVisibility<HTMLDivElement>({
     resetKey: getTokenId(token),
     rootMargin: '200px',
@@ -151,6 +153,7 @@ export function TokenListItem(props: TokenListItemProps): ReactNode {
       >
         <TokenInfo
           token={token}
+          verification={verification}
           showAddress={false}
           showContractInfo={hasIntersected}
           hideNetworkBadge
@@ -163,7 +166,7 @@ export function TokenListItem(props: TokenListItemProps): ReactNode {
                 isPermitCompatible={isPermitCompatible}
                 tags={token.tags}
                 tokenListTags={tokenListTags}
-                tokenizedAssetProvider={tokenizedAssetProvider}
+                tokenizedAssetProvider={verification ? undefined : tokenizedAssetProvider}
               />
             ) : null
           }

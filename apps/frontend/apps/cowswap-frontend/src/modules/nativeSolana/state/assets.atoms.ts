@@ -3,6 +3,7 @@ import { atom } from 'jotai'
 import {
   type OphisWalletHolding,
   fetchOphisWalletHoldings,
+  fetchOphisNativeSellReserve,
   OPHIS_LOCAL_WALLET_RPC,
   SOLANA_NATIVE_ASSET,
   formatOphisSolanaAmount,
@@ -86,6 +87,34 @@ export const walletAssetListAtom = atom((get) =>
 export const walletHoldingsMapAtom = atom(
   (get) => new Map(get(solanaHoldingsAtom).data?.map((row) => [walletMint(row.mint), row])),
 )
+const nativeSellReserveAtom = atomWithQuery((get) => {
+  const config = OPHIS_SOLANA_CONFIG
+  const rpc = balanceEndpoint(config)
+  const owner = get(solanaConnectionAtom)?.account.address
+  const { sellMint, buyMint } = get(nativeSolanaFormAtom)
+  return {
+    queryKey: ['solana-order-reserve', config?.genesis, owner, buyMint],
+    enabled: !!(config && rpc && owner && sellMint === 'SOL' && buyMint && buyMint !== 'SOL'),
+    queryFn: () => {
+      if (!config || !rpc || !owner) throw Error('Wallet balance service unavailable.')
+      return fetchOphisNativeSellReserve(rpc, config.genesis, solanaAddress(owner), solanaAddress(buyMint))
+    },
+    staleTime: 30_000,
+    retry: false,
+  }
+})
+
+const sellReserveAtom = atom((get) => {
+  if (get(nativeSolanaFormAtom).sellMint !== 'SOL') return 0n
+  const estimate = get(nativeSellReserveAtom)
+  return estimate.isError ? undefined : estimate.data
+})
+
+function spendableAfterReserve(balance?: bigint, reserve?: bigint): bigint | undefined {
+  if (balance === undefined || reserve === undefined) return undefined
+  return balance > reserve ? balance - reserve : 0n
+}
+
 export const sellAmountStateAtom = atom((get) => {
   const form = get(nativeSolanaFormAtom)
   const balances = get(solanaHoldingsAtom)
@@ -95,14 +124,23 @@ export const sellAmountStateAtom = atom((get) => {
   const native = form.sellMint === 'SOL'
   const precision = holding?.decimals ?? (native ? 9 : undefined)
   const atoms = balanceKnown ? (holding?.atoms ?? 0n) : undefined
-  return { ...amountAvailability(form.amount, precision, atoms, native), balanceKnown, balance }
+  const reserve = get(sellReserveAtom)
+  const spendable = spendableAfterReserve(atoms, reserve)
+  return {
+    ...amountAvailability(form.amount, precision, atoms, reserve ?? 1n),
+    balanceKnown,
+    balance,
+    spendable,
+    precision,
+    reserve,
+  }
 })
 
 function amountAvailability(
   text: string,
   decimals: number | undefined,
   balance: bigint | undefined,
-  native: boolean,
+  reserve: bigint,
 ): { valid: boolean; exceeds: boolean; needsSolForFees?: boolean } {
   if (decimals === undefined) {
     // A mint entered manually gets its actual precision when the quote is requested.
@@ -111,10 +149,12 @@ function amountAvailability(
   }
   try {
     const amount = parseOphisSolanaAmount(text, decimals)
-    const needsSolForFees = native && amount > 0n && amount === balance
+    const exceeds = balance !== undefined && amount > balance
+    const spendable = spendableAfterReserve(balance, reserve)
+    const needsSolForFees = !exceeds && spendable !== undefined && amount > spendable
     return {
       valid: amount > 0n && !needsSolForFees,
-      exceeds: balance !== undefined && amount > balance,
+      exceeds,
       needsSolForFees,
     }
   } catch {

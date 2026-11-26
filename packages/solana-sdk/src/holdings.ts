@@ -2,7 +2,8 @@ import { address, lamports, getBase64Encoder, type Address } from '@solana/kit';
 import { localWalletRpc, matchingRpc, waitForLocalConfirmation } from './local-rpc.js';
 import type { OphisSolanaMintMetadata } from './api.js';
 import { readHoldingLabels } from './holding-labels.js';
-import { findAssociatedTokenPda } from '@solana-program/token';
+import { findAssociatedTokenPda, getTokenSize } from '@solana-program/token';
+import { getOrderAccountSize } from './settlement/generated/accounts/orderAccount.js';
 import {
   SOLANA_NATIVE_ASSET,
   WRAPPED_SOL_MINT,
@@ -70,6 +71,74 @@ export async function fetchOphisWalletHoldings(
     { mint: SOLANA_NATIVE_ASSET, decimals: 9, atoms: native.value },
     ...tokens.map((token) => ({ ...token, ...labels?.get(token.mint) })),
   ];
+}
+
+/** The order builder pays one signature, keeps the payer rent-exempt, and creates missing ATAs. */
+export async function fetchOphisNativeSellReserve(
+  endpoint: string,
+  genesis: string,
+  owner: Address,
+  buyMint: Address,
+): Promise<bigint> {
+  const rpc = await matchingRpc(endpoint, genesis);
+  const ata = async (mint: Address, tokenProgram: Address) =>
+    (await findAssociatedTokenPda({ owner, mint, tokenProgram }))[0];
+  const [wrapped, classicBuy, extendedBuy] = await Promise.all([
+    ata(WRAPPED_SOL_MINT, TOKEN_PROGRAM_ADDRESS),
+    ata(buyMint, TOKEN_PROGRAM_ADDRESS),
+    ata(buyMint, TOKEN_2022_PROGRAM_ADDRESS),
+  ]);
+  // The hosted wallet RPC serves bounded account reads, including the rent and per-signature fee sysvars.
+  const { value } = await rpc
+    .getMultipleAccounts(
+      [
+        address('SysvarRent111111111111111111111111111111111'),
+        address('SysvarRecentB1ockHashes11111111111111111111'),
+        buyMint,
+        wrapped,
+        classicBuy,
+        extendedBuy,
+      ],
+      { commitment: 'confirmed', encoding: 'base64', dataSlice: { offset: 0, length: 48 } },
+    )
+    .send();
+  if (value.length !== 6) throw Error('Incomplete Solana order account data.');
+  const [rent, hashes, mint, wrappedAccount, classicAccount, extendedAccount] = value;
+  const sysvarOwner = 'Sysvar1111111111111111111111111111111111111';
+  if (
+    rent?.owner !== sysvarOwner ||
+    hashes?.owner !== sysvarOwner ||
+    (mint?.owner !== TOKEN_PROGRAM_ADDRESS && mint?.owner !== TOKEN_2022_PROGRAM_ADDRESS)
+  )
+    throw Error('Order rent is unavailable.');
+  const view = (data: string) => {
+    const bytes = getBase64Encoder().encode(data);
+    return new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  };
+  const rentData = view(rent.data[0]),
+    recent = view(hashes.data[0]);
+  if (rentData.byteLength !== 17 || recent.byteLength < 48)
+    throw Error('Invalid rent or fee sysvar.');
+  const threshold = rentData.getFloat64(8, true);
+  if ((threshold !== 1 && threshold !== 2) || !recent.getBigUint64(0, true))
+    throw Error('Order rent or fee schedule is unavailable.');
+  const rentPerByte = rentData.getBigUint64(0, true) * BigInt(threshold);
+  const buyAccount = mint.owner === TOKEN_PROGRAM_ADDRESS ? classicAccount : extendedAccount;
+  if (
+    (wrappedAccount && wrappedAccount.owner !== TOKEN_PROGRAM_ADDRESS) ||
+    (buyAccount && buyAccount.owner !== mint.owner)
+  )
+    throw Error('Unexpected Solana token account owner.');
+  if (!buyAccount && mint.owner === TOKEN_2022_PROGRAM_ADDRESS)
+    throw Error('Cannot estimate rent for an unallocated Token-2022 account.');
+  const storageOverhead = 128;
+  const missing = Number(!wrappedAccount) + Number(!buyAccount);
+  const bytes =
+    storageOverhead * 2 + getOrderAccountSize() + missing * (storageOverhead + getTokenSize());
+  // RecentBlockhashes stores a u64 length, then (32-byte blockhash, u64 signature fee) entries, newest first.
+  const reserve = rentPerByte * BigInt(bytes) + recent.getBigUint64(40, true);
+  if (reserve > 0xffff_ffff_ffff_ffffn) throw Error('Invalid Solana order costs.');
+  return reserve;
 }
 
 export async function requestOphisLocalTestSol(genesis: string, owner: Address): Promise<void> {

@@ -1,8 +1,10 @@
 import { TagInfo, TokenListTags } from '@cowprotocol/tokens'
 
-import { TOKENIZED_ASSET_PROVIDER_TAGS, TokenizedAssetProviderTag } from '../../types'
+import { STOCK_LABELS } from 'entities/verifiedAsset/verifiedAsset'
 
-const TOKENIZED_ASSET_PROVIDER_TAG_IDS = new Set<string>(TOKENIZED_ASSET_PROVIDER_TAGS)
+import { TokenizedAssetProviderTag } from '../../types'
+
+const TOKENIZED_ASSET_PROVIDER_TAG_IDS = new Set<string>(['circle', ...Object.keys(STOCK_LABELS)])
 
 export function getTrustedTokenTags(
   tags: readonly string[],

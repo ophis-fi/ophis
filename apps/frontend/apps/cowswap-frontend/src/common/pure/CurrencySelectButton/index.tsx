@@ -1,6 +1,7 @@
 import { ReactNode } from 'react'
 
 import { CHAIN_INFO } from '@cowprotocol/common-const'
+import { getCurrencyAddress } from '@cowprotocol/common-utils'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { Currency } from '@cowprotocol/currency'
 import { TokenLogo } from '@cowprotocol/tokens'
@@ -9,6 +10,7 @@ import { TokenName } from '@cowprotocol/ui'
 import { t } from '@lingui/core/macro'
 import { Trans } from '@lingui/react/macro'
 import { useBridgeSupportedNetwork } from 'entities/bridgeProvider'
+import { VerifiedAssetBadge, useAssetVerification } from 'entities/verifiedAsset'
 import { Nullish } from 'types'
 
 import * as styledEl from './styled'
@@ -48,6 +50,12 @@ export function CurrencySelectButton(props: CurrencySelectButtonProps): ReactNod
   const showDetailedDisplay = displayTokenName || displayChainName
 
   const chainId = currency?.chainId
+  const verified = useAssetVerification({
+    chainId,
+    address: currency ? (currency.isToken ? currency.address : getCurrencyAddress(currency)) : undefined,
+    symbol: currency?.symbol,
+    decimals: currency?.decimals,
+  })
   const bridgeChain = useBridgeSupportedNetwork(chainId)
   const chainInfo = chainId ? (CHAIN_INFO[chainId as SupportedChainId] ?? bridgeChain) : undefined
 
@@ -83,12 +91,15 @@ export function CurrencySelectButton(props: CurrencySelectButtonProps): ReactNod
       <styledEl.CurrencySymbol className="token-symbol-container" $noCurrencySelected={$noCurrencySelected}>
         {currency ? (
           <>
-            <StyledTokenSymbol
-              token={currency}
-              length={TOKEN_SYMBOL_LENGTH}
-              displayTokenName={displayTokenName}
-              displayChainName={displayChainName}
-            />
+            <span>
+              <StyledTokenSymbol
+                token={currency}
+                length={TOKEN_SYMBOL_LENGTH}
+                displayTokenName={displayTokenName}
+                displayChainName={displayChainName}
+              />
+              <VerifiedAssetBadge verified={verified} />
+            </span>
 
             {displayTokenName && (
               <TokenSubText>

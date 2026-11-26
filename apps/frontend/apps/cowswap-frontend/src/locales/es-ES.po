@@ -7011,3 +7011,35 @@ msgstr "Cargando más tokens de Solana…"
 #: apps/cowswap-frontend/src/modules/nativeSolana/pure/AssetPicker.pure.tsx
 msgid "The full token list is unavailable. You can still paste a mint address."
 msgstr "La lista completa de tokens no está disponible. Puedes pegar la dirección de mint."
+
+#: apps/cowswap-frontend/src/entities/verifiedAsset/VerifiedAssetBadge.tsx
+msgid "Wrapped SOL"
+msgstr "SOL envuelto"
+
+#: apps/cowswap-frontend/src/entities/verifiedAsset/VerifiedAssetBadge.tsx
+msgid "Bridged USDC"
+msgstr "USDC transferido por puente"
+
+#: apps/cowswap-frontend/src/entities/verifiedAsset/VerifiedAssetBadge.tsx
+msgid "Bridged USDT"
+msgstr "USDT transferido por puente"
+
+#: apps/cowswap-frontend/src/entities/verifiedAsset/VerifiedAssetBadge.tsx
+msgid "Verified asset · {source}"
+msgstr "Activo verificado · {source}"
+
+#: apps/cowswap-frontend/src/common/pure/CurrencyInputPanel/SellAmountPresets.pure.tsx
+msgid "Percentage of spendable balance"
+msgstr "Porcentaje del saldo disponible"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaTradePanels.container.tsx
+msgid "Estimated fees and rent reserved · {reservedSol} SOL"
+msgstr "Reserva estimada para comisiones y depósitos de cuentas · {reservedSol} SOL"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaTradePanels.container.tsx
+msgid "Choose a receive token to calculate fees and rent."
+msgstr "Elige el token que vas a recibir para calcular las comisiones y los depósitos de las cuentas."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaTradePanels.container.tsx
+msgid "Amount shortcuts need a fee and rent estimate."
+msgstr "Los botones de porcentaje necesitan una estimación de las comisiones y los depósitos de las cuentas."
