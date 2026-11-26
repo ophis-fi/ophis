@@ -82,7 +82,9 @@ function verdict(state, failed, now) {
   const down = state.svc.filter((e) => e.st === 'down');
   const warn = state.svc.filter((e) => e.st === 'warn');
   const up = state.svc.filter((e) => e.st === 'up').length;
-  const tally = `${up} of ${state.svc.length} services operational. Checked ${ago(age)}.`;
+  // The time of the round, not its age: the answer can be a minute and a half old by the time it
+  // is read (the timer's own delay, then the edge copy), and "2 minutes ago" reads as a fault.
+  const tally = `${up} of ${state.svc.length} services operational. Last checked at ${timeFormat.format(state.t * 1000)}.`;
   const subject = (list) =>
     list.length === 1 ? `${list[0].name} is` : `${list.length} services are`;
   if (down.length) return ['down', `${subject(down)} down`, tally];
