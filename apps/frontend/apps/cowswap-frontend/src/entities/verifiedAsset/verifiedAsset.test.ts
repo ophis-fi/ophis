@@ -8,6 +8,8 @@ const nvda = '0xC845B2894DbdDD03858fd2D643B4Ef725fE0849D'
 
 it.each([
   [42161, nvda, 'xStocks'],
+  [5042, '0x7042f907266d5ff1c57529d36f9e8c731b569c10', 'bridgedOndo'],
+  [5042, '0x14c3abf95cb9c93a8b82c1cdcb76d72cb87b2d4c', undefined],
   [42161, '0x93e62845c1dd5822ebc807ab71a5fb750decd15a', 'wrappedXStocks'],
   [42161, '0xa8ddb5cd96b5222afe198316e9a57caa642850d5', 'wrappedXStocks'],
   [42161, '0x0a85b6ebe3c150a1979a65656e304033d62b1e12', 'reality'],

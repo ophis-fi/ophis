@@ -5,6 +5,8 @@ import { getAddressKey, getTokenId } from '@cowprotocol/cow-sdk'
 import { TokenLogo } from '@cowprotocol/tokens'
 import { TokenSymbol } from '@cowprotocol/ui'
 
+import { VerifiedAssetBadge } from 'entities/verifiedAsset'
+
 import * as styledEl from './styled'
 
 import { useSelectTokenWidgetState } from '../../hooks/useSelectTokenWidgetState'
@@ -12,7 +14,7 @@ import { SelectTokenContext } from '../../types'
 
 export interface FavoriteTokenItemProps {
   token: TokenWithLogo
-  selectTokenContext: SelectTokenContext
+  selectTokenContext: Pick<SelectTokenContext, 'verifyAsset' | 'onTokenListItemClick'>
 }
 
 export function FavoriteTokenItem({ token, selectTokenContext }: FavoriteTokenItemProps): ReactNode {
@@ -40,7 +42,10 @@ export function FavoriteTokenItem({ token, selectTokenContext }: FavoriteTokenIt
       onClick={handleClick}
     >
       <TokenLogo token={token} size={24} hideNetworkBadge />
-      <TokenSymbol token={token} />
+      <span>
+        <TokenSymbol token={token} />
+        <VerifiedAssetBadge verified={selectTokenContext.verifyAsset(token)} />
+      </span>
     </styledEl.TokenButton>
   )
 }

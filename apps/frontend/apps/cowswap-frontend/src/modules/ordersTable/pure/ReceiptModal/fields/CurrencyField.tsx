@@ -1,7 +1,7 @@
 import { CurrencyAmount, Token } from '@cowprotocol/currency'
 import { TokenAmount } from '@cowprotocol/ui'
 
-import { CurrencySelectButton } from 'common/pure/CurrencySelectButton'
+import { CurrencySelectButtonContainer } from 'common/containers/CurrencySelectButton.container'
 
 import * as styledEl from '../ReceiptModal.styled'
 
@@ -19,7 +19,7 @@ export function CurrencyField({ label, token, amount }: Props) {
       <b>{label}</b>
 
       <div>
-        <CurrencySelectButton readonlyMode={true} loading={false} currency={token} />
+        <CurrencySelectButtonContainer readonlyMode={true} loading={false} currency={token} />
         <styledEl.CurrencyValue>
           <TokenAmount amount={amount} />
         </styledEl.CurrencyValue>

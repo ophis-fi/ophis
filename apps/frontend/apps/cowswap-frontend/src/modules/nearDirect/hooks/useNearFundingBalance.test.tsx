@@ -1,6 +1,8 @@
 import { Token } from '@cowprotocol/currency'
 
 import { act, renderHook, waitFor } from '@testing-library/react'
+import { createPublicClient } from 'viem'
+import { monad } from 'viem/chains'
 
 import { useNearFundingBalance } from './useNearFundingBalance'
 
@@ -17,7 +19,7 @@ jest.mock('@cowprotocol/wallet-provider', () => ({ useWalletChainId: () => mockC
 jest.mock('modules/cctp', () => ({ useBridgeWallet: () => mockWallet }))
 jest.mock('viem', () => ({
   ...jest.requireActual('viem'),
-  createPublicClient: () => ({ readContract: mockRead }),
+  createPublicClient: jest.fn(() => ({ readContract: mockRead })),
 }))
 
 it('uses only the current sending account and discards a balance that arrives after an account change', async () => {
@@ -72,6 +74,12 @@ it('separates two wallets with the same account and ignores a late read after a 
   rerender()
   expect(result.current).toBeNull()
   await waitFor(() => expect(mockRead).toHaveBeenCalledTimes(4))
+  const params = jest.mocked(createPublicClient).mock.lastCall?.[0]
+  if (!params) throw Error('Expected a funding client')
+  const pinned = jest.requireActual<typeof import('viem')>('viem').createPublicClient(params)
+  expect(pinned.chain?.id).toBe(monad.id)
+  expect(pinned.transport.type).toBe('http')
+  expect(pinned.transport.url).toBe(monad.rpcUrls.default.http[0])
   mockChainId = 196
   rerender()
   await act(async () => {

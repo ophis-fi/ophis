@@ -7,6 +7,7 @@ import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { t } from '@lingui/core/macro'
 import { Trans } from '@lingui/react/macro'
+import { useAssetVerificationResolver } from 'entities/verifiedAsset'
 import { useParams } from 'react-router'
 
 import { Routes } from 'common/constants/routes'
@@ -28,6 +29,7 @@ export function AccountProxyPage(): ReactNode {
   const refundAmounts = useRefundAmounts()
   const balances = useTokensBalances()
 
+  const verifyAsset = useAssetVerificationResolver(!!refundAmounts)
   const refundValues = refundAmounts ? Object.values(refundAmounts) : null
 
   const isSomeTokenLoading = !!refundValues?.length ? refundValues.some((t) => t.isLoading) : balances.isLoading
@@ -79,7 +81,13 @@ export function AccountProxyPage(): ReactNode {
                 tokenAddress: token.address,
               })}
             >
-              <TokenListItemStyled token={token} isWalletConnected balance={balance} usdAmount={usdAmount}>
+              <TokenListItemStyled
+                token={token}
+                verification={verifyAsset(token)}
+                isWalletConnected
+                balance={balance}
+                usdAmount={usdAmount}
+              >
                 <ArrowIcon verticalCenter />
               </TokenListItemStyled>
             </LinkStyled>

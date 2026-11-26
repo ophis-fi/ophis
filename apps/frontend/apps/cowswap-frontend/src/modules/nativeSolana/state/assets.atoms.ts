@@ -87,7 +87,7 @@ export const walletAssetListAtom = atom((get) =>
 export const walletHoldingsMapAtom = atom(
   (get) => new Map(get(solanaHoldingsAtom).data?.map((row) => [walletMint(row.mint), row])),
 )
-const nativeSellReserveAtom = atomWithQuery((get) => {
+export const nativeSellReserveAtom = atomWithQuery((get) => {
   const config = OPHIS_SOLANA_CONFIG
   const rpc = balanceEndpoint(config)
   const owner = get(solanaConnectionAtom)?.account.address

@@ -1,7 +1,6 @@
 import { ReactNode } from 'react'
 
 import { CHAIN_INFO } from '@cowprotocol/common-const'
-import { getCurrencyAddress } from '@cowprotocol/common-utils'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { Currency } from '@cowprotocol/currency'
 import { TokenLogo } from '@cowprotocol/tokens'
@@ -9,8 +8,7 @@ import { TokenName } from '@cowprotocol/ui'
 
 import { t } from '@lingui/core/macro'
 import { Trans } from '@lingui/react/macro'
-import { useBridgeSupportedNetwork } from 'entities/bridgeProvider'
-import { VerifiedAssetBadge, useAssetVerification } from 'entities/verifiedAsset'
+import { VerifiedAssetBadge, type Verification } from 'entities/verifiedAsset'
 import { Nullish } from 'types'
 
 import * as styledEl from './styled'
@@ -25,6 +23,8 @@ const TOKEN_LOGO_SIZE = {
 
 export interface CurrencySelectButtonProps {
   currency?: Nullish<Currency>
+  verification?: Verification
+  bridgeChainLabel?: string
   loading: boolean
   readonlyMode?: boolean
   displayTokenName?: boolean
@@ -44,20 +44,15 @@ export function CurrencySelectButton(props: CurrencySelectButtonProps): ReactNod
     displayTokenName = false,
     displayChainName = false,
     customSelectTokenButton,
+    verification,
+    bridgeChainLabel,
   } = props
 
   const $noCurrencySelected = !currency
   const showDetailedDisplay = displayTokenName || displayChainName
 
   const chainId = currency?.chainId
-  const verified = useAssetVerification({
-    chainId,
-    address: currency ? (currency.isToken ? currency.address : getCurrencyAddress(currency)) : undefined,
-    symbol: currency?.symbol,
-    decimals: currency?.decimals,
-  })
-  const bridgeChain = useBridgeSupportedNetwork(chainId)
-  const chainInfo = chainId ? (CHAIN_INFO[chainId as SupportedChainId] ?? bridgeChain) : undefined
+  const chainLabel = chainId ? (CHAIN_INFO[chainId as SupportedChainId]?.label ?? bridgeChainLabel) : undefined
 
   if (!currency && customSelectTokenButton) {
     return (
@@ -98,7 +93,7 @@ export function CurrencySelectButton(props: CurrencySelectButtonProps): ReactNod
                 displayTokenName={displayTokenName}
                 displayChainName={displayChainName}
               />
-              <VerifiedAssetBadge verified={verified} />
+              <VerifiedAssetBadge verified={verification} />
             </span>
 
             {displayTokenName && (
@@ -107,7 +102,7 @@ export function CurrencySelectButton(props: CurrencySelectButtonProps): ReactNod
               </TokenSubText>
             )}
             {displayChainName && currency.chainId && (
-              <TokenSubText>{chainInfo?.label || `ChainID: ${currency.chainId}`}</TokenSubText>
+              <TokenSubText>{chainLabel || `ChainID: ${currency.chainId}`}</TokenSubText>
             )}
           </>
         ) : (

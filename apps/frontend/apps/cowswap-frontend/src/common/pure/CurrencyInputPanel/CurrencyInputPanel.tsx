@@ -16,8 +16,8 @@ import { Field } from 'legacy/state/types'
 
 import { useUsdAmount } from 'modules/usdAmount'
 
+import { CurrencySelectButtonContainer } from 'common/containers/CurrencySelectButton.container'
 import { CurrencyInfo } from 'common/pure/CurrencyInputPanel/types'
-import { CurrencySelectButton } from 'common/pure/CurrencySelectButton'
 import { FiatValue } from 'common/pure/FiatValue'
 
 import { SellAmountPresets } from './SellAmountPresets.pure'
@@ -223,7 +223,7 @@ export function CurrencyInputPanel(props: CurrencyInputPanelProps): ReactNode {
 
   const selectorDisabled = !!props.disabled || (disabled && !props.allowUnsupportedTokenSelection)
   const currencySelector = (
-    <CurrencySelectButton
+    <CurrencySelectButtonContainer
       onClick={onTokenSelectClick}
       currency={selectorDisabled ? undefined : currency || undefined}
       loading={areCurrenciesLoading || selectorDisabled}

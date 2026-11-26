@@ -16,7 +16,7 @@ jest.mock('modules/usdAmount', () => ({ useUsdAmount: () => ({ value: null }) })
 jest.mock('common/hooks/useConvertUsdToTokenValue', () => ({
   useConvertUsdToTokenValue: () => (value: string) => value,
 }))
-jest.mock('common/pure/CurrencySelectButton', () => ({ CurrencySelectButton: () => null }))
+jest.mock('common/containers/CurrencySelectButton.container', () => ({ CurrencySelectButtonContainer: () => null }))
 jest.mock('common/pure/FiatValue', () => ({ FiatValue: () => null }))
 jest.mock('../ReceiveAmount', () => ({ ReceiveAmount: () => null }))
 

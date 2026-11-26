@@ -5,7 +5,6 @@ import { TokenListTags } from '@cowprotocol/tokens'
 import { HoverTooltip } from '@cowprotocol/ui'
 
 import { Trans } from '@lingui/react/macro'
-import { useAssetVerification } from 'entities/verifiedAsset'
 import { CheckCircle } from 'react-feather'
 
 import * as styledEl from './styled'
@@ -15,8 +14,11 @@ import { ImportButton } from '../commonElements'
 import { TokenInfo } from '../TokenInfo'
 import { TokenTags } from '../TokenTags'
 
+import type { Verification } from 'entities/verifiedAsset'
+
 export interface ImportTokenItemProps {
   token: TokenWithLogo
+  verification?: Verification
   importToken?(token: TokenWithLogo): void
   existing?: true
   shadowed?: boolean
@@ -32,6 +34,7 @@ export interface ImportTokenItemProps {
 export function ImportTokenItem(props: ImportTokenItemProps): ReactNode {
   const {
     token,
+    verification,
     importToken,
     shadowed,
     existing,
@@ -44,7 +47,6 @@ export function ImportTokenItem(props: ImportTokenItemProps): ReactNode {
     tokenListTags,
   } = props
 
-  const verification = useAssetVerification(token)
   const tokenInfo = (
     <div style={{ opacity: shadowed ? 0.6 : 1 }}>
       <TokenInfo

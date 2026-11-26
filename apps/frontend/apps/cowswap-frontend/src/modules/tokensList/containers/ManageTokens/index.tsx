@@ -13,6 +13,7 @@ import {
 import { TokenSymbol } from '@cowprotocol/ui'
 
 import { Trans } from '@lingui/react/macro'
+import { useAssetVerificationResolver } from 'entities/verifiedAsset'
 import { ExternalLink, Trash } from 'react-feather'
 
 import * as styledEl from './styled'
@@ -45,6 +46,7 @@ export interface ManageTokensProps {
 export function ManageTokens(props: ManageTokensProps) {
   const { tokens, tokenSearchResponse, listedTokenIds, tokenizedAssetProviderByTokenId, tokenListTags } = props
 
+  const verifyAsset = useAssetVerificationResolver()
   const addTokenImportCallback = useAddTokenImportCallback()
   const removeTokenCallback = useRemoveUserToken()
   const resetUserTokensCallback = useResetUserTokens()
@@ -71,6 +73,7 @@ export function ManageTokens(props: ManageTokensProps) {
               <ImportTokenItem
                 key={tokenId}
                 token={token}
+                verification={verifyAsset(token)}
                 existing={true}
                 isContractListed={listedTokenIds.has(tokenId)}
                 tokenizedAssetProvider={tokenizedAssetProviderByTokenId.get(tokenId)}
@@ -85,6 +88,7 @@ export function ManageTokens(props: ManageTokensProps) {
                 <ImportTokenItem
                   key={tokenId}
                   token={token}
+                  verification={verifyAsset(token)}
                   importToken={addTokenImportCallback}
                   isContractListed={listedTokenIds.has(tokenId)}
                   tokenizedAssetProvider={tokenizedAssetProviderByTokenId.get(tokenId)}

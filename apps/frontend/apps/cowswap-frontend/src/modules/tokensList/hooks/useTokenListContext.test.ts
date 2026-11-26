@@ -104,6 +104,7 @@ describe('useTokenListContext', () => {
     })
     mockUseSelectTokenContext.mockReturnValue({
       onTokenListItemClick: jest.fn(),
+      verifyAsset: jest.fn(),
       balancesState,
       unsupportedTokens: {},
       permitCompatibleTokens: {},

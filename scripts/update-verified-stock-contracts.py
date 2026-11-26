@@ -7,6 +7,7 @@ import re
 import subprocess
 from collections import defaultdict
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "apps/frontend/apps/cowswap-frontend"
@@ -44,12 +45,16 @@ def bstocks_contracts():
             text = " ".join(article_text(body))
             for symbol, address in re.findall(r"\b([A-Z0-9]+)\s*:\s*(0x[0-9a-fA-F]{40})\b", text):
                 if symbol in symbols:
-                    assert contracts.setdefault(symbol, address.lower()) == address.lower()
+                    address = address.lower()
+                    if symbol in contracts and contracts[symbol] != address:
+                        raise ValueError(f"Conflicting Binance contracts for {symbol}: {contracts[symbol]} and {address}")
+                    contracts[symbol] = address
         # First BSC listings went live on 11 June 2026.
         if not catalog["articles"] or min(n["releaseDate"] for n in catalog["articles"]) < 1781136000000:
             break
         page += 1
-    assert contracts.get("NVDAB") == "0x02fca66c1d1afb4e2a7884261eb00f63598a7436"
+    if contracts.get("NVDAB") != "0x02fca66c1d1afb4e2a7884261eb00f63598a7436":
+        raise ValueError("Missing expected Binance NVDAB deployment")
     return contracts.items()
 
 
@@ -70,20 +75,26 @@ def stock_contracts():
         if not address or chain not in supported_chains:
             return
         if chain == SOLANA:
-            assert re.fullmatch(r"[1-9A-HJ-NP-Za-km-z]{32,44}", address), address
+            if not re.fullmatch(r"[1-9A-HJ-NP-Za-km-z]{32,44}", address):
+                raise ValueError(f"Invalid Solana mint for {symbol}: {address}")
         elif chain == TRON:
-            assert re.fullmatch(r"T[1-9A-HJ-NP-Za-km-z]{33}", address), address
+            if not re.fullmatch(r"T[1-9A-HJ-NP-Za-km-z]{33}", address):
+                raise ValueError(f"Invalid Tron address for {symbol}: {address}")
         else:
-            assert EVM.fullmatch(address) and int(address, 16), address
+            if not EVM.fullmatch(address) or int(address, 16) == 0:
+                raise ValueError(f"Invalid EVM address for {symbol} on {chain}: {address}")
             address = address.lower()
         identity = (issuer, symbol.upper())
-        assert rows[address].get(chain, identity) == identity, (address, chain, identity)
+        previous = rows[address].get(chain)
+        if previous is not None and previous != identity:
+            raise ValueError(f"Conflicting identities for {chain}/{address}: {previous} and {identity}")
         rows[address][chain] = identity
 
     # https://docs.xstocks.fi/apis/openapi/assets/list_public_assets
     for page in range(1000):
         result = load(f"https://api.xstocks.fi/api/v2/public/assets?page={page}")
-        assert result["page"]["currentPage"] == page and result["nodes"]
+        if result["page"]["currentPage"] != page or not result["nodes"]:
+            raise ValueError(f"Missing or unexpected xStocks page {page}")
         for asset in result["nodes"]:
             if not asset["underlying"]:
                 continue
@@ -110,7 +121,8 @@ def stock_contracts():
     bitget = "https://api.bitget.com"
     instruments = load(bitget + "/api/v3/market/instruments?category=SPOT")["data"]
     reality = {item["baseCoin"] for item in instruments if item.get("isReality") == "yes" and item.get("status") == "online"}
-    assert reality
+    if not reality:
+        raise ValueError("Missing active Reality instruments from Bitget")
     for coin in load(bitget + "/api/v2/spot/public/coins")["data"]:
         if coin["coin"] in reality:
             for deployment in coin["chains"]:
@@ -126,10 +138,15 @@ def stock_contracts():
     lists = APP / "public/token-lists"
     for token in json.loads((lists / "coinbase-tokenized-stocks.json").read_text())["tokens"]:
         add("coinbase", token["chainId"], token["address"], token["symbol"])
-    # Ophis verifies each bridged Arc mapping against its origin contract.
-    for token in json.loads((lists / "ophis.json").read_text())["tokens"]:
-        if token["chainId"] == 5042 and "ondo" in token.get("tags", []):
-            add("bridgedOndo", 5042, token["address"], token["symbol"])
+    # Recorded Circle CCTPx pairs (https://iris-api.circle.com/v2/cctpx/tokens).
+    # Require an exact issuer-listed origin for the mapped symbol and destination.
+    mappings = json.loads((APP / "src/entities/cctp/cctpxAssets.json").read_text())
+    for symbol, mapping in mappings.items():
+        chain = mapping.get("homeChainId")
+        addresses = mapping["addresses"]
+        origin = addresses.get(str(chain))
+        if origin and rows.get(origin.lower(), {}).get(chain) == ("ondo", symbol.upper()):
+            add("bridgedOndo", 5042, addresses.get("5042"), symbol)
 
     for symbol, address in bstocks_contracts():
         add("bStocks", 56, address, symbol)
@@ -146,7 +163,11 @@ def stock_contracts():
 
 if __name__ == "__main__":
     groups = stock_contracts()
-    assert {g["issuer"] for g in groups} == {
-        "xStocks", "wrappedXStocks", "ondo", "bridgedOndo", "reality", "robinhood", "coinbase", "bStocks"
-    }
-    OUTPUT.write_text(json.dumps(groups, indent=2) + "\n")
+    expected = {"xStocks", "wrappedXStocks", "ondo", "bridgedOndo", "reality", "robinhood", "coinbase", "bStocks"}
+    issuers = {g["issuer"] for g in groups}
+    if issuers != expected:
+        raise ValueError(f"Unexpected snapshot issuers: missing {expected - issuers}, unexpected {issuers - expected}")
+    with TemporaryDirectory(dir=OUTPUT.parent) as work:
+        snapshot = Path(work) / OUTPUT.name
+        snapshot.write_text(json.dumps(groups, indent=2) + "\n")
+        snapshot.replace(OUTPUT)

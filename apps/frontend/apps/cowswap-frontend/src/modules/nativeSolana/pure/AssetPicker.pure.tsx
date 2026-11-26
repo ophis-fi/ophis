@@ -1,20 +1,12 @@
 import { ReactNode, useEffect, useRef, useState } from 'react'
 
-import { AdditionalTargetChainId } from '@cowprotocol/cow-sdk'
-
 import { Trans } from '@lingui/react/macro'
 import { formatOphisSolanaAmount, SOLANA_NATIVE_ASSET, solanaAddress, type OphisWalletHolding } from '@ophis/solana-sdk'
-import { OPHIS_SOLANA_CONFIG } from 'entities/solana'
-import { VerifiedAssetBadge, useAssetVerification } from 'entities/verifiedAsset'
+import { VerifiedAssetBadge, type Verification } from 'entities/verifiedAsset'
 
 import * as styledEl from './SwapForm.styled'
 
 import { nativeAsset, shortMint, unknownAsset, type SolanaAsset } from '../services/assets.service'
-
-export function SolanaAssetBadge({ asset }: { asset: SolanaAsset }): ReactNode {
-  const chainId = OPHIS_SOLANA_CONFIG?.chain === 'solana:mainnet' ? AdditionalTargetChainId.SOLANA : undefined
-  return <VerifiedAssetBadge verified={useAssetVerification({ chainId, address: asset.mint, symbol: asset.symbol })} />
-}
 
 export function AssetIcon({ asset }: { asset: SolanaAsset }): ReactNode {
   const [failedIcon, setFailedIcon] = useState<string>()
@@ -34,6 +26,7 @@ export function AssetIcon({ asset }: { asset: SolanaAsset }): ReactNode {
 const maxRowsPerGroup = 50
 
 interface AssetPickerProps {
+  verifyAsset(asset: SolanaAsset): Verification | undefined
   catalogLoading: boolean
   catalogUnavailable: boolean
   side: 'sell' | 'buy'
@@ -79,6 +72,7 @@ export function AssetPicker({
   select,
   close,
   catalogLoading,
+  verifyAsset,
   catalogUnavailable,
 }: AssetPickerProps): ReactNode {
   const dialog = useRef<HTMLDialogElement>(null)
@@ -127,7 +121,7 @@ export function AssetPicker({
                     <span>
                       <strong>
                         {asset.symbol}
-                        <SolanaAssetBadge asset={asset} />
+                        <VerifiedAssetBadge verified={verifyAsset(asset)} />
                       </strong>
                       <small>
                         {asset.name}

@@ -58,6 +58,7 @@ export function TokenListItemContainer({
       isPermitCompatible={permitCompatibleTokens[addressKey]}
       selectedToken={selectedToken}
       token={token}
+      verification={context.verifyAsset(token)}
       balance={balances ? balances[addressKey] : undefined}
       balanceError={!!balanceError}
       onSelectToken={handleSelectToken}

@@ -3,6 +3,7 @@ import { ReactNode, useEffect, useState } from 'react'
 
 import { Trans } from '@lingui/react/macro'
 import { OPHIS_SOLANA_CONFIG, solanaConnectionAtom } from 'entities/solana'
+import { useAssetVerificationResolver } from 'entities/verifiedAsset'
 import { AssetSwapFieldsLayout } from 'ophis/components/AssetSwap/AssetSwapFields'
 
 import { NetworkSelector } from 'modules/networkSelector'
@@ -12,6 +13,7 @@ import { SolanaWalletAction } from './SolanaWalletAction.container'
 
 import { AssetPicker } from '../pure/AssetPicker.pure'
 import * as styledEl from '../pure/SwapForm.styled'
+import { solanaAssetIdentity } from '../services/assets.service'
 import { privateSettlementEnabled } from '../services/privateSettlement.service'
 import {
   sellAmountStateAtom,
@@ -35,6 +37,7 @@ export function NativeSolanaForm(): ReactNode {
     url.searchParams.delete('pick')
     window.history.replaceState(window.history.state, '', url)
   }, [])
+  const verifyAsset = useAssetVerificationResolver(!!picker && OPHIS_SOLANA_CONFIG?.chain === 'solana:mainnet')
   const catalog = useAtomValue(picker ? solanaMainnetCatalogAtom : solanaCachedCatalogAtom)
   const assets = useAtomValue(walletAssetListAtom)
   const holdings = useAtomValue(walletHoldingsMapAtom)
@@ -93,6 +96,7 @@ export function NativeSolanaForm(): ReactNode {
       {picker && (
         <AssetPicker
           side={picker}
+          verifyAsset={(asset) => verifyAsset(solanaAssetIdentity(asset))}
           catalogLoading={catalog.isFetching}
           catalogUnavailable={catalog.isError && !catalog.data}
           assets={assets}

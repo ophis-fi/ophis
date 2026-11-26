@@ -9,7 +9,6 @@ import { FiatAmount, HoverTooltip, LoadingRows, LoadingRowSmall, TokenAmount } f
 import { BigNumber } from '@ethersproject/bignumber'
 
 import { t } from '@lingui/core/macro'
-import { useAssetVerification } from 'entities/verifiedAsset'
 import { Nullish } from 'types'
 
 import { isNonEvmRecipientChain } from 'common/utils/recipientAddress.utils'
@@ -21,6 +20,8 @@ import { TokenizedAssetProviderTag, TokenSelectionHandler } from '../../types'
 import { TokenInfo } from '../TokenInfo'
 import { TokenTags } from '../TokenTags'
 
+import type { Verification } from 'entities/verifiedAsset'
+
 const LoadingElement = (
   <LoadingRows>
     <LoadingRowSmall />
@@ -29,6 +30,7 @@ const LoadingElement = (
 
 export interface TokenListItemProps {
   token: TokenWithLogo
+  verification?: Verification
   selectedToken?: Nullish<Currency>
   balance: BigNumber | undefined
   balanceError?: boolean
@@ -101,6 +103,7 @@ interface TokenBalanceColumnProps {
 export function TokenListItem(props: TokenListItemProps): ReactNode {
   const {
     token,
+    verification,
     selectedToken,
     balance,
     balanceError = false,
@@ -118,7 +121,6 @@ export function TokenListItem(props: TokenListItemProps): ReactNode {
     tokenizedAssetProvider,
   } = props
 
-  const verification = useAssetVerification(token)
   const { ref: visibilityRef, isVisible: hasIntersected } = useDeferredVisibility<HTMLDivElement>({
     resetKey: getTokenId(token),
     rootMargin: '200px',

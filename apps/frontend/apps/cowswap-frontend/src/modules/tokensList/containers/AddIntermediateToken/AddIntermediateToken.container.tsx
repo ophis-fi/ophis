@@ -3,6 +3,8 @@ import { ReactNode } from 'react'
 import { TokenWithLogo } from '@cowprotocol/common-const'
 import { getTokenId } from '@cowprotocol/cow-sdk'
 
+import { useAssetVerification } from 'entities/verifiedAsset'
+
 import { useConfiguredTokenListDisplayMetadata } from '../../hooks/useConfiguredTokenListDisplayMetadata'
 import { AddIntermediateToken as AddIntermediateTokenPure } from '../../pure/AddIntermediateToken'
 
@@ -15,10 +17,12 @@ export function AddIntermediateToken({ intermediateBuyToken, onImport }: AddInte
   const { listedTokenIds, tokenizedAssetProviderByTokenId, tokenListTags } = useConfiguredTokenListDisplayMetadata(
     intermediateBuyToken.chainId,
   )
+  const verification = useAssetVerification(intermediateBuyToken)
   const tokenId = getTokenId(intermediateBuyToken)
 
   return (
     <AddIntermediateTokenPure
+      verification={verification}
       intermediateBuyToken={intermediateBuyToken}
       isContractListed={listedTokenIds.has(tokenId)}
       tokenizedAssetProvider={tokenizedAssetProviderByTokenId.get(tokenId)}
