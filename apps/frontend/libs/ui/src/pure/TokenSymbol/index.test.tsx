@@ -3,7 +3,7 @@ import { ARC_CIRBTC, ARC_EURC, ARC_USDC, ARC_USYC, USDCE_INK, USDC_MAINNET } fro
 import { i18n } from '@lingui/core'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 
-import { TokenSymbol } from './index'
+import { AssetCheck, TokenSymbol } from './index'
 
 const badge = /Official Circle token/
 
@@ -22,13 +22,10 @@ beforeAll(() => {
   i18n.activate('en')
 })
 
-it.each([ARC_USDC, ARC_EURC, ARC_CIRBTC, ARC_USYC, USDC_MAINNET])(
-  'marks the issuer contract for $symbol on $chainId',
-  (token) => {
-    render(<TokenSymbol token={token} />)
-    expect(screen.getByRole('img', { name: badge })).toBeTruthy()
-  },
-)
+it.each([ARC_USDC, ARC_EURC, USDC_MAINNET])('marks the issuer contract for $symbol on $chainId', (token) => {
+  render(<TokenSymbol token={token} />)
+  expect(screen.getByRole('img', { name: badge }).querySelector('circle[fill="#2775ca"]')).toBeTruthy()
+})
 
 it.each([
   { ...ARC_CIRBTC, address: '0x1111111111111111111111111111111111111111' },
@@ -46,6 +43,18 @@ it.each([
 it('matches the same contract regardless of address letter case', () => {
   render(<TokenSymbol token={{ ...ARC_CIRBTC, address: '0x171a4217b86a807a64eb94757db6849fb4bdbaa0' }} />)
   expect(screen.getByRole('img', { name: badge })).toBeTruthy()
+})
+
+it.each([ARC_CIRBTC, ARC_USYC])('preserves issuer information without a watermark for $symbol', (token) => {
+  render(<TokenSymbol token={token} />)
+  expect(screen.getByRole('img', { name: badge }).querySelector('circle[fill="#2775ca"]')).toBeNull()
+})
+
+it('uses the same solid check for a native coin and an issuer-issued stablecoin', () => {
+  const { rerender } = render(<AssetCheck label="Native currency" />)
+  const icon = screen.getByRole('img').querySelector('path')?.outerHTML
+  rerender(<TokenSymbol token={USDC_MAINNET} />)
+  expect(screen.getByRole('img').querySelector('path')?.outerHTML).toBe(icon)
 })
 
 it('shows the issuer explanation on hover and includes USYC eligibility', async () => {

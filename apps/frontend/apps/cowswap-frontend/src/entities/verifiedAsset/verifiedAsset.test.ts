@@ -29,8 +29,8 @@ it('scopes native SOL, Circle USDC and Tether USDT to their network and preserve
   const usdc = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
   const chainId = AdditionalTargetChainId.SOLANA
   expect(presetVerification({ chainId, address: 'SOL' })).toBe('native')
-  expect(presetVerification({ chainId, address: usdc })).toBe('circle')
-  expect(presetVerification({ chainId, address: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB' })).toBe('tether')
+  expect(presetVerification({ chainId, address: usdc })).toBe('Circle')
+  expect(presetVerification({ chainId, address: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB' })).toBe('Tether')
   expect(presetVerification({ chainId, address: usdc.toLowerCase() })).toBeUndefined()
   expect(presetVerification({ chainId: 8453, address: usdc, symbol: 'USDC' })).toBeUndefined()
   expect(
@@ -51,10 +51,27 @@ it('does not verify a trusted address presented under a different symbol', () =>
 it.each([
   [1, '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', 'USDC', 'circleSymbol'],
   [8453, '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', 'USDC', 'circleSymbol'],
-  [42161, '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', 'USDT', 'usdt0'],
-  [56, '0x55d398326f99059fF775485246999027B3197955', 'USDT', 'binancePegUsdt'],
-  [56, '0x55d398326f99059fF775485246999027B3197955', 'USDC', 'mismatch'],
-  [10, '0x7F5c764cBc14f9669B88837ca1490cCa17c31607', 'USDC.e', 'bridgedUsdc'],
+  [56, '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d', 'USDC', undefined],
+  [43114, '0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7', 'USDT', 'Tether'],
+  [43114, '0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7', 'USDC', 'mismatch'],
+  [1, '0x6c3ea9036406852006290770BEdFcAbA0e23A0e8', 'PYUSD', 'Paxos'],
+  [1, '0x5F7827FDeb7c20b443265Fc2F40845B715385Ff2', 'EURCV', 'SG-FORGE'],
+  [1, '0x8292bb45bf1ee4d140127049757c2e0ff06317ed', 'RLUSD', 'Ripple Custody & Trust Co.'],
+  [AdditionalTargetChainId.SOLANA, 'So11111111111111111111111111111111111111112', 'SOL', undefined],
+  [42161, '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', 'USDT', undefined],
+  [56, '0x55d398326f99059fF775485246999027B3197955', 'USDT', undefined],
+  [56, '0x55d398326f99059fF775485246999027B3197955', 'USDC', undefined],
+  [10, '0x7F5c764cBc14f9669B88837ca1490cCa17c31607', 'USDC.e', undefined],
 ] as const)('identifies the canonical or bridged %s/%s/%s deployment', (chainId, address, symbol, expected) => {
   expect(presetVerification({ chainId, address, symbol, decimals: 6 })).toBe(expected)
+})
+
+it.each([
+  [1, 'ETH'],
+  [56, 'BNB'],
+  [43114, 'AVAX'],
+] as const)('identifies the actual native coin on %s', (chainId, symbol) => {
+  const native = { chainId, symbol, address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee' }
+  expect(presetVerification(native)).toBe('native')
+  expect(presetVerification({ ...native, address: '0x0000000000000000000000000000000000000001' })).toBeUndefined()
 })

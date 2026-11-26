@@ -528,10 +528,6 @@ msgstr "Your order was cancelled"
 msgid "Free"
 msgstr "Free"
 
-#: apps/cowswap-frontend/src/entities/verifiedAsset/VerifiedAssetBadge.tsx
-msgid "Wrapped SOL"
-msgstr "Wrapped SOL"
-
 #: apps/cowswap-frontend/src/modules/account/containers/AccountDetails/SurplusCard.tsx
 msgid "The total surplus Ophis has generated for you in {nativeSymbol} across all your trades since {startDate}"
 msgstr "The total surplus Ophis has generated for you in {nativeSymbol} across all your trades since {startDate}"
@@ -686,7 +682,7 @@ msgstr "Ophis"
 msgid "I received surplus on"
 msgstr "I received surplus on"
 
-#: libs/ui/src/pure/TokenSymbol/CircleBadge.tsx
+#: libs/ui/src/pure/TokenSymbol/index.tsx
 msgid "Official Circle token"
 msgstr "Official Circle token"
 
@@ -949,10 +945,6 @@ msgstr "icon"
 #: apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/internal/slots/Header.tsx
 msgid "Manage token lists"
 msgstr "Manage token lists"
-
-#: apps/cowswap-frontend/src/entities/verifiedAsset/VerifiedAssetBadge.tsx
-msgid "Bridged USDC"
-msgstr "Bridged USDC"
 
 #: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
 msgid "Order actions use fresh verification against the pinned escrow contract."
@@ -2387,7 +2379,7 @@ msgstr "On-chain verification failed, so order data is hidden rather than shown 
 msgid "Pool analytics"
 msgstr "Pool analytics"
 
-#: libs/ui/src/pure/TokenSymbol/CircleBadge.tsx
+#: libs/ui/src/pure/TokenSymbol/index.tsx
 msgid "Contract verified against Circle's registry."
 msgstr "Contract verified against Circle's registry."
 
@@ -2407,6 +2399,10 @@ msgstr "The price of this pool is outside of your selected range. Your position 
 #: apps/cowswap-frontend/src/modules/erc20Approve/pure/LegacyApproveButton/index.tsx
 msgid "Allow Ophis to use your <0/>"
 msgstr "Allow Ophis to use your <0/>"
+
+#: apps/cowswap-frontend/src/entities/verifiedAsset/VerifiedAssetBadge.tsx
+msgid "This contract matches the stablecoin issuer’s published address on this network."
+msgstr "This contract matches the stablecoin issuer’s published address on this network."
 
 #: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketWidget/BasketWidget.pure.tsx
 msgid "Swap several tokens at once. Ophis splits your basket into up to {MAX_BASKET_LEGS} single-pair orders that share one deadline. Best-effort together, not atomic."
@@ -2783,6 +2779,10 @@ msgstr "Estimated bridge transaction time: {bridgeEstimatedTime} minutes"
 #: apps/cowswap-frontend/src/common/containers/CoWAmmBanner/index.tsx
 msgid "Booooost APR gas-free!"
 msgstr "Booooost APR gas-free!"
+
+#: apps/cowswap-frontend/src/entities/verifiedAsset/VerifiedAssetBadge.tsx
+msgid "This is the network’s native coin."
+msgstr "This is the network’s native coin."
 
 #: apps/cowswap-frontend/src/modules/volumeFee/hooks/useVolumeFeeTooltip.ts
 msgid "The Ophis base fee is {OPHIS_BOOSTED_VOLUME_BPS} bp on this swap, plus capped price-improvement capture."
@@ -5519,6 +5519,10 @@ msgstr "Claim your ticket"
 msgid "Filter by maker address"
 msgstr "Filter by maker address"
 
+#: apps/cowswap-frontend/src/entities/verifiedAsset/VerifiedAssetBadge.tsx
+msgid "Issued by {verified}"
+msgstr "Issued by {verified}"
+
 #: apps/cowswap-frontend/src/modules/tokensList/containers/ManageListsAndTokens/index.tsx
 msgid "https:// or ipfs:// or ENS name"
 msgstr "https:// or ipfs:// or ENS name"
@@ -6465,7 +6469,7 @@ msgstr "for"
 msgid "Default approve"
 msgstr "Default approve"
 
-#: libs/ui/src/pure/TokenSymbol/CircleBadge.tsx
+#: libs/ui/src/pure/TokenSymbol/index.tsx
 msgid "Contract verified against Circle's registry. USYC requires an eligible, allowlisted wallet."
 msgstr "Contract verified against Circle's registry. USYC requires an eligible, allowlisted wallet."
 
@@ -6781,10 +6785,6 @@ msgstr "Partial approval may block <0>{ordersWithPermitLength}</0> other {orderW
 msgid "Destination transaction"
 msgstr "Destination transaction"
 
-#: apps/cowswap-frontend/src/entities/verifiedAsset/VerifiedAssetBadge.tsx
-msgid "Verified asset · {source}"
-msgstr "Verified asset · {source}"
-
 #: apps/cowswap-frontend/src/modules/tradeWidgetAddons/pure/NetworkCostsTooltipSuffix.tsx
 msgid "Because you are using a smart contract wallet"
 msgstr "Because you are using a smart contract wallet"
@@ -6846,10 +6846,6 @@ msgstr "Minimum sell size"
 #: apps/cowswap-frontend/src/modules/bridge/pure/contents/QuoteBridgeContent/index.tsx
 msgid "Min. to deposit"
 msgstr "Min. to deposit"
-
-#: apps/cowswap-frontend/src/entities/verifiedAsset/VerifiedAssetBadge.tsx
-msgid "Bridged USDT"
-msgstr "Bridged USDT"
 
 #: apps/cowswap-frontend/src/pages/games/CowRunner/index.tsx
 msgid "MEV is lethal these days!"
