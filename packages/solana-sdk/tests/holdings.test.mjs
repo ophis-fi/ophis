@@ -4,6 +4,8 @@ import { address, getAddressEncoder } from '@solana/kit';
 import { readHoldingLabel } from '../dist/holding-labels.js';
 import {
   fetchOphisNativeSellReserve,
+  fetchOphisOrderSolReserve,
+  SOLANA_NATIVE_ASSET,
   fetchOphisWalletHoldings,
   readOphisSellAllowance,
   verifyOphisMintMetadata,
@@ -157,19 +159,25 @@ test('native Max reserves current rent only for the payer, order and missing tok
   rent.writeDoubleLE(1, 8);
   hashes.writeBigUInt64LE(1n);
   hashes.writeBigUInt64LE(5000n, 40);
+  const classicBuy = (
+    await findAssociatedTokenPda({ owner, mint, tokenProgram: TOKEN_PROGRAM_ADDRESS })
+  )[0];
+  const wrapped = (
+    await findAssociatedTokenPda({ owner, mint: owner, tokenProgram: TOKEN_PROGRAM_ADDRESS })
+  )[0];
   t.mock.method(globalThis, 'fetch', async (_url, init) => {
-    const { id, method } = JSON.parse(init.body);
+    const { id, method, params } = JSON.parse(init.body);
     if (method === 'getGenesisHash') return Response.json({ jsonrpc: '2.0', id, result: genesis });
     assert.equal(method, 'getMultipleAccounts');
     const account = { owner: TOKEN_PROGRAM_ADDRESS };
-    const value = [
-      sysvar(rent),
-      sysvar(hashes),
-      { owner: program },
-      hasWrapped ? account : null,
-      hasBuy ? account : null,
-      null,
-    ];
+    const data = {
+      SysvarRent111111111111111111111111111111111: sysvar(rent),
+      SysvarRecentB1ockHashes11111111111111111111: sysvar(hashes),
+      [mint]: { owner: program },
+      [wrapped]: hasWrapped ? account : null,
+      [classicBuy]: hasBuy ? account : null,
+    };
+    const value = params[0].map((key) => data[key] ?? null);
     return Response.json({ jsonrpc: '2.0', id, result: { context: { slot: 10 }, value } });
   });
   const reserve = await fetchOphisNativeSellReserve(endpoint, genesis, owner, mint);
@@ -183,6 +191,14 @@ test('native Max reserves current rent only for the payer, order and missing tok
   assert.equal(
     await fetchOphisNativeSellReserve(endpoint, genesis, owner, mint),
     reserve + 2n * 1488440n,
+  );
+  assert.equal(
+    await fetchOphisOrderSolReserve(endpoint, genesis, owner, SOLANA_NATIVE_ASSET, false),
+    reserve,
+  );
+  assert.equal(
+    await fetchOphisOrderSolReserve(endpoint, genesis, owner, mint, false),
+    reserve + 1488440n,
   );
   program = TOKEN_2022_PROGRAM_ADDRESS;
   await assert.rejects(
