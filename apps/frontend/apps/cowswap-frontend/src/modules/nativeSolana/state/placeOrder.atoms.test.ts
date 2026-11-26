@@ -1,6 +1,8 @@
 import { createStore } from 'jotai'
 
 import {
+  fetchOphisSolanaChainContext,
+  prepareOphisWalletAtomicSwap,
   readOphisOrderAccount,
   readOphisSellAllowance,
   sendOphisSolanaWalletTransaction,
@@ -15,6 +17,7 @@ import {
   nativeSolanaErrorAtom,
   nativeSolanaFormAtom,
   nativeSolanaReviewAtom,
+  nativeSolanaQuoteErrorAtom,
   requestNativeSolanaQuoteAtom,
 } from './trade.atoms'
 
@@ -26,7 +29,8 @@ jest.mock(
     SOLANA_NATIVE_ASSET: 'native',
     TOKEN_PROGRAM_ADDRESS: 'token',
     fetchOphisSolanaMint: async (_api: string, address: string) => ({ address, tokenProgram: 'token', decimals: 6 }),
-    fetchOphisSolanaChainContext: async () => ({
+    prepareOphisWalletAtomicSwap: jest.fn(),
+    fetchOphisSolanaChainContext: jest.fn().mockResolvedValue({
       programAddress: 'program',
       genesisHash: 'genesis',
       lastValidBlockHeight: 135n,
@@ -211,3 +215,18 @@ it.each([
     expect(ordersAfterReload()).toEqual({})
   },
 )
+
+it('never places a durable order when preparation of the advertised wallet-paid swap fails', async () => {
+  const store = createStore()
+  store.set(solanaConnectionAtom, { wallet: { name: 'Fixture' }, account: { address: 'owner' } } as SolanaConnection)
+  store.set(nativeSolanaFormAtom, { sellMint: 'SOL', buyMint: 'buy', amount: '1', slippageBps: 50 })
+  const legacyContext = await fetchOphisSolanaChainContext('https://example.org')
+  jest.mocked(fetchOphisSolanaChainContext).mockResolvedValueOnce({ ...legacyContext, walletAtomic: true })
+  jest.mocked(prepareOphisWalletAtomicSwap).mockRejectedValueOnce(Error('The route expired'))
+  await store.set(requestNativeSolanaQuoteAtom)
+  await store.set(createNativeSolanaOrderAtom)
+  expect(store.get(nativeSolanaReviewAtom)).toBeNull()
+  expect(store.get(nativeSolanaQuoteErrorAtom)).toBe('The route expired')
+  expect(send).not.toHaveBeenCalled()
+  expect(ordersAfterReload()).toEqual({})
+})

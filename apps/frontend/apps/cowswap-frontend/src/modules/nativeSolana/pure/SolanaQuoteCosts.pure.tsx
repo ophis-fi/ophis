@@ -11,6 +11,7 @@ export function SolanaQuoteCosts({ review, buySymbol }: { review: NativeSolanaRe
   const baseBps = feeTerms?.baseBps
   const maximumCost = BigInt(quote.costs.networkFees) + BigInt(quote.costs.buyTokenAtaCosts)
   const improvementCapBps = feeTerms?.improvementCapBps
+  const atomic = review.atomic?.costs
   return (
     <>
       <dt>
@@ -33,16 +34,39 @@ export function SolanaQuoteCosts({ review, buySymbol }: { review: NativeSolanaRe
           </dd>
         </>
       )}
-      <dt>
-        <Trans>Maximum settlement cost in {buySymbol}</Trans>
-      </dt>
-      <dd>
-        {formatOphisSolanaAmount(maximumCost, review.buy.decimals)} {buySymbol}
-      </dd>
-      <dt>
-        <Trans>Total quote costs in the buy token</Trans>
-      </dt>
-      <dd>{formatOphisSolanaAmount(BigInt(quote.costs.total), review.buy.decimals)}</dd>
+      {atomic ? (
+        <>
+          <dt>
+            <Trans>Solana network fee paid by your wallet</Trans>
+          </dt>
+          <dd>{formatOphisSolanaAmount(atomic.networkFee, 9)} SOL</dd>
+          <dt>
+            <Trans>Storage deposits returned in this swap</Trans>
+          </dt>
+          <dd>{formatOphisSolanaAmount(atomic.orderRent + atomic.nativeWrapRent, 9)} SOL</dd>
+          {atomic.tokenAccountRent > 0n && (
+            <>
+              <dt>
+                <Trans>New wallet token account deposit</Trans>
+              </dt>
+              <dd>{formatOphisSolanaAmount(atomic.tokenAccountRent, 9)} SOL</dd>
+            </>
+          )}
+        </>
+      ) : (
+        <>
+          <dt>
+            <Trans>Maximum settlement cost in {buySymbol}</Trans>
+          </dt>
+          <dd>
+            {formatOphisSolanaAmount(maximumCost, review.buy.decimals)} {buySymbol}
+          </dd>
+          <dt>
+            <Trans>Total quote costs in the buy token</Trans>
+          </dt>
+          <dd>{formatOphisSolanaAmount(BigInt(quote.costs.total), review.buy.decimals)}</dd>
+        </>
+      )}
       {review.solAfterOrder !== undefined && (
         <>
           <dt>

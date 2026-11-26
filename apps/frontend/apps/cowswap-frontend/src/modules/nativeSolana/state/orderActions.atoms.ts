@@ -135,6 +135,7 @@ async function prepareOrderAction(
   context: OphisSolanaChainContext
   observedSlot: bigint
 }> {
+  if (order.executionMode === 'walletAtomic') throw Error('This swap returns its order deposit automatically.')
   const intent = getOrderIntentDecoder().decode(new Uint8Array(order.intent))
   if (intent.owner !== connection.account.address) throw Error('Reconnect the order owner.')
   const identity = await identifyOphisSolanaOrder(config.program, intent)

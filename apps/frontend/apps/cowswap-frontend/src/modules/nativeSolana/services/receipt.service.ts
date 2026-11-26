@@ -1,4 +1,9 @@
-import { formatOphisSolanaAmount, getOrderIntentDecoder } from '@ophis/solana-sdk'
+import {
+  formatOphisSolanaAmount,
+  getOrderIntentDecoder,
+  SOLANA_NATIVE_ASSET,
+  WRAPPED_SOL_MINT,
+} from '@ophis/solana-sdk'
 import { OPHIS_SOLANA_CONFIG } from 'entities/solana'
 
 import { unknownAsset, walletMint, type SolanaAsset } from './assets.service'
@@ -25,6 +30,12 @@ function localReceiptStatus(order: SavedNativeSolanaOrder): ReceiptStatus | unde
   if (order.walletAction?.status === 'confirmed' && !order.walletAction.reclaim) return 'cancelled'
   if (order.reclaimed) return 'closed'
   return undefined
+}
+
+export function receiptSellToken(mint: string, order?: SavedNativeSolanaOrder): string {
+  return mint === WRAPPED_SOL_MINT && BigInt(order?.walletCosts?.nativeWrapRent ?? '0') > 0n
+    ? SOLANA_NATIVE_ASSET
+    : mint
 }
 
 export function savedReceiptAmounts(order: SavedNativeSolanaOrder): ReceiptAmounts | undefined {

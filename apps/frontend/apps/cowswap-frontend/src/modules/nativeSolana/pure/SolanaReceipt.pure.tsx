@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useRef, useState } from 'react'
 
 import { Trans, useLingui } from '@lingui/react/macro'
+import { formatOphisSolanaAmount } from '@ophis/solana-sdk'
 import { ArrowLeft, ArrowUpRight, CheckCircle, ChevronDown } from 'react-feather'
 
 import * as nativeStyles from './NativeSolana.styled'
@@ -78,8 +79,11 @@ function ReceiptDetails({
   assets,
   placement,
   uid,
-}: Pick<ReceiptProps, 'data' | 'trade' | 'assets'> & {
+  status,
+  walletCosts,
+}: Pick<ReceiptProps, 'data' | 'trade' | 'assets' | 'status'> & {
   intent?: ReceiptAmounts
+  walletCosts?: SavedNativeSolanaOrder['walletCosts']
   placement?: string
   uid?: string
 }): ReactNode {
@@ -97,6 +101,16 @@ function ReceiptDetails({
           ) : (
             <Trans>Fee attribution unavailable</Trans>
           )}
+        </Detail>
+      )}
+      {walletCosts && (status === 'fulfilled' || status === 'failed') && (
+        <Detail label={<Trans>Solana network fee</Trans>}>
+          {formatOphisSolanaAmount(BigInt(walletCosts.networkFee), 9)} SOL
+        </Detail>
+      )}
+      {walletCosts && status === 'fulfilled' && (
+        <Detail label={<Trans>Storage deposits returned</Trans>}>
+          {formatOphisSolanaAmount(BigInt(walletCosts.orderRent) + BigInt(walletCosts.nativeWrapRent ?? '0'), 9)} SOL
         </Detail>
       )}
       {data?.creationDate && (
@@ -119,6 +133,19 @@ function ReceiptDetails({
   )
 }
 
+function receiptLinks(
+  status: ReceiptStatus,
+  trade?: OphisSolanaTrade,
+  saved?: SavedNativeSolanaOrder,
+): { settlement?: string; placement?: string } {
+  const atomic = saved?.executionMode === 'walletAtomic'
+  const settlement = receiptTxLink(
+    trade?.txSignature ?? (atomic && status === 'fulfilled' ? saved?.signature : undefined),
+  )
+  const placement = atomic && settlement ? undefined : receiptTxLink(saved?.signature)
+  return { settlement, placement }
+}
+
 export function SolanaReceipt({
   verifyAsset,
   saved,
@@ -137,8 +164,7 @@ export function SolanaReceipt({
   const heading = useRef<HTMLHeadingElement>(null)
   useEffect(() => heading.current?.focus({ preventScroll: true }), [])
   const intent = data ?? (saved && savedReceiptAmounts(saved))
-  const settlement = receiptTxLink(trade?.txSignature)
-  const placement = receiptTxLink(saved?.signature)
+  const { settlement, placement } = receiptLinks(status, trade, saved)
   const uid = trade?.orderUid ?? saved?.uid
   return (
     <styledEl.Receipt data-swap-receipt="" aria-label={t`Swap receipt`}>
@@ -157,7 +183,7 @@ export function SolanaReceipt({
         <img src="/logos/token-sol.svg" alt="" />
         Solana
       </styledEl.Network>
-      <ReceiptSlabs verifyAsset={verifyAsset} trade={trade} data={data} assets={assets} intent={intent} />
+      <ReceiptSlabs verifyAsset={verifyAsset} trade={trade} data={data} assets={assets} intent={intent} saved={saved} />
       {timing}
       {notice}
       {settlement && (
@@ -183,6 +209,8 @@ export function SolanaReceipt({
         </summary>
         <ReceiptDetails
           intent={intent}
+          walletCosts={saved?.walletCosts}
+          status={status}
           data={data}
           trade={trade}
           assets={assets}

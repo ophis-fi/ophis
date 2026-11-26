@@ -1,6 +1,6 @@
 import { createStore } from 'jotai'
 
-import { fetchOphisSolanaOrder, type OphisSolanaOrder } from '@ophis/solana-sdk'
+import { fetchOphisWalletActionReceipt, fetchOphisSolanaOrder, type OphisSolanaOrder } from '@ophis/solana-sdk'
 import { solanaConnectionAtom, type SolanaConnection } from 'entities/solana'
 import { queryClientAtom } from 'jotai-tanstack-query'
 
@@ -8,9 +8,11 @@ import { nativeSolanaOrderQueryAtom, savedNativeSolanaOrdersAtom } from './order
 
 import { walletHoldingsKey } from '../services/assets.service'
 
-jest.mock('@ophis/solana-sdk', () => ({ fetchOphisSolanaOrder: jest.fn() }), { virtual: true })
+jest.mock('@ophis/solana-sdk', () => ({ fetchOphisSolanaOrder: jest.fn(), fetchOphisWalletActionReceipt: jest.fn() }), {
+  virtual: true,
+})
 jest.mock('entities/solana', () => ({
-  OPHIS_SOLANA_CONFIG: { api: 'https://example.org', genesis: 'genesis', program: 'program' },
+  OPHIS_SOLANA_CONFIG: { api: 'https://example.org', chain: 'solana:devnet', genesis: 'genesis', program: 'program' },
   solanaConnectionAtom: jest.requireActual('jotai').atom(null),
 }))
 jest.mock('../services/privateSettlement.service', () => ({ privateSettlementEnabled: false }))
@@ -50,4 +52,35 @@ it('refreshes only the order owner’s holdings when placement or payout first a
     expect(cache.getQueryState(key)?.isInvalidated).toBe(changed)
     expect(cache.getQueryState(other)?.isInvalidated).toBe(false)
   }
+})
+
+it('reads the wallet-paid settlement signature even after the order account has closed', async () => {
+  const store = createStore()
+  const uid = '0x' + 'cd'.repeat(32)
+  const tx = '1'.repeat(64)
+  store.set(solanaConnectionAtom, { account: { address: 'owner' } } as SolanaConnection)
+  store.set(savedNativeSolanaOrdersAtom, {
+    [uid]: {
+      uid,
+      owner: 'owner',
+      createdBy: 'owner',
+      orderPda: 'pda',
+      program: 'program',
+      genesis: 'genesis',
+      intent: Array(213).fill(0),
+      signature: tx,
+      executionMode: 'walletAtomic',
+      creationLifetime: { height: '135', requestedAt: Date.now() },
+      reclaimed: false,
+    },
+  })
+  jest.mocked(fetchOphisWalletActionReceipt).mockResolvedValue({ status: 'confirmed', slot: 21n })
+  expect((await store.get(nativeSolanaOrderQueryAtom(uid)).refetch()).data?.status).toBe('fulfilled')
+  expect(fetchOphisWalletActionReceipt).toHaveBeenCalledWith(
+    'https://api.devnet.solana.com',
+    'genesis',
+    tx,
+    135n,
+    'confirmed',
+  )
 })

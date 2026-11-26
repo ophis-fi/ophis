@@ -51,6 +51,7 @@ export async function fetchOphisWalletActionReceipt(
   genesis: string,
   tx: string | null,
   lastHeight: bigint,
+  commitment: 'confirmed' | 'finalized' = 'finalized',
 ): Promise<{ status: 'pending' | 'expired' | 'confirmed' | 'failed'; slot?: bigint }> {
   const rpc = await matchingRpc(endpoint, genesis);
   if (!tx) {
@@ -70,8 +71,10 @@ export async function fetchOphisWalletActionReceipt(
       return { status: 'expired', slot: tip.absoluteSlot };
   }
   const status = receipt.value[0];
-  if (status?.confirmationStatus !== 'finalized' || typeof status.slot !== 'bigint')
-    return { status: 'pending' };
+  const landed =
+    status?.confirmationStatus === 'finalized' ||
+    (commitment === 'confirmed' && status?.confirmationStatus === 'confirmed');
+  if (!landed || typeof status?.slot !== 'bigint') return { status: 'pending' };
   return { status: status.err ? 'failed' : 'confirmed', slot: status.slot };
 }
 

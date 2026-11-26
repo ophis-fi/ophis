@@ -94,6 +94,22 @@ function ReceiptNotice({
   )
 }
 
+function receiptActions(
+  order: SavedNativeSolanaOrder,
+  status: ReceiptStatus,
+  data: SolanaOrderResult | undefined,
+  trade: OphisSolanaTrade | undefined,
+  isError: boolean,
+): { open: boolean; reclaimable: boolean } {
+  if (order.executionMode === 'walletAtomic') return { open: false, reclaimable: false }
+  const open = status === 'open' || (status === 'pending' && isError)
+  const reclaimable =
+    !order.reclaimed &&
+    ['fulfilled', 'cancelled', 'expired'].includes(status) &&
+    !(data?.status === 'open' && data.payoutConfirmed && !trade)
+  return { open, reclaimable }
+}
+
 export function NativeSolanaOrderCard({
   order,
   indexed,
@@ -110,11 +126,7 @@ export function NativeSolanaOrderCard({
   const assets = useAtomValue(walletAssetListAtom)
   const receipt = useAtomValue(orderActionReceiptAtom(order.uid))
   const status = savedReceiptStatus(order, data, trade)
-  const open = status === 'open' || (status === 'pending' && isError)
-  const reclaimable =
-    !order.reclaimed &&
-    ['fulfilled', 'cancelled', 'expired'].includes(status) &&
-    !(data?.status === 'open' && data.payoutConfirmed && !trade)
+  const { open, reclaimable } = receiptActions(order, status, data, trade, isError)
   const verifyAsset = useAssetVerificationResolver(isSolanaMainnet)
   return (
     <SolanaReceipt
