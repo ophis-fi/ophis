@@ -1,12 +1,14 @@
 ---
 /* The two Solana guides, read from the posts themselves so a retitle or a new
-   cover follows through, then the links to the neighbouring pages. */
+   cover follows through (an unpublished one drops out), then the links to the
+   neighbouring pages. */
 import { Image } from 'astro:assets'
 import { getEntry } from 'astro:content'
+import { isPublished } from '../lib/posts'
 
-const guides = (await Promise.all(['solana-dex-aggregator', 'solana-bridge'].map((id) => getEntry('blog', id)))).filter(
-  (post) => post !== undefined,
-)
+const guides = (await Promise.all(['solana-dex-aggregator', 'solana-bridge'].map((id) => getEntry('blog', id))))
+  .filter((post) => post !== undefined)
+  .filter(isPublished)
 ---
 <section class="guides" aria-labelledby="guidesTitle">
   <p class="eyebrow">Guides</p>
