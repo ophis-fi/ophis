@@ -240,7 +240,11 @@ async function fixture(
       [TOKEN_2022_PROGRAM_ADDRESS],
       [order.orderPda, 1],
       [order.intent.sellTokenAccount, 1],
-      [sellProgram === TOKEN_2022_PROGRAM_ADDRESS ? sellMint : ixSysvar],
+      [
+        sellProgram === TOKEN_2022_PROGRAM_ADDRESS || buyProgram === TOKEN_2022_PROGRAM_ADDRESS
+          ? sellMint
+          : ixSysvar,
+      ],
       [solverAta, 1],
       [stage, 1],
     ),
@@ -315,7 +319,7 @@ async function fixture(
           buffer,
           ixSysvar,
           TOKEN_2022_PROGRAM_ADDRESS,
-          ...(route.accounts.length === 20
+          ...(route.programAddress === 'whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc'
             ? [...new Set(route.accounts.slice(2).map((a) => a.address))].filter(
                 (a) => a !== solverAta && a !== stage,
               )
@@ -680,12 +684,98 @@ test('Orca two-hop packets spend the reviewed input and forward the full interme
   }
 });
 
+test('Orca v2 verifies reviewed mints, token programs, input, minimum and destination', async (t) => {
+  for (const [twoHop, aToB, mutation] of [
+    [false, true],
+    [false, false],
+    [true, true],
+    [true, false],
+    [false, true, 'mint'],
+    [false, false, 'program'],
+    [true, true, 'destination'],
+    [true, false, 'extraAccounts'],
+    [false, true, 'minimum'],
+    [true, true, 'input'],
+  ]) {
+    const sellProgram = aToB ? TOKEN_2022_PROGRAM_ADDRESS : TOKEN_PROGRAM_ADDRESS;
+    const buyProgram = aToB ? TOKEN_PROGRAM_ADDRESS : TOKEN_2022_PROGRAM_ADDRESS;
+    const f = await fixture(
+      ({ route, quote, order }) => {
+        const [solver, source, stage] = route.accounts;
+        const readonly = (address) => ({ address, role: 0 });
+        const memo = readonly('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
+        route.programAddress = quote.routeProgram = 'whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc';
+        const accounts = Array.from({ length: twoHop ? 24 : 15 }, () => ({
+          address: keypair().address,
+          role: 1,
+        }));
+        const bytes = Buffer.alloc(twoHop ? 60 : 43);
+        if (twoHop) {
+          bytes.set([186, 143, 209, 29, 254, 2, 194, 117]);
+          bytes.set([1, +aToB, +!aToB], 24);
+          accounts[2] = readonly(order.intent.sellMint);
+          accounts[4] = readonly(order.intent.buyMint);
+          accounts[5] = readonly(sellProgram);
+          accounts[6] = readonly(TOKEN_PROGRAM_ADDRESS);
+          accounts[7] = readonly(buyProgram);
+          accounts[8] = source;
+          accounts[13] = mutation === 'destination' ? source : stage;
+          accounts[14] = solver;
+          accounts[23] = memo;
+          if (mutation === 'extraAccounts') bytes[59] = 1;
+        } else {
+          bytes.set([43, 4, 237, 11, 26, 201, 30, 98]);
+          bytes.set([1, +aToB], 40);
+          accounts[aToB ? 0 : 1] = readonly(mutation === 'program' ? buyProgram : sellProgram);
+          accounts[aToB ? 1 : 0] = readonly(buyProgram);
+          accounts[2] = memo;
+          accounts[3] = solver;
+          accounts[aToB ? 5 : 6] = readonly(
+            mutation === 'mint' ? order.intent.buyMint : order.intent.sellMint,
+          );
+          accounts[aToB ? 6 : 5] = readonly(order.intent.buyMint);
+          accounts[aToB ? 7 : 9] = source;
+          accounts[aToB ? 9 : 7] = stage;
+        }
+        bytes.writeBigUInt64LE(order.intent.sellAmount + (mutation === 'input' ? 1n : 0n), 8);
+        bytes.writeBigUInt64LE(order.intent.buyAmount - (mutation === 'minimum' ? 1n : 0n), 16);
+        route.accounts = accounts;
+        route.data = bytes;
+      },
+      true,
+      false,
+      false,
+      true,
+      { sellProgram, buyProgram, newBuyMint: true },
+    );
+    const mock = rpcMock(t, f);
+    if (mutation) await assert.rejects(prepareOphisWalletAtomicSwap(f.input), /does not match/);
+    else assert.equal((await prepareOphisWalletAtomicSwap(f.input)).order.uid, f.order.uid);
+    mock.mock.restore();
+  }
+});
+
 test('a first-time recipient must receive precisely its own canonical token account', async (t) => {
   const f = await fixture(undefined, true, true, true);
   rpcMock(t, f);
   const prepared = await prepareOphisWalletAtomicSwap(f.input);
   assert.equal(prepared.costs.tokenAccountRent, 1488440n);
   assert.equal(prepared.costs.nativeWrapRent, 1488440n);
+});
+
+test('rejects a classic sell mint placeholder when the receiving mint is Token-2022', async (t) => {
+  const f = await fixture(
+    ({ begin }) => {
+      begin.accounts[7] = begin.accounts[1];
+    },
+    true,
+    false,
+    false,
+    true,
+    { newBuyMint: true, buyProgram: TOKEN_2022_PROGRAM_ADDRESS },
+  );
+  rpcMock(t, f);
+  await assert.rejects(prepareOphisWalletAtomicSwap(f.input), /does not match/);
 });
 
 for (const nativeSale of [false, true]) {

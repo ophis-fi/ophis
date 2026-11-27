@@ -22,6 +22,7 @@ type Order = Awaited<ReturnType<typeof prepareOphisSolanaOrder>>;
 const sysvar = address('Sysvar1nstructions1111111111111111111111111');
 const computeBudget = 'ComputeBudget111111111111111111111111111111';
 const whirlpools = address('whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc');
+const memoProgram = address('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
 
 export function sameBytes(left?: ReadonlyUint8Array, right?: ReadonlyUint8Array): boolean {
   return (
@@ -159,6 +160,8 @@ export async function checkAtomicInstructions(input: {
   const metas = begin.accounts?.map((account) => account.address) ?? [];
   const pulls = begin.data[12];
   const stage = metas.at(-1);
+  const checkedMints =
+    sellProgram === TOKEN_2022_PROGRAM_ADDRESS || buyProgram === TOKEN_2022_PROGRAM_ADDRESS;
   if (
     !stage ||
     begin.data[11] !== 1 ||
@@ -172,7 +175,7 @@ export async function checkAtomicInstructions(input: {
     metas[4] !== TOKEN_2022_PROGRAM_ADDRESS ||
     metas[5] !== orderPda ||
     metas[6] !== intent.sellTokenAccount ||
-    metas[7] !== (sellProgram === TOKEN_2022_PROGRAM_ADDRESS ? intent.sellMint : sysvar) ||
+    metas[7] !== (checkedMints ? intent.sellMint : sysvar) ||
     refs(begin, payer)
   )
     reject();
@@ -232,7 +235,7 @@ export async function checkAtomicInstructions(input: {
     solverInput,
     intent.sellTokenAccount,
   ];
-  if (sellProgram === TOKEN_2022_PROGRAM_ADDRESS || buyProgram === TOKEN_2022_PROGRAM_ADDRESS) {
+  if (checkedMints) {
     finishMetas.push(intent.sellMint, routeBuyMint, sellProgram);
   }
   finishMetas.push(SOLANA_NATIVE_ASSET);
@@ -267,18 +270,58 @@ export async function checkAtomicInstructions(input: {
   if (route.programAddress === whirlpools) {
     const accounts = route.accounts ?? [];
     const bytes = route.data;
-    if (
-      !bytes ||
-      accounts[0]?.address !== TOKEN_PROGRAM_ADDRESS ||
-      accounts[1]?.address !== solver ||
-      !isSignerRole(accounts[1].role) ||
-      sellProgram !== TOKEN_PROGRAM_ADDRESS ||
-      buyProgram !== TOKEN_PROGRAM_ADDRESS
-    )
-      reject();
+    if (!bytes) reject();
     const field = data(route);
     let source: number, destination: number;
+    let authority: number;
     if (
+      bytes.length === 43 &&
+      sameBytes(bytes.slice(0, 8), Uint8Array.of(43, 4, 237, 11, 26, 201, 30, 98))
+    ) {
+      const aToB = field.getUint8(41);
+      if (
+        accounts.length !== 15 ||
+        bytes[40] !== 1 ||
+        aToB > 1 ||
+        bytes[42] !== 0 ||
+        bytes.slice(24, 40).some(Boolean) ||
+        accounts[2]?.address !== memoProgram ||
+        accounts[aToB ? 0 : 1]?.address !== sellProgram ||
+        accounts[aToB ? 1 : 0]?.address !== buyProgram ||
+        accounts[aToB ? 5 : 6]?.address !== intent.sellMint ||
+        accounts[aToB ? 6 : 5]?.address !== routeBuyMint
+      )
+        reject();
+      authority = 3;
+      source = aToB ? 7 : 9;
+      destination = aToB ? 9 : 7;
+    } else if (
+      bytes.length === 60 &&
+      sameBytes(bytes.slice(0, 8), Uint8Array.of(186, 143, 209, 29, 254, 2, 194, 117))
+    ) {
+      const hub = accounts[3]?.address;
+      if (
+        accounts.length !== 24 ||
+        bytes[24] !== 1 ||
+        field.getUint8(25) > 1 ||
+        field.getUint8(26) > 1 ||
+        bytes.slice(27).some(Boolean) ||
+        accounts[0]?.address === accounts[1]?.address ||
+        accounts[2]?.address !== intent.sellMint ||
+        accounts[4]?.address !== routeBuyMint ||
+        hub === intent.sellMint ||
+        hub === routeBuyMint ||
+        accounts[5]?.address !== sellProgram ||
+        (accounts[6]?.address !== TOKEN_PROGRAM_ADDRESS &&
+          accounts[6]?.address !== TOKEN_2022_PROGRAM_ADDRESS) ||
+        accounts[7]?.address !== buyProgram ||
+        accounts[23]?.address !== memoProgram
+      )
+        reject();
+      authority = 14;
+      source = 8;
+      destination = 13;
+    } else if (
       bytes.length === 59 &&
       sameBytes(bytes.slice(0, 8), Uint8Array.of(195, 96, 237, 108, 68, 162, 219, 230))
     ) {
@@ -295,6 +338,7 @@ export async function checkAtomicInstructions(input: {
         reject();
       source = first ? 4 : 6;
       destination = second ? 10 : 8;
+      authority = 1;
       const hub = accounts[first ? 6 : 4];
       if (
         !hub ||
@@ -309,10 +353,17 @@ export async function checkAtomicInstructions(input: {
       sameBytes(bytes.slice(0, 8), Uint8Array.of(248, 198, 158, 145, 225, 117, 135, 200))
     ) {
       if (bytes[40] !== 1 || field.getUint8(41) > 1) reject();
+      authority = 1;
       source = bytes[41] ? 3 : 5;
       destination = bytes[41] ? 5 : 3;
     } else reject();
     if (
+      accounts[authority]?.address !== solver ||
+      !isSignerRole(accounts[authority]?.role ?? 0) ||
+      (authority === 1 &&
+        (accounts[0]?.address !== TOKEN_PROGRAM_ADDRESS ||
+          sellProgram !== TOKEN_PROGRAM_ADDRESS ||
+          buyProgram !== TOKEN_PROGRAM_ADDRESS)) ||
       field.getBigUint64(8, true) !== intent.sellAmount ||
       field.getBigUint64(16, true) < intent.buyAmount ||
       accounts[source]?.address !== solverInput ||
