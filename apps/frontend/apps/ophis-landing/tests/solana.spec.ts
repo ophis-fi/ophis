@@ -20,7 +20,14 @@ test('Solana has its own page, and the fee, chain and AI surfaces agree with it'
   for (const name of ['Raydium', 'Orca', 'Meteora', 'PumpSwap', 'Manifest', 'Jupiter']) {
     await expect(body.locator(`.orbit img[alt="${name} logo"]`)).toBeVisible()
   }
-  await expect(body.locator('.wallets li')).toHaveText(['Phantom', 'Solflare', 'WalletConnect'])
+  await expect(body.locator('.wallets li')).toHaveText(['Phantom', 'Solflare', 'Backpack', 'WalletConnect'])
+  // The picture has no caption, it loops, and its checkbox pauses it.
+  await expect(body.locator('.orbit figcaption')).toHaveCount(0)
+  const playState = () => page.evaluate(() => getComputedStyle(document.querySelector('.orbit .packet-in') as Element).animationPlayState)
+  expect(await page.evaluate(() => getComputedStyle(document.querySelector('.orbit .packet-in') as Element).animationName)).toBe('orbit-in')
+  expect(await playState()).toBe('running')
+  await page.getByRole('checkbox', { name: 'Pause the animation' }).press('Space')
+  expect(await playState()).toBe('paused')
   await body.locator('.guide').first().scrollIntoViewIfNeeded()
   await expect
     .poll(() => page.evaluate(() => [...document.querySelectorAll('main img')].every((img) => (img as HTMLImageElement).naturalWidth > 0)), {
