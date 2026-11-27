@@ -63,7 +63,12 @@ jest.mock('../state/trade.atoms', () => {
 jest.mock('../services/privateSettlement.service', () => ({ privateSettlementEnabled: false }))
 jest.mock('common/constants/routes', () => ({ SOLANA_SWAP_URL: '/swap?network=solana' }))
 jest.mock('ophis/ds', () => ({}))
-jest.mock('@cowprotocol/ui', () => ({ ButtonPrimary: 'button' }))
+jest.mock('@cowprotocol/ui', () => ({
+  ButtonPrimary: 'button',
+  UI: {},
+  Media: { upToSmall: () => '@media (max-width: 600px)' },
+}))
+jest.mock('entities/verifiedAsset', () => ({ useAssetVerification: () => undefined, VerifiedAssetBadge: () => null }))
 
 it('shows the signed benchmark and full cost cap in USDC, and requires review of an existing allowance', () => {
   render(
@@ -73,10 +78,14 @@ it('shows the signed benchmark and full cost cap in USDC, and requires review of
   )
   expect(screen.queryByText('Review your swap')).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: 'Swap' }))
-  expect(screen.getByText('Quoted output').nextElementSibling?.textContent).toEqual('2 USDC')
+  expect(screen.getByText('USDC', { exact: true }).closest('[title]')?.textContent).toBe('2 USDC')
   expect(screen.getByText('Minimum received').nextElementSibling?.textContent).toEqual('1.99 USDC')
   expect(screen.getByText('Maximum settlement cost in USDC').nextElementSibling?.textContent).toEqual('0.0003 USDC')
-  expect(screen.getByText(/you keep at least half the difference/i)).toBeTruthy()
+  const details = screen.getByText('Fee details').closest('details')!
+  expect(details.open).toBe(false)
+  fireEvent.click(screen.getByText('Fee details'))
+  expect(details.open).toBe(true)
+  expect(screen.getByText('50%, capped at 0.99% of the trade')).toBeTruthy()
   const confirm = screen.getByRole('button', { name: 'Confirm in wallet' })
   expect((confirm as HTMLButtonElement).disabled).toBe(true)
   fireEvent.click(screen.getByRole('checkbox', { name: /ExistingDelegate/ }))
@@ -103,10 +112,13 @@ it('distinguishes the paid network fee, returned order and wrap deposits, and a 
     </Provider>,
   )
   fireEvent.click(screen.getByRole('button', { name: 'Swap' }))
-  expect(screen.getByText('Solana network fee paid by your wallet').nextElementSibling?.textContent).toBe('0.00001 SOL')
-  expect(screen.getByText('Storage deposits returned in this swap').nextElementSibling?.textContent).toBe(
-    '0.0034798 SOL',
-  )
+  expect(screen.getByText('Solana network fee').nextElementSibling?.textContent).toBe('0.00001 SOL')
+  const details = screen.getByText('Fee details').closest('details')!
+  expect(details.open).toBe(false)
+  expect(details.contains(screen.getByText('New wallet token account deposit'))).toBe(false)
+  expect(details.contains(screen.getByText('Deposit returned in this swap'))).toBe(true)
+  expect(screen.getByText('Ophis base fee').nextElementSibling?.textContent).toBe('0.0002 USDC (0.01%)')
+  expect(screen.getByText('Deposit returned in this swap').nextElementSibling?.textContent).toBe('0.0034798 SOL')
   expect(screen.getByText('New wallet token account deposit').nextElementSibling?.textContent).toBe('0.00148844 SOL')
   expect(screen.queryByText(/maximum settlement cost/i)).toBeNull()
   expect((screen.getByRole('button', { name: 'Confirm in wallet' }) as HTMLButtonElement).disabled).toBe(false)

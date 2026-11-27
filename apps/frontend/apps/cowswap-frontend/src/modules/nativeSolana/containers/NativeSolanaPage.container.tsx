@@ -3,23 +3,25 @@ import { ReactNode, useEffect, useState } from 'react'
 
 import { ButtonPrimary } from '@cowprotocol/ui'
 
-import { Trans } from '@lingui/react/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { formatOphisSolanaAmount } from '@ophis/solana-sdk'
 import { OPHIS_SOLANA_CONFIG, solanaConnectionAtom } from 'entities/solana'
 import { Callout, PageShell } from 'ophis/ds'
+import { ArrowLeft } from 'react-feather'
 import { Navigate } from 'react-router'
 
 import { SOLANA_SWAP_URL } from 'common/constants/routes'
+import { SwapAmountPair } from 'common/pure/CurrencyAmountPreview/SwapAmountPair.pure'
 
 import { NativeSolanaForm } from './NativeSolanaForm.container'
 import { NativeSolanaOrders } from './NativeSolanaOrders.container'
 
 import * as styledEl from '../pure/NativeSolana.styled'
-import { SolanaQuoteCosts } from '../pure/SolanaQuoteCosts.pure'
+import { SolanaQuoteAmount, SolanaQuoteCosts } from '../pure/SolanaQuoteCosts.pure'
+import * as receiptStyles from '../pure/SolanaReceipt.styled'
 import * as formStyles from '../pure/SwapForm.styled'
-import { shortMint } from '../services/assets.service'
+import { unknownAsset } from '../services/assets.service'
 import { privateModeAtom, privateSettlementEnabled } from '../services/privateSettlement.service'
-import { minimumSolanaBuyAmount } from '../services/trade.service'
 import { walletAssetListAtom } from '../state/assets.atoms'
 import { createNativeSolanaOrderAtom } from '../state/placeOrder.atoms'
 import {
@@ -88,74 +90,43 @@ function AllowanceNotice({
 }
 
 function NativeSolanaReview({ onBack }: { onBack(): void }): ReactNode {
+  const { t } = useLingui()
   const review = useAtomValue(nativeSolanaReviewAtom)
   const busy = useAtomValue(nativeSolanaBusyAtom)
   const [acceptedReview, setAcceptedReview] = useState<typeof review>(null)
   const create = useSetAtom(createNativeSolanaOrderAtom)
   const assets = useAtomValue(walletAssetListAtom)
   if (!review) return null
-  const sellSymbol =
-    assets.find((asset) => asset.mint === review.form.sellMint)?.symbol ?? shortMint(review.form.sellMint)
-  const buySymbol = assets.find((asset) => asset.mint === review.form.buyMint)?.symbol ?? shortMint(review.form.buyMint)
+  const sell = assets.find((asset) => asset.mint === review.form.sellMint) ?? unknownAsset(review.form.sellMint)
+  const buy = assets.find((asset) => asset.mint === review.form.buyMint) ?? unknownAsset(review.form.buyMint)
   const { quote } = review.quote
-  const { feeTerms } = quote
   const sellAmount = formatOphisSolanaAmount(BigInt(quote.sellAmount) + BigInt(quote.feeAmount), review.sell.decimals)
-  const minimum = formatOphisSolanaAmount(minimumSolanaBuyAmount(review), review.buy.decimals)
   return (
-    <styledEl.Card>
+    <receiptStyles.Receipt aria-label={t`Review your swap`}>
       <styledEl.Row>
-        <formStyles.SmallButton type="button" onClick={onBack} disabled={busy}>
-          <Trans>Back</Trans>
-        </formStyles.SmallButton>
+        <formStyles.Back type="button" aria-label={t`Back`} onClick={onBack} disabled={busy}>
+          <ArrowLeft size={18} aria-hidden="true" />
+        </formStyles.Back>
         <h2>
           <Trans>Review your swap</Trans>
         </h2>
       </styledEl.Row>
-      <styledEl.Values>
-        <dt>
-          <Trans>You sell</Trans>
-        </dt>
-        <dd title={review.sell.address}>
-          {sellAmount} {sellSymbol}
-        </dd>
-        <dt>
-          <Trans>Quoted output</Trans>
-        </dt>
-        <dd>
-          {formatOphisSolanaAmount(BigInt(quote.buyAmount), review.buy.decimals)} {buySymbol}
-        </dd>
-        <dt>
-          <Trans>Minimum received</Trans>
-        </dt>
-        <dd title={review.buy.address}>
-          {minimum} {buySymbol}
-        </dd>
-        <SolanaQuoteCosts review={review} buySymbol={buySymbol} />
-      </styledEl.Values>
-      <p>
-        {review.atomic ? (
-          <Trans>
-            You sign once. Solana charges the network fee even if an included swap fails. Temporary deposits return to
-            your wallet in the same transaction.
-          </Trans>
-        ) : (
-          <Trans>Your wallet pays to place the order and open any required accounts.</Trans>
-        )}
-        {feeTerms && (
-          <>
-            {' '}
-            <Trans>
-              If the swap delivers more than the quoted output after settlement costs and the base fee, you keep at
-              least half the difference.
-            </Trans>
-          </>
-        )}
-      </p>
+      <SwapAmountPair
+        sell={<SolanaQuoteAmount label={<Trans>You sell</Trans>} asset={sell} amount={sellAmount} />}
+        buy={
+          <SolanaQuoteAmount
+            label={<Trans>You receive</Trans>}
+            asset={buy}
+            amount={formatOphisSolanaAmount(BigInt(quote.buyAmount), review.buy.decimals)}
+          />
+        }
+      />
+      <SolanaQuoteCosts review={review} buySymbol={buy.symbol} />
       {!review.atomic && privateSettlementEnabled && (
         <PrivateOrderNotice
           sellsNative={review.form.sellMint === 'SOL'}
           sellAmount={sellAmount}
-          buySymbol={buySymbol}
+          buySymbol={buy.symbol}
         />
       )}
       {review.allowance && (
@@ -168,7 +139,7 @@ function NativeSolanaReview({ onBack }: { onBack(): void }): ReactNode {
           <AllowanceNotice
             atoms={review.allowance.atoms}
             decimals={review.sell.decimals}
-            symbol={sellSymbol}
+            symbol={sell.symbol}
             delegate={review.allowance.delegate}
           />
         </label>
@@ -180,7 +151,7 @@ function NativeSolanaReview({ onBack }: { onBack(): void }): ReactNode {
       >
         <Trans>Confirm in wallet</Trans>
       </ButtonPrimary>
-    </styledEl.Card>
+    </receiptStyles.Receipt>
   )
 }
 

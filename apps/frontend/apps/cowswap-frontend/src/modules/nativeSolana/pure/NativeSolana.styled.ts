@@ -67,3 +67,11 @@ export const Values = styled.dl`
     overflow-wrap: anywhere;
   }
 `
+
+export const QuoteValues = styled(Values)`
+  grid-template-columns: minmax(0, 1fr) fit-content(60%);
+`
+export const QuoteSymbol = styled.span`
+  display: inline-block;
+  max-width: 100%;
+`

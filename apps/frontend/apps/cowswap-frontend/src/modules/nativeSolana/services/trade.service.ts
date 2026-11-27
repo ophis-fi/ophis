@@ -197,7 +197,9 @@ function protocolErrorMessage(error: unknown): string | undefined {
 }
 
 function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : typeof error === 'string' ? error : ''
+  if (typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string')
+    return error.message
+  return typeof error === 'string' ? error : ''
 }
 
 export function nativeSolanaErrorMessage(error: unknown): string {

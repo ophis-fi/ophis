@@ -37,9 +37,9 @@ export async function checkAtomicReceipt(order: SavedNativeSolanaOrder): Promise
   const lifetime = order.creationLifetime
   if (!rpc || !lifetime) throw Error('Wallet receipt service unavailable.')
   if (!order.signature) {
-    if (Date.now() - lifetime.requestedAt < 90_000) return { status: 'pending' }
     const indexed = await lookupAtomicFill(order)
     if (indexed) return indexed
+    if (Date.now() - lifetime.requestedAt < 90_000) return { status: 'pending' }
   }
   const { status } = await fetchOphisWalletActionReceipt(
     rpc,
