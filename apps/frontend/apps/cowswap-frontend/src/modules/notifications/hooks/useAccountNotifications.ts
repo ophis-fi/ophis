@@ -1,8 +1,4 @@
-import { getAccountNotifications, NotificationModel } from '@cowprotocol/core'
-import { useWalletInfo } from '@cowprotocol/wallet'
-
-import ms from 'ms.macro'
-import useSWR, { SWRConfiguration } from 'swr'
+import type { NotificationModel } from '@cowprotocol/core'
 
 const FORCED_SPEECH_BUBBLE_NOTIFICATION: NotificationModel = {
   id: -999_999,
@@ -16,25 +12,12 @@ const FORCED_SPEECH_BUBBLE_NOTIFICATION: NotificationModel = {
   location: 'speechBubble',
 }
 
-const swrOptions: SWRConfiguration = {
-  refreshInterval: ms`5m`,
-  refreshWhenHidden: false,
-  refreshWhenOffline: false,
-  revalidateOnFocus: false,
-}
+// Ophis has no account campaign feed. The upstream CMS publishes CoW promotions.
+const accountNotifications: NotificationModel[] =
+  process.env.NODE_ENV === 'development' && process.env.REACT_APP_FORCE_SPEECH_BUBBLE_NOTIFICATION === 'true'
+    ? [FORCED_SPEECH_BUBBLE_NOTIFICATION]
+    : []
 
-export function useAccountNotifications(): NotificationModel[] | undefined {
-  const { account } = useWalletInfo()
-
-  const { data: notifications } = useSWR<NotificationModel[]>(
-    account ? [account, 'account-notifications'] : null,
-    ([account]) => getAccountNotifications(account),
-    swrOptions,
-  )
-
-  if (process.env.NODE_ENV === 'development' && process.env.REACT_APP_FORCE_SPEECH_BUBBLE_NOTIFICATION === 'true') {
-    return [...(notifications || []), FORCED_SPEECH_BUBBLE_NOTIFICATION]
-  }
-
-  return notifications
+export function useAccountNotifications(): NotificationModel[] {
+  return accountNotifications
 }
