@@ -40,7 +40,7 @@ export const CANONICAL_PAGES: CanonicalPage[] = [
   { path: '/tokenized-stocks-rwa/', updated: new Date('2026-11-22') },
   { path: '/ai-agent-crypto-swap-api/', updated: new Date('2026-09-14') },
   { path: '/swap/robinhood-chain/', updated: new Date('2026-09-27') },
-  { path: '/swap/solana/', updated: new Date('2026-11-26') },
+  { path: '/swap/solana/', updated: new Date('2026-11-27') },
   { path: '/migrate/odos-api/', updated: new Date('2026-11-22') },
   { path: '/learn/', updated: new Date('2026-11-22') },
   { path: '/learn/intent-based-dex-aggregator/', updated: new Date('2026-11-22') },

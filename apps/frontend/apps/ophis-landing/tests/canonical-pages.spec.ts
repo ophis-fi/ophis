@@ -35,7 +35,7 @@ const PAGES = [
     canonical: 'https://ophis.fi/swap/robinhood-chain/',
     h1: 'Swap on Robinhood Chain',
   },
-  { route: '/swap/solana', canonical: 'https://ophis.fi/swap/solana/', h1: 'Swap on Solana' },
+  { route: '/swap/solana', canonical: 'https://ophis.fi/swap/solana/', h1: 'Swap on Solana. On your terms.' },
   {
     route: '/migrate/odos-api',
     canonical: 'https://ophis.fi/migrate/odos-api/',

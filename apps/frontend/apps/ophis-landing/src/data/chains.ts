@@ -76,6 +76,8 @@ export const SOLANA_SWAP_URL = 'https://swap.ophis.fi/#/solana'
 export const SOLANA_PROGRAM = 'BJZ5yma22Km3fsfrEEdZVGygdrcwoschb6uUNqQWaQ9h'
 /** Venues the Ophis Solana solver prices directly. It can also route through Jupiter. */
 export const SOLANA_VENUE_LIST = 'Raydium, Orca, Meteora, PumpSwap and Manifest'
+/** The stablecoins the fee tiers recognize (mainnetStables in the same api.ts). */
+export const SOLANA_STABLECOIN_LIST = 'USDC, USDT, PYUSD, USDG and EURC'
 /** One wording of the Solana fee schedule for every page that states it. */
 export const SOLANA_FEE_ANSWER =
   'Ophis charges a base fee of 0.01% (1 bp) when both tokens are recognized stablecoins such as USDC and USDT, or when you swap SOL against one of them, and 0.05% (5 bp) on every other pair. If the swap delivers more than the quoted output after costs and the base fee, Ophis keeps half of the difference, capped at 0.20% of the trade on stablecoin pairs and 0.99% on other pairs, and you keep the rest. Fees are taken in the token you receive and shown in the quote. Your wallet also pays the Solana network fee and the deposit for any account the order opens.'

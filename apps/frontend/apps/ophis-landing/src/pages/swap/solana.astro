@@ -1,135 +1,248 @@
 ---
 /**
- * /swap/solana/: native Solana swaps in the swap app. The fee wording, the
- * program address and the venue list come from src/data/chains.ts (its Solana
- * block names the code they are read from), so this page, /pricing/ and
- * /supported-chains/ cannot disagree. The steps render twice from one array:
- * the visible list and the HowTo JSON-LD.
+ * /swap/solana/: the page for native Solana swaps. The fee wording, the program
+ * address, the venues and the stablecoin list come from src/data/chains.ts (its
+ * Solana block names the code they are read from), so this page, /pricing/ and
+ * /supported-chains/ cannot disagree. The steps render twice from one array (the
+ * visible list and the HowTo JSON-LD), and the questions twice from another (the
+ * accordion and the FAQPage JSON-LD, both inside FAQSection).
  */
-import ContentPage from '../../layouts/ContentPage.astro'
+import { getImage } from 'astro:assets'
+import { getEntry } from 'astro:content'
+import Base from '../../layouts/Base.astro'
+import Nav from '../../components/Nav.astro'
+import Footer from '../../components/Footer.astro'
+import SolanaHero from '../../components/SolanaHero.astro'
+import SolanaGuides from '../../components/SolanaGuides.astro'
+import FAQSection from '../../components/FAQSection.astro'
+import FinalCTA from '../../components/FinalCTA.astro'
 import { canonicalPage } from '../../data/canonicalPages'
-import {
-  SOLANA_FEE_ANSWER,
-  SOLANA_PROGRAM,
-  SOLANA_SWAP_URL,
-  SOLANA_VENUE_LIST as venues,
-} from '../../data/chains'
+import { jsonLdSafe } from '../../lib/jsonld'
+import { SOLANA_PROGRAM, SOLANA_SWAP_URL, SOLANA_VENUE_LIST as venues } from '../../data/chains'
+import { FAQS, FEES, STEPS } from '../../data/solanaSwap'
 
 const { updated } = canonicalPage('/swap/solana/')
+const url = 'https://ophis.fi/swap/solana/'
+const title = 'Swap on Solana: SOL and SPL tokens with your wallet | Ophis'
+const description = `Swap SOL and SPL tokens on Solana from your own wallet. Ophis fills across ${venues} at your minimum received or better.`
+const explorerUrl = `https://explorer.solana.com/address/${SOLANA_PROGRAM}`
+const docsUrl = 'https://docs.ophis.fi/networks-assets/#native-solana-swaps'
 
-const STEPS = [
+// Share image: the cover of the Solana DEX aggregator guide (the Ophis emblem with Solana on its ring).
+const cover = (await getEntry('blog', 'solana-dex-aggregator'))?.data.cover
+const ogImage = cover
+  ? new URL((await getImage({ src: cover, width: 1280, height: 640, format: 'jpeg' })).src, 'https://ophis.fi').href
+  : undefined
+
+const jsonLd = [
   {
-    name: 'Connect a Solana wallet',
-    text: 'Open the Solana swap and connect a browser wallet that supports the Wallet Standard, such as Phantom or Solflare. A mobile wallet can connect by QR code through WalletConnect.',
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    '@id': `${url}#breadcrumb`,
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://ophis.fi/' },
+      { '@type': 'ListItem', position: 2, name: 'Swap on Solana', item: url },
+    ],
   },
   {
-    name: 'Choose the tokens and the amount',
-    text: 'Pick the token you sell and the token you receive. Search by symbol or name, or paste the mint address of a token, then enter the amount you sell.',
+    '@context': 'https://schema.org',
+    '@type': 'WebPage',
+    '@id': `${url}#webpage`,
+    url,
+    name: title,
+    description,
+    inLanguage: 'en',
+    dateModified: updated.toISOString().slice(0, 10),
+    isPartOf: { '@id': 'https://ophis.fi/#website' },
+    publisher: { '@id': 'https://ophis.fi/#organization' },
+    breadcrumb: { '@id': `${url}#breadcrumb` },
+    about: { '@type': 'Thing', name: 'Solana', sameAs: 'https://en.wikipedia.org/wiki/Solana_(blockchain_platform)' },
+    ...(ogImage ? { primaryImageOfPage: { '@type': 'ImageObject', url: ogImage, width: 1280, height: 640 } } : {}),
   },
   {
-    name: 'Review the quote',
-    text: 'Check the quoted output, the minimum received, the Ophis fee and the network costs.',
-  },
-  {
-    name: 'Confirm in your wallet',
-    text: 'One transaction places your order on Solana with its minimum received. If you sell SOL, the same transaction wraps it.',
-  },
-  {
-    name: 'Receive your tokens',
-    text: 'The Ophis solver settles the order on Solana. The receipt links to the settlement on Solana Explorer.',
+    '@context': 'https://schema.org',
+    '@type': 'HowTo',
+    '@id': `${url}#howto`,
+    name: 'How to swap on Solana with Ophis',
+    description: 'Swap SOL and SPL tokens on Solana from your own wallet with one order and a minimum received.',
+    tool: [{ '@type': 'HowToTool', name: 'A Solana wallet such as Phantom or Solflare' }],
+    step: STEPS.map((step, index) => ({
+      '@type': 'HowToStep',
+      position: index + 1,
+      name: step.name,
+      text: step.text,
+      url: `${url}#how`,
+    })),
   },
 ]
-
-const FAQS = [
-  {
-    q: 'Can I swap on Solana with Ophis?',
-    a: 'Yes. Ophis swaps SOL and SPL tokens natively on Solana in the swap app at swap.ophis.fi. You connect a Solana wallet, review a quote and place one order, and the Ophis solver settles it on Solana at your minimum received or better.',
-  },
-  {
-    q: 'Which Solana DEXes does Ophis route through?',
-    a: `The Ophis solver prices ${venues} directly, and can also route through Jupiter. The quote shows the output and the minimum received for your pair and amount before you sign.`,
-  },
-  {
-    q: 'What does a Solana swap cost on Ophis?',
-    a: SOLANA_FEE_ANSWER,
-  },
-  {
-    q: 'Which wallets can I use to swap on Solana?',
-    a: 'Browser wallets that support the Wallet Standard connect directly, such as Phantom and Solflare. A mobile wallet can connect by QR code through WalletConnect. Your keys stay in your wallet: Ophis prepares the order and your wallet signs it.',
-  },
-  {
-    q: 'What happens if my Solana order is not filled?',
-    a: 'It stays open until it expires, and you can cancel it in the app. Once it is cancelled or has expired, choose Reclaim account rent and confirm the transaction in your wallet: the deposit paid to open the order account returns to the wallet that paid it. The Ophis program rejects any settlement below your minimum received.',
-  },
-  {
-    q: 'Is a Solana swap on Ophis a bridge?',
-    a: 'No. A Solana swap starts and ends on Solana. Moving value between Solana and an EVM chain, or to and from Bitcoin, is a separate cross-chain route in the same app, which uses a deposit flow through NEAR Intents.',
-  },
-]
-
-const howToLd = {
-  '@context': 'https://schema.org',
-  '@type': 'HowTo',
-  '@id': 'https://ophis.fi/swap/solana/#howto',
-  name: 'How to swap on Solana with Ophis',
-  step: STEPS.map((step, index) => ({ '@type': 'HowToStep', position: index + 1, name: step.name, text: step.text })),
-}
 ---
-
-<ContentPage
-  title="Swap on Solana: SOL and SPL tokens with your wallet | Ophis"
-  description={`Swap SOL and SPL tokens on Solana from your own wallet. Ophis fills across ${venues} at your minimum received or better.`}
-  path="/swap/solana/"
-  heading="Swap on Solana"
-  lede="Ophis swaps SOL and SPL tokens natively on Solana. You connect a Solana wallet, review a quote with its minimum received, and place one order. The Ophis solver fills it across Solana venues at that minimum or better."
-  updated={updated}
-  faqs={FAQS}
-  extraLd={[howToLd]}
+<Base
+  title={title}
+  description={description}
+  canonical={url}
+  image={ogImage}
+  imageAlt={ogImage && 'The Ophis emblem at the centre of an orbit ring, with the Solana logo as the featured node.'}
 >
-  <p>
-    <a href={SOLANA_SWAP_URL}><strong>Open the Solana swap →</strong></a>
-  </p>
+  {jsonLd.map((ld) => <script slot="head" type="application/ld+json" is:inline set:html={jsonLdSafe(ld)} />)}
+  <Nav />
+  <main id="main" tabindex="-1">
+    <SolanaHero updated={updated} />
 
-  <h2>How a Solana swap works</h2>
-  <ol>
-    {STEPS.map((step) => (
-      <li><strong>{step.name}.</strong> {step.text}</li>
-    ))}
-  </ol>
+    <div class="band">
+      <section class="split" id="how" aria-labelledby="howTitle">
+        <div class="split-head">
+          <p class="eyebrow">How it works</p>
+          <h2 class="serif" id="howTitle">How a Solana swap <em>works.</em></h2>
+          <p class="lede">Five steps, and one transaction to confirm in your wallet.</p>
+          <a class="cta-primary" href={SOLANA_SWAP_URL}>Start a Solana swap</a>
+        </div>
+        <ol class="steps">
+          {STEPS.map((step, index) => (
+            <li>
+              <span class="n" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
+              <div>
+                <h3>{step.name}</h3>
+                <p>{step.text}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </section>
+    </div>
 
-  <h2>The Ophis program on Solana</h2>
-  <p>
-    Solana orders settle through the Ophis settlement program on Solana mainnet:
-  </p>
-  <p><code>{SOLANA_PROGRAM}</code></p>
-  <p>
-    Your order records the amount you sell and the minimum you accept, and the program rejects any
-    settlement below that minimum. Ophis operates the program and the solver that fills your order.
-    A Solana swap does not use an EVM orderbook or EIP-712 signing.
-  </p>
-
-  {FAQS.map((faq) => (
-    <section>
-      <h2>{faq.q}</h2>
-      <p>{faq.a}</p>
+    <section class="split" aria-labelledby="feesTitle">
+      <div class="split-head">
+        <p class="eyebrow">Fees</p>
+        <h2 class="serif" id="feesTitle">What a Solana swap <em>costs.</em></h2>
+        <p class="lede">A base fee on every swap, and a share of the price improvement only when the swap beats its quote.</p>
+        <a class="more" href="/pricing/">Fees for every Ophis path <span aria-hidden="true">→</span></a>
+      </div>
+      <div>
+        <table class="fees" role="table">
+          <thead role="rowgroup">
+            <tr role="row">
+              <th scope="col" role="columnheader">Pair</th>
+              <th scope="col" role="columnheader">Base fee</th>
+              <th scope="col" role="columnheader">When the swap beats its quote</th>
+            </tr>
+          </thead>
+          <tbody role="rowgroup">
+            {FEES.map((fee) => (
+              <tr role="row">
+                <th scope="row" role="rowheader">{fee.pair}<small>{fee.detail}</small></th>
+                <td class="rate" role="cell">{fee.base}</td>
+                <td role="cell">Ophis keeps 50% of the improvement, capped at {fee.cap} of the trade</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p class="note">
+          The improvement is what the swap delivers above the quoted output, after costs and the base fee. You keep
+          the rest. Fees are taken in the token you receive and shown in the quote. Your wallet also pays the
+          <a href="https://solana.com/docs/core/fees" rel="noopener">Solana network fee</a> and the deposit for any
+          account the order opens.
+        </p>
+      </div>
     </section>
-  ))}
 
-  <h2>For agents and integrators</h2>
-  <p>
-    Native Solana swaps are available in the swap app. The Ophis MCP server and the
-    <code>@ophis/sdk</code> package build orders for EVM chains only, and the Intent API returns a
-    parsed intent, not an order. None of them builds a Solana order. See the
-    <a href="/ai-agent-crypto-swap-api/">agent swap API guide</a> for what each of them covers.
-  </p>
+    <section class="split" aria-labelledby="programTitle">
+      <div class="split-head">
+        <p class="eyebrow">Settlement</p>
+        <h2 class="serif" id="programTitle">The Ophis program <em>on&nbsp;Solana.</em></h2>
+        <p class="lede">
+          Your order records the amount you sell and the minimum you accept. The program rejects any settlement
+          below that minimum.
+        </p>
+      </div>
+      <div class="program">
+        <p class="program-label"><img src="/logos/solana.svg" alt="" width="24" height="24" />Ophis settlement program, Solana mainnet</p>
+        <p class="program-id"><code>{SOLANA_PROGRAM}</code></p>
+        <p class="program-text">
+          Solana orders settle through this program. Ophis operates the program and the solver that fills your
+          order. A Solana swap does not use an EVM orderbook or EIP-712 signing.
+        </p>
+        <p class="program-links">
+          <a class="more" href={explorerUrl} rel="noopener">View the program on Solana Explorer <span aria-hidden="true">↗</span></a>
+          <a class="more" href={docsUrl}>Solana swaps in the docs <span aria-hidden="true">→</span></a>
+        </p>
+      </div>
+    </section>
 
-  <h2>Related pages</h2>
-  <p>
-    To see how aggregators find and compare routes, read the
-    <a href="/blog/solana-dex-aggregator/">Solana DEX aggregator guide</a>. To move between Solana
-    and another network, read the <a href="/blog/solana-bridge/">Solana bridge guide</a>. Fees for
-    every path are on the <a href="/pricing/">pricing page</a>, and every network is on the
-    <a href="/supported-chains/">supported chains page</a>. For dollar pairs, see
-    <a href="/stablecoin-swaps/">stablecoin swaps</a>.
-  </p>
-</ContentPage>
+    <SolanaGuides />
+
+    <FAQSection faqs={FAQS} schemaId={`${url}#faq`} lead="Questions about" emphasis={'Solana\u00a0swaps.'} />
+    <FinalCTA
+      lead="Your next swap on Solana."
+      text="Connect your wallet. Check your minimum. Take it from there."
+      primary={{ href: SOLANA_SWAP_URL, label: 'Swap on Solana' }}
+      secondary={{ href: docsUrl, label: 'Read the docs' }}
+    />
+  </main>
+  <Footer />
+</Base>
+
+<style>
+  .band { margin-top: 64px; background: var(--ophis-fog); border-top: 1px solid var(--ophis-border); border-bottom: 1px solid var(--ophis-border); }
+  .split {
+    max-width: 1200px; margin: 0 auto; padding: 72px 24px 0;
+    display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 32px 64px; align-items: start;
+  }
+  .band .split { padding-bottom: 72px; }
+  .split-head { position: sticky; top: 96px; }
+  .eyebrow { margin: 0 0 12px; }
+  h2 { font-size: clamp(32px, 3.6vw, 44px); margin: 0; }
+  .split-head .lede { margin: 12px 0 0; }
+  .cta-primary {
+    display: inline-flex; align-items: center; justify-content: center; margin-top: 28px;
+    min-height: 48px; padding: 12px 22px; border-radius: 9999px;
+    background: var(--ophis-saffron-60); color: #fff; font-size: 15px; font-weight: 500; text-decoration: none;
+  }
+  .more { display: inline-block; font-size: 14px; font-weight: 500; color: var(--ophis-fg); text-decoration: none; }
+  a.more:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .split-head .more { margin-top: 20px; }
+
+  .steps { list-style: none; margin: 0; padding: 0; }
+  .steps li { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 16px; padding: 20px 0; border-top: 1px solid var(--ophis-border); }
+  .steps li:first-child { border-top-color: var(--ophis-fg); }
+  .steps .n { font-family: Georgia, serif; font-style: italic; font-size: 22px; color: var(--ophis-fg-muted); }
+  .steps h3 { margin: 2px 0 6px; font-size: 18px; font-weight: 500; letter-spacing: -0.01em; }
+  .steps p { margin: 0; font-size: 15px; color: var(--ophis-fg-muted); max-width: 58ch; }
+
+  .fees { width: 100%; border-collapse: collapse; font-size: 15px; }
+  .fees th, .fees td { padding: 18px 16px 18px 0; text-align: left; vertical-align: top; border-top: 1px solid var(--ophis-border); color: var(--ophis-fg-muted); font-weight: 400; }
+  .fees thead th { padding: 0 16px 12px 0; border-top: 0; font-size: 13px; color: var(--ophis-fg-faded); }
+  .fees tbody tr:first-child > * { border-top-color: var(--ophis-fg); }
+  .fees tbody th { color: var(--ophis-fg); font-size: 17px; font-weight: 500; }
+  .fees small { display: block; margin-top: 4px; font-size: 13.5px; font-weight: 400; color: var(--ophis-fg-muted); }
+  .fees .rate { font-family: Georgia, serif; font-size: 26px; line-height: 1.1; color: var(--ophis-fg); white-space: nowrap; }
+  .fees tbody tr:last-child > * { border-bottom: 1px solid var(--ophis-border); }
+  .note { margin: 20px 0 0; font-size: 14px; color: var(--ophis-fg-muted); max-width: 70ch; }
+  .note a { color: var(--ophis-fg); text-underline-offset: 3px; }
+
+  .program { padding: 28px; border: 1px solid var(--ophis-border); border-radius: var(--ophis-radius); background: var(--ophis-surface); }
+  .program-label { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 14px; font-weight: 500; }
+  .program-label img { width: 24px; height: 24px; border-radius: 50%; display: block; }
+  .program-id { margin: 14px 0 0; padding: 14px 16px; border-radius: 14px; background: var(--ophis-bg); border: 1px solid var(--ophis-border); }
+  .program-id code { font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace; font-size: 15px; overflow-wrap: anywhere; }
+  .program-text { margin: 16px 0 0; font-size: 15px; color: var(--ophis-fg-muted); max-width: 62ch; }
+  .program-links { display: flex; flex-wrap: wrap; gap: 10px 24px; margin: 18px 0 0; }
+
+  @media (max-width: 960px) {
+    .split { grid-template-columns: minmax(0, 1fr); }
+    .split-head { position: static; }
+  }
+  @media (max-width: 640px) {
+    .band { margin-top: 48px; }
+    .split { padding: 56px 16px 0; }
+    .band .split { padding-bottom: 56px; }
+    /* The fee table becomes one block per pair: name and rate on a line, the rule below. */
+    .fees thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+    .fees tbody, .fees tbody th, .fees tbody td { display: block; }
+    .fees tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 16px; padding: 16px 0; border-top: 1px solid var(--ophis-border); }
+    .fees tbody tr:first-child { border-top-color: var(--ophis-fg); }
+    .fees tbody tr:last-child { border-bottom: 1px solid var(--ophis-border); }
+    .fees tbody tr > *, .fees tbody tr:last-child > * { padding: 0; border: 0; }
+    .fees tbody td:last-child { grid-column: 1 / -1; font-size: 14px; }
+    .program { padding: 20px; }
+  }
+</style>

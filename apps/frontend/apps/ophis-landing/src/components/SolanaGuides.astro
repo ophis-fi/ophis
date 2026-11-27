@@ -1,0 +1,66 @@
+---
+/* The two Solana guides, read from the posts themselves so a retitle or a new
+   cover follows through, then the links to the neighbouring pages. */
+import { Image } from 'astro:assets'
+import { getEntry } from 'astro:content'
+
+const guides = (await Promise.all(['solana-dex-aggregator', 'solana-bridge'].map((id) => getEntry('blog', id)))).filter(
+  (post) => post !== undefined,
+)
+---
+<section class="guides" aria-labelledby="guidesTitle">
+  <p class="eyebrow">Guides</p>
+  <h2 class="serif" id="guidesTitle">Go further <em>on&nbsp;Solana.</em></h2>
+  <ul class="guide-list">
+    {guides.map((post) => (
+      <li>
+        <a class="guide" href={`/blog/${post.id}/`}>
+          {post.data.cover && (
+            <Image class="guide-thumb" src={post.data.cover} alt={post.data.coverAlt ?? ''} widths={[400, 760]} sizes="(max-width: 640px) 112px, 560px" loading="lazy" />
+          )}
+          <div>
+            <h3>{post.data.title}</h3>
+            <p>{post.data.description}</p>
+            <span class="more">Read the guide <span aria-hidden="true">→</span></span>
+          </div>
+        </a>
+      </li>
+    ))}
+  </ul>
+  <p class="related">
+    Moving between Solana and another network is a separate cross-chain route in the same app. Every network is on
+    the <a href="/supported-chains/">supported chains page</a>, dollar pairs are covered in
+    <a href="/stablecoin-swaps/">stablecoin swaps</a>, and builders start with the
+    <a href="/ai-agent-crypto-swap-api/">agent swap API guide</a>.
+  </p>
+</section>
+
+<style>
+  .guides { max-width: 1200px; margin: 0 auto; padding: 88px 24px 0; }
+  .eyebrow { margin: 0 0 12px; }
+  h2 { font-size: clamp(32px, 3.6vw, 44px); margin: 0; }
+  .guide-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; list-style: none; margin: 32px 0 0; padding: 0; }
+  .guide {
+    display: block; height: 100%; padding: 20px 20px 24px; border: 1px solid var(--ophis-border);
+    border-radius: var(--ophis-radius); background: var(--ophis-surface); color: inherit; text-decoration: none;
+    transition: border-color 150ms ease;
+  }
+  .guide:hover { border-color: var(--ophis-fg-muted); }
+  .guide-thumb { display: block; width: 100%; height: auto; aspect-ratio: 2 / 1; object-fit: cover; border-radius: 14px; margin-bottom: 18px; }
+  .guide h3 { margin: 0 0 8px; font-size: 21px; line-height: 1.25; font-weight: 600; letter-spacing: -0.01em; }
+  .guide p { margin: 0 0 16px; font-size: 14.5px; line-height: 1.55; color: var(--ophis-fg-muted); }
+  .more { font-size: 14px; font-weight: 500; }
+  .guide:hover .more { text-decoration: underline; text-underline-offset: 3px; }
+  .related { margin: 24px 0 0; max-width: 78ch; font-size: 15px; color: var(--ophis-fg-muted); }
+  .related a { color: var(--ophis-fg); text-underline-offset: 3px; }
+
+  /* Phones: a guide is one compact row (cover, title, link), not a tall image card. */
+  @media (max-width: 640px) {
+    .guides { padding: 64px 16px 0; }
+    .guide-list { grid-template-columns: minmax(0, 1fr); gap: 12px; margin-top: 24px; }
+    .guide { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 14px; align-items: center; padding: 12px 14px 12px 12px; border-radius: 20px; }
+    .guide-thumb { aspect-ratio: 1; margin: 0; border-radius: 12px; }
+    .guide h3 { font-size: 16px; margin-bottom: 6px; }
+    .guide p { display: none; }
+  }
+</style>

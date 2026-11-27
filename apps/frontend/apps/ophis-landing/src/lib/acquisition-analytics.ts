@@ -18,7 +18,7 @@ function classifyAcquisition(url: URL): Acquisition | undefined {
   if (
     url.hostname === 'swap.ophis.fi' &&
     url.pathname === '/' &&
-    (!url.hash || /^#\/(?:\d+\/)?(?:swap|limit|advanced)(?:[/?]|$)/.test(url.hash))
+    (!url.hash || /^#\/(?:\d+\/)?(?:swap|limit|advanced|solana)(?:[/?]|$)/.test(url.hash))
   ) {
     return { event: 'trade_click', destination: 'swap_app' }
   }
