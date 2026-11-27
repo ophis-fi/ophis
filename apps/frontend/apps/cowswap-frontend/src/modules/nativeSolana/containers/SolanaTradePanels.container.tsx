@@ -36,6 +36,7 @@ export function SellPanel({ open }: { open: MouseEventHandler<HTMLButtonElement>
   const symbol = sell.symbol
   const { balanceKnown, balance, exceeds, needsSolForFees, solShortfall, spendable, precision, reserve } =
     useAtomValue(sellAmountStateAtom)
+  const missingSol = solShortfall === undefined ? undefined : formatOphisSolanaAmount(solShortfall, 9)
   const reservedSol = reserve === undefined ? undefined : formatOphisSolanaAmount(reserve, 9)
   return (
     <styledEl.Panel>
@@ -111,10 +112,7 @@ export function SellPanel({ open }: { open: MouseEventHandler<HTMLButtonElement>
       )}
       {solShortfall !== undefined && (
         <styledEl.Helper role="alert">
-          <Trans>
-            Your wallet needs {formatOphisSolanaAmount(solShortfall, 9)} more SOL for fees and refundable deposits. You
-            can reclaim deposits from completed orders in Account.
-          </Trans>
+          <Trans>Add {missingSol} more SOL for fees and deposits.</Trans>
         </styledEl.Helper>
       )}
       {needsSolForFees && (

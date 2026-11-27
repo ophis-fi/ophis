@@ -81,10 +81,25 @@ export async function fetchOphisOrderSolReserve(
   buyMint: Address,
   sellFromNativeSol = true,
 ): Promise<bigint> {
+  return (await fetchOphisWalletSwapCosts(endpoint, genesis, owner, buyMint, sellFromNativeSol, 1))
+    .reserve;
+}
+
+/** Peak wallet SOL needed, including the wallet minimum and transient storage during execution. */
+export async function fetchOphisWalletSwapCosts(
+  endpoint: string,
+  genesis: string,
+  owner: Address,
+  buyMint: Address,
+  sellFromNativeSol: boolean,
+  signatures: 1 | 2,
+) {
   const rpc = await matchingRpc(endpoint, genesis);
   const ata = async (mint: Address, tokenProgram: Address) =>
     (await findAssociatedTokenPda({ owner, mint, tokenProgram }))[0];
   const nativeBuy = buyMint === SOLANA_NATIVE_ASSET;
+  const atomicWrap = sellFromNativeSol && signatures === 2;
+  const persistentWrap = sellFromNativeSol && !atomicWrap;
   const accounts: Address[] = [
     address('SysvarRent111111111111111111111111111111111'),
     address('SysvarRecentB1ockHashes11111111111111111111'),
@@ -97,7 +112,7 @@ export async function fetchOphisOrderSolReserve(
         ata(buyMint, TOKEN_2022_PROGRAM_ADDRESS),
       ])),
     );
-  if (sellFromNativeSol) accounts.push(await ata(WRAPPED_SOL_MINT, TOKEN_PROGRAM_ADDRESS));
+  if (persistentWrap) accounts.push(await ata(WRAPPED_SOL_MINT, TOKEN_PROGRAM_ADDRESS));
   const { value } = await rpc
     .getMultipleAccounts(accounts, {
       commitment: 'confirmed',
@@ -107,7 +122,7 @@ export async function fetchOphisOrderSolReserve(
     .send();
   if (value.length !== accounts.length) throw Error('Incomplete Solana order account data.');
   const [rent, hashes, mint, classicAccount, extendedAccount] = value;
-  const wrappedAccount = sellFromNativeSol ? value.at(-1) : null;
+  const wrappedAccount = persistentWrap ? value.at(-1) : null;
   const sysvarOwner = 'Sysvar1111111111111111111111111111111111111';
   if (
     rent?.owner !== sysvarOwner ||
@@ -138,13 +153,27 @@ export async function fetchOphisOrderSolReserve(
   if (!buyAccount && mint?.owner === TOKEN_2022_PROGRAM_ADDRESS)
     throw Error('Cannot estimate rent for an unallocated Token-2022 account.');
   const storageOverhead = 128;
-  const missing = Number(sellFromNativeSol && !wrappedAccount) + Number(!nativeBuy && !buyAccount);
-  const bytes =
-    storageOverhead * 2 + getOrderAccountSize() + missing * (storageOverhead + getTokenSize());
-  // RecentBlockhashes stores a u64 length, then (32-byte blockhash, u64 signature fee) entries, newest first.
-  const reserve = rentPerByte * BigInt(bytes) + recent.getBigUint64(40, true);
+  const missing = Number(persistentWrap && !wrappedAccount) + Number(!nativeBuy && !buyAccount);
+  const orderRent = rentPerByte * BigInt(storageOverhead + getOrderAccountSize());
+  const classicTokenAccountRent = rentPerByte * BigInt(storageOverhead + getTokenSize());
+  const tokenAccountRent = BigInt(missing) * classicTokenAccountRent;
+  const nativeWrapRent = atomicWrap ? classicTokenAccountRent : 0n;
+  const networkFee = recent.getBigUint64(40, true) * BigInt(signatures);
+  const reserve =
+    rentPerByte * BigInt(storageOverhead) +
+    orderRent +
+    nativeWrapRent +
+    tokenAccountRent +
+    networkFee;
   if (reserve > 0xffff_ffff_ffff_ffffn) throw Error('Invalid Solana order costs.');
-  return reserve;
+  return {
+    orderRent,
+    nativeWrapRent,
+    tokenAccountRent,
+    classicTokenAccountRent,
+    networkFee,
+    reserve,
+  };
 }
 
 export async function requestOphisLocalTestSol(genesis: string, owner: Address): Promise<void> {

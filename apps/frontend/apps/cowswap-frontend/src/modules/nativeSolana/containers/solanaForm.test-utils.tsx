@@ -20,6 +20,7 @@ jest.mock(
       if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value)) throw Error('Invalid address')
       return value
     },
+    fetchOphisSolanaChainContext: async () => ({ programAddress: 'program', genesisHash: 'mainnet' }),
     fetchOphisOrderSolReserve: jest.fn().mockResolvedValue(2646600n),
     fetchOphisWalletHoldings: jest.fn().mockResolvedValue([
       { mint: '11111111111111111111111111111111', atoms: 2822552n, decimals: 9 },
@@ -32,7 +33,7 @@ jest.mock(
   { virtual: true },
 )
 jest.mock('entities/solana', () => ({
-  OPHIS_SOLANA_CONFIG: { api: 'https://example.test', chain: 'solana:mainnet', genesis: 'mainnet' },
+  OPHIS_SOLANA_CONFIG: { api: 'https://example.test', program: 'program', chain: 'solana:mainnet', genesis: 'mainnet' },
   solanaConnectionAtom: jest
     .requireActual('jotai')
     .atom({ wallet: { name: 'Test wallet' }, account: { address: '11111111111111111111111111111111' } }),

@@ -13,10 +13,13 @@ import { OPHIS_SOLANA_CONFIG, solanaConnectionAtom, type OphisSolanaConfig } fro
 import { atomWithQuery } from 'jotai-tanstack-query'
 
 import { balanceEndpoint, mainnetWalletRpc, walletHoldingsKey } from '../services/assets.service'
+import { checkAtomicReceipt, validAtomicOrder, orderPollInterval } from '../services/atomicReceipt.service'
 import { privateAction, privateSettlementEnabled } from '../services/privateSettlement.service'
 
 export interface SavedNativeSolanaOrder {
   uid: string
+  executionMode?: 'walletAtomic'
+  walletCosts?: { networkFee: string; orderRent: string; nativeWrapRent?: string }
   owner: string
   program: string
   genesis: string
@@ -24,7 +27,7 @@ export interface SavedNativeSolanaOrder {
   createdBy: string
   intent: number[]
   signature: string | null
-  creationLifetime?: { height: string; requestedAt: number }
+  creationLifetime?: { height: string; requestedAt: number; blockhash?: string }
   reclaimed: boolean
   walletAction?: {
     reclaim: boolean
@@ -58,11 +61,11 @@ function isSavedOrder(value: unknown): value is SavedNativeSolanaOrder {
   if (!value || typeof value !== 'object') return false
   const order = value as Partial<SavedNativeSolanaOrder>
   return (
-    typeof order.uid === 'string' &&
-    /^0x[0-9a-f]{64}$/.test(order.uid) &&
-    (['owner', 'program', 'genesis', 'orderPda', 'createdBy'] as const).every(
+    /^0x[0-9a-f]{64}$/.test(String(order.uid)) &&
+    (['uid', 'owner', 'program', 'genesis', 'orderPda', 'createdBy'] as const).every(
       (key) => typeof order[key] === 'string',
     ) &&
+    validAtomicOrder(order) &&
     typeof order.reclaimed === 'boolean' &&
     (order.signature === null || typeof order.signature === 'string') &&
     validWalletAction(order.walletAction) &&
@@ -116,8 +119,8 @@ type OrderWithAttempt = OphisSolanaOrder & {
   settlementAttempt?: { state: SolverAttemptState }
 }
 
-function balanceState(order?: OrderWithAttempt): OphisSolanaOrder['status'] | undefined {
-  return order?.payoutConfirmed ? 'fulfilled' : order?.status
+function balanceState(order?: SolanaOrderResult): SolanaOrderResult['status'] | undefined {
+  return order && 'payoutConfirmed' in order && order.payoutConfirmed ? 'fulfilled' : order?.status
 }
 
 async function readOrderStatus(
@@ -199,16 +202,23 @@ async function getOrderStatus(uid: string, order?: SavedNativeSolanaOrder): Prom
   return result
 }
 
-export type SolanaOrderResult = OrderWithAttempt | { status: 'failed' | 'unconfirmed' }
+export type SolanaOrderResult = OrderWithAttempt | { status: 'failed' | 'unconfirmed' | 'pending' | 'fulfilled' }
 
 export const nativeSolanaOrderQueryAtom = atomFamily((uid: string) =>
   atomWithQuery<SolanaOrderResult>((get) => {
     const order = get(visibleNativeSolanaOrdersAtom).find((candidate) => candidate.uid === uid)
     return {
-      queryKey: ['ophisSolanaOrder', OPHIS_SOLANA_CONFIG?.api, OPHIS_SOLANA_CONFIG?.genesis, uid],
+      queryKey: [
+        'ophisSolanaOrder',
+        OPHIS_SOLANA_CONFIG?.api,
+        OPHIS_SOLANA_CONFIG?.genesis,
+        uid,
+        ...(order?.executionMode === 'walletAtomic' ? [order.signature] : []),
+      ],
       queryFn: async ({ client, queryKey }) => {
         try {
-          const result = await getOrderStatus(uid, order)
+          const result =
+            order?.executionMode === 'walletAtomic' ? await checkAtomicReceipt(order) : await getOrderStatus(uid, order)
           const previous = client.getQueryData<OrderWithAttempt>(queryKey)
           if (order && balanceState(result) !== balanceState(previous)) {
             void client.invalidateQueries({ queryKey: walletHoldingsKey(order.genesis, order.owner) })
@@ -225,11 +235,8 @@ export const nativeSolanaOrderQueryAtom = atomFamily((uid: string) =>
       enabled: !!OPHIS_SOLANA_CONFIG && !!order && !order.reclaimed,
       retry: false,
       refetchOnWindowFocus: false,
-      refetchInterval: (query) => {
-        if (query.state.data) return query.state.data.status === 'open' ? 4000 : false
-        if (!order?.signature && !order?.creationLifetime) return false
-        return shouldCheckSubmission(order.creationLifetime) ? 15000 : 4000
-      },
+      refetchInterval: (query) =>
+        orderPollInterval(query.state.data?.status, order, shouldCheckSubmission(order?.creationLifetime)),
     }
   }),
 )

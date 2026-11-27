@@ -82,15 +82,7 @@ export async function sendOphisSolanaWalletTransaction(input: {
   onBeforeBroadcast?: () => void;
 }): Promise<string> {
   const { wallet, chain } = input;
-  const account = wallet.accounts.find((current) => current.address === input.account.address);
-  if (
-    !account ||
-    !isOphisSolanaWallet(wallet) ||
-    !supportsOphisSolanaAccount(wallet, account, chain) ||
-    account.publicKey.length !== 32 ||
-    getBase58Decoder().decode(account.publicKey) !== account.address
-  )
-    throw Error('Reconnect a Solana wallet on the selected network');
+  const account = checkedWalletAccount(input);
   const signing = wallet.features['solana:signTransaction'];
   const localRpc =
     chain === 'solana:localnet' &&
@@ -162,6 +154,37 @@ export async function sendOphisSolanaWalletTransaction(input: {
     await waitForLocalConfirmation(localRpc, signature);
     return signature;
   }
+  return sendWalletBytes(input, transaction);
+}
+
+type WalletConnection = {
+  wallet: OphisSolanaWallet;
+  account: OphisSolanaWalletAccount;
+  chain: OphisSolanaWalletChain;
+  onBeforeBroadcast?: () => void;
+};
+
+function checkedWalletAccount(input: WalletConnection): OphisSolanaWalletAccount {
+  const { wallet, chain } = input;
+  const account = wallet.accounts.find((current) => current.address === input.account.address);
+  if (
+    !account ||
+    !isOphisSolanaWallet(wallet) ||
+    !supportsOphisSolanaAccount(wallet, account, chain) ||
+    account.publicKey.length !== 32 ||
+    getBase58Decoder().decode(account.publicKey) !== account.address
+  )
+    throw Error('Reconnect a Solana wallet on the selected network');
+  return account;
+}
+
+/** Internal. Callers must have verified the full message before requesting a wallet signature. */
+export async function sendWalletBytes(
+  input: WalletConnection,
+  transaction: Uint8Array,
+): Promise<string> {
+  const { wallet, chain } = input;
+  const account = checkedWalletAccount(input);
   input.onBeforeBroadcast?.();
   const message = Uint8Array.from(getTransactionDecoder().decode(transaction).messageBytes);
   const outputs = await wallet.features['solana:signAndSendTransaction'].signAndSendTransaction({
