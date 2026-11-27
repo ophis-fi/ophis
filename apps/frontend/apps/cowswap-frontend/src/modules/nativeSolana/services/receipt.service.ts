@@ -1,7 +1,12 @@
-import { formatOphisSolanaAmount, getOrderIntentDecoder } from '@ophis/solana-sdk'
+import {
+  formatOphisSolanaAmount,
+  getOrderIntentDecoder,
+  SOLANA_NATIVE_ASSET,
+  WRAPPED_SOL_MINT,
+} from '@ophis/solana-sdk'
 import { OPHIS_SOLANA_CONFIG } from 'entities/solana'
 
-import { unknownAsset, walletMint, type SolanaAsset } from './assets.service'
+import { nativeAsset, unknownAsset, walletMint, type SolanaAsset } from './assets.service'
 
 import type { SavedNativeSolanaOrder, SolanaOrderResult } from '../state/orders.atoms'
 import type { OphisSolanaOrder, OphisSolanaTrade } from '@ophis/solana-sdk'
@@ -27,6 +32,12 @@ function localReceiptStatus(order: SavedNativeSolanaOrder): ReceiptStatus | unde
   return undefined
 }
 
+export function receiptSellToken(mint: string, order?: SavedNativeSolanaOrder): string {
+  return mint === WRAPPED_SOL_MINT && BigInt(order?.walletCosts?.nativeWrapRent ?? '0') > 0n
+    ? SOLANA_NATIVE_ASSET
+    : mint
+}
+
 export function savedReceiptAmounts(order: SavedNativeSolanaOrder): ReceiptAmounts | undefined {
   try {
     const intent = getOrderIntentDecoder().decode(Uint8Array.from(order.intent))
@@ -46,7 +57,8 @@ export function receiptAmount(
   mint: string,
   assets: SolanaAsset[],
 ): { asset: SolanaAsset; value: string } {
-  const asset = assets.find((item) => item.mint === walletMint(mint)) ?? unknownAsset(mint)
+  const id = walletMint(mint)
+  const asset = id === 'SOL' ? nativeAsset : (assets.find((item) => item.mint === id) ?? unknownAsset(mint))
   return {
     asset,
     value: asset.decimals === undefined ? amount : formatOphisSolanaAmount(BigInt(amount), asset.decimals),

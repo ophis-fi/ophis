@@ -9,8 +9,9 @@ import * as styledEl from './SolanaReceipt.styled'
 import * as formStyles from './SwapForm.styled'
 
 import { solanaAssetIdentity, type SolanaAsset } from '../services/assets.service'
-import { receiptAmount, type ReceiptAmounts } from '../services/receipt.service'
+import { receiptAmount, receiptSellToken, type ReceiptAmounts } from '../services/receipt.service'
 
+import type { SavedNativeSolanaOrder } from '../state/orders.atoms'
 import type { OphisSolanaOrder, OphisSolanaTrade } from '@ophis/solana-sdk'
 
 export type VerifyReceiptAsset = (token: ReturnType<typeof solanaAssetIdentity>) => Verification | undefined
@@ -84,12 +85,14 @@ export function ReceiptSlabs({
   data,
   intent,
   assets,
+  saved,
 }: {
   verifyAsset: VerifyReceiptAsset
   trade?: OphisSolanaTrade
   data?: OphisSolanaOrder
   assets: SolanaAsset[]
   intent?: ReceiptAmounts
+  saved?: SavedNativeSolanaOrder
 }): ReactNode {
   const amounts = trade ?? intent
   const received = trade?.buyAmount ?? (data?.status === 'fulfilled' ? data.executedBuyAmount : undefined)
@@ -100,7 +103,7 @@ export function ReceiptSlabs({
       <AssetSlab
         label={sold ? <Trans>You sold</Trans> : <Trans>You sell</Trans>}
         amount={sold ?? amounts.sellAmount}
-        mint={amounts.sellToken}
+        mint={receiptSellToken(amounts.sellToken, saved)}
         assets={assets}
         verifyAsset={verifyAsset}
       />

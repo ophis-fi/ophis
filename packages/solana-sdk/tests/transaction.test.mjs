@@ -172,7 +172,8 @@ test('mainnet binds the displayed benchmark, cost ceiling and fee tier before cr
   const anotherNonce = Buffer.from(signed);
   anotherNonce.writeBigUInt64LE(123n, 24);
   const otherOrder = await prepareOphisSolanaOrderFromQuote({
-    ...input, quote: { ...quote, quote: { ...q, appData: '0x' + anotherNonce.toString('hex') } },
+    ...input,
+    quote: { ...quote, quote: { ...q, appData: '0x' + anotherNonce.toString('hex') } },
   });
   assert.equal(otherOrder.intent.buyAmount, order.intent.buyAmount);
   assert.notEqual(otherOrder.uid, order.uid);
@@ -272,6 +273,7 @@ test('agent order binds the owner, exact input, cluster and minimum output befor
 test('order actions use the selected cluster and finalize before reporting a refund', async (t) => {
   let landed = null;
   let height = 90;
+  let valid = true;
   t.mock.method(globalThis, 'fetch', async (_url, { body }) => {
     const { method, id, params } = JSON.parse(body);
     const context = { slot: 100 };
@@ -283,10 +285,13 @@ test('order actions use the selected cluster and finalize before reporting a ref
       },
       getSignatureStatuses: { context, value: [landed] },
       getEpochInfo: { absoluteSlot: 100, blockHeight: height },
+      isBlockhashValid: { context, value: valid },
     };
     assert.ok(Object.hasOwn(results, method));
     if (method === 'getLatestBlockhash')
       assert.equal(params?.[0]?.commitment ?? 'finalized', 'finalized');
+    if (method === 'isBlockhashValid')
+      assert.deepEqual(params, [fixture.owner, { commitment: 'confirmed', minContextSlot: 100 }]);
     return Response.json({ jsonrpc: '2.0', id, result: results[method] });
   });
   const endpoint = 'http://localhost:8899';
@@ -301,6 +306,23 @@ test('order actions use the selected cluster and finalize before reporting a ref
   );
   assert.equal(await check(), 'pending');
   height = 101;
+  for (const tx of [null, '1'.repeat(64)]) {
+    valid = true;
+    const status = async () =>
+      (
+        await fetchOphisWalletActionReceipt(
+          endpoint,
+          fixture.owner,
+          tx,
+          100n,
+          'confirmed',
+          fixture.owner,
+        )
+      ).status;
+    assert.equal(await status(), 'pending');
+    valid = false;
+    assert.equal(await status(), 'expired');
+  }
   assert.equal(await check(), 'expired');
   landed = { slot: 95, confirmationStatus: 'confirmed', err: null };
   assert.equal(await check(), 'pending');

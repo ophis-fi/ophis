@@ -10,6 +10,7 @@ import {
   ophisSolanaWalletSigner,
   parseOphisSolanaAmount,
   prepareOphisSolanaOrderFromQuote,
+  prepareOphisWalletAtomicSwap,
   previewOphisLocalOrder,
   solanaAddress,
   SOLANA_NATIVE_ASSET,
@@ -35,6 +36,7 @@ export interface NativeSolanaReview {
   form: NativeSolanaForm
   connection: SolanaConnection
   allowance?: Awaited<ReturnType<typeof readOphisSellAllowance>>
+  atomic?: Awaited<ReturnType<typeof prepareOphisWalletAtomicSwap>>
   solAfterOrder?: bigint
 }
 
@@ -46,7 +48,14 @@ export function prepareReviewedSolanaOrder(
   config: OphisSolanaConfig,
   review: NativeSolanaReview,
 ): ReturnType<typeof prepareOphisSolanaOrderFromQuote> {
-  return prepareOphisSolanaOrderFromQuote({
+  return prepareOphisSolanaOrderFromQuote(walletOrderInput(config, review))
+}
+
+function walletOrderInput(
+  config: OphisSolanaConfig,
+  review: NativeSolanaReview,
+): Parameters<typeof prepareOphisSolanaOrderFromQuote>[0] {
+  return {
     programAddress: config.program,
     owner: ophisSolanaWalletSigner(review.connection.account),
     quote: review.quote,
@@ -54,7 +63,7 @@ export function prepareReviewedSolanaOrder(
     buyProgram: review.buy.address === SOLANA_NATIVE_ASSET ? undefined : review.buy.tokenProgram,
     sellFromNativeSol: review.sell.address === SOLANA_NATIVE_ASSET,
     slippageBps: review.form.slippageBps,
-  })
+  }
 }
 
 async function mintMetadata(api: string, value: string): Promise<OphisSolanaMintMetadata> {
@@ -111,11 +120,14 @@ export async function loadNativeSolanaQuote(
   signal?.throwIfAborted()
   const [, allowance] = await Promise.all([
     verifyOphisMintMetadata(rpc, config.genesis, [sell, buy]),
-    readOphisSellAllowance(rpc, config.genesis, solanaAddress(connection.account.address), sell),
+    context.walletAtomic && sell.address === SOLANA_NATIVE_ASSET
+      ? null
+      : readOphisSellAllowance(rpc, config.genesis, solanaAddress(connection.account.address), sell),
   ])
   signal?.throwIfAborted()
   const quote = await fetchOphisSolanaQuote(config.api, {
     from: solanaAddress(connection.account.address),
+    ...(context.walletAtomic && { executionMode: 'walletAtomic' as const }),
     walletCreatesBuyTokenAccount: true,
     sellToken: sell.address,
     buyToken: buy.address,
@@ -126,7 +138,26 @@ export async function loadNativeSolanaQuote(
   if (!quote.verified) throw Error('An executable quote could not be verified. Request a new quote.')
   checkedQuoteAppData(config.program, quote.quote)
   const review: NativeSolanaReview = { quote, sell, buy, form, connection, allowance }
-  if (config.chain === 'solana:localnet') {
+  await prepareWalletReview(config, review, context, rpc, signal)
+  return review
+}
+
+async function prepareWalletReview(
+  config: OphisSolanaConfig,
+  review: NativeSolanaReview,
+  context: Awaited<ReturnType<typeof nativeSolanaContext>>,
+  rpc: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (context.walletAtomic) {
+    if (signal) signal.throwIfAborted()
+    review.atomic = await prepareOphisWalletAtomicSwap({
+      ...walletOrderInput(config, review),
+      rpc,
+      api: config.api,
+      genesis: config.genesis,
+    })
+  } else if (config.chain === 'solana:localnet') {
     const order = await prepareReviewedSolanaOrder(config, review)
     review.solAfterOrder = await previewOphisLocalOrder({
       instructions: order.instructions,
@@ -136,11 +167,11 @@ export async function loadNativeSolanaQuote(
       context,
     })
   }
-  return review
 }
 
 const invalidMintMessage = 'This mint is unavailable for swaps. Check the Solana mint address.'
 const protocolErrorMessages: Record<string, string | undefined> = {
+  MarketQuoteUnavailable: 'This route is no longer available at the quoted price. Get a fresh quote.',
   SettlementPaused: 'New swaps are paused. You can still cancel an open order or reclaim its rent.',
   NoLiquidity: 'Ophis found no route for this pair and amount. Try a different amount or token.',
   VerifiedExactInputRequired:

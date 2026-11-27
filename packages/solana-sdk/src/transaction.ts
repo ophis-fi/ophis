@@ -13,6 +13,7 @@ import {
 } from '@solana/kit';
 
 export interface OphisSolanaChainContext {
+  walletAtomic?: true;
   programAddress: Address;
   genesisHash: string;
   blockhash: Blockhash;

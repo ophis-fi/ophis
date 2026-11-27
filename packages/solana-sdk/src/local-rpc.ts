@@ -5,6 +5,7 @@ import {
 import { identifyOphisSolanaOrder } from './settlement/hooked.js';
 import type { OphisSolanaOrder } from './api.js';
 import {
+  blockhash,
   createSolanaRpc,
   getBase64Encoder,
   signature,
@@ -51,27 +52,40 @@ export async function fetchOphisWalletActionReceipt(
   genesis: string,
   tx: string | null,
   lastHeight: bigint,
+  commitment: 'confirmed' | 'finalized' = 'finalized',
+  signedBlockhash?: string,
 ): Promise<{ status: 'pending' | 'expired' | 'confirmed' | 'failed'; slot?: bigint }> {
   const rpc = await matchingRpc(endpoint, genesis);
-  if (!tx) {
+  const expirySlot = async (): Promise<bigint | undefined> => {
     const tip = await rpc.getEpochInfo({ commitment: 'finalized' }).send();
-    return tip.blockHeight != null && tip.blockHeight > lastHeight
-      ? { status: 'expired', slot: tip.absoluteSlot }
-      : { status: 'pending' };
+    if (tip.blockHeight == null || tip.blockHeight <= lastHeight) return undefined;
+    if (!signedBlockhash) return tip.absoluteSlot;
+    const validity = await rpc
+      .isBlockhashValid(blockhash(signedBlockhash), {
+        commitment: 'confirmed',
+        minContextSlot: tip.absoluteSlot,
+      })
+      .send();
+    return validity.value ? undefined : validity.context.slot;
+  };
+  if (!tx) {
+    const slot = await expirySlot();
+    return slot === undefined ? { status: 'pending' } : { status: 'expired', slot };
   }
   const lookup = () =>
     rpc.getSignatureStatuses([signature(tx)], { searchTransactionHistory: true }).send();
   let receipt = await lookup();
   if (!receipt.value[0]) {
-    const tip = await rpc.getEpochInfo({ commitment: 'finalized' }).send();
-    if (tip.blockHeight == null || tip.blockHeight <= lastHeight) return { status: 'pending' };
+    const slot = await expirySlot();
+    if (slot === undefined) return { status: 'pending' };
     receipt = await lookup();
-    if (!receipt.value[0] && receipt.context.slot >= tip.absoluteSlot)
-      return { status: 'expired', slot: tip.absoluteSlot };
+    if (!receipt.value[0] && receipt.context.slot >= slot) return { status: 'expired', slot };
   }
   const status = receipt.value[0];
-  if (status?.confirmationStatus !== 'finalized' || typeof status.slot !== 'bigint')
-    return { status: 'pending' };
+  const landed =
+    status?.confirmationStatus === 'finalized' ||
+    (commitment === 'confirmed' && status?.confirmationStatus === 'confirmed');
+  if (!landed || typeof status?.slot !== 'bigint') return { status: 'pending' };
   return { status: status.err ? 'failed' : 'confirmed', slot: status.slot };
 }
 

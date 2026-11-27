@@ -67,6 +67,26 @@ function PrivateOrderNotice({
   )
 }
 
+function AllowanceNotice({
+  atoms,
+  decimals,
+  symbol,
+  delegate,
+}: {
+  atoms: bigint
+  decimals: number
+  symbol: string
+  delegate: string
+}): ReactNode {
+  const amount = formatOphisSolanaAmount(atoms, decimals)
+  return (
+    <Trans>
+      Replace the existing allowance of {amount} {symbol} for {delegate}. Older orders using this allowance may stop
+      filling.
+    </Trans>
+  )
+}
+
 function NativeSolanaReview({ onBack }: { onBack(): void }): ReactNode {
   const review = useAtomValue(nativeSolanaReviewAtom)
   const busy = useAtomValue(nativeSolanaBusyAtom)
@@ -113,7 +133,14 @@ function NativeSolanaReview({ onBack }: { onBack(): void }): ReactNode {
         <SolanaQuoteCosts review={review} buySymbol={buySymbol} />
       </styledEl.Values>
       <p>
-        <Trans>Your wallet pays to place the order and open any required accounts.</Trans>
+        {review.atomic ? (
+          <Trans>
+            You sign once. Solana charges the network fee even if an included swap fails. Temporary deposits return to
+            your wallet in the same transaction.
+          </Trans>
+        ) : (
+          <Trans>Your wallet pays to place the order and open any required accounts.</Trans>
+        )}
         {feeTerms && (
           <>
             {' '}
@@ -124,7 +151,7 @@ function NativeSolanaReview({ onBack }: { onBack(): void }): ReactNode {
           </>
         )}
       </p>
-      {privateSettlementEnabled && (
+      {!review.atomic && privateSettlementEnabled && (
         <PrivateOrderNotice
           sellsNative={review.form.sellMint === 'SOL'}
           sellAmount={sellAmount}
@@ -138,11 +165,12 @@ function NativeSolanaReview({ onBack }: { onBack(): void }): ReactNode {
             checked={acceptedReview === review}
             onChange={(event) => setAcceptedReview(event.target.checked ? review : null)}
           />
-          <Trans>
-            Replace the existing allowance of {formatOphisSolanaAmount(review.allowance.atoms, review.sell.decimals)}{' '}
-            {sellSymbol}
-            for {review.allowance.delegate}. Older orders using this allowance may stop filling.
-          </Trans>
+          <AllowanceNotice
+            atoms={review.allowance.atoms}
+            decimals={review.sell.decimals}
+            symbol={sellSymbol}
+            delegate={review.allowance.delegate}
+          />
         </label>
       )}
       <ButtonPrimary

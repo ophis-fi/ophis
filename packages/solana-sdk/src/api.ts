@@ -12,6 +12,7 @@ export interface OphisSolanaQuoteRequest {
   sellToken: Address;
   buyToken: Address;
   receiver?: Address;
+  executionMode?: 'walletAtomic';
   walletCreatesBuyTokenAccount?: boolean;
   side: { kind: 'sell'; sellAmountBeforeFee: bigint } | { kind: 'buy'; buyAmountAfterFee: bigint };
   validFor?: number;
@@ -19,6 +20,11 @@ export interface OphisSolanaQuoteRequest {
 }
 
 export interface OphisSolanaQuote {
+  executionMode?: 'walletAtomic';
+  /** Retains the user's original choice between native SOL and an existing wSOL balance. */
+  sellFromNativeSol?: boolean;
+  solver?: Address;
+  routeProgram?: Address;
   from: Address;
   quote: {
     sellToken: Address;
@@ -196,6 +202,7 @@ export async function fetchOphisSolanaQuote(
     await request(baseUrl, 'api/v1/quote', {
       from,
       sellToken,
+      ...(input.executionMode && { executionMode: input.executionMode }),
       ...(input.sellToken === NATIVE_SOL ? { sellFromNativeSol: true } : {}),
       buyToken,
       ...(input.walletCreatesBuyTokenAccount === true
@@ -209,6 +216,26 @@ export async function fetchOphisSolanaQuote(
   );
   const quote = record(value.quote);
   const costs = record(quote.costs);
+  if (
+    value.executionMode !== input.executionMode &&
+    (input.executionMode || value.executionMode === 'walletAtomic')
+  )
+    throw Error('The quote did not match the requested Solana execution mode');
+  const solver = input.executionMode ? key(value.solver) : undefined;
+  if (
+    solver &&
+    (solver === from ||
+      !value.verified ||
+      value.id == null ||
+      value.funder != null ||
+      input.side.kind !== 'sell' ||
+      (input.receiver && input.receiver !== from) ||
+      quote.feeAmount !== '0' ||
+      costs.networkFees !== '0' ||
+      costs.buyTokenAtaCosts !== '0' ||
+      costs.total !== costs.protocolFee)
+  )
+    throw Error('Unexpected wallet-paid swap costs or signer');
   const sellAmount = atoms(quote.sellAmount, true);
   const buyAmount = atoms(quote.buyAmount, true);
   const feeAmount = atoms(quote.feeAmount);
@@ -261,6 +288,12 @@ export async function fetchOphisSolanaQuote(
     };
   }
   return {
+    ...(solver && {
+      executionMode: input.executionMode,
+      solver,
+      routeProgram: key(value.routeProgram),
+      sellFromNativeSol: input.sellToken === NATIVE_SOL,
+    }),
     from,
     quote: {
       sellToken,
@@ -328,7 +361,10 @@ export async function fetchOphisSolanaChainContext(
   baseUrl: string,
 ): Promise<OphisSolanaChainContext> {
   const value = record(await request(baseUrl, 'api/v1/solana/context'));
+  if (value.walletAtomic !== undefined && typeof value.walletAtomic !== 'boolean')
+    throw Error('Invalid Solana execution capability');
   return {
+    ...(value.walletAtomic === true ? { walletAtomic: true as const } : {}),
     programAddress: key(value.programAddress),
     genesisHash: key(value.genesisHash),
     blockhash: blockhash(key(value.blockhash)),

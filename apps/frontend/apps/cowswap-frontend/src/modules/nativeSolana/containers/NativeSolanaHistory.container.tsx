@@ -15,7 +15,7 @@ import { ReceiptStatusBadge, SolanaReceipt } from '../pure/SolanaReceipt.pure'
 import * as receiptStyles from '../pure/SolanaReceipt.styled'
 import { ReceiptAmount } from '../pure/SolanaReceiptAmounts.pure'
 import { isSolanaMainnet, shortMint, type SolanaAsset } from '../services/assets.service'
-import { savedReceiptAmounts, savedReceiptStatus } from '../services/receipt.service'
+import { receiptSellToken, savedReceiptAmounts, savedReceiptStatus } from '../services/receipt.service'
 import { solanaCachedCatalogAtom, solanaMainnetCatalogAtom, walletAssetListAtom } from '../state/assets.atoms'
 import { indexedOrderAtom, pageSize, walletActivityAtom } from '../state/history.atoms'
 import {
@@ -43,7 +43,11 @@ function SavedActivity({
       <span>
         <strong>
           {amounts ? (
-            <ReceiptAmount amount={amounts.sellAmount} mint={amounts.sellToken} assets={assets} />
+            <ReceiptAmount
+              amount={amounts.sellAmount}
+              mint={receiptSellToken(amounts.sellToken, order)}
+              assets={assets}
+            />
           ) : (
             <Trans>Swap attempt</Trans>
           )}
@@ -122,8 +126,15 @@ export function NativeSolanaHistory(): ReactNode {
         >
           <span>
             <strong>
-              <ReceiptAmount amount={row.sellAmount} mint={row.sellToken} assets={assets} /> →{' '}
-              <ReceiptAmount amount={row.buyAmount} mint={row.buyToken} assets={assets} />
+              <ReceiptAmount
+                amount={row.sellAmount}
+                mint={receiptSellToken(
+                  row.sellToken,
+                  saved.find((entry) => entry.uid === row.orderUid),
+                )}
+                assets={assets}
+              />{' '}
+              → <ReceiptAmount amount={row.buyAmount} mint={row.buyToken} assets={assets} />
             </strong>
             <small>
               <Trans>View receipt</Trans>

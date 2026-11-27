@@ -1,3 +1,5 @@
+import { createStore, Provider } from 'jotai'
+
 import { setupI18n } from '@lingui/core'
 import { I18nProvider } from '@lingui/react'
 import { fireEvent, render, screen } from '@testing-library/react'
@@ -80,4 +82,32 @@ it('shows the signed benchmark and full cost cap in USDC, and requires review of
   fireEvent.click(screen.getByRole('checkbox', { name: /ExistingDelegate/ }))
   fireEvent.click(confirm)
   expect(mockCreate).toHaveBeenCalledWith(true)
+})
+
+it('distinguishes the paid network fee, returned order and wrap deposits, and a new receiving token account', () => {
+  const store = createStore()
+  const { nativeSolanaReviewAtom } = jest.requireMock('../state/trade.atoms')
+  const prior = store.get(nativeSolanaReviewAtom) as Record<string, unknown>
+  store.set(nativeSolanaReviewAtom, {
+    ...prior,
+    allowance: null,
+    atomic: {
+      costs: { networkFee: 10_000n, orderRent: 1_991_360n, nativeWrapRent: 1_488_440n, tokenAccountRent: 1_488_440n },
+    },
+  })
+  render(
+    <Provider store={store}>
+      <I18nProvider i18n={setupI18n({ locale: 'en', messages: { en: {} } })}>
+        <NativeSolanaWidget />
+      </I18nProvider>
+    </Provider>,
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Swap' }))
+  expect(screen.getByText('Solana network fee paid by your wallet').nextElementSibling?.textContent).toBe('0.00001 SOL')
+  expect(screen.getByText('Storage deposits returned in this swap').nextElementSibling?.textContent).toBe(
+    '0.0034798 SOL',
+  )
+  expect(screen.getByText('New wallet token account deposit').nextElementSibling?.textContent).toBe('0.00148844 SOL')
+  expect(screen.queryByText(/maximum settlement cost/i)).toBeNull()
+  expect((screen.getByRole('button', { name: 'Confirm in wallet' }) as HTMLButtonElement).disabled).toBe(false)
 })

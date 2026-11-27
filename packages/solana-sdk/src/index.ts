@@ -1,12 +1,19 @@
-import { address, type Address, type Instruction, type TransactionSigner } from '@solana/kit';
+import {
+  address,
+  AccountRole,
+  createAddressWithSeed,
+  type Address,
+  type Instruction,
+  type TransactionSigner,
+} from '@solana/kit';
 import {
   findAssociatedTokenPda,
   getApproveInstruction,
   getCreateAssociatedTokenIdempotentInstructionAsync,
+  getSyncNativeInstruction,
 } from '@solana-program/token';
 import { getTransferSolInstruction } from '@solana-program/system';
-import { getSyncNativeInstruction } from '@solana-program/token';
-import { checkedQuoteAppData, OPHIS_MAINNET_PROGRAM } from './api.js';
+import { checkedQuoteOrderInput } from './checked-quote-order.js';
 import { identifyOphisSolanaOrder, resolveOrderPda } from './settlement/hooked.js';
 import { encodeFlags, OrderKind } from './settlement/order.js';
 import { findStatePda } from './settlement/generated/pdas/state.js';
@@ -45,6 +52,8 @@ export interface OphisSolanaOrderInput {
   buyProgram?: SolanaTokenProgram;
   receiver?: Address;
   sellAmount: bigint;
+  /** Atomic SOL sales create and close a dedicated input account in this transaction. */
+  temporaryNativeRent?: bigint;
   buyAmount: bigint;
   validTo: number;
   kind: 'sell' | 'buy';
@@ -74,6 +83,83 @@ function tokenProgram(value: SolanaTokenProgram): SolanaTokenProgram {
 function amount(value: bigint): void {
   if (typeof value !== 'bigint' || value <= 0n || value > 0xffff_ffff_ffff_ffffn)
     throw new Error('Amounts must be positive u64 bigint atoms');
+}
+
+async function prepareSellAccount(
+  input: OphisSolanaOrderInput,
+  sellMint: Address,
+  payer: TransactionSigner,
+  appData: Uint8Array,
+): Promise<{ sellTokenAccount: Address; instructions: Instruction[] }> {
+  const { owner, sellProgram } = input;
+  const native = input.sellMint === SOLANA_NATIVE_ASSET;
+  if (input.temporaryNativeRent !== undefined) {
+    if (!native || payer.address !== owner.address)
+      throw Error('A temporary SOL source requires the wallet payer');
+    amount(input.temporaryNativeRent);
+    const funding = input.temporaryNativeRent + input.sellAmount;
+    amount(funding);
+    const nonce = appData.subarray(24, 32);
+    const seed = 'o' + Array.from(nonce, (byte) => byte.toString(16).padStart(2, '0')).join('');
+    const sellTokenAccount = await createAddressWithSeed({
+      baseAddress: owner.address,
+      seed,
+      programAddress: sellProgram,
+    });
+    const walletMeta = {
+      address: owner.address,
+      role: AccountRole.WRITABLE_SIGNER,
+      signer: owner,
+    } as const;
+    const data = new Uint8Array(17);
+    data[0] = 15;
+    data.set(nonce, 1);
+    new DataView(data.buffer).setBigUint64(9, input.sellAmount, true);
+    return {
+      sellTokenAccount,
+      instructions: [
+        {
+          programAddress: input.programAddress,
+          accounts: [
+            walletMeta,
+            { address: sellTokenAccount, role: AccountRole.WRITABLE },
+            { address: WRAPPED_SOL_MINT, role: AccountRole.READONLY },
+            { address: TOKEN_PROGRAM_ADDRESS, role: AccountRole.READONLY },
+            { address: SOLANA_NATIVE_ASSET, role: AccountRole.READONLY },
+            {
+              address: address('Sysvar1nstructions1111111111111111111111111'),
+              role: AccountRole.READONLY,
+            },
+          ],
+          data,
+        },
+      ],
+    };
+  }
+  const [sellTokenAccount] = await findAssociatedTokenPda({
+    owner: owner.address,
+    mint: sellMint,
+    tokenProgram: sellProgram,
+  });
+  const instructions: Instruction[] = [
+    await getCreateAssociatedTokenIdempotentInstructionAsync({
+      payer,
+      owner: owner.address,
+      mint: sellMint,
+      tokenProgram: sellProgram,
+      ata: sellTokenAccount,
+    }),
+  ];
+  if (native)
+    instructions.push(
+      getTransferSolInstruction({
+        source: owner,
+        destination: sellTokenAccount,
+        amount: input.sellAmount,
+      }),
+      getSyncNativeInstruction({ account: sellTokenAccount }),
+    );
+  return { sellTokenAccount, instructions };
 }
 
 /** Builds user-funded instructions only. Does not fetch, sign, submit or select a hosted service. */
@@ -110,11 +196,12 @@ export async function prepareOphisSolanaOrder(input: OphisSolanaOrderInput) {
   if (!(appData instanceof Uint8Array) || appData.length !== 32)
     throw new Error('appData must contain 32 bytes');
   const receiver = address(input.receiver ?? owner);
-  const [sellTokenAccount] = await findAssociatedTokenPda({
-    owner,
-    mint: sellMint,
-    tokenProgram: sellProgram,
-  });
+  const { sellTokenAccount, instructions } = await prepareSellAccount(
+    input,
+    sellMint,
+    payer,
+    appData,
+  );
   const buyProgram = input.buyProgram === undefined ? undefined : tokenProgram(input.buyProgram);
   const buyTokenAccount =
     buyProgram === undefined
@@ -139,24 +226,6 @@ export async function prepareOphisSolanaOrder(input: OphisSolanaOrderInput) {
   };
   const { uid, orderPda } = await identifyOphisSolanaOrder(programAddress, intent);
   const [statePda] = await findStatePda({ programAddress });
-  const instructions: Instruction[] = [
-    await getCreateAssociatedTokenIdempotentInstructionAsync({
-      payer,
-      owner,
-      mint: sellMint,
-      tokenProgram: sellProgram,
-      ata: sellTokenAccount,
-    }),
-  ];
-  if (nativeSell)
-    instructions.push(
-      getTransferSolInstruction({
-        source: input.owner,
-        destination: sellTokenAccount,
-        amount: input.sellAmount,
-      }),
-      getSyncNativeInstruction({ account: sellTokenAccount }),
-    );
   if (buyProgram !== undefined)
     instructions.push(
       await getCreateAssociatedTokenIdempotentInstructionAsync({
@@ -252,59 +321,13 @@ export {
   type OphisSolanaMintMetadata,
 } from './api.js';
 
-/** Applies the displayed slippage to a fresh verified quote before preparing user-paid instructions. */
-export async function prepareOphisSolanaOrderFromQuote(input: {
-  programAddress: Address;
-  owner: TransactionSigner;
-  payer?: TransactionSigner;
-  quote: import('./api.js').OphisSolanaQuote;
-  sellProgram: SolanaTokenProgram;
-  buyProgram?: SolanaTokenProgram;
-  sellFromNativeSol?: boolean;
-  slippageBps: number;
-}) {
-  const { quote } = input;
-  const value = quote.quote;
-  if (
-    !quote.verified ||
-    quote.from !== input.owner.address ||
-    !Number.isFinite(Date.parse(quote.expiration)) ||
-    Date.parse(quote.expiration) <= Date.now()
-  )
-    throw Error('Request a fresh verified quote for this wallet');
-  if (!Number.isInteger(input.slippageBps) || input.slippageBps < 0 || input.slippageBps > 5000)
-    throw Error('Slippage must be an integer from 0 to 5000 bps');
-  const sell = BigInt(value.sellAmount) + BigInt(value.feeAmount);
-  const buy = BigInt(value.buyAmount);
-  const sellAmount =
-    value.kind === 'buy' ? (sell * BigInt(10_000 + input.slippageBps) + 9999n) / 10_000n : sell;
-  const buyAmount =
-    value.kind === 'sell' ? (buy * BigInt(10_000 - input.slippageBps)) / 10_000n : buy;
-  if (input.sellFromNativeSol && value.sellToken !== WRAPPED_SOL_MINT)
-    throw Error('Native SOL funding requires a wrapped SOL quote');
-  const appData = checkedQuoteAppData(input.programAddress, value);
-  if (
-    input.programAddress === OPHIS_MAINNET_PROGRAM &&
-    (input.sellProgram === TOKEN_2022_PROGRAM_ADDRESS ||
-      input.buyProgram === TOKEN_2022_PROGRAM_ADDRESS)
-  )
-    throw Error('Actual-output settlement requires classic SPL tokens or native SOL');
-  return prepareOphisSolanaOrder({
-    programAddress: input.programAddress,
-    owner: input.owner,
-    ...(input.payer ? { payer: input.payer } : {}),
-    sellMint: input.sellFromNativeSol ? SOLANA_NATIVE_ASSET : value.sellToken,
-    sellProgram: input.sellProgram,
-    buyMint: value.buyToken,
-    buyProgram: input.buyProgram,
-    ...(value.receiver ? { receiver: value.receiver } : {}),
-    sellAmount,
-    buyAmount,
-    validTo: value.validTo,
-    kind: value.kind,
-    partiallyFillable: value.partiallyFillable,
-    appData,
-  });
+/** Builds a persistent order only from a matching legacy quote. */
+export async function prepareOphisSolanaOrderFromQuote(
+  input: Parameters<typeof checkedQuoteOrderInput>[0],
+) {
+  if (input.quote.executionMode === 'walletAtomic')
+    throw Error('Use prepareOphisWalletAtomicSwap for a wallet-paid market quote.');
+  return prepareOphisSolanaOrder(checkedQuoteOrderInput(input));
 }
 
 export { parseOphisSolanaAmount, formatOphisSolanaAmount } from './amounts.js';
@@ -326,6 +349,7 @@ export { fetchOphisSolanaTrades, type OphisSolanaTrade } from './trades.js';
 export {
   fetchOphisWalletHoldings,
   fetchOphisOrderSolReserve,
+  fetchOphisWalletSwapCosts,
   fetchOphisOrderSolReserve as fetchOphisNativeSellReserve,
   requestOphisLocalTestSol,
   type OphisWalletHolding,
@@ -343,3 +367,5 @@ export {
 export { identifyOphisSolanaOrder } from './settlement/hooked.js';
 export { readOphisOrderAccount } from './local-rpc.js';
 export { readOphisSellAllowance, verifyOphisMintMetadata } from './holdings.js';
+
+export { prepareOphisWalletAtomicSwap } from './atomic.js';

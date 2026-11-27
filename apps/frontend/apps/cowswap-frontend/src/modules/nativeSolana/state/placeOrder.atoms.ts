@@ -1,6 +1,7 @@
 import { atom } from 'jotai'
 
 import {
+  fetchOphisWalletActionReceipt,
   getOrderIntentDecoder,
   getOrderIntentEncoder,
   readOphisOrderAccount,
@@ -34,16 +35,21 @@ import {
   type NativeSolanaReview,
 } from '../services/trade.service'
 
+function sameAllowance(reviewed: NativeSolanaReview['allowance'], current: NativeSolanaReview['allowance']): boolean {
+  return reviewed?.delegate === current?.delegate && reviewed?.atoms === current?.atoms
+}
+
 const recheckAllowanceAtom = atom(
   null,
   async (get, set, rpc: string, genesis: string, review: NativeSolanaReview, replaceAllowance: boolean) => {
+    if (review.atomic && review.form.sellMint === 'SOL') return
     const allowance = await readOphisSellAllowance(
       rpc,
       genesis,
       solanaAddress(review.connection.account.address),
       review.sell,
     )
-    if (allowance?.delegate !== review.allowance?.delegate || allowance?.atoms !== review.allowance?.atoms) {
+    if (!sameAllowance(review.allowance, allowance)) {
       if (get(nativeSolanaReviewAtom) === review) set(clearNativeSolanaReviewAtom)
       throw Error('Your token spending allowance changed. Review the updated quote before continuing.')
     }
@@ -56,12 +62,29 @@ async function checkPendingOrders(
   config: OphisSolanaConfig,
   savedOrders: readonly SavedNativeSolanaOrder[],
   sellTokenAccount: string,
+  nativeSale: boolean,
 ): Promise<void> {
   const live = savedOrders.filter((saved) => {
     const intent = getOrderIntentDecoder().decode(Uint8Array.from(saved.intent))
-    return !saved.reclaimed && Date.now() < intent.validTo * 1000 && intent.sellTokenAccount === sellTokenAccount
+    const sameSource =
+      intent.sellTokenAccount === sellTokenAccount ||
+      (nativeSale && saved.executionMode === 'walletAtomic' && BigInt(saved.walletCosts?.nativeWrapRent ?? '0') > 0n)
+    return !saved.reclaimed && Date.now() < intent.validTo * 1000 && sameSource
   })
   for (const saved of live) {
+    if (saved.executionMode === 'walletAtomic' && saved.creationLifetime) {
+      const state = await fetchOphisWalletActionReceipt(
+        rpc,
+        config.genesis,
+        saved.signature,
+        BigInt(saved.creationLifetime.height),
+        'confirmed',
+        saved.creationLifetime.blockhash,
+      )
+      if (state.status === 'pending')
+        throw Error('Your previous swap is still pending. Check its receipt before submitting another.')
+      continue
+    }
     const { account: current } = await readOphisOrderAccount(
       rpc,
       config.genesis,
@@ -77,6 +100,52 @@ async function checkPendingOrders(
   }
 }
 
+async function prepareReceipt(
+  config: OphisSolanaConfig,
+  review: NativeSolanaReview,
+  order: Awaited<ReturnType<typeof prepareReviewedSolanaOrder>>,
+  context: Awaited<ReturnType<typeof nativeSolanaContext>>,
+): Promise<SavedNativeSolanaOrder> {
+  const record: SavedNativeSolanaOrder = {
+    uid: order.uid,
+    owner: review.connection.account.address,
+    program: config.program,
+    genesis: config.genesis,
+    orderPda: order.orderPda,
+    createdBy: order.payer,
+    intent: Array.from(getOrderIntentEncoder().encode(order.intent)),
+    signature: null,
+    ...(review.atomic
+      ? {
+          executionMode: 'walletAtomic' as const,
+          walletCosts: {
+            networkFee: String(review.atomic.costs.networkFee),
+            orderRent: String(review.atomic.costs.orderRent),
+            nativeWrapRent: String(review.atomic.costs.nativeWrapRent),
+          },
+        }
+      : {}),
+    ...(config.chain === 'solana:localnet' && !review.atomic
+      ? {}
+      : {
+          creationLifetime: {
+            height: (review.atomic?.lastValidBlockHeight ?? context.lastValidBlockHeight).toString(),
+            ...(review.atomic && { blockhash: review.atomic.blockhash }),
+            requestedAt: Date.now(),
+          },
+        }),
+    reclaimed: false,
+  }
+  if (
+    !review.atomic &&
+    privateSettlementEnabled &&
+    (await privateAction<{ automatic: boolean }>('mode', {})).automatic
+  ) {
+    await privateAction('arm', { uid: order.uid, pda: order.orderPda, intent: record.intent })
+  }
+  return record
+}
+
 const placeNativeSolanaOrderAtom = atom(null, async (get, set, replaceAllowance: boolean) => {
   const review = get(nativeSolanaReviewAtom)
   const config = OPHIS_SOLANA_CONFIG
@@ -86,45 +155,37 @@ const placeNativeSolanaOrderAtom = atom(null, async (get, set, replaceAllowance:
   try {
     const { connection } = review
     checkLocalBackpackRpc(config, connection)
-    const order = await prepareReviewedSolanaOrder(config, review)
+    const order = review.atomic ? review.atomic.order : await prepareReviewedSolanaOrder(config, review)
     const rpc = balanceEndpoint(config)
     if (!rpc) throw Error('Wallet balance service unavailable.')
     await set(recheckAllowanceAtom, rpc, config.genesis, review, replaceAllowance)
-    await checkPendingOrders(rpc, config, get(visibleNativeSolanaOrdersAtom), order.intent.sellTokenAccount)
+    await checkPendingOrders(
+      rpc,
+      config,
+      get(visibleNativeSolanaOrdersAtom),
+      order.intent.sellTokenAccount,
+      review.form.sellMint === 'SOL',
+    )
     const context = await nativeSolanaContext(config)
+    if (!!context.walletAtomic !== !!review.atomic) throw Error('Swap execution changed. Get a fresh quote.')
     if (get(nativeSolanaReviewAtom) !== review) throw Error('The wallet or trade changed. Request a new quote.')
-    const record: SavedNativeSolanaOrder = {
-      uid: order.uid,
-      owner: connection.account.address,
-      program: config.program,
-      genesis: config.genesis,
-      orderPda: order.orderPda,
-      createdBy: order.payer,
-      intent: Array.from(getOrderIntentEncoder().encode(order.intent)),
-      signature: null,
-      ...(config.chain === 'solana:localnet'
-        ? {}
-        : {
-            creationLifetime: { height: context.lastValidBlockHeight.toString(), requestedAt: Date.now() },
-          }),
-      reclaimed: false,
+    const record = await prepareReceipt(config, review, order, context)
+    const onBeforeBroadcast = (): void => {
+      if (get(nativeSolanaReviewAtom) !== review) throw Error('The wallet or trade changed. Request a new quote.')
+      set(activeSolanaReceiptAtom, order.uid)
+      if (!get(savedNativeSolanaOrdersAtom)[order.uid])
+        set(savedNativeSolanaOrdersAtom, { ...get(savedNativeSolanaOrdersAtom), [order.uid]: record })
     }
-    if (privateSettlementEnabled && (await privateAction<{ automatic: boolean }>('mode', {})).automatic) {
-      await privateAction('arm', { uid: order.uid, pda: order.orderPda, intent: record.intent })
-    }
-    const signature = await sendOphisSolanaWalletTransaction({
-      ...connection,
-      chain: config.chain,
-      instructions: order.instructions,
-      onBeforeBroadcast: () => {
-        set(activeSolanaReceiptAtom, order.uid)
-        if (!get(savedNativeSolanaOrdersAtom)[order.uid])
-          set(savedNativeSolanaOrdersAtom, { ...get(savedNativeSolanaOrdersAtom), [order.uid]: record })
-      },
-      context,
-      programAddress: config.program,
-      expectedGenesisHash: config.genesis,
-    })
+    const wallet = { ...connection, chain: config.chain, onBeforeBroadcast }
+    const signature = review.atomic
+      ? await review.atomic.send(wallet)
+      : await sendOphisSolanaWalletTransaction({
+          ...wallet,
+          instructions: order.instructions,
+          context,
+          programAddress: config.program,
+          expectedGenesisHash: config.genesis,
+        })
     set(savedNativeSolanaOrdersAtom, { ...get(savedNativeSolanaOrdersAtom), [order.uid]: { ...record, signature } })
     set(clearNativeSolanaReviewAtom)
   } catch (error: unknown) {

@@ -562,11 +562,6 @@ msgstr " · transfers paused for {pausedSymbols}"
 msgid "Considering current network costs (<0><1/></0> per chunk), you could save more by reducing the number of parts or switch to a {swapOrderLink}."
 msgstr "Considering current network costs (<0><1/></0> per chunk), you could save more by reducing the number of parts or switch to a {swapOrderLink}."
 
-#. placeholder {0}: formatOphisSolanaAmount(solShortfall, 9)
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaTradePanels.container.tsx
-msgid "Your wallet needs {0} more SOL for fees and refundable deposits. You can reclaim deposits from completed orders in Account."
-msgstr "Your wallet needs {0} more SOL for fees and refundable deposits. You can reclaim deposits from completed orders in Account."
-
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/steps/FinishedStep.tsx
 msgid "via {route}"
 msgstr "via {route}"
@@ -895,6 +890,10 @@ msgstr "Expected input"
 msgid "Enable Hooks"
 msgstr "Enable Hooks"
 
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/SolanaReceipt.pure.tsx
+msgid "Solana network fee"
+msgstr "Solana network fee"
+
 #: apps/cowswap-frontend/src/modules/application/containers/App/menuConsts.tsx
 msgid "Overview"
 msgstr "Overview"
@@ -1175,6 +1174,10 @@ msgstr "Some orders can not be cancelled!"
 #: apps/cowswap-frontend/src/modules/ordersTable/test/ordersTable.cosmos.tsx
 msgid "Orders history"
 msgstr "Orders history"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+msgid "You sign once. Solana charges the network fee even if an included swap fails. Temporary deposits return to your wallet in the same transaction."
+msgstr "You sign once. Solana charges the network fee even if an included swap fails. Temporary deposits return to your wallet in the same transaction."
 
 #: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
 msgid "Active OTC orders"
@@ -1707,6 +1710,10 @@ msgstr "(v)COW balance"
 msgid "Closed"
 msgstr "Closed"
 
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/SolanaQuoteCosts.pure.tsx
+msgid "Solana network fee paid by your wallet"
+msgstr "Solana network fee paid by your wallet"
+
 #: apps/cowswap-frontend/src/modules/twap/pure/CustomDeadlineSelector/index.tsx
 msgid "Apply"
 msgstr "Apply"
@@ -2177,6 +2184,10 @@ msgstr "Approve {wrappedSymbol}"
 msgid "Comparing swap routes…"
 msgstr "Comparing swap routes…"
 
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
+msgid "Replace the existing allowance of {amount} {symbol} for {delegate}. Older orders using this allowance may stop filling."
+msgstr "Replace the existing allowance of {amount} {symbol} for {delegate}. Older orders using this allowance may stop filling."
+
 #: apps/cowswap-frontend/src/modules/account/containers/Transaction/StatusDetails.tsx
 msgid "Replaced"
 msgstr "Replaced"
@@ -2310,6 +2321,10 @@ msgstr "Cancellation submitted. Waiting for Solana to confirm."
 #: apps/cowswap-frontend/src/modules/tradeFormValidation/pure/TradeFormButtons/tradeButtonsMap.tsx
 msgid "Error loading price. Try again later."
 msgstr "Error loading price. Try again later."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/SolanaQuoteCosts.pure.tsx
+msgid "New wallet token account deposit"
+msgstr "New wallet token account deposit"
 
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/OrderEstimatedExecutionPrice/OrderEstimatedExecutionPrice.pure.tsx
 #: apps/cowswap-frontend/src/modules/trade/pure/TradeNumberInput/index.tsx
@@ -3882,6 +3897,10 @@ msgstr "BlockNumber hooks must be wrapped in a"
 msgid "Wrap <0/> and Swap"
 msgstr "Wrap <0/> and Swap"
 
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/SolanaReceipt.pure.tsx
+msgid "Storage deposits returned"
+msgstr "Storage deposits returned"
+
 #: apps/cowswap-frontend/src/modules/twap/containers/TwapFormWarnings/warnings/BigPartTimeWarning.tsx
 msgid "A maximum of <0>{time}</0> between parts is required. Increase the number of parts or decrease the total duration."
 msgstr "A maximum of <0>{time}</0> between parts is required. Increase the number of parts or decrease the total duration."
@@ -5236,6 +5255,10 @@ msgstr "This is the amount that will be sold in each part of the TWAP order."
 msgid "Quote expired. Refreshing..."
 msgstr "Quote expired. Refreshing..."
 
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaTradePanels.container.tsx
+msgid "Add {missingSol} more SOL for fees and deposits."
+msgstr "Add {missingSol} more SOL for fees and deposits."
+
 #: apps/cowswap-frontend/src/modules/hooksStore/pure/AddCustomHookForm/constants.tsx
 msgid "The URL provided does not return a valid manifest file<0/><1>The server returned an HTML page instead of the expected JSON manifest.json file. Please check if the URL is correct and points to a valid hook dapp.</1>"
 msgstr "The URL provided does not return a valid manifest file<0/><1>The server returned an HTML page instead of the expected JSON manifest.json file. Please check if the URL is correct and points to a valid hook dapp.</1>"
@@ -5447,6 +5470,10 @@ msgstr "Order Expired"
 #: apps/cowswap-frontend/src/common/pure/CurrencySelectButton/index.tsx
 msgid "Selected token:"
 msgstr "Selected token:"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/SolanaQuoteCosts.pure.tsx
+msgid "Storage deposits returned in this swap"
+msgstr "Storage deposits returned in this swap"
 
 #: apps/cowswap-frontend/src/legacy/components/Badge/RangeBadge.tsx
 msgid "Out of range"
@@ -7265,12 +7292,6 @@ msgstr "checkmark"
 #: apps/cowswap-frontend/src/pages/error/AnySwapAffectedUsers/index.tsx
 msgid "Review your token approvals"
 msgstr "Review your token approvals"
-
-#. placeholder {0}: formatOphisSolanaAmount(review.allowance.atoms, review.sell.decimals)
-#. placeholder {1}: review.allowance.delegate
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaPage.container.tsx
-msgid "Replace the existing allowance of {0} {sellSymbol}for {1}. Older orders using this allowance may stop filling."
-msgstr "Replace the existing allowance of {0} {sellSymbol}for {1}. Older orders using this allowance may stop filling."
 
 #: apps/cowswap-frontend/src/modules/trade/containers/QuotePolingProgress/index.tsx
 msgid "Quote will be updated in {time}"
