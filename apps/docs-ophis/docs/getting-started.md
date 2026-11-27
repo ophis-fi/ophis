@@ -80,7 +80,7 @@ Use the standalone app to swap from a NEAR Intents source such as Bitcoin or Sol
 
 See [Networks & assets](/networks-assets#externally-funded-swaps-through-near-intents) for address requirements and bridge coverage.
 
-A swap that starts and ends on Solana needs no deposit: connect a Solana wallet and follow [Native Solana swaps](/networks-assets#native-solana-swaps).
+For a swap that starts and ends on Solana, connect a Solana wallet, review the quoted output and minimum, and sign once. You can open the settlement receipt from **Account → Recent Activity**. See [Native Solana swaps](/networks-assets#native-solana-swaps).
 
 ## Supported networks
 
