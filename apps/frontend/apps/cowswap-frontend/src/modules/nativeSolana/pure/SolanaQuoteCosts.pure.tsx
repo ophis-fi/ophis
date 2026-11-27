@@ -2,79 +2,147 @@ import type { ReactNode } from 'react'
 
 import { Trans } from '@lingui/react/macro'
 import { formatOphisSolanaAmount } from '@ophis/solana-sdk'
+import { VerifiedAssetBadge, type Verification } from 'entities/verifiedAsset'
+import { ChevronDown } from 'react-feather'
 
-import type { NativeSolanaReview } from '../services/trade.service'
+import * as amountStyles from 'common/pure/CurrencyAmountPreview/styled'
+
+import { AssetIcon } from './AssetPicker.pure'
+import * as styledEl from './NativeSolana.styled'
+
+import { minimumSolanaBuyAmount, type NativeSolanaReview } from '../services/trade.service'
+
+import type { SolanaAsset } from '../services/assets.service'
+
+export function SolanaQuoteAmount({
+  label,
+  asset,
+  amount,
+  verified,
+}: {
+  label: ReactNode
+  asset: SolanaAsset
+  amount: string
+  verified: Verification | undefined
+}): ReactNode {
+  return (
+    <amountStyles.Container>
+      <div>{label}</div>
+      <div>
+        <AssetIcon asset={asset} />
+      </div>
+      <amountStyles.Amount>
+        <span title={asset.mint}>
+          {amount}{' '}
+          <styledEl.QuoteSymbol>
+            {asset.symbol}
+            <VerifiedAssetBadge verified={verified} />
+          </styledEl.QuoteSymbol>
+        </span>
+      </amountStyles.Amount>
+    </amountStyles.Container>
+  )
+}
+
+function formatBuyAmount(amount: bigint | string, decimals: number, symbol: string): string {
+  return formatOphisSolanaAmount(BigInt(amount), decimals) + ' ' + symbol
+}
 
 export function SolanaQuoteCosts({ review, buySymbol }: { review: NativeSolanaReview; buySymbol: string }): ReactNode {
-  const { quote } = review.quote
-  const { feeTerms } = quote
-  const baseBps = feeTerms?.baseBps
-  const maximumCost = BigInt(quote.costs.networkFees) + BigInt(quote.costs.buyTokenAtaCosts)
-  const improvementCapBps = feeTerms?.improvementCapBps
+  const { feeTerms, costs } = review.quote.quote
+  const { decimals } = review.buy
+  const minimum = formatBuyAmount(minimumSolanaBuyAmount(review), decimals, buySymbol)
+  const share = feeTerms && feeTerms.improvementShareBps / 100
+  const cap = feeTerms && feeTerms.improvementCapBps / 100
   const atomic = review.atomic?.costs
   return (
     <>
-      <dt>
-        <Trans>Ophis base fee in the buy token</Trans>
-      </dt>
-      <dd>{formatOphisSolanaAmount(BigInt(quote.costs.protocolFee), review.buy.decimals)}</dd>
-      {feeTerms && (
-        <>
+      <styledEl.QuoteValues>
+        <dt>
+          <Trans>Minimum received</Trans>
+        </dt>
+        <dd title={review.buy.address}>{minimum}</dd>
+        {atomic ? (
+          <>
+            <dt>
+              <Trans>Solana network fee</Trans>
+            </dt>
+            <dd>{formatOphisSolanaAmount(atomic.networkFee, 9)} SOL</dd>
+            {atomic.tokenAccountRent > 0n && (
+              <>
+                <dt>
+                  <Trans>New wallet token account deposit</Trans>
+                </dt>
+                <dd>{formatOphisSolanaAmount(atomic.tokenAccountRent, 9)} SOL</dd>
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            <dt>
+              <Trans>Maximum settlement cost in {buySymbol}</Trans>
+            </dt>
+            <dd>{formatBuyAmount(BigInt(costs.networkFees) + BigInt(costs.buyTokenAtaCosts), decimals, buySymbol)}</dd>
+          </>
+        )}
+      </styledEl.QuoteValues>
+      <details>
+        <summary>
+          <Trans>Fee details</Trans>
+          <ChevronDown size={16} aria-hidden="true" />
+        </summary>
+        <styledEl.QuoteValues>
           <dt>
-            <Trans>Base rate</Trans>
+            <Trans>Ophis base fee</Trans>
           </dt>
           <dd>
-            <Trans>{baseBps} bp</Trans>
+            {formatBuyAmount(costs.protocolFee, decimals, buySymbol)}
+            {feeTerms && ' (' + feeTerms.baseBps / 100 + '%)'}
           </dd>
-          <dt>
-            <Trans>Ophis share of price improvement</Trans>
-          </dt>
-          <dd>
-            <Trans>50%, capped at {improvementCapBps} bp of the trade</Trans>
-          </dd>
-        </>
-      )}
-      {atomic ? (
-        <>
-          <dt>
-            <Trans>Solana network fee paid by your wallet</Trans>
-          </dt>
-          <dd>{formatOphisSolanaAmount(atomic.networkFee, 9)} SOL</dd>
-          <dt>
-            <Trans>Storage deposits returned in this swap</Trans>
-          </dt>
-          <dd>{formatOphisSolanaAmount(atomic.orderRent + atomic.nativeWrapRent, 9)} SOL</dd>
-          {atomic.tokenAccountRent > 0n && (
+          {feeTerms && (
             <>
               <dt>
-                <Trans>New wallet token account deposit</Trans>
+                <Trans>Ophis share of extra output</Trans>
               </dt>
-              <dd>{formatOphisSolanaAmount(atomic.tokenAccountRent, 9)} SOL</dd>
+              <dd>
+                <Trans>
+                  {share}%, capped at {cap}% of the trade
+                </Trans>
+              </dd>
             </>
           )}
-        </>
-      ) : (
-        <>
-          <dt>
-            <Trans>Maximum settlement cost in {buySymbol}</Trans>
-          </dt>
-          <dd>
-            {formatOphisSolanaAmount(maximumCost, review.buy.decimals)} {buySymbol}
-          </dd>
-          <dt>
-            <Trans>Total quote costs in the buy token</Trans>
-          </dt>
-          <dd>{formatOphisSolanaAmount(BigInt(quote.costs.total), review.buy.decimals)}</dd>
-        </>
-      )}
-      {review.solAfterOrder !== undefined && (
-        <>
-          <dt>
-            <Trans>Estimated SOL left after placing the order</Trans>
-          </dt>
-          <dd>{formatOphisSolanaAmount(review.solAfterOrder, 9)} SOL</dd>
-        </>
-      )}
+          {atomic ? (
+            <>
+              <dt>
+                <Trans>Deposit returned in this swap</Trans>
+              </dt>
+              <dd>{formatOphisSolanaAmount(atomic.orderRent + atomic.nativeWrapRent, 9)} SOL</dd>
+            </>
+          ) : (
+            <>
+              <dt>
+                <Trans>Total quote costs</Trans>
+              </dt>
+              <dd>{formatBuyAmount(costs.total, decimals, buySymbol)}</dd>
+            </>
+          )}
+          {review.solAfterOrder !== undefined && (
+            <>
+              <dt>
+                <Trans>Estimated SOL left after placing the order</Trans>
+              </dt>
+              <dd>{formatOphisSolanaAmount(review.solAfterOrder, 9)} SOL</dd>
+            </>
+          )}
+        </styledEl.QuoteValues>
+        <small>
+          {atomic ? (
+            <Trans>Solana charges the network fee if the transaction lands, even if the swap fails.</Trans>
+          ) : (
+            <Trans>Your wallet pays to place the order and open any required accounts.</Trans>
+          )}
+        </small>
+      </details>
     </>
   )
 }

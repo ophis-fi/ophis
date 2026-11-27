@@ -1,7 +1,6 @@
 import { atom } from 'jotai'
 
 import {
-  fetchOphisWalletActionReceipt,
   getOrderIntentDecoder,
   getOrderIntentEncoder,
   readOphisOrderAccount,
@@ -26,9 +25,11 @@ import {
 } from './trade.atoms'
 
 import { balanceEndpoint } from '../services/assets.service'
+import { checkAtomicReceipt } from '../services/atomicReceipt.service'
 import { privateAction, privateSettlementEnabled } from '../services/privateSettlement.service'
 import {
   checkLocalBackpackRpc,
+  isMissingBlockhashError,
   nativeSolanaContext,
   nativeSolanaErrorMessage,
   prepareReviewedSolanaOrder,
@@ -73,14 +74,7 @@ async function checkPendingOrders(
   })
   for (const saved of live) {
     if (saved.executionMode === 'walletAtomic' && saved.creationLifetime) {
-      const state = await fetchOphisWalletActionReceipt(
-        rpc,
-        config.genesis,
-        saved.signature,
-        BigInt(saved.creationLifetime.height),
-        'confirmed',
-        saved.creationLifetime.blockhash,
-      )
+      const state = await checkAtomicReceipt(saved)
       if (state.status === 'pending')
         throw Error('Your previous swap is still pending. Check its receipt before submitting another.')
       continue
@@ -150,6 +144,7 @@ const placeNativeSolanaOrderAtom = atom(null, async (get, set, replaceAllowance:
   const review = get(nativeSolanaReviewAtom)
   const config = OPHIS_SOLANA_CONFIG
   if (!review || !config || get(nativeSolanaBusyAtom)) return
+  let awaitingAtomicReceipt = false
   set(nativeSolanaBusyAtom, true)
   set(nativeSolanaErrorAtom, null)
   try {
@@ -175,18 +170,27 @@ const placeNativeSolanaOrderAtom = atom(null, async (get, set, replaceAllowance:
       set(activeSolanaReceiptAtom, order.uid)
       if (!get(savedNativeSolanaOrdersAtom)[order.uid])
         set(savedNativeSolanaOrdersAtom, { ...get(savedNativeSolanaOrdersAtom), [order.uid]: record })
+      awaitingAtomicReceipt = !!review.atomic
     }
     const wallet = { ...connection, chain: config.chain, onBeforeBroadcast }
-    const signature = review.atomic
-      ? await review.atomic.send(wallet)
-      : await sendOphisSolanaWalletTransaction({
+    const submission = review.atomic
+      ? review.atomic.send(wallet)
+      : sendOphisSolanaWalletTransaction({
           ...wallet,
           instructions: order.instructions,
           context,
           programAddress: config.program,
           expectedGenesisHash: config.genesis,
         })
-    set(savedNativeSolanaOrdersAtom, { ...get(savedNativeSolanaOrdersAtom), [order.uid]: { ...record, signature } })
+    await submission.then(
+      (signature) => {
+        set(savedNativeSolanaOrdersAtom, { ...get(savedNativeSolanaOrdersAtom), [order.uid]: { ...record, signature } })
+      },
+      (error: unknown) => {
+        if (awaitingAtomicReceipt && isMissingBlockhashError(error)) return
+        throw error
+      },
+    )
     set(clearNativeSolanaReviewAtom)
   } catch (error: unknown) {
     set(nativeSolanaErrorAtom, nativeSolanaErrorMessage(error))

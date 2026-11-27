@@ -13,7 +13,7 @@ import { queryClientAtom } from 'jotai-tanstack-query'
 import { nativeSolanaOrderQueryAtom, savedNativeSolanaOrdersAtom } from './orders.atoms'
 
 import { walletHoldingsKey } from '../services/assets.service'
-import { orderPollInterval } from '../services/atomicReceipt.service'
+import { checkAtomicReceipt, orderPollInterval } from '../services/atomicReceipt.service'
 import { receiptAmount } from '../services/receipt.service'
 
 jest.mock(
@@ -112,6 +112,16 @@ it('reads the wallet-paid settlement signature even after the order account has 
     blockhash,
   )
   const order = store.get(savedNativeSolanaOrdersAtom)[uid]
-  expect(orderPollInterval('unconfirmed', { ...order, signature: null }, true)).toBe(60_000)
+  const unsigned = { ...order, signature: null }
+  const indexed = { uid, owner: order.owner, orderPda: order.orderPda, status: 'fulfilled' } as OphisSolanaOrder
+  const lookup = jest.mocked(fetchOphisSolanaOrder)
+  lookup.mockResolvedValueOnce({ ...indexed, owner: 'someone-else' })
+  lookup.mockResolvedValueOnce({ ...indexed, orderPda: 'another-order' })
+  lookup.mockResolvedValueOnce(indexed)
+  expect(await checkAtomicReceipt(unsigned)).toEqual({ status: 'pending' })
+  expect(await checkAtomicReceipt(unsigned)).toEqual({ status: 'pending' })
+  expect(await checkAtomicReceipt(unsigned)).toEqual(indexed)
+  expect(lookup).toHaveBeenCalledWith('https://example.org', uid)
+  expect(orderPollInterval('unconfirmed', unsigned, true)).toBe(60_000)
   expect(orderPollInterval('unconfirmed', order, true)).toBe(false)
 })

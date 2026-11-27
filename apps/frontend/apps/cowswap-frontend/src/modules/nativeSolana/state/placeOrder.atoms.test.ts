@@ -2,6 +2,7 @@ import { createStore } from 'jotai'
 
 import {
   fetchOphisSolanaChainContext,
+  fetchOphisSolanaOrder,
   fetchOphisWalletActionReceipt,
   prepareOphisWalletAtomicSwap,
   readOphisOrderAccount,
@@ -28,10 +29,12 @@ jest.mock(
     OphisSolanaHttpError: class extends Error {},
     solanaAddress: (address: string) => address,
     SOLANA_NATIVE_ASSET: 'native',
+    OPHIS_LOCAL_WALLET_RPC: 'http://127.0.0.1:18899',
     TOKEN_PROGRAM_ADDRESS: 'token',
     fetchOphisSolanaMint: async (_api: string, address: string) => ({ address, tokenProgram: 'token', decimals: 6 }),
     prepareOphisWalletAtomicSwap: jest.fn(),
     fetchOphisWalletActionReceipt: jest.fn(),
+    fetchOphisSolanaOrder: jest.fn().mockRejectedValue(Error('Order not indexed')),
     fetchOphisSolanaChainContext: jest.fn().mockResolvedValue({
       programAddress: 'program',
       genesisHash: 'genesis',
@@ -107,6 +110,8 @@ function ordersAfterReload(): Record<string, SavedNativeSolanaOrder> {
   unsubscribe()
   return orders
 }
+
+afterEach(() => jest.restoreAllMocks())
 
 beforeEach(() => {
   localStorage.clear()
@@ -191,7 +196,7 @@ it('guards the same native SOL balance while an earlier temporary source can sti
     executionMode: 'walletAtomic' as const,
     intent: Array(213).fill(42),
     walletCosts: { networkFee: '10000', orderRent: '1991360', nativeWrapRent: '1488440' },
-    creationLifetime: { height: '100', requestedAt: Date.now(), blockhash: '1'.repeat(32) },
+    creationLifetime: { height: '100', requestedAt: Date.now() - 91_000, blockhash: '1'.repeat(32) },
   }
   store.set(savedNativeSolanaOrdersAtom, { [uid]: prior })
   jest.mocked(fetchOphisWalletActionReceipt).mockResolvedValueOnce({ status: 'pending' })
@@ -207,6 +212,61 @@ it('guards the same native SOL balance while an earlier temporary source can sti
   expect(store.get(nativeSolanaErrorAtom)).toMatch(/previous swap is still pending/)
   expect(send).not.toHaveBeenCalled()
 })
+
+it('allows a fresh swap once the previous unsigned receipt has a matching indexed fill', async () => {
+  const store = await reviewedStore()
+  const priorUid = '0x' + '34'.repeat(32)
+  const prior = {
+    ...savedOrder,
+    uid: priorUid,
+    orderPda: 'prior-pda',
+    executionMode: 'walletAtomic' as const,
+    creationLifetime: { height: '135', requestedAt: Date.now() },
+  }
+  store.set(savedNativeSolanaOrdersAtom, { [priorUid]: prior })
+  jest.mocked(fetchOphisSolanaOrder).mockResolvedValueOnce({
+    uid: priorUid,
+    owner: prior.owner,
+    orderPda: prior.orderPda,
+    status: 'fulfilled',
+  } as Awaited<ReturnType<typeof fetchOphisSolanaOrder>>)
+  send.mockResolvedValueOnce(signature)
+  await store.set(createNativeSolanaOrderAtom)
+  expect(fetchOphisSolanaOrder).toHaveBeenCalledWith('https://example.org', priorUid)
+  expect(fetchOphisWalletActionReceipt).not.toHaveBeenCalled()
+  expect(send).toHaveBeenCalledTimes(1)
+  expect(ordersAfterReload()[uid]?.signature).toBe(signature)
+})
+
+it.each(['solana:devnet', 'solana:localnet'] as const)(
+  'follows the receipt on %s when the wallet reports a missing blockhash after handoff',
+  async (chain) => {
+    jest.replaceProperty(jest.requireMock('entities/solana').OPHIS_SOLANA_CONFIG, 'chain', chain)
+    const context = { ...(await fetchOphisSolanaChainContext('https://example.org')), walletAtomic: true }
+    jest.mocked(fetchOphisSolanaChainContext).mockResolvedValueOnce(context).mockResolvedValueOnce(context)
+    type Atomic = Awaited<ReturnType<typeof prepareOphisWalletAtomicSwap>>
+    const walletSend = jest.fn<ReturnType<Atomic['send']>, Parameters<Atomic['send']>>(async (wallet) => {
+      wallet.onBeforeBroadcast?.()
+      return Promise.reject({ code: -32002, message: 'Transaction simulation failed: Blockhash not found' })
+    })
+    jest.mocked(prepareOphisWalletAtomicSwap).mockResolvedValueOnce({
+      order: { uid, orderPda: 'pda', payer: 'owner', intent: { sellTokenAccount: 'sell-account' } },
+      costs: { networkFee: 10_000n, orderRent: 1_991_360n, nativeWrapRent: 0n },
+      blockhash: '1'.repeat(32),
+      lastValidBlockHeight: 135n,
+      send: walletSend,
+    } as Atomic)
+    const store = await reviewedStore()
+    await store.set(createNativeSolanaOrderAtom)
+    expect(store.get(nativeSolanaErrorAtom)).toBeNull()
+    expect(store.get(nativeSolanaReviewAtom)).toBeNull()
+    expect(store.get(activeSolanaReceiptAtom)).toBe(uid)
+    expect(ordersAfterReload()[uid]?.signature).toBeNull()
+    await store.set(createNativeSolanaOrderAtom)
+    expect(walletSend).toHaveBeenCalledTimes(1)
+    expect(fetchOphisSolanaOrder).not.toHaveBeenCalled()
+  },
+)
 
 it('stops before asking the wallet to send if the wallet disconnects during preparation', async () => {
   const store = await reviewedStore()
