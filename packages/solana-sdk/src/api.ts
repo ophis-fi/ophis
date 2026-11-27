@@ -13,6 +13,8 @@ export interface OphisSolanaQuoteRequest {
   buyToken: Address;
   receiver?: Address;
   executionMode?: 'walletAtomic';
+  /** Minimum received in the exact-input wallet preview uses this tolerance. */
+  slippageBps?: number;
   walletCreatesBuyTokenAccount?: boolean;
   side: { kind: 'sell'; sellAmountBeforeFee: bigint } | { kind: 'buy'; buyAmountAfterFee: bigint };
   validFor?: number;
@@ -227,6 +229,11 @@ export async function request(baseUrl: string, path: string, body?: unknown): Pr
   return response.json();
 }
 
+export function checkSlippageBps(bps: number): void {
+  if (!Number.isInteger(bps) || bps < 0 || bps > 5000)
+    throw Error('Slippage must be an integer from 0 to 5000 bps');
+}
+
 /** One explicit request; no retries, refresh loop or fallback host. Token amounts remain exact strings. */
 export async function fetchOphisSolanaQuote(
   baseUrl: string,
@@ -240,6 +247,11 @@ export async function fetchOphisSolanaQuote(
       !['fast', 'optimal', 'verified'].includes(input.priceQuality))
   )
     throw Error('Invalid native quote request');
+  if (input.slippageBps !== undefined) {
+    if (input.executionMode !== 'walletAtomic' || input.side.kind !== 'sell')
+      throw Error('A quote slippage limit requires an exact-input wallet swap');
+    checkSlippageBps(input.slippageBps);
+  }
   const amount =
     input.side.kind === 'sell' ? input.side.sellAmountBeforeFee : input.side.buyAmountAfterFee;
   if (typeof amount !== 'bigint') throw Error('Specify bigint token atoms');
@@ -256,6 +268,7 @@ export async function fetchOphisSolanaQuote(
       from,
       sellToken,
       ...(input.executionMode && { executionMode: input.executionMode }),
+      ...(input.slippageBps !== undefined && { slippageBps: input.slippageBps }),
       ...(input.sellToken === NATIVE_SOL ? { sellFromNativeSol: true } : {}),
       buyToken,
       ...(input.walletCreatesBuyTokenAccount === true

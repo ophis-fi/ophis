@@ -1,6 +1,7 @@
 import { createStore } from 'jotai'
 
 import {
+  fetchOphisSolanaChainContext,
   fetchOphisSolanaQuote,
   OphisSolanaHttpError,
   readOphisOrderAccount,
@@ -27,7 +28,9 @@ jest.mock(
     OPHIS_LOCAL_WALLET_RPC: 'http://127.0.0.1:18899',
     SOLANA_NATIVE_ASSET: 'native',
     TOKEN_PROGRAM_ADDRESS: 'token',
-    fetchOphisSolanaChainContext: async () => ({ programAddress: 'own-program', genesisHash: 'own-genesis' }),
+    fetchOphisSolanaChainContext: jest
+      .fn()
+      .mockResolvedValue({ programAddress: 'own-program', genesisHash: 'own-genesis' }),
     fetchOphisWalletActionReceipt: jest.fn().mockResolvedValue({ status: 'pending' }),
     fetchOphisWalletActionContext: jest.fn().mockResolvedValue({ lastValidBlockHeight: 10n }),
     sendOphisSolanaWalletTransaction: jest.fn().mockResolvedValue('1'.repeat(64)),
@@ -106,7 +109,9 @@ it('distinguishes unsupported transfer rules and absent liquidity, and refuses a
   const b = '11111111111111111111111111111113'
   const store = createStore()
   store.set(solanaConnectionAtom, connection('CaseSensitiveOwner'))
-  store.set(nativeSolanaFormAtom, { sellMint: a, buyMint: b, amount: '1', slippageBps: 50 })
+  store.set(nativeSolanaFormAtom, { sellMint: a, buyMint: b, amount: '1', slippageBps: 125 })
+  const context = await fetchOphisSolanaChainContext('https://native.ophis.example')
+  jest.mocked(fetchOphisSolanaChainContext).mockResolvedValueOnce({ ...context, walletAtomic: true })
   jest
     .mocked(fetchOphisSolanaQuote)
     .mockResolvedValueOnce({ verified: false } as Awaited<ReturnType<typeof fetchOphisSolanaQuote>>)
@@ -116,6 +121,7 @@ it('distinguishes unsupported transfer rules and absent liquidity, and refuses a
     expect.objectContaining({
       sellToken: a,
       buyToken: b,
+      slippageBps: 125,
       priceQuality: 'verified',
     }),
   )

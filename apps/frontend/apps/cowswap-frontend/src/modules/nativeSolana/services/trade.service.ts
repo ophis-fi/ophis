@@ -127,7 +127,7 @@ export async function loadNativeSolanaQuote(
   signal?.throwIfAborted()
   const quote = await fetchOphisSolanaQuote(config.api, {
     from: solanaAddress(connection.account.address),
-    ...(context.walletAtomic && { executionMode: 'walletAtomic' as const }),
+    ...(context.walletAtomic && { executionMode: 'walletAtomic' as const, slippageBps: form.slippageBps }),
     walletCreatesBuyTokenAccount: true,
     sellToken: sell.address,
     buyToken: buy.address,

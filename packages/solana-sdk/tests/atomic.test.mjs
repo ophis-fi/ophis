@@ -1033,12 +1033,19 @@ test('the quoted native SOL fee binds the estimate, upper limit and denomination
     sellToken: SOLANA_NATIVE_ASSET,
     buyToken: q.quote.buyToken,
     executionMode: 'walletAtomic',
+    slippageBps: 50,
     side: { kind: 'sell', sellAmountBeforeFee: 3000n },
   };
   const response = structuredClone(q);
-  t.mock.method(globalThis, 'fetch', async () => Response.json(response));
+  t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    assert.equal(JSON.parse(init.body).slippageBps, 50);
+    return Response.json(response);
+  });
   const verified = await fetchOphisSolanaQuote(endpoint, request);
   assert.deepEqual(verified.quote.nativeProtocolFee, q.quote.nativeProtocolFee);
+  for (const slippageBps of [-1, 5001, 0.5]) {
+    await assert.rejects(fetchOphisSolanaQuote(endpoint, { ...request, slippageBps }), /Slippage/);
+  }
   const cap = getOphisNativeSellFeeCap(3000n, request.buyToken);
   assert.ok(cap >= BigInt(q.quote.nativeProtocolFee.maxLamports));
   for (const changed of [
