@@ -44,21 +44,23 @@ Arc's native and ERC-20 USDC interfaces access the same balance. Use the ERC-20 
 
 ## Native Solana swaps {/* #native-solana-swaps */}
 
-The swap app swaps SOL and SPL tokens on Solana at [swap.ophis.fi/#/solana](https://swap.ophis.fi/#/solana). A Solana swap starts and ends on Solana. It is not a bridge and uses no deposit address.
+Open [Solana in the swap app](https://swap.ophis.fi/#/swap?network=solana) to trade SOL and supported SPL tokens on Solana. Choose the pair and amount, review the minimum you will receive, then confirm once in your wallet.
 
 | Item | Details |
 | --- | --- |
 | Wallet | A Solana wallet: Wallet Standard browser wallets such as Phantom and Solflare, or a mobile wallet by QR code through WalletConnect |
 | Assets | SOL and SPL tokens. Search by symbol or name, or paste a mint address |
-| Order | You set the amount you sell. One wallet transaction places an order with a minimum received |
-| Settlement | The Ophis solver settles through the Ophis program `BJZ5yma22Km3fsfrEEdZVGygdrcwoschb6uUNqQWaQ9h`, which rejects any settlement below your minimum |
-| Liquidity | Raydium, Orca, Meteora, PumpSwap and Manifest directly, and Jupiter as a router |
-| Unfilled orders | Stay open until they expire, and you can cancel them. Afterwards, **Reclaim account rent** returns the order account deposit to the wallet that paid it |
+| Settlement | Both transfers settle in one transaction. The [Ophis settlement program](https://explorer.solana.com/address/BJZ5yma22Km3fsfrEEdZVGygdrcwoschb6uUNqQWaQ9h) enforces your minimum. If an included transaction fails, both swap transfers revert and your wallet still pays the Solana network fee |
+| Direct liquidity | Raydium, Orca, Meteora, Manifest, PumpSwap, Saros and DOOAR |
+| Via Jupiter | Ophis also requests routes through Orca Whirlpools, Raydium CLMM, Scorch and BisonFi. Availability depends on the pair, amount and executable quotes |
+| Receipt | Open **Account → Recent Activity**, select the swap and choose **View settlement** to see the transaction on Solana Explorer |
 | Fees | [Solana fee policy](/fees#solana-fee-policy) |
 | SDK and MCP | Not covered. They build EVM orders only |
 | Intent API | Not covered. It returns a parsed intent, not an order |
 
-A quote appears only when a route exists for your pair and amount. To move between Solana and another network, use a [NEAR Intents swap](#externally-funded-swaps-through-near-intents).
+Temporary storage deposits return to your wallet in the same market swap. Older orders that still have a separate order account keep their **Cancel order** or **Reclaim account rent** actions in the receipt.
+
+Finding a token in search does not guarantee an executable quote. To move between Solana and another network, use a [NEAR Intents swap](#externally-funded-swaps-through-near-intents).
 
 ## NEAR Intents swaps {/* #externally-funded-swaps-through-near-intents */}
 
