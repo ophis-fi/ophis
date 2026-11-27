@@ -62,10 +62,14 @@ async function checkPendingOrders(
   config: OphisSolanaConfig,
   savedOrders: readonly SavedNativeSolanaOrder[],
   sellTokenAccount: string,
+  nativeSale: boolean,
 ): Promise<void> {
   const live = savedOrders.filter((saved) => {
     const intent = getOrderIntentDecoder().decode(Uint8Array.from(saved.intent))
-    return !saved.reclaimed && Date.now() < intent.validTo * 1000 && intent.sellTokenAccount === sellTokenAccount
+    const sameSource =
+      intent.sellTokenAccount === sellTokenAccount ||
+      (nativeSale && saved.executionMode === 'walletAtomic' && BigInt(saved.walletCosts?.nativeWrapRent ?? '0') > 0n)
+    return !saved.reclaimed && Date.now() < intent.validTo * 1000 && sameSource
   })
   for (const saved of live) {
     if (saved.executionMode === 'walletAtomic' && saved.creationLifetime) {
@@ -75,6 +79,7 @@ async function checkPendingOrders(
         saved.signature,
         BigInt(saved.creationLifetime.height),
         'confirmed',
+        saved.creationLifetime.blockhash,
       )
       if (state.status === 'pending')
         throw Error('Your previous swap is still pending. Check its receipt before submitting another.')
@@ -125,6 +130,7 @@ async function prepareReceipt(
       : {
           creationLifetime: {
             height: (review.atomic?.lastValidBlockHeight ?? context.lastValidBlockHeight).toString(),
+            ...(review.atomic && { blockhash: review.atomic.blockhash }),
             requestedAt: Date.now(),
           },
         }),
@@ -153,7 +159,13 @@ const placeNativeSolanaOrderAtom = atom(null, async (get, set, replaceAllowance:
     const rpc = balanceEndpoint(config)
     if (!rpc) throw Error('Wallet balance service unavailable.')
     await set(recheckAllowanceAtom, rpc, config.genesis, review, replaceAllowance)
-    await checkPendingOrders(rpc, config, get(visibleNativeSolanaOrdersAtom), order.intent.sellTokenAccount)
+    await checkPendingOrders(
+      rpc,
+      config,
+      get(visibleNativeSolanaOrdersAtom),
+      order.intent.sellTokenAccount,
+      review.form.sellMint === 'SOL',
+    )
     const context = await nativeSolanaContext(config)
     if (!!context.walletAtomic !== !!review.atomic) throw Error('Swap execution changed. Get a fresh quote.')
     if (get(nativeSolanaReviewAtom) !== review) throw Error('The wallet or trade changed. Request a new quote.')

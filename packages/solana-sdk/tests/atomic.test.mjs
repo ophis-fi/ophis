@@ -240,13 +240,26 @@ async function fixture(change, useTable = false, nativeSale = false, createRecei
     networkFeeLamports: String(networkFee),
     transaction: Buffer.from(bytes).toString('base64'),
   };
-  return { input, packet, user, order, table, tableKeys, solverAta };
+  return {
+    input,
+    packet,
+    user,
+    order,
+    table,
+    tableKeys,
+    solverAta,
+    receiverExists: !createReceiver,
+  };
 }
 
-function rpcMock(t, { packet, input, table, tableKeys }, change) {
+function rpcMock(
+  t,
+  { packet, input, table, tableKeys, receiverExists, rentPerByte = 5080n },
+  change,
+) {
   const rent = Buffer.alloc(17),
     hashes = Buffer.alloc(48);
-  rent.writeBigUInt64LE(5080n);
+  rent.writeBigUInt64LE(rentPerByte);
   rent.writeDoubleLE(1, 8);
   hashes.writeBigUInt64LE(1n);
   hashes.writeBigUInt64LE(5000n, 40);
@@ -260,7 +273,9 @@ function rpcMock(t, { packet, input, table, tableKeys }, change) {
       assert.deepEqual(body, {
         quoteId: 1,
         owner: input.owner.address,
-        minimumBuyAmount: '9950',
+        minimumBuyAmount: String(
+          (BigInt(input.quote.quote.buyAmount) * BigInt(10_000 - input.slippageBps)) / 10_000n,
+        ),
         appData: input.quote.quote.appData,
       });
       return Response.json(packet);
@@ -272,10 +287,10 @@ function rpcMock(t, { packet, input, table, tableKeys }, change) {
         value: [
           sysvar(rent),
           sysvar(hashes),
-          ...(input.sellFromNativeSol
+          ...(input.quote.quote.buyToken !== SOLANA_NATIVE_ASSET
             ? [
                 { owner: TOKEN_PROGRAM_ADDRESS },
-                packet.tokenAccountRentLamports === '0' ? { owner: TOKEN_PROGRAM_ADDRESS } : null,
+                receiverExists ? { owner: TOKEN_PROGRAM_ADDRESS } : null,
                 null,
               ]
             : []),
@@ -339,7 +354,7 @@ test('full atomic wallet packet is reviewed independently and sent with one wall
           approvals++;
           assert.ok(persistent);
           const tx = getTransactionDecoder().decode(transaction);
-          assert.ok(tx.signatures[f.input.quote.solver]);
+          assert.deepEqual(Buffer.from(transaction), Buffer.from(f.packet.transaction, 'base64'));
           return [{ signature: sign(null, tx.messageBytes, f.user.privateKey) }];
         },
       },
@@ -443,8 +458,46 @@ test('a first-time recipient must receive precisely its own canonical token acco
 test('cannot charge for creating a new receiving ATA then omit its creation', async (t) => {
   const f = await fixture(undefined, true, true);
   f.packet.tokenAccountRentLamports = '1488440';
+  f.receiverExists = false;
   rpcMock(t, f);
   await assert.rejects(prepareOphisWalletAtomicSwap(f.input), /does not match/);
+});
+
+test('an existing receiver cannot cost a deposit even if the wallet closes it before signing', async (t) => {
+  const f = await fixture(undefined, true, true, true);
+  f.receiverExists = true;
+  rpcMock(t, f);
+  await assert.rejects(prepareOphisWalletAtomicSwap(f.input), /fees or account deposits changed/);
+  f.packet.tokenAccountRentLamports = '0';
+  await assert.rejects(prepareOphisWalletAtomicSwap(f.input), /does not match/);
+});
+
+test('the packet must grant required accounts their writable role', async (t) => {
+  const f = await fixture(({ instructions, order }) => {
+    for (const [index, ix] of instructions.entries()) {
+      instructions[index] = {
+        ...ix,
+        accounts: ix.accounts?.map((meta) =>
+          meta.address === order.orderPda ? { ...meta, role: 0 } : meta,
+        ),
+      };
+    }
+  });
+  rpcMock(t, f);
+  await assert.rejects(prepareOphisWalletAtomicSwap(f.input), /does not match/);
+});
+
+test('a late blockhash check cannot pass an expired quote to the wallet', async (t) => {
+  const f = await fixture();
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
+  rpcMock(t, f, (body) => {
+    if (body.method === 'isBlockhashValid') {
+      t.mock.timers.tick(91_000);
+      return { context: { slot: 2 }, value: true };
+    }
+  });
+  const reviewed = await prepareOphisWalletAtomicSwap(f.input);
+  await assert.rejects(reviewed.send({ account: { address: f.user.address } }), /expired/);
 });
 
 test('the native wrapper cannot fund a different amount', async (t) => {
@@ -495,7 +548,7 @@ test('resolves route lookup entries on the trusted RPC and checks wallet-owned t
   tableData.writeUInt32LE(1);
   tableData.writeBigUInt64LE(0xffffffffffffffffn, 4);
   tableData.set(getAddressEncoder().encode(f.solverAta), 56);
-  let owned = false;
+  let ownerProgram;
   rpcMock(t, f, (body) => {
     if (body.method === 'getMultipleAccounts' && body.params[0][0] === f.table) {
       assert.deepEqual(body.params[1].dataSlice, { offset: 0, length: 8248 });
@@ -509,12 +562,14 @@ test('resolves route lookup entries on the trusted RPC and checks wallet-owned t
         ],
       };
     }
-    if (owned && body.method === 'getTokenAccountsByOwner')
+    if (body.method === 'getTokenAccountsByOwner' && body.params[1].programId === ownerProgram)
       return { context: { slot: 1 }, value: [{ pubkey: f.solverAta }] };
   });
   assert.equal((await prepareOphisWalletAtomicSwap(f.input)).order.uid, f.order.uid);
-  owned = true;
-  await assert.rejects(prepareOphisWalletAtomicSwap(f.input), /does not match/);
+  for (const tokenProgram of [TOKEN_PROGRAM_ADDRESS, TOKEN_2022_PROGRAM_ADDRESS]) {
+    ownerProgram = tokenProgram;
+    await assert.rejects(prepareOphisWalletAtomicSwap(f.input), /does not match/);
+  }
 });
 
 test('rejects altered solver signatures and unexpected fees before wallet approval', async (t) => {
@@ -529,53 +584,71 @@ test('rejects altered solver signatures and unexpected fees before wallet approv
   await assert.rejects(prepareOphisWalletAtomicSwap(f.input), /winning solver signature/);
 });
 
-test('accepts the Rust driver’s signed Raydium v0 packet and account layout', async (t) => {
+test('the public wallet preparation path verifies the signed Rust Raydium packet', async (t) => {
   t.mock.timers.enable({ apis: ['Date'], now: 1795700000000 });
   const { default: f } = await import('./rust-wallet-atomic.json', { with: { type: 'json' } });
-  const { getCompiledTransactionMessageDecoder, decompileTransactionMessage } = await import(
-    '@solana/kit'
-  );
-  const { prepareOphisSolanaOrder } = await import('../dist/index.js');
-  const { checkAtomicInstructions } = await import('../dist/atomic-instructions.js');
-  const wire = getTransactionDecoder().decode(Buffer.from(f.transaction, 'base64'));
-  const compiled = getCompiledTransactionMessageDecoder().decode(wire.messageBytes);
-  assert.equal(compiled.staticAccounts[0], f.owner);
-  assert.equal(compiled.staticAccounts[1], f.solver);
-  const publicKey = await crypto.subtle.importKey(
-    'raw',
-    getAddressEncoder().encode(f.solver),
-    'Ed25519',
-    false,
-    ['verify'],
-  );
-  assert.ok(
-    await crypto.subtle.verify('Ed25519', publicKey, wire.signatures[f.solver], wire.messageBytes),
-  );
-  const { instructions } = decompileTransactionMessage(compiled, {
-    lastValidBlockHeight: 150n,
-    addressesByLookupTableAddress: { [f.lookupTable.address]: f.lookupTable.addresses },
-  });
-  const order = await prepareOphisSolanaOrder({
+  const owner = createNoopSigner(f.owner);
+  const input = {
+    rpc: endpoint,
+    api: endpoint,
+    genesis,
     programAddress: f.program,
-    owner: createNoopSigner(f.owner),
-    sellMint: f.sell,
-    buyMint: f.buy,
+    owner,
     sellProgram: TOKEN_PROGRAM_ADDRESS,
     buyProgram: TOKEN_PROGRAM_ADDRESS,
-    sellAmount: BigInt(f.sellAmount),
-    buyAmount: BigInt(f.minimum),
-    kind: 'sell',
-    validTo: f.validTo,
-    appData: Uint8Array.from(Buffer.from(f.appData.slice(2), 'hex')),
-  });
-  assert.equal(order.uid, f.orderUid);
-  await checkAtomicInstructions({
-    program: f.program,
+    slippageBps: 50,
+    quote: {
+      verified: true,
+      id: 1,
+      executionMode: 'walletAtomic',
+      from: f.owner,
+      solver: f.solver,
+      routeProgram: f.routeProgram,
+      expiration: new Date(1795700090000).toISOString(),
+      quote: {
+        kind: 'sell',
+        sellToken: f.sell,
+        buyToken: f.buy,
+        sellAmount: f.sellAmount,
+        buyAmount: f.benchmark,
+        feeAmount: '0',
+        validTo: f.validTo,
+        appData: f.appData,
+        partiallyFillable: false,
+        costs: {
+          token: f.buy,
+          networkFees: '0',
+          buyTokenAtaCosts: '0',
+          protocolFee: '27',
+          total: '27',
+        },
+        feeTerms: { baseBps: 1, improvementShareBps: 5000, improvementCapBps: 20 },
+      },
+    },
+  };
+  const packet = {
+    executionMode: 'walletAtomic',
+    quoteId: 1,
+    orderUid: f.orderUid,
     solver: f.solver,
-    routeProgram: f.routeProgram,
-    order,
-    instructions,
-    walletTokenAccounts: new Set(),
-    stageRent: 2039280n,
+    transaction: f.transaction,
+    blockhash: f.blockhash,
+    lastValidBlockHeight: '150',
+    networkFeeLamports: '10000',
+    orderRentLamports: '2728320',
+    nativeWrapRentLamports: '0',
+    tokenAccountRentLamports: '2039280',
+  };
+  rpcMock(t, {
+    packet,
+    input,
+    table: f.lookupTable.address,
+    tableKeys: f.lookupTable.addresses,
+    rentPerByte: 6960n,
+    receiverExists: false,
   });
+  const result = await prepareOphisWalletAtomicSwap(input);
+  assert.equal(result.order.uid, f.orderUid);
+  assert.equal(result.order.intent.buyAmount, BigInt(f.minimum));
+  assert.equal(result.blockhash, f.blockhash);
 });

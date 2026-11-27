@@ -6,7 +6,7 @@ import {
 } from '@ophis/solana-sdk'
 import { OPHIS_SOLANA_CONFIG } from 'entities/solana'
 
-import { unknownAsset, walletMint, type SolanaAsset } from './assets.service'
+import { nativeAsset, unknownAsset, walletMint, type SolanaAsset } from './assets.service'
 
 import type { SavedNativeSolanaOrder, SolanaOrderResult } from '../state/orders.atoms'
 import type { OphisSolanaOrder, OphisSolanaTrade } from '@ophis/solana-sdk'
@@ -57,7 +57,8 @@ export function receiptAmount(
   mint: string,
   assets: SolanaAsset[],
 ): { asset: SolanaAsset; value: string } {
-  const asset = assets.find((item) => item.mint === walletMint(mint)) ?? unknownAsset(mint)
+  const id = walletMint(mint)
+  const asset = id === 'SOL' ? nativeAsset : (assets.find((item) => item.mint === id) ?? unknownAsset(mint))
   return {
     asset,
     value: asset.decimals === undefined ? amount : formatOphisSolanaAmount(BigInt(amount), asset.decimals),

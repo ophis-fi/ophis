@@ -2,6 +2,7 @@ import { createStore } from 'jotai'
 
 import {
   fetchOphisSolanaChainContext,
+  fetchOphisWalletActionReceipt,
   prepareOphisWalletAtomicSwap,
   readOphisOrderAccount,
   readOphisSellAllowance,
@@ -30,6 +31,7 @@ jest.mock(
     TOKEN_PROGRAM_ADDRESS: 'token',
     fetchOphisSolanaMint: async (_api: string, address: string) => ({ address, tokenProgram: 'token', decimals: 6 }),
     prepareOphisWalletAtomicSwap: jest.fn(),
+    fetchOphisWalletActionReceipt: jest.fn(),
     fetchOphisSolanaChainContext: jest.fn().mockResolvedValue({
       programAddress: 'program',
       genesisHash: 'genesis',
@@ -54,7 +56,10 @@ jest.mock(
     }),
     getOrderIntentEncoder: () => ({ encode: () => new Uint8Array(213).fill(13) }),
     getOrderIntentDecoder: () => ({
-      decode: () => ({ sellTokenAccount: 'sell-account', validTo: Math.floor(Date.now() / 1000) + 1800 }),
+      decode: (raw: Uint8Array) => ({
+        sellTokenAccount: raw[0] === 42 ? 'other-temporary-source' : 'sell-account',
+        validTo: Math.floor(Date.now() / 1000) + 1800,
+      }),
     }),
     readOphisOrderAccount: jest.fn().mockResolvedValue({
       account: { cancelled: false, amountWithdrawn: 0n, intent: { sellAmount: 10n } },
@@ -177,6 +182,30 @@ it('blocks a new order when the same sell token account still has an open on-cha
   expect(store.get(nativeSolanaErrorAtom)).toMatch(/has a pending order/)
   expect(send).not.toHaveBeenCalled()
   expect(ordersAfterReload()).toEqual({ [openUid]: open })
+})
+
+it('guards the same native SOL balance while an earlier temporary source can still land', async () => {
+  const store = await reviewedStore()
+  const prior = {
+    ...savedOrder,
+    executionMode: 'walletAtomic' as const,
+    intent: Array(213).fill(42),
+    walletCosts: { networkFee: '10000', orderRent: '1991360', nativeWrapRent: '1488440' },
+    creationLifetime: { height: '100', requestedAt: Date.now(), blockhash: '1'.repeat(32) },
+  }
+  store.set(savedNativeSolanaOrdersAtom, { [uid]: prior })
+  jest.mocked(fetchOphisWalletActionReceipt).mockResolvedValueOnce({ status: 'pending' })
+  await store.set(createNativeSolanaOrderAtom)
+  expect(fetchOphisWalletActionReceipt).toHaveBeenCalledWith(
+    'https://api.devnet.solana.com',
+    'genesis',
+    null,
+    100n,
+    'confirmed',
+    prior.creationLifetime.blockhash,
+  )
+  expect(store.get(nativeSolanaErrorAtom)).toMatch(/previous swap is still pending/)
+  expect(send).not.toHaveBeenCalled()
 })
 
 it('stops before asking the wallet to send if the wallet disconnects during preparation', async () => {

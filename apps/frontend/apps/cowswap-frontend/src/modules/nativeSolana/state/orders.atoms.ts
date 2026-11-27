@@ -27,7 +27,7 @@ export interface SavedNativeSolanaOrder {
   createdBy: string
   intent: number[]
   signature: string | null
-  creationLifetime?: { height: string; requestedAt: number }
+  creationLifetime?: { height: string; requestedAt: number; blockhash?: string }
   reclaimed: boolean
   walletAction?: {
     reclaim: boolean

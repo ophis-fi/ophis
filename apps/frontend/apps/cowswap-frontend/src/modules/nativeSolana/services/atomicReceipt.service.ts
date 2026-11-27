@@ -10,7 +10,9 @@ export function validAtomicOrder(order: Partial<SavedNativeSolanaOrder>): boolea
   if (
     order.executionMode !== 'walletAtomic' ||
     !order.creationLifetime ||
-    !/^\d{1,20}$/.test(order.creationLifetime.height)
+    !/^\d{1,20}$/.test(order.creationLifetime.height) ||
+    (order.creationLifetime.blockhash !== undefined &&
+      !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(order.creationLifetime.blockhash))
   )
     return false
   const costs = order.walletCosts
@@ -45,8 +47,13 @@ export async function checkAtomicReceipt(order: SavedNativeSolanaOrder): Promise
     order.signature,
     BigInt(lifetime.height),
     'confirmed',
+    lifetime.blockhash,
   )
   return { status: status === 'confirmed' ? 'fulfilled' : status === 'expired' ? 'unconfirmed' : status }
+}
+
+function unsignedRecoveryInterval(order: SavedNativeSolanaOrder): number | false {
+  return order.executionMode === 'walletAtomic' && !order.signature ? 60_000 : false
 }
 
 export function orderPollInterval(
@@ -55,6 +62,7 @@ export function orderPollInterval(
   pastLifetimeWindow: boolean,
 ): number | false {
   if (!order) return false
+  if (status === 'unconfirmed') return unsignedRecoveryInterval(order)
   if (status === 'pending') return order.signature ? 1500 : 5000
   if (status) return status === 'open' ? 4000 : false
   if (!order.signature && !order.creationLifetime) return false

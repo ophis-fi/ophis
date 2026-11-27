@@ -1,6 +1,7 @@
 import {
   createAddressWithSeed,
   getAddressEncoder,
+  isWritableRole,
   type Address,
   type Instruction,
   type ReadonlyUint8Array,
@@ -37,7 +38,12 @@ function sameInstruction(a: Instruction | undefined, b: Instruction): boolean {
     a?.programAddress === b.programAddress &&
     sameBytes(a.data, b.data) &&
     a.accounts?.length === b.accounts?.length &&
-    (b.accounts ?? []).every((key, index) => key.address === a.accounts?.[index]?.address)
+    (b.accounts ?? []).every((expected, index) => {
+      const actual = a.accounts?.[index];
+      return (
+        actual?.address === expected.address && (actual.role & expected.role) === expected.role
+      );
+    })
   );
 }
 
@@ -108,14 +114,15 @@ export async function checkAtomicInstructions(input: {
       reject();
     cursor++;
   }
-  // Compilers can omit idempotent creation when the ATA exists. Every other wallet instruction is mandatory.
+  // Only the reviewed deposit may fund a wallet ATA, even if a previously existing account is closed.
   for (const expected of order.instructions) {
-    if (sameInstruction(instructions[cursor], expected)) cursor++;
-    else if (
-      expected.programAddress !== ASSOCIATED_TOKEN_PROGRAM_ADDRESS ||
-      (input.requiredReceiveAta && expected.accounts?.[1]?.address === input.requiredReceiveAta)
+    if (
+      expected.programAddress === ASSOCIATED_TOKEN_PROGRAM_ADDRESS &&
+      expected.accounts?.[1]?.address !== input.requiredReceiveAta
     )
-      reject();
+      continue;
+    if (!sameInstruction(instructions[cursor], expected)) reject();
+    cursor++;
   }
   if (cursor !== pos - 2) reject();
 
@@ -208,7 +215,8 @@ export async function checkAtomicInstructions(input: {
   if (
     finish.data[3] !== bump ||
     finish.accounts?.length !== finishMetas.length ||
-    finishMetas.some((account, index) => finish.accounts?.[index]?.address !== account)
+    finishMetas.some((account, index) => finish.accounts?.[index]?.address !== account) ||
+    finish.accounts.slice(3).some((account) => !isWritableRole(account.role))
   )
     reject();
   const protectedKeys = new Set([

@@ -206,15 +206,17 @@ export async function prepareOphisWalletAtomicSwap(
     temporaryNativeSource: nativeSell,
     requiredReceiveAta: costs.tokenAccountRent > 0n ? order.intent.buyTokenAccount : undefined,
   });
+  const reviewDeadline = Math.min(Date.parse(quote.expiration), order.intent.validTo * 1000);
   return {
     order,
     costs,
+    blockhash: hash,
     lastValidBlockHeight,
     async send(connection: Parameters<typeof sendWalletBytes>[0]) {
       if (
         connection.account.address !== owner ||
-        Date.now() >= Date.parse(quote.expiration) ||
-        !(await rpc.isBlockhashValid(hash, confirmed).send()).value
+        !(await rpc.isBlockhashValid(hash, confirmed).send()).value ||
+        Date.now() >= reviewDeadline
       )
         throw Error('This swap expired or the wallet changed. Get a fresh quote.');
       return sendWalletBytes(connection, bytes.slice());
