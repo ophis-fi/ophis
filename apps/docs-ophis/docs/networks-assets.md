@@ -50,7 +50,7 @@ Open [Solana in the swap app](https://swap.ophis.fi/#/swap?network=solana) to tr
 | --- | --- |
 | Wallet | A Solana wallet: Wallet Standard browser wallets such as Phantom and Solflare, or a mobile wallet by QR code through WalletConnect |
 | Assets | SOL and SPL tokens. Search by symbol or name, or paste a mint address |
-| Settlement | Both transfers settle in one transaction. The [Ophis settlement program](https://explorer.solana.com/address/BJZ5yma22Km3fsfrEEdZVGygdrcwoschb6uUNqQWaQ9h) enforces your minimum. If the transaction fails, neither token changes hands |
+| Settlement | Both transfers settle in one transaction. The [Ophis settlement program](https://explorer.solana.com/address/BJZ5yma22Km3fsfrEEdZVGygdrcwoschb6uUNqQWaQ9h) enforces your minimum. If an included transaction fails, both swap transfers revert and your wallet still pays the Solana network fee |
 | Direct liquidity | Raydium, Orca, Meteora, Manifest, PumpSwap, Saros and DOOAR |
 | Via Jupiter | Ophis also requests routes through Orca Whirlpools, Raydium CLMM, Scorch and BisonFi. Availability depends on the pair, amount and executable quotes |
 | Receipt | Open **Account → Recent Activity**, select the swap and choose **View settlement** to see the transaction on Solana Explorer |
