@@ -42,21 +42,24 @@ export function SolanaQuoteAmount({
   )
 }
 
+function formatBuyAmount(amount: bigint | string, decimals: number, symbol: string): string {
+  return formatOphisSolanaAmount(BigInt(amount), decimals) + ' ' + symbol
+}
+
 export function SolanaQuoteCosts({ review, buySymbol }: { review: NativeSolanaReview; buySymbol: string }): ReactNode {
-  const { quote } = review.quote
-  const { feeTerms } = quote
+  const { feeTerms, costs } = review.quote.quote
+  const { decimals } = review.buy
+  const minimum = formatBuyAmount(minimumSolanaBuyAmount(review), decimals, buySymbol)
   const share = feeTerms && feeTerms.improvementShareBps / 100
   const cap = feeTerms && feeTerms.improvementCapBps / 100
   const atomic = review.atomic?.costs
-  const buyAmount = (amount: bigint | string): string =>
-    formatOphisSolanaAmount(BigInt(amount), review.buy.decimals) + ' ' + buySymbol
   return (
     <>
       <styledEl.QuoteValues>
         <dt>
           <Trans>Minimum received</Trans>
         </dt>
-        <dd title={review.buy.address}>{buyAmount(minimumSolanaBuyAmount(review))}</dd>
+        <dd title={review.buy.address}>{minimum}</dd>
         {atomic ? (
           <>
             <dt>
@@ -77,7 +80,7 @@ export function SolanaQuoteCosts({ review, buySymbol }: { review: NativeSolanaRe
             <dt>
               <Trans>Maximum settlement cost in {buySymbol}</Trans>
             </dt>
-            <dd>{buyAmount(BigInt(quote.costs.networkFees) + BigInt(quote.costs.buyTokenAtaCosts))}</dd>
+            <dd>{formatBuyAmount(BigInt(costs.networkFees) + BigInt(costs.buyTokenAtaCosts), decimals, buySymbol)}</dd>
           </>
         )}
       </styledEl.QuoteValues>
@@ -91,7 +94,7 @@ export function SolanaQuoteCosts({ review, buySymbol }: { review: NativeSolanaRe
             <Trans>Ophis base fee</Trans>
           </dt>
           <dd>
-            {buyAmount(quote.costs.protocolFee)}
+            {formatBuyAmount(costs.protocolFee, decimals, buySymbol)}
             {feeTerms && ' (' + feeTerms.baseBps / 100 + '%)'}
           </dd>
           {feeTerms && (
@@ -118,7 +121,7 @@ export function SolanaQuoteCosts({ review, buySymbol }: { review: NativeSolanaRe
               <dt>
                 <Trans>Total quote costs</Trans>
               </dt>
-              <dd>{buyAmount(quote.costs.total)}</dd>
+              <dd>{formatBuyAmount(costs.total, decimals, buySymbol)}</dd>
             </>
           )}
           {review.solAfterOrder !== undefined && (

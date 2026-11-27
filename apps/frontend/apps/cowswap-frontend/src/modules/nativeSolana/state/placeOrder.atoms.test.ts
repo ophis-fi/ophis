@@ -29,6 +29,7 @@ jest.mock(
     OphisSolanaHttpError: class extends Error {},
     solanaAddress: (address: string) => address,
     SOLANA_NATIVE_ASSET: 'native',
+    OPHIS_LOCAL_WALLET_RPC: 'http://127.0.0.1:18899',
     TOKEN_PROGRAM_ADDRESS: 'token',
     fetchOphisSolanaMint: async (_api: string, address: string) => ({ address, tokenProgram: 'token', decimals: 6 }),
     prepareOphisWalletAtomicSwap: jest.fn(),
@@ -109,6 +110,8 @@ function ordersAfterReload(): Record<string, SavedNativeSolanaOrder> {
   unsubscribe()
   return orders
 }
+
+afterEach(() => jest.restoreAllMocks())
 
 beforeEach(() => {
   localStorage.clear()
@@ -235,31 +238,35 @@ it('allows a fresh swap once the previous unsigned receipt has a matching indexe
   expect(ordersAfterReload()[uid]?.signature).toBe(signature)
 })
 
-it('follows the receipt when the wallet reports a missing blockhash after handoff', async () => {
-  const context = { ...(await fetchOphisSolanaChainContext('https://example.org')), walletAtomic: true }
-  jest.mocked(fetchOphisSolanaChainContext).mockResolvedValueOnce(context).mockResolvedValueOnce(context)
-  type Atomic = Awaited<ReturnType<typeof prepareOphisWalletAtomicSwap>>
-  const walletSend = jest.fn<ReturnType<Atomic['send']>, Parameters<Atomic['send']>>(async (wallet) => {
-    wallet.onBeforeBroadcast?.()
-    return Promise.reject({ code: -32002, message: 'Transaction simulation failed: Blockhash not found' })
-  })
-  jest.mocked(prepareOphisWalletAtomicSwap).mockResolvedValueOnce({
-    order: { uid, orderPda: 'pda', payer: 'owner', intent: { sellTokenAccount: 'sell-account' } },
-    costs: { networkFee: 10_000n, orderRent: 1_991_360n, nativeWrapRent: 0n },
-    blockhash: '1'.repeat(32),
-    lastValidBlockHeight: 135n,
-    send: walletSend,
-  } as Atomic)
-  const store = await reviewedStore()
-  await store.set(createNativeSolanaOrderAtom)
-  expect(store.get(nativeSolanaErrorAtom)).toBeNull()
-  expect(store.get(nativeSolanaReviewAtom)).toBeNull()
-  expect(store.get(activeSolanaReceiptAtom)).toBe(uid)
-  expect(ordersAfterReload()[uid]?.signature).toBeNull()
-  await store.set(createNativeSolanaOrderAtom)
-  expect(walletSend).toHaveBeenCalledTimes(1)
-  expect(fetchOphisSolanaOrder).not.toHaveBeenCalled()
-})
+it.each(['solana:devnet', 'solana:localnet'] as const)(
+  'follows the receipt on %s when the wallet reports a missing blockhash after handoff',
+  async (chain) => {
+    jest.replaceProperty(jest.requireMock('entities/solana').OPHIS_SOLANA_CONFIG, 'chain', chain)
+    const context = { ...(await fetchOphisSolanaChainContext('https://example.org')), walletAtomic: true }
+    jest.mocked(fetchOphisSolanaChainContext).mockResolvedValueOnce(context).mockResolvedValueOnce(context)
+    type Atomic = Awaited<ReturnType<typeof prepareOphisWalletAtomicSwap>>
+    const walletSend = jest.fn<ReturnType<Atomic['send']>, Parameters<Atomic['send']>>(async (wallet) => {
+      wallet.onBeforeBroadcast?.()
+      return Promise.reject({ code: -32002, message: 'Transaction simulation failed: Blockhash not found' })
+    })
+    jest.mocked(prepareOphisWalletAtomicSwap).mockResolvedValueOnce({
+      order: { uid, orderPda: 'pda', payer: 'owner', intent: { sellTokenAccount: 'sell-account' } },
+      costs: { networkFee: 10_000n, orderRent: 1_991_360n, nativeWrapRent: 0n },
+      blockhash: '1'.repeat(32),
+      lastValidBlockHeight: 135n,
+      send: walletSend,
+    } as Atomic)
+    const store = await reviewedStore()
+    await store.set(createNativeSolanaOrderAtom)
+    expect(store.get(nativeSolanaErrorAtom)).toBeNull()
+    expect(store.get(nativeSolanaReviewAtom)).toBeNull()
+    expect(store.get(activeSolanaReceiptAtom)).toBe(uid)
+    expect(ordersAfterReload()[uid]?.signature).toBeNull()
+    await store.set(createNativeSolanaOrderAtom)
+    expect(walletSend).toHaveBeenCalledTimes(1)
+    expect(fetchOphisSolanaOrder).not.toHaveBeenCalled()
+  },
+)
 
 it('stops before asking the wallet to send if the wallet disconnects during preparation', async () => {
   const store = await reviewedStore()

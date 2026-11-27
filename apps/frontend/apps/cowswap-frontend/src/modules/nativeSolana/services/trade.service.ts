@@ -202,13 +202,17 @@ function errorText(error: unknown): string {
   return typeof error === 'string' ? error : ''
 }
 
+export function isMissingBlockhashError(error: unknown): boolean {
+  return /blockhash\s*not\s*found/i.test(errorText(error))
+}
+
 export function nativeSolanaErrorMessage(error: unknown): string {
   if (error instanceof OphisSolanaHttpError && error.status === 429) return 'Ophis is busy. Try again in a moment.'
   const protocolMessage = protocolErrorMessage(error)
   if (protocolMessage) return protocolMessage
   const message = errorText(error) || 'The request did not complete. Check your wallet and order status.'
   if (OPHIS_SOLANA_CONFIG?.chain !== 'solana:localnet') return message
-  if (/blockhash\s*not\s*found/i.test(message))
+  if (isMissingBlockhashError(error))
     return `The blockhash was unavailable during simulation. Check that your wallet uses the local RPC (${OPHIS_LOCAL_WALLET_RPC}), then request a fresh quote and approve it again.`
   if (/^transaction (?:simulation failed|failed simulation)\.?$/i.test(message))
     return `Wallet simulation failed. Deny the prompt. Check the wallet’s Solana RPC (${OPHIS_LOCAL_WALLET_RPC}) before requesting a fresh quote.`

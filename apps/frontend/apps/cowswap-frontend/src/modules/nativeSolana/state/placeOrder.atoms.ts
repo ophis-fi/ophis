@@ -29,6 +29,7 @@ import { checkAtomicReceipt } from '../services/atomicReceipt.service'
 import { privateAction, privateSettlementEnabled } from '../services/privateSettlement.service'
 import {
   checkLocalBackpackRpc,
+  isMissingBlockhashError,
   nativeSolanaContext,
   nativeSolanaErrorMessage,
   prepareReviewedSolanaOrder,
@@ -186,7 +187,7 @@ const placeNativeSolanaOrderAtom = atom(null, async (get, set, replaceAllowance:
         set(savedNativeSolanaOrdersAtom, { ...get(savedNativeSolanaOrdersAtom), [order.uid]: { ...record, signature } })
       },
       (error: unknown) => {
-        if (awaitingAtomicReceipt && /blockhash\s*not\s*found/i.test(nativeSolanaErrorMessage(error))) return
+        if (awaitingAtomicReceipt && isMissingBlockhashError(error)) return
         throw error
       },
     )
