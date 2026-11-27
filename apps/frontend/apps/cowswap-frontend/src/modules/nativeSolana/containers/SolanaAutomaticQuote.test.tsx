@@ -75,7 +75,7 @@ it('shows a retry for an expired quote and clears the message on edit', async ()
 it('shows the SOL shortfall on an SPL sale and quotes after a balance refresh covers it', async () => {
   const usdc = solanaAddress('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v')
   const sol = solanaAddress('11111111111111111111111111111111')
-  const holdings = (atoms: bigint) => [
+  const holdings = (atoms: bigint): Awaited<ReturnType<typeof fetchOphisWalletHoldings>> => [
     { mint: sol, decimals: 9, atoms },
     { mint: usdc, decimals: 6, atoms: 273239n },
   ]
@@ -94,4 +94,43 @@ it('shows the SOL shortfall on an SPL sale and quotes after a balance refresh co
   fireEvent.click(screen.getByRole('button', { name: 'Refresh balance' }))
   await waitFor(() => expect(load).toHaveBeenCalledTimes(1))
   expect(screen.queryByText(/more SOL/)).toBeNull()
+})
+
+it.each([
+  ['SOL', true],
+  ['So11111111111111111111111111111111111111112', false],
+  ['11111111111111111111111111111112', false],
+])('accounts for the signed Ophis fee ceiling when receiving %s', async (buyMint, paysFromProceeds) => {
+  const native = solanaAddress('11111111111111111111111111111111')
+  const sell = solanaAddress(ray)
+  const fixed = 2_646_600n
+  jest.mocked(fetchOphisWalletHoldings).mockResolvedValueOnce([
+    { mint: native, decimals: 9, atoms: fixed },
+    { mint: sell, decimals: 2, atoms: 100n },
+  ])
+  jest.spyOn(trade, 'loadNativeSolanaQuote').mockImplementation(
+    async (_config, connection, form) =>
+      ({
+        connection,
+        form,
+        buy: { decimals: 9 },
+        quote: {
+          expiration: new Date(Date.now() + 60_000).toISOString(),
+          quote: {
+            buyAmount: '10000000',
+            nativeProtocolFee: {
+              estimatedLamports: '1000',
+              maxLamports: '10000',
+              rateLamports: '10000000',
+              rateBuyAtoms: '10000000',
+            },
+          },
+        },
+      }) as trade.NativeSolanaReview,
+  )
+  const store = renderForm()
+  await act(async () => store.set(nativeSolanaFormAtom, { sellMint: sell, buyMint, amount: '1', slippageBps: 50 }))
+  await screen.findByText(/Minimum received/)
+  expect(screen.getByRole('button', { name: 'Swap' }).hasAttribute('disabled')).toBe(!paysFromProceeds)
+  if (!paysFromProceeds) expect(screen.getByRole('alert').textContent).toContain('0.00001 more SOL')
 })

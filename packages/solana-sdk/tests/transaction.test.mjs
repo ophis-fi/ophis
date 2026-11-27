@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { checkedQuoteOrderInput } from '../dist/checked-quote-order.js';
 import { test } from 'node:test';
 import { address, createNoopSigner } from '@solana/kit';
 import {
@@ -185,6 +186,35 @@ test('mainnet binds the displayed benchmark, cost ceiling and fee tier before cr
     prepareOphisSolanaOrderFromQuote({ ...input, buyProgram: TOKEN_2022_PROGRAM_ADDRESS }),
     /classic SPL/,
   );
+  const generic = {
+    ...q,
+    sellToken: address('11111111111111111111111111111112'),
+    buyToken: address('11111111111111111111111111111113'),
+    feeTerms: { ...q.feeTerms, baseBps: 5 },
+  };
+  generic.costs = { ...q.costs, token: generic.buyToken };
+  const atomicQuote = { ...quote, quote: generic, executionMode: 'walletAtomic' };
+  for (const [sellProgram, buyProgram] of [
+    [TOKEN_PROGRAM_ADDRESS, TOKEN_2022_PROGRAM_ADDRESS],
+    [TOKEN_2022_PROGRAM_ADDRESS, TOKEN_PROGRAM_ADDRESS],
+    [TOKEN_2022_PROGRAM_ADDRESS, TOKEN_2022_PROGRAM_ADDRESS],
+  ]) {
+    const atomic = { ...input, sellProgram, buyProgram, quote: atomicQuote };
+    const checked = checkedQuoteOrderInput(atomic);
+    assert.equal(checked.sellProgram, sellProgram);
+    assert.equal(checked.buyProgram, buyProgram);
+    assert.equal(checked.buyAmount, order.intent.buyAmount);
+    await assert.rejects(prepareOphisSolanaOrderFromQuote(atomic), /wallet-paid/);
+    assert.throws(
+      () => checkedQuoteOrderInput({ ...atomic, quote: { ...atomic.quote, verified: false } }),
+      /fresh verified/,
+    );
+    assert.throws(
+      () =>
+        checkedQuoteOrderInput({ ...atomic, quote: { ...atomic.quote, executionMode: undefined } }),
+      /classic SPL/,
+    );
+  }
   assert.equal(order.intent.buyAmount, 2687220n);
   for (const changed of [
     { buyAmount: '2700725' },

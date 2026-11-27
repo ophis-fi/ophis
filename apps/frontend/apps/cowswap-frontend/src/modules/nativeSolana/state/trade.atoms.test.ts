@@ -2,6 +2,7 @@ import { createStore } from 'jotai'
 
 import {
   fetchOphisSolanaQuote,
+  OphisSolanaHttpError,
   readOphisOrderAccount,
   fetchOphisWalletActionContext,
   fetchOphisWalletActionReceipt,
@@ -90,6 +91,35 @@ it('explains how to recover from a local blockhash simulation failure', () => {
   )
   expect(nativeSolanaErrorMessage(error)).toMatch(/127\.0\.0\.1:18899.*fresh quote/)
   expect(nativeSolanaErrorMessage(new Error('User rejected'))).toBe('User rejected')
+})
+
+it('distinguishes unsupported transfer rules and absent liquidity, and refuses an indicative price', async () => {
+  const unsupported = Object.assign(new OphisSolanaHttpError(400), { errorType: 'UnsupportedToken' })
+  const noLiquidity = Object.assign(new OphisSolanaHttpError(400), { errorType: 'NoLiquidity' })
+  expect(nativeSolanaErrorMessage(unsupported)).toMatch(/transfer rules/)
+  expect(nativeSolanaErrorMessage(noLiquidity)).toMatch(/no route for this pair and amount/)
+  const noFeePrice = Object.assign(new OphisSolanaHttpError(409), { errorType: 'NativeFeePriceUnavailable' })
+  const insufficientSol = Object.assign(new OphisSolanaHttpError(400), { errorType: 'InsufficientSolForFees' })
+  expect(nativeSolanaErrorMessage(noFeePrice)).toMatch(/price its fee in SOL/)
+  expect(nativeSolanaErrorMessage(insufficientSol)).toMatch(/needs more SOL for swap fees and deposits/)
+  const a = '11111111111111111111111111111112'
+  const b = '11111111111111111111111111111113'
+  const store = createStore()
+  store.set(solanaConnectionAtom, connection('CaseSensitiveOwner'))
+  store.set(nativeSolanaFormAtom, { sellMint: a, buyMint: b, amount: '1', slippageBps: 50 })
+  jest
+    .mocked(fetchOphisSolanaQuote)
+    .mockResolvedValueOnce({ verified: false } as Awaited<ReturnType<typeof fetchOphisSolanaQuote>>)
+  await store.set(requestNativeSolanaQuoteAtom)
+  expect(fetchOphisSolanaQuote).toHaveBeenCalledWith(
+    expect.anything(),
+    expect.objectContaining({
+      sellToken: a,
+      buyToken: b,
+      priceQuality: 'verified',
+    }),
+  )
+  expect(store.get(nativeSolanaReviewAtom)).toBeNull()
 })
 
 it('discards a quote if the wallet or form changed while the request was running', async () => {

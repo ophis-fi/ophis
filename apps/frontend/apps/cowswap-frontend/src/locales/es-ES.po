@@ -7001,8 +7001,8 @@ msgid "Waiting for a settlement status update."
 msgstr "Esperando una actualización del estado de la liquidación."
 
 #: apps/cowswap-frontend/src/modules/nativeSolana/pure/AssetPicker.pure.tsx
-msgid "Search to narrow the list."
-msgstr "Busca para reducir la lista."
+msgid "Show more tokens"
+msgstr "Mostrar más tokens"
 
 #: apps/cowswap-frontend/src/modules/nativeSolana/pure/AssetPicker.pure.tsx
 msgid "Loading more Solana tokens…"
@@ -7044,18 +7044,19 @@ msgstr "Elige el token que vas a recibir para calcular las comisiones y los dep�
 msgid "Amount shortcuts need a fee and rent estimate."
 msgstr "Los botones de porcentaje necesitan una estimación de las comisiones y los depósitos de las cuentas."
 
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaForm.container.tsx
-msgid "Checking sell availability…"
-msgstr "Comprobando si se puede vender este token…"
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/SolanaQuoteCosts.pure.tsx
+msgid "Estimated Ophis fee"
+msgstr "Comisión estimada de Ophis"
 
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaForm.container.tsx
-msgid "This token is currently unavailable to sell. Choose another sell token."
-msgstr "Ahora mismo no se puede vender este token. Elige otro token para vender."
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/SolanaQuoteCosts.pure.tsx
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/SolanaReceipt.pure.tsx
+msgid "Maximum Ophis fee"
+msgstr "Comisión máxima de Ophis"
 
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaForm.container.tsx
-msgid "Sell availability could not be checked. You can still get a quote."
-msgstr "No se ha podido comprobar si se puede vender este token. Aún puedes obtener una cotización."
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/SolanaQuoteCosts.pure.tsx
+msgid "Estimated SOL after the Ophis fee"
+msgstr "SOL estimados tras la comisión de Ophis"
 
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaForm.container.tsx
-msgid "Check again"
-msgstr "Volver a comprobar"
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaTradePanels.container.tsx
+msgid "Leave enough SOL for fees and account deposits."
+msgstr "Deja suficiente SOL para las comisiones y los depósitos de las cuentas."

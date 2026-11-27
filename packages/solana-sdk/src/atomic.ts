@@ -13,7 +13,7 @@ import {
   type TransactionMessageBytesBase64,
   type V0CompiledTransactionMessage,
 } from '@solana/kit';
-import { atoms, key, record, request } from './api.js';
+import { atoms, key, record, request, readNativeProtocolFee } from './api.js';
 import { checkAtomicInstructions, sameBytes } from './atomic-instructions.js';
 import { checkedQuoteOrderInput } from './checked-quote-order.js';
 import { fetchOphisWalletSwapCosts } from './holdings.js';
@@ -85,26 +85,22 @@ export async function prepareOphisWalletAtomicSwap(
     (quote.quote.receiver && quote.quote.receiver !== owner)
   )
     throw Error('Request a fresh wallet-paid swap quote.');
+  const feeTerms = quote.quote.nativeProtocolFee;
+  if (!feeTerms) throw Error('Request a fresh swap quote with a protocol fee in SOL.');
+  const checkedOrder = checkedQuoteOrderInput({ ...input, sellFromNativeSol: nativeSell });
   const [costs, rpc] = await Promise.all([
-    fetchOphisWalletSwapCosts(input.rpc, genesis, owner, quote.quote.buyToken, nativeSell, 2),
+    fetchOphisWalletSwapCosts(input.rpc, genesis, owner, quote.quote.buyToken, nativeSell, 2, {
+      solver,
+      sellMint: quote.quote.sellToken,
+      sellProgram: input.sellProgram,
+      buyProgram: input.buyProgram,
+    }),
     matchingRpc(input.rpc, genesis),
   ]);
   const order = await prepareOphisSolanaOrder({
-    ...checkedQuoteOrderInput({ ...input, sellFromNativeSol: nativeSell }),
+    ...checkedOrder,
     temporaryNativeRent: nativeSell ? costs.nativeWrapRent : undefined,
   });
-  const app = Uint8Array.from(order.intent.appData);
-  const fields = new DataView(app.buffer);
-  if (
-    new TextDecoder().decode(app.subarray(0, 8)) !== 'OPHISPI3' ||
-    fields.getBigUint64(8, true) !== BigInt(quote.quote.buyAmount) ||
-    fields.getBigUint64(16, true) !== 0n ||
-    quote.quote.costs.networkFees !== '0' ||
-    quote.quote.costs.buyTokenAtaCosts !== '0' ||
-    quote.quote.feeAmount !== '0' ||
-    quote.quote.costs.total !== quote.quote.costs.protocolFee
-  )
-    throw Error('Invalid wallet-paid swap fee terms.');
   const response = await request(api, 'api/v1/market/prepare', {
     quoteId: quote.id,
     owner,
@@ -112,7 +108,12 @@ export async function prepareOphisWalletAtomicSwap(
     appData: quote.quote.appData,
   });
   const packet = record(response);
+  const preparedFee = readNativeProtocolFee(packet.nativeProtocolFee);
   if (
+    preparedFee.rateLamports !== feeTerms.rateLamports ||
+    preparedFee.rateBuyAtoms !== feeTerms.rateBuyAtoms ||
+    preparedFee.estimatedLamports !== feeTerms.estimatedLamports ||
+    preparedFee.maxLamports !== feeTerms.maxLamports ||
     packet.executionMode !== 'walletAtomic' ||
     packet.quoteId !== quote.id ||
     packet.orderUid !== order.uid ||
@@ -185,6 +186,7 @@ export async function prepareOphisWalletAtomicSwap(
     fee.value !== costs.networkFee ||
     BigInt(atoms(packet.orderRentLamports)) !== costs.orderRent ||
     BigInt(atoms(packet.nativeWrapRentLamports)) !== costs.nativeWrapRent ||
+    BigInt(atoms(packet.solverInputRentLamports ?? '0')) !== costs.solverInputRent ||
     BigInt(atoms(packet.tokenAccountRentLamports)) !== costs.tokenAccountRent
   )
     throw Error('Wallet network fees or account deposits changed. Get a fresh quote.');
@@ -202,8 +204,11 @@ export async function prepareOphisWalletAtomicSwap(
     order,
     instructions: message.instructions,
     walletTokenAccounts,
-    stageRent: costs.classicTokenAccountRent,
+    sellProgram: input.sellProgram,
+    buyProgram: input.buyProgram ?? TOKEN_PROGRAM_ADDRESS,
+    nativeFee: feeTerms,
     temporaryNativeSource: nativeSell,
+    temporarySolverInput: costs.solverInputRent > 0n,
     requiredReceiveAta: costs.tokenAccountRent > 0n ? order.intent.buyTokenAccount : undefined,
   });
   const reviewDeadline = Math.min(Date.parse(quote.expiration), order.intent.validTo * 1000);

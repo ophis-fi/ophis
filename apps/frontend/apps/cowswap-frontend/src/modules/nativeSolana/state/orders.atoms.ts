@@ -19,7 +19,13 @@ import { privateAction, privateSettlementEnabled } from '../services/privateSett
 export interface SavedNativeSolanaOrder {
   uid: string
   executionMode?: 'walletAtomic'
-  walletCosts?: { networkFee: string; orderRent: string; nativeWrapRent?: string }
+  walletCosts?: {
+    networkFee: string
+    orderRent: string
+    nativeWrapRent?: string
+    solverInputRent?: string
+    maxProtocolFeeLamports?: string
+  }
   owner: string
   program: string
   genesis: string

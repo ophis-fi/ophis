@@ -40,10 +40,11 @@ export function checkedQuoteOrderInput(input: {
   const appData = checkedQuoteAppData(input.programAddress, value);
   if (
     input.programAddress === OPHIS_MAINNET_PROGRAM &&
+    quote.executionMode !== 'walletAtomic' &&
     (input.sellProgram === TOKEN_2022_PROGRAM_ADDRESS ||
       input.buyProgram === TOKEN_2022_PROGRAM_ADDRESS)
   )
-    throw Error('Actual-output settlement requires classic SPL tokens or native SOL');
+    throw Error('Persistent mainnet orders require classic SPL tokens or native SOL');
   return {
     programAddress: input.programAddress,
     owner: input.owner,

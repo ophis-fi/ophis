@@ -89,6 +89,25 @@ it('loads the mainnet catalog on demand for both pickers and keeps selections ke
   expect(global.fetch).toHaveBeenCalledTimes(1)
 })
 
+it('lets a user browse beyond the first page and select a mint without searching', async () => {
+  const alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+  const tokens = [...alphabet].map((letter, index) => ({
+    address: '1'.repeat(30) + '6' + letter,
+    symbol: 'T' + index,
+    name: 'Token ' + index,
+    decimals: 6,
+  }))
+  const last = tokens[tokens.length - 1]
+  global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ tokens }) })
+  renderForm()
+  fireEvent.click(screen.getByRole('button', { name: 'Buy token: Select token' }))
+  const more = await screen.findByRole('button', { name: 'Show more tokens' })
+  expect(screen.queryByTitle(last.address)).toBeNull()
+  fireEvent.click(more)
+  fireEvent.click(await screen.findByTitle(last.address))
+  expect(await screen.findByRole('button', { name: 'Buy token: ' + last.symbol })).toBeTruthy()
+})
+
 it('keeps the presets and manual mint entry usable when the catalog is down', async () => {
   global.fetch = jest.fn().mockRejectedValue(Error('offline'))
   renderForm()

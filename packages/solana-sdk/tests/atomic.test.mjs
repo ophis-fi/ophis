@@ -22,10 +22,10 @@ import {
   getInitializeAccount3Instruction,
 } from '@solana-program/token';
 import { checkedQuoteOrderInput } from '../dist/checked-quote-order.js';
-import { findBufferPda } from '../dist/settlement/generated/pdas/buffer.js';
 import { findNativeSolBufferPda } from '../dist/settlement/generated/pdas/nativeSolBuffer.js';
 import {
   fetchOphisSolanaQuote,
+  getOphisNativeSellFeeCap,
   prepareOphisSolanaOrderFromQuote,
   prepareOphisSolanaOrder,
   prepareOphisWalletAtomicSwap,
@@ -48,14 +48,39 @@ function keypair() {
   return { address: getAddressDecoder().decode(bytes), bytes, privateKey };
 }
 
-async function fixture(change, useTable = false, nativeSale = false, createReceiver = false) {
+async function fixture(
+  change,
+  useTable = false,
+  nativeSale = false,
+  createReceiver = false,
+  newSolverInput = false,
+  {
+    sellProgram = TOKEN_PROGRAM_ADDRESS,
+    buyProgram = TOKEN_PROGRAM_ADDRESS,
+    newBuyMint = false,
+    compact = true,
+  } = {},
+) {
   const user = keypair(),
     solverKey = keypair(),
     solver = createNoopSigner(solverKey.address);
   const app = Buffer.alloc(32);
-  app.write('OPHISPI3');
+  app.write('OPHISPI5');
   app.writeBigUInt64LE(10000n, 8);
   app.writeBigUInt64LE(100n, 24);
+  const sellMint = nativeSale ? WRAPPED_SOL_MINT : newSolverInput ? keypair().address : mint;
+  const buyMint = newBuyMint ? keypair().address : nativeSale ? mint : SOLANA_NATIVE_ASSET;
+  const nativeBuy = buyMint === SOLANA_NATIVE_ASSET;
+  const baseBps = newBuyMint || (newSolverInput && !nativeSale) ? 5 : 1;
+  const rate = nativeSale ? 3000n : nativeBuy ? 10000n : 58420n;
+  const max = ((BigInt(baseBps) + ((10000n - BigInt(baseBps)) * 99n) / 10000n) * rate) / 10000n;
+  const nativeProtocolFee = {
+    rateBuyAtoms: '10000',
+    rateLamports: String(rate),
+    estimatedLamports: String((BigInt(baseBps) * rate) / 10000n),
+    maxLamports: String(max),
+  };
+  app.writeBigUInt64LE(max, 16);
   const quote = {
     verified: true,
     id: 1,
@@ -66,20 +91,21 @@ async function fixture(change, useTable = false, nativeSale = false, createRecei
     funder: null,
     expiration: new Date(Date.now() + 90_000).toISOString(),
     quote: {
-      sellToken: nativeSale ? WRAPPED_SOL_MINT : mint,
-      buyToken: nativeSale ? mint : SOLANA_NATIVE_ASSET,
+      sellToken: sellMint,
+      buyToken: buyMint,
       receiver: null,
       sellAmount: '3000',
       buyAmount: '10000',
       feeAmount: '0',
       costs: {
-        token: nativeSale ? mint : SOLANA_NATIVE_ASSET,
+        token: buyMint,
         networkFees: '0',
         buyTokenAtaCosts: '0',
-        protocolFee: '1',
-        total: '1',
+        protocolFee: '0',
+        total: '0',
       },
-      feeTerms: { baseBps: 1, improvementShareBps: 5000, improvementCapBps: 99 },
+      nativeProtocolFee,
+      feeTerms: { baseBps, improvementShareBps: 5000, improvementCapBps: 99 },
       appData: '0x' + app.toString('hex'),
       validTo: Math.floor(Date.now() / 1000) + 120,
       kind: 'sell',
@@ -93,10 +119,10 @@ async function fixture(change, useTable = false, nativeSale = false, createRecei
     programAddress: program,
     owner: createNoopSigner(user.address),
     quote,
-    sellProgram: TOKEN_PROGRAM_ADDRESS,
+    sellProgram,
     slippageBps: 50,
     sellFromNativeSol: nativeSale,
-    ...(nativeSale && { buyProgram: TOKEN_PROGRAM_ADDRESS }),
+    ...(!nativeBuy && { buyProgram }),
   };
   const order = await prepareOphisSolanaOrder({
     ...checkedQuoteOrderInput(input),
@@ -112,36 +138,91 @@ async function fixture(change, useTable = false, nativeSale = false, createRecei
     accounts: [],
     data: Uint8Array.of(2, 192, 92, 21, 0),
   };
+  const stageSeed = compact ? '00112233445566778899aabbccddeeff' : 'stage';
   const stage = await createAddressWithSeed({
     baseAddress: solver.address,
-    seed: 'stage',
-    programAddress: TOKEN_PROGRAM_ADDRESS,
+    seed: stageSeed,
+    programAddress: buyProgram,
   });
   const create = getCreateAccountWithSeedInstruction({
     payer: solver,
     baseAccount: solver,
     newAccount: stage,
     base: solver.address,
-    seed: 'stage',
+    seed: stageSeed,
     amount: 1488440n,
     space: 165n,
-    programAddress: TOKEN_PROGRAM_ADDRESS,
+    programAddress: buyProgram,
   });
-  const init = getInitializeAccount3Instruction({
-    account: stage,
-    mint: nativeSale ? mint : WRAPPED_SOL_MINT,
-    owner: order.orderPda,
-  });
-  const before = [limit, ...walletPrefix, create, init];
-  const [buffer, bump] = nativeSale
-    ? await findBufferPda({ mint0: mint }, { programAddress: program })
-    : await findNativeSolBufferPda({ programAddress: program });
-  const [solverAta] = await findAssociatedTokenPda({
+  const init = getInitializeAccount3Instruction(
+    {
+      account: stage,
+      mint: nativeBuy ? WRAPPED_SOL_MINT : buyMint,
+      owner: order.orderPda,
+    },
+    { programAddress: buyProgram },
+  );
+  const [buffer, bump] = await findNativeSolBufferPda({ programAddress: program });
+  const [canonicalSolverAta] = await findAssociatedTokenPda({
     owner: solver.address,
     mint: order.intent.sellMint,
-    tokenProgram: TOKEN_PROGRAM_ADDRESS,
+    tokenProgram: sellProgram,
   });
+  const inputSeed = 'i' + app.subarray(24).toString('hex');
+  const solverAta = newSolverInput
+    ? await createAddressWithSeed({
+        baseAddress: user.address,
+        seed: inputSeed,
+        programAddress: sellProgram,
+      })
+    : canonicalSolverAta;
   const keys = (...items) => items.map(([address, role = 0]) => ({ address, role }));
+  const setupInput = {
+    programAddress: program,
+    data: Uint8Array.of(16, ...app.subarray(24)),
+    accounts: keys(
+      [user.address, 3],
+      [solverAta, 1],
+      [solver.address],
+      [order.intent.sellMint],
+      [sellProgram],
+      [SOLANA_NATIVE_ASSET],
+      [ixSysvar],
+    ),
+  };
+  const placement = {
+    programAddress: program,
+    data: Buffer.alloc(62),
+    accounts: keys(
+      [user.address, 3],
+      [solver.address, 3],
+      [order.orderPda, 1],
+      [order.intent.sellTokenAccount, 1],
+      [solverAta, 1],
+      [sellMint],
+      [order.intent.buyTokenAccount],
+      [nativeBuy ? WRAPPED_SOL_MINT : buyMint],
+      [stage, 1],
+      [sellProgram],
+      [buyProgram],
+      [SOLANA_NATIVE_ASSET],
+      [ixSysvar],
+    ),
+  };
+  placement.data.set([
+    17,
+    8 | (nativeSale ? 1 : 0) | (newSolverInput ? 2 : 0) | (nativeBuy ? 4 : 0),
+  ]);
+  placement.data.writeBigUInt64LE(max, 54);
+  placement.data.writeBigUInt64LE(order.intent.sellAmount, 2);
+  placement.data.writeBigUInt64LE(order.intent.buyAmount, 10);
+  placement.data.set(app.subarray(8, 16), 18);
+  placement.data.writeUInt32LE(order.intent.validTo, 26);
+  placement.data.set(app.subarray(24), 30);
+  if (compact) placement.data.set(Buffer.from(stageSeed, 'hex'), 38);
+  const before = compact
+    ? [limit, ...walletPrefix.slice(0, -1), placement]
+    : [limit, ...walletPrefix, ...(newSolverInput ? [setupInput] : []), create, init];
   const beginData = Buffer.alloc(21);
   beginData[0] = 13;
   beginData.writeUInt16LE(before.length + 2, 1);
@@ -159,7 +240,7 @@ async function fixture(change, useTable = false, nativeSale = false, createRecei
       [TOKEN_2022_PROGRAM_ADDRESS],
       [order.orderPda, 1],
       [order.intent.sellTokenAccount, 1],
-      [ixSysvar],
+      [sellProgram === TOKEN_2022_PROGRAM_ADDRESS ? sellMint : ixSysvar],
       [solverAta, 1],
       [stage, 1],
     ),
@@ -169,8 +250,12 @@ async function fixture(change, useTable = false, nativeSale = false, createRecei
     data: Uint8Array.of(1),
     accounts: keys([solver.address, 3], [solverAta, 1], [stage, 1]),
   };
-  const finishData = Buffer.alloc(nativeSale ? 21 : 20);
-  if (nativeSale) finishData[20] = 1;
+  const cleanup = (nativeSale ? 1 : 0) | (newSolverInput ? 2 : 0);
+  const finishData = Buffer.alloc(45);
+  finishData[20] = cleanup | 8;
+  finishData.writeBigUInt64LE(10000n, 21);
+  finishData.writeBigUInt64LE(rate, 29);
+  finishData.writeBigUInt64LE(max, 37);
   finishData[0] = 14;
   finishData.writeUInt16LE(before.length, 1);
   finishData[3] = bump;
@@ -181,7 +266,7 @@ async function fixture(change, useTable = false, nativeSale = false, createRecei
     accounts: keys(
       [ixSysvar],
       [order.statePda],
-      [TOKEN_PROGRAM_ADDRESS],
+      [buyProgram],
       [order.orderPda, 1],
       [stage, 1],
       [buffer, 1],
@@ -192,8 +277,24 @@ async function fixture(change, useTable = false, nativeSale = false, createRecei
       [order.intent.sellTokenAccount, 1],
     ),
   };
+  if (sellProgram === TOKEN_2022_PROGRAM_ADDRESS || buyProgram === TOKEN_2022_PROGRAM_ADDRESS)
+    finish.accounts.push(
+      ...keys([sellMint], [nativeBuy ? WRAPPED_SOL_MINT : buyMint], [sellProgram]),
+    );
+  finish.accounts.push(...keys([SOLANA_NATIVE_ASSET]));
   const instructions = [...before, begin, route, finish];
-  change?.({ instructions, begin, route, finish, user, solver, order });
+  change?.({
+    instructions,
+    begin,
+    route,
+    finish,
+    user,
+    solver,
+    order,
+    setupInput,
+    placement,
+    quote,
+  });
   const msg = appendTransactionMessageInstructions(
     instructions,
     setTransactionMessageLifetimeUsingBlockhash(
@@ -202,19 +303,25 @@ async function fixture(change, useTable = false, nativeSale = false, createRecei
     ),
   );
   const table = keypair().address;
-  const tableKeys = nativeSale
-    ? [
-        solverAta,
-        stage,
-        order.orderPda,
-        order.intent.sellTokenAccount,
-        order.intent.buyTokenAccount,
-        order.statePda,
-        buffer,
-        ixSysvar,
-        TOKEN_2022_PROGRAM_ADDRESS,
-      ]
-    : [solverAta];
+  const tableKeys =
+    nativeSale || newSolverInput
+      ? [
+          solverAta,
+          stage,
+          order.orderPda,
+          order.intent.sellTokenAccount,
+          order.intent.buyTokenAccount,
+          order.statePda,
+          buffer,
+          ixSysvar,
+          TOKEN_2022_PROGRAM_ADDRESS,
+          ...(route.accounts.length === 20
+            ? [...new Set(route.accounts.slice(2).map((a) => a.address))].filter(
+                (a) => a !== solverAta && a !== stage,
+              )
+            : []),
+        ]
+      : [solverAta];
   const tx = compileTransaction(
     useTable
       ? compressTransactionMessageUsingAddressLookupTables(msg, { [table]: tableKeys })
@@ -230,13 +337,19 @@ async function fixture(change, useTable = false, nativeSale = false, createRecei
   const packet = {
     executionMode: 'walletAtomic',
     quoteId: 1,
+    nativeProtocolFee,
     orderUid: order.uid,
     solver: solver.address,
     blockhash: genesis,
     lastValidBlockHeight: '150',
     orderRentLamports: '1991360',
     nativeWrapRentLamports: nativeSale ? '1488440' : '0',
-    tokenAccountRentLamports: createReceiver ? '1488440' : '0',
+    ...(newSolverInput && { solverInputRentLamports: '1488440' }),
+    tokenAccountRentLamports: createReceiver
+      ? buyProgram === TOKEN_2022_PROGRAM_ADDRESS
+        ? '1513840'
+        : '1488440'
+      : '0',
     networkFeeLamports: String(networkFee),
     transaction: Buffer.from(bytes).toString('base64'),
   };
@@ -248,13 +361,25 @@ async function fixture(change, useTable = false, nativeSale = false, createRecei
     table,
     tableKeys,
     solverAta,
+    canonicalSolverAta,
+    newSolverInput,
     receiverExists: !createReceiver,
   };
 }
 
 function rpcMock(
   t,
-  { packet, input, table, tableKeys, receiverExists, rentPerByte = 5080n },
+  {
+    packet,
+    input,
+    table,
+    tableKeys,
+    lookupEntries,
+    receiverExists,
+    newSolverInput,
+    solverPrefunded = false,
+    rentPerByte = 5080n,
+  },
   change,
 ) {
   const rent = Buffer.alloc(17),
@@ -289,31 +414,63 @@ function rpcMock(
           sysvar(hashes),
           ...(input.quote.quote.buyToken !== SOLANA_NATIVE_ASSET
             ? [
-                { owner: TOKEN_PROGRAM_ADDRESS },
-                receiverExists ? { owner: TOKEN_PROGRAM_ADDRESS } : null,
-                null,
+                { owner: input.buyProgram },
+                receiverExists && input.buyProgram === TOKEN_PROGRAM_ADDRESS
+                  ? { owner: TOKEN_PROGRAM_ADDRESS }
+                  : null,
+                receiverExists && input.buyProgram === TOKEN_2022_PROGRAM_ADDRESS
+                  ? { owner: TOKEN_2022_PROGRAM_ADDRESS }
+                  : null,
               ]
             : []),
+          { owner: input.sellProgram },
+          input.sellProgram !== TOKEN_PROGRAM_ADDRESS
+            ? null
+            : newSolverInput
+              ? solverPrefunded
+                ? { owner: SOLANA_NATIVE_ASSET }
+                : null
+              : { owner: TOKEN_PROGRAM_ADDRESS },
+          input.sellProgram === TOKEN_2022_PROGRAM_ADDRESS && !newSolverInput
+            ? { owner: TOKEN_2022_PROGRAM_ADDRESS }
+            : null,
         ],
       },
       getTokenAccountsByOwner: { context: { slot: 1 }, value: [] },
+      getAccountInfo: {
+        context: { slot: 1 },
+        value: {
+          owner: TOKEN_2022_PROGRAM_ADDRESS,
+          data: {
+            program: 'spl-token-2022',
+            parsed: { type: 'mint', info: { isInitialized: true, extensions: [] } },
+          },
+        },
+      },
       getEpochInfo: { blockHeight: 100 },
       getFeeForMessage: { context: { slot: 1 }, value: Number(networkFee) },
       isBlockhashValid: { context: { slot: 2 }, value: true },
     };
-    if (body.method === 'getMultipleAccounts' && body.params[0][0] === table) {
-      const raw = Buffer.alloc(56 + 32 * tableKeys.length);
-      raw.writeUInt32LE(1);
-      raw.writeBigUInt64LE(0xffffffffffffffffn, 4);
-      tableKeys.forEach((key, index) => raw.set(getAddressEncoder().encode(key), 56 + 32 * index));
+    if (
+      body.method === 'getMultipleAccounts' &&
+      (body.params[0][0] === table || lookupEntries?.[body.params[0][0]])
+    ) {
+      const value = body.params[0].map((address) => {
+        const entries =
+          address === table ? Object.entries(tableKeys) : Object.entries(lookupEntries[address]);
+        const raw = Buffer.alloc(56 + 32 * (1 + Math.max(...entries.map(([i]) => Number(i)))));
+        raw.writeUInt32LE(1);
+        raw.writeBigUInt64LE(0xffffffffffffffffn, 4);
+        for (const [i, key] of entries)
+          raw.set(getAddressEncoder().encode(key), 56 + 32 * Number(i));
+        return {
+          owner: 'AddressLookupTab1e1111111111111111111111111',
+          data: [raw.toString('base64'), 'base64'],
+        };
+      });
       values.getMultipleAccounts = {
         context: { slot: 1 },
-        value: [
-          {
-            owner: 'AddressLookupTab1e1111111111111111111111111',
-            data: [raw.toString('base64'), 'base64'],
-          },
-        ],
+        value,
       };
     }
     assert.ok(Object.hasOwn(values, body.method), body.method);
@@ -447,6 +604,82 @@ test('native SOL uses an isolated temporary input, refunds its deposit and leave
   await assert.rejects(prepareOphisWalletAtomicSwap(f.input), /fees or account deposits changed/);
 });
 
+test('compact market placement binds the complete reviewed order, token programs and staging account', async (t) => {
+  for (const [nativeSale, newBuyMint, newInput, tokenProgram] of [
+    [false, true, true, TOKEN_PROGRAM_ADDRESS],
+    [false, true, true, TOKEN_2022_PROGRAM_ADDRESS],
+    [true, true, false, TOKEN_PROGRAM_ADDRESS],
+    [false, false, false, TOKEN_PROGRAM_ADDRESS],
+  ]) {
+    const f = await fixture(undefined, true, nativeSale, newBuyMint, newInput, {
+      compact: true,
+      newBuyMint,
+      buyProgram: tokenProgram,
+    });
+    const fetch = rpcMock(t, f);
+    assert.equal((await prepareOphisWalletAtomicSwap(f.input)).order.uid, f.order.uid);
+    fetch.mock.restore();
+  }
+  for (const mutate of [
+    (ix) => {
+      ix.accounts[6] = ix.accounts[1];
+    },
+    ...[1, 2, 10, 18, 26, 30, 38, 54].map((offset) => (ix) => {
+      ix.data[offset] ^= 1;
+    }),
+  ]) {
+    const f = await fixture(({ placement }) => mutate(placement), true, false, true, true, {
+      compact: true,
+      newBuyMint: true,
+    });
+    const fetch = rpcMock(t, f);
+    await assert.rejects(prepareOphisWalletAtomicSwap(f.input), /does not match/);
+    fetch.mock.restore();
+  }
+});
+
+test('Orca two-hop packets spend the reviewed input and forward the full intermediary through one account', async (t) => {
+  for (const [first, second, mutation] of [
+    [0, 1],
+    [1, 0],
+    [1, 1, 'hub'],
+    [0, 0, 'output'],
+    [1, 0, 'amount'],
+  ]) {
+    const f = await fixture(
+      ({ route, quote }) => {
+        const [solver, source, stage] = route.accounts;
+        const hub = { address: keypair().address, role: 1 };
+        route.programAddress = quote.routeProgram = 'whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc';
+        route.accounts = Array.from({ length: 20 }, () => ({
+          address: keypair().address,
+          role: 1,
+        }));
+        route.accounts[0] = { address: TOKEN_PROGRAM_ADDRESS, role: 0 };
+        route.accounts[1] = solver;
+        route.accounts[first ? 4 : 6] = source;
+        route.accounts[first ? 6 : 4] = hub;
+        if (mutation !== 'hub') route.accounts[second ? 8 : 10] = hub;
+        route.accounts[second ? 10 : 8] = mutation === 'output' ? source : stage;
+        route.data = Buffer.alloc(59);
+        route.data.set([195, 96, 237, 108, 68, 162, 219, 230]);
+        route.data.writeBigUInt64LE(mutation === 'amount' ? 2999n : 3000n, 8);
+        route.data.writeBigUInt64LE(10000n, 16);
+        route.data.set([1, first, second], 24);
+      },
+      true,
+      false,
+      false,
+      true,
+      { newBuyMint: true },
+    );
+    const mock = rpcMock(t, f);
+    if (mutation) await assert.rejects(prepareOphisWalletAtomicSwap(f.input), /does not match/);
+    else assert.equal((await prepareOphisWalletAtomicSwap(f.input)).order.uid, f.order.uid);
+    mock.mock.restore();
+  }
+});
+
 test('a first-time recipient must receive precisely its own canonical token account', async (t) => {
   const f = await fixture(undefined, true, true, true);
   rpcMock(t, f);
@@ -455,6 +688,59 @@ test('a first-time recipient must receive precisely its own canonical token acco
   assert.equal(prepared.costs.nativeWrapRent, 1488440n);
 });
 
+for (const nativeSale of [false, true]) {
+  test(
+    'first-use solver account returns the signed deposit for ' +
+      (nativeSale ? 'native SOL' : 'a previously unseen mint'),
+    async (t) => {
+      const f = await fixture(undefined, true, nativeSale, false, true);
+      assert.notEqual(f.solverAta, f.canonicalSolverAta);
+      rpcMock(t, { ...f, solverPrefunded: true });
+      const prepared = await prepareOphisWalletAtomicSwap(f.input);
+      assert.equal(prepared.costs.solverInputRent, 1488440n);
+      assert.equal(prepared.costs.nativeWrapRent, nativeSale ? 1488440n : 0n);
+      f.packet.solverInputRentLamports = '0';
+      await assert.rejects(
+        prepareOphisWalletAtomicSwap(f.input),
+        /fees or account deposits changed/,
+      );
+    },
+  );
+}
+
+for (const [name, change] of [
+  [
+    'wrong token authority',
+    ({ placement, user }) => {
+      placement.accounts[1].address = user.address;
+    },
+  ],
+  [
+    'wrong rent destination',
+    ({ placement, user }) => {
+      placement.accounts[4].address = user.address;
+    },
+  ],
+  [
+    'wrong signed nonce',
+    ({ placement }) => {
+      placement.data[30] ^= 1;
+    },
+  ],
+  [
+    'missing automatic refund',
+    ({ finish }) => {
+      finish.data[20] = 0;
+    },
+  ],
+]) {
+  test('a first-use solver input rejects ' + name + ' before wallet approval', async (t) => {
+    const f = await fixture(change, true, false, false, true);
+    rpcMock(t, f);
+    await assert.rejects(prepareOphisWalletAtomicSwap(f.input), /does not match/);
+  });
+}
+
 test('cannot charge for creating a new receiving ATA then omit its creation', async (t) => {
   const f = await fixture(undefined, true, true);
   f.packet.tokenAccountRentLamports = '1488440';
@@ -462,6 +748,71 @@ test('cannot charge for creating a new receiving ATA then omit its creation', as
   rpcMock(t, f);
   await assert.rejects(prepareOphisWalletAtomicSwap(f.input), /does not match/);
 });
+
+for (const sellProgram of [TOKEN_PROGRAM_ADDRESS, TOKEN_2022_PROGRAM_ADDRESS]) {
+  for (const buyProgram of [TOKEN_PROGRAM_ADDRESS, TOKEN_2022_PROGRAM_ADDRESS]) {
+    test(
+      'review two fresh mints and a separate native SOL fee ' + [sellProgram, buyProgram].join('/'),
+      async (t) => {
+        const f = await fixture(undefined, true, false, true, true, {
+          sellProgram,
+          buyProgram,
+          newBuyMint: true,
+        });
+        rpcMock(t, f);
+        const packet = await prepareOphisWalletAtomicSwap(f.input);
+        assert.equal(packet.order.uid, f.order.uid);
+        assert.equal(packet.costs.solverInputRent, 1488440n);
+        assert.equal(
+          packet.costs.tokenAccountRent,
+          buyProgram === TOKEN_2022_PROGRAM_ADDRESS ? 1513840n : 1488440n,
+        );
+        assert.equal(packet.costs.networkFee, networkFee);
+      },
+    );
+  }
+}
+
+for (const [name, change] of [
+  [
+    'a substituted native fee recipient',
+    ({ finish }) => {
+      finish.accounts[5].address = keypair().address;
+    },
+  ],
+  [
+    'an unreviewed fee cap',
+    ({ finish }) => {
+      finish.data.writeBigUInt64LE(999999n, 37);
+    },
+  ],
+  [
+    'another SOL valuation',
+    ({ finish }) => {
+      finish.data.writeBigUInt64LE(1n, 29);
+    },
+  ],
+  [
+    'a changed rate denominator',
+    ({ finish }) => {
+      finish.data.writeBigUInt64LE(1n, 21);
+    },
+  ],
+  [
+    'a missing system program',
+    ({ finish }) => {
+      finish.accounts.pop();
+    },
+  ],
+]) {
+  test('reject ' + name, async (t) => {
+    const f = await fixture(change, true, false, true, true, {
+      newBuyMint: true,
+    });
+    rpcMock(t, f);
+    await assert.rejects(prepareOphisWalletAtomicSwap(f.input), /does not match/);
+  });
+}
 
 test('an existing receiver cannot cost a deposit even if the wallet closes it before signing', async (t) => {
   const f = await fixture(undefined, true, true, true);
@@ -584,71 +935,129 @@ test('rejects altered solver signatures and unexpected fees before wallet approv
   await assert.rejects(prepareOphisWalletAtomicSwap(f.input), /winning solver signature/);
 });
 
-test('the public wallet preparation path verifies the signed Rust Raydium packet', async (t) => {
-  t.mock.timers.enable({ apis: ['Date'], now: 1795700000000 });
-  const { default: f } = await import('./rust-wallet-atomic.json', { with: { type: 'json' } });
-  const owner = createNoopSigner(f.owner);
-  const input = {
-    rpc: endpoint,
-    api: endpoint,
-    genesis,
-    programAddress: f.program,
-    owner,
-    sellProgram: TOKEN_PROGRAM_ADDRESS,
-    buyProgram: TOKEN_PROGRAM_ADDRESS,
-    slippageBps: 50,
-    quote: {
-      verified: true,
-      id: 1,
-      executionMode: 'walletAtomic',
-      from: f.owner,
-      solver: f.solver,
-      routeProgram: f.routeProgram,
-      expiration: new Date(1795700090000).toISOString(),
+for (const [name, filename, firstUse] of [
+  ['legacy Rust Raydium packet', './rust-wallet-atomic.json', false],
+  [
+    'compact Rust packet from a settled trade between two non-SOL mints',
+    './rust-wallet-market-mints.json',
+    true,
+  ],
+])
+  test(`wallet preparation applies current fee terms to the ${name}`, async (t) => {
+    t.mock.timers.enable({ apis: ['Date'], now: 1795700000000 });
+    const { default: f } = await import(filename, { with: { type: 'json' } });
+    const owner = createNoopSigner(f.owner);
+    const input = {
+      rpc: endpoint,
+      api: endpoint,
+      genesis,
+      programAddress: f.program,
+      owner,
+      sellProgram: TOKEN_PROGRAM_ADDRESS,
+      buyProgram: TOKEN_PROGRAM_ADDRESS,
+      slippageBps: 50,
       quote: {
-        kind: 'sell',
-        sellToken: f.sell,
-        buyToken: f.buy,
-        sellAmount: f.sellAmount,
-        buyAmount: f.benchmark,
-        feeAmount: '0',
-        validTo: f.validTo,
-        appData: f.appData,
-        partiallyFillable: false,
-        costs: {
-          token: f.buy,
-          networkFees: '0',
-          buyTokenAtaCosts: '0',
-          protocolFee: '27',
-          total: '27',
+        verified: true,
+        id: 1,
+        executionMode: 'walletAtomic',
+        from: f.owner,
+        solver: f.solver,
+        routeProgram: f.routeProgram,
+        expiration: new Date(1795700090000).toISOString(),
+        quote: {
+          kind: 'sell',
+          sellToken: f.sell,
+          buyToken: f.buy,
+          sellAmount: f.sellAmount,
+          buyAmount: f.benchmark,
+          feeAmount: '0',
+          validTo: f.validTo,
+          appData: f.appData,
+          ...(firstUse && { nativeProtocolFee: f.nativeProtocolFee }),
+          partiallyFillable: false,
+          costs: {
+            token: f.buy,
+            networkFees: '0',
+            buyTokenAtaCosts: '0',
+            protocolFee: firstUse ? '0' : '27',
+            total: firstUse ? '0' : '27',
+          },
+          feeTerms: {
+            baseBps: firstUse ? 5 : 1,
+            improvementShareBps: 5000,
+            improvementCapBps: firstUse ? 99 : 20,
+          },
         },
-        feeTerms: { baseBps: 1, improvementShareBps: 5000, improvementCapBps: 20 },
       },
-    },
-  };
-  const packet = {
-    executionMode: 'walletAtomic',
-    quoteId: 1,
-    orderUid: f.orderUid,
-    solver: f.solver,
-    transaction: f.transaction,
-    blockhash: f.blockhash,
-    lastValidBlockHeight: '150',
-    networkFeeLamports: '10000',
-    orderRentLamports: '2728320',
-    nativeWrapRentLamports: '0',
-    tokenAccountRentLamports: '2039280',
-  };
-  rpcMock(t, {
-    packet,
-    input,
-    table: f.lookupTable.address,
-    tableKeys: f.lookupTable.addresses,
-    rentPerByte: 6960n,
-    receiverExists: false,
+    };
+    const packet = {
+      executionMode: 'walletAtomic',
+      quoteId: 1,
+      orderUid: f.orderUid,
+      solver: f.solver,
+      transaction: f.transaction,
+      ...(firstUse && { nativeProtocolFee: f.nativeProtocolFee }),
+      blockhash: f.blockhash,
+      lastValidBlockHeight: '150',
+      networkFeeLamports: '10000',
+      orderRentLamports: '2728320',
+      nativeWrapRentLamports: '0',
+      ...(firstUse && { solverInputRentLamports: '2039280' }),
+      tokenAccountRentLamports: '2039280',
+    };
+    rpcMock(t, {
+      packet,
+      input,
+      table: f.lookupTable?.address,
+      tableKeys: f.lookupTable?.addresses,
+      lookupEntries: f.lookupEntries,
+      newSolverInput: firstUse,
+      rentPerByte: 6960n,
+      receiverExists: false,
+    });
+    if (!firstUse) {
+      await assert.rejects(prepareOphisWalletAtomicSwap(input), /protocol fee in SOL/);
+      return;
+    }
+    const result = await prepareOphisWalletAtomicSwap(input);
+    assert.equal(result.order.uid, f.orderUid);
+    assert.equal(result.order.intent.buyAmount, BigInt(f.minimum));
+    assert.equal(result.blockhash, f.blockhash);
   });
-  const result = await prepareOphisWalletAtomicSwap(input);
-  assert.equal(result.order.uid, f.orderUid);
-  assert.equal(result.order.intent.buyAmount, BigInt(f.minimum));
-  assert.equal(result.blockhash, f.blockhash);
+
+test('the quoted native SOL fee binds the estimate, upper limit and denomination', async (t) => {
+  const f = await fixture(undefined, true, true);
+  const q = f.input.quote;
+  const request = {
+    from: q.from,
+    sellToken: SOLANA_NATIVE_ASSET,
+    buyToken: q.quote.buyToken,
+    executionMode: 'walletAtomic',
+    side: { kind: 'sell', sellAmountBeforeFee: 3000n },
+  };
+  const response = structuredClone(q);
+  t.mock.method(globalThis, 'fetch', async () => Response.json(response));
+  const verified = await fetchOphisSolanaQuote(endpoint, request);
+  assert.deepEqual(verified.quote.nativeProtocolFee, q.quote.nativeProtocolFee);
+  const cap = getOphisNativeSellFeeCap(3000n, request.buyToken);
+  assert.ok(cap >= BigInt(q.quote.nativeProtocolFee.maxLamports));
+  for (const changed of [
+    { maxLamports: '500' },
+    { estimatedLamports: '1' },
+    { rateBuyAtoms: '9999' },
+    { rateLamports: '2999' },
+    { rateLamports: '0' },
+    { maxLamports: '18446744073709551616' },
+  ]) {
+    response.quote.nativeProtocolFee = { ...q.quote.nativeProtocolFee, ...changed };
+    await assert.rejects(fetchOphisSolanaQuote(endpoint, request));
+  }
+  delete response.quote.nativeProtocolFee;
+  await assert.rejects(fetchOphisSolanaQuote(endpoint, request));
+});
+
+test('native fee settlement requires the wallet-funded compact placement', async (t) => {
+  const f = await fixture(undefined, true, false, false, false, { compact: false });
+  rpcMock(t, f);
+  await assert.rejects(prepareOphisWalletAtomicSwap(f.input), /does not match/);
 });

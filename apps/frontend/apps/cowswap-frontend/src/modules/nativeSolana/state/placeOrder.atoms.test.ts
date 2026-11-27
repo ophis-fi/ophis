@@ -45,7 +45,14 @@ jest.mock(
     parseOphisSolanaAmount: () => 1000000000n,
     fetchOphisSolanaQuote: async () => ({
       verified: true,
-      quote: {},
+      quote: {
+        nativeProtocolFee: {
+          estimatedLamports: '500',
+          maxLamports: '3405',
+          rateLamports: '10000000',
+          rateBuyAtoms: '1000000',
+        },
+      },
       expiration: new Date(Date.now() + 60_000).toISOString(),
     }),
     checkedQuoteAppData: jest.fn(),
@@ -251,7 +258,7 @@ it.each(['solana:devnet', 'solana:localnet'] as const)(
     })
     jest.mocked(prepareOphisWalletAtomicSwap).mockResolvedValueOnce({
       order: { uid, orderPda: 'pda', payer: 'owner', intent: { sellTokenAccount: 'sell-account' } },
-      costs: { networkFee: 10_000n, orderRent: 1_991_360n, nativeWrapRent: 0n },
+      costs: { networkFee: 10_000n, orderRent: 1_991_360n, nativeWrapRent: 0n, solverInputRent: 1_488_440n },
       blockhash: '1'.repeat(32),
       lastValidBlockHeight: 135n,
       send: walletSend,
@@ -262,6 +269,10 @@ it.each(['solana:devnet', 'solana:localnet'] as const)(
     expect(store.get(nativeSolanaReviewAtom)).toBeNull()
     expect(store.get(activeSolanaReceiptAtom)).toBe(uid)
     expect(ordersAfterReload()[uid]?.signature).toBeNull()
+    expect(ordersAfterReload()[uid]?.walletCosts).toMatchObject({
+      solverInputRent: '1488440',
+      maxProtocolFeeLamports: '3405',
+    })
     await store.set(createNativeSolanaOrderAtom)
     expect(walletSend).toHaveBeenCalledTimes(1)
     expect(fetchOphisSolanaOrder).not.toHaveBeenCalled()

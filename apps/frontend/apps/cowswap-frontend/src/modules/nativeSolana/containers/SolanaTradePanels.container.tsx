@@ -117,7 +117,7 @@ export function SellPanel({ open }: { open: MouseEventHandler<HTMLButtonElement>
       )}
       {needsSolForFees && (
         <styledEl.Helper role="alert">
-          <Trans>Leave some SOL in your wallet for network fees and account rent.</Trans>
+          <Trans>Leave enough SOL for fees and account deposits.</Trans>
         </styledEl.Helper>
       )}
     </styledEl.Panel>

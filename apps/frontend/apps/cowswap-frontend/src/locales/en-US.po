@@ -1562,10 +1562,6 @@ msgstr "Insufficient {nativeSymbol} for gas"
 msgid "Deprecated Network"
 msgstr "Deprecated Network"
 
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaForm.container.tsx
-msgid "Check again"
-msgstr "Check again"
-
 #: apps/cowswap-frontend/src/modules/twap/containers/SetupFallbackHandlerWarning/index.tsx
 msgid "Update fallback handler"
 msgstr "Update fallback handler"
@@ -1905,10 +1901,6 @@ msgstr "This accounts for the current price and the slippage tolerance ({allowed
 #: apps/cowswap-frontend/src/modules/ethFlow/pure/EthFlowBanner/index.tsx
 msgid "No fees for failed transactions"
 msgstr "No fees for failed transactions"
-
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaForm.container.tsx
-msgid "This token is currently unavailable to sell. Choose another sell token."
-msgstr "This token is currently unavailable to sell. Choose another sell token."
 
 #: apps/cowswap-frontend/src/modules/limitOrders/pure/OrderType/index.tsx
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/ReceiptModal/ReceiptModal.modal.tsx
@@ -2618,6 +2610,10 @@ msgstr "Trade alert settings"
 msgid "There may be a network issue (such as a gas spike) that is delaying your order. You can wait for the issue to resolve{cancellationModal}"
 msgstr "There may be a network issue (such as a gas spike) that is delaying your order. You can wait for the issue to resolve{cancellationModal}"
 
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/SolanaQuoteCosts.pure.tsx
+msgid "Estimated Ophis fee"
+msgstr "Estimated Ophis fee"
+
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/TransactionSubmittedContent/index.tsx
 msgid "Confirmed"
 msgstr "Confirmed"
@@ -2999,6 +2995,10 @@ msgstr "Description"
 msgid "The estimated amount you'll receive after bridge costs."
 msgstr "The estimated amount you'll receive after bridge costs."
 
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/SolanaQuoteCosts.pure.tsx
+msgid "Estimated SOL after the Ophis fee"
+msgstr "Estimated SOL after the Ophis fee"
+
 #: apps/cowswap-frontend/src/common/pure/CancellationModal/ModalTopContent.tsx
 msgid "on-chain"
 msgstr "on-chain"
@@ -3292,10 +3292,6 @@ msgstr "This way, you'll take advantage of"
 #: apps/cowswap-frontend/src/legacy/components/CowBalance/index.tsx
 msgid "Your combined balance"
 msgstr "Your combined balance"
-
-#: apps/cowswap-frontend/src/modules/nativeSolana/pure/AssetPicker.pure.tsx
-msgid "Search to narrow the list."
-msgstr "Search to narrow the list."
 
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/ReceiptModal/ReceiptModal.modal.tsx
 msgid "Orders on Ophis can either be market orders (which fill at the market price within the slippage tolerance you set) or limit orders (which fill at a price you specify)."
@@ -3780,10 +3776,6 @@ msgstr "Order Submitted"
 msgid "This could have happened due to the lack of internet or the release of a new version of the application."
 msgstr "This could have happened due to the lack of internet or the release of a new version of the application."
 
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaTradePanels.container.tsx
-msgid "Leave some SOL in your wallet for network fees and account rent."
-msgstr "Leave some SOL in your wallet for network fees and account rent."
-
 #: libs/common-utils/src/tooltips.ts
 msgid "Maximum tokens you'll sell."
 msgstr "Maximum tokens you'll sell."
@@ -4019,6 +4011,10 @@ msgstr "hours"
 msgid "Order out of market"
 msgstr "Order out of market"
 
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/AssetPicker.pure.tsx
+msgid "Show more tokens"
+msgstr "Show more tokens"
+
 #: apps/cowswap-frontend/src/modules/erc20Approve/hooks/useApproveCallback.tsx
 msgid "Approve {tokenSymbol}"
 msgstr "Approve {tokenSymbol}"
@@ -4066,10 +4062,6 @@ msgstr "Change trade alert settings here"
 msgid "Select input and output"
 msgstr "Select input and output"
 
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaForm.container.tsx
-msgid "Sell availability could not be checked. You can still get a quote."
-msgstr "Sell availability could not be checked. You can still get a quote."
-
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/OrdersTable/LoadMore/Button/LoadMoreOrdersButton.tsx
 msgid "Search older orders"
 msgstr "Search older orders"
@@ -4077,6 +4069,11 @@ msgstr "Search older orders"
 #: apps/cowswap-frontend/src/modules/hooksStore/containers/HooksStoreWidget/index.tsx
 msgid "With hooks you can add specific actions <0>before</0> and <1>after</1> your swap."
 msgstr "With hooks you can add specific actions <0>before</0> and <1>after</1> your swap."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/SolanaQuoteCosts.pure.tsx
+#: apps/cowswap-frontend/src/modules/nativeSolana/pure/SolanaReceipt.pure.tsx
+msgid "Maximum Ophis fee"
+msgstr "Maximum Ophis fee"
 
 #: apps/cowswap-frontend/src/modules/rwa/hooks/useImportTokenConsentFlow.tsx
 #: apps/cowswap-frontend/src/modules/tokensList/hooks/useRestrictedTokenImportStatus.ts
@@ -4393,6 +4390,10 @@ msgstr "Alert"
 #: apps/cowswap-frontend/src/modules/twap/containers/TwapConfirmModal/TwapConfirmDetails.tsx
 msgid "Start time first"
 msgstr "Start time first"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaTradePanels.container.tsx
+msgid "Leave enough SOL for fees and account deposits."
+msgstr "Leave enough SOL for fees and account deposits."
 
 #: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaWalletAction.container.tsx
 msgid "Getting quote…"
@@ -5950,10 +5951,6 @@ msgstr "Tokens on this network"
 #: apps/cowswap-frontend/src/modules/tradeWidgetAddons/containers/HighFeeWarning/highFeeWarningHelpers.ts
 msgid "Swap costs are at least {formattedFeePercentage}% of the swap amount"
 msgstr "Swap costs are at least {formattedFeePercentage}% of the swap amount"
-
-#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaForm.container.tsx
-msgid "Checking sell availability…"
-msgstr "Checking sell availability…"
 
 #: apps/cowswap-frontend/src/modules/nativeSolana/pure/AssetPicker.pure.tsx
 msgid "In your wallet"
