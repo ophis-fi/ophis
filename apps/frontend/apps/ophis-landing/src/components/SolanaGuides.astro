@@ -18,7 +18,7 @@ const guides = (await Promise.all(['solana-dex-aggregator', 'solana-bridge'].map
       <li>
         <a class="guide" href={`/blog/${post.id}/`}>
           {post.data.cover && (
-            <Image class="guide-thumb" src={post.data.cover} alt={post.data.coverAlt ?? ''} widths={[400, 760]} sizes="(max-width: 640px) 112px, 560px" loading="lazy" />
+            <Image class="guide-thumb" src={post.data.cover} alt={post.data.coverAlt ?? ''} widths={[400, 760, 1280]} sizes="(max-width: 640px) 112px, 560px" loading="lazy" />
           )}
           <div>
             <h3>{post.data.title}</h3>

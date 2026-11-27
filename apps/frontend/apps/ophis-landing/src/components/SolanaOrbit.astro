@@ -1,10 +1,10 @@
 ---
-/* The Solana swap in one picture: SOL enters on the left, the Ophis solver in the
-   centre prices the venues on the ring, USDC leaves on the right. Every position is
-   a percentage of the square and every size a container unit, so the picture scales
-   with its column while the labels keep a readable size. The entrance plays once. */
-import { SOLANA_VENUE_LIST } from '../data/chains'
-
+/* The Solana swap in one moving picture: SOL leaves the wallet on the left, the Ophis
+   solver in the centre asks the six venues on the ring, one of them wins, and USDC
+   arrives on the right. Every position is a percentage of the square and every size a
+   container unit, so the picture scales with its column while the names stay readable.
+   The loop is CSS only. The hidden checkbox pauses it (click, tap or Space), as on the
+   home page; with reduced motion there is no loop and the resting picture is shown. */
 const RING = 36.54 // ring radius, in % of the square
 const point = (deg: number) => {
   const a = (deg * Math.PI) / 180
@@ -23,10 +23,12 @@ const venues = [
   { name: 'PumpSwap', logo: '/logos/protocols/pumpswap.png', deg: 45, fill: false },
   { name: 'Jupiter', logo: '/logos/protocols/jupiter.png', deg: 90, fill: true },
   { name: 'Manifest', logo: '/logos/protocols/manifest.svg', deg: 135, fill: false },
-]
+].map((venue) => ({ ...venue, ...point(venue.deg) }))
 ---
-<figure class="orbit">
-  <div class="stage">
+<figure class="orbit" aria-label="A Solana swap on Ophis: SOL goes in, the Ophis solver prices five venues and can route through Jupiter, USDC comes out.">
+  <input class="pause" id="orbitPause" type="checkbox" aria-label="Pause the animation" />
+  <label class="stage" for="orbitPause">
+    <span class="motion-help" aria-hidden="true">Tap, click or press Space to pause</span>
     <svg class="lines" viewBox="0 0 100 100" aria-hidden="true">
       <defs>
         <radialGradient id="orbitAura"><stop stop-color="#d4a68e" stop-opacity=".2" /><stop offset="1" stop-color="#d4a68e" stop-opacity="0" /></radialGradient>
@@ -35,39 +37,48 @@ const venues = [
       </defs>
       <circle cx="50" cy="50" r="49" fill="url(#orbitAura)" />
       <circle class="ring" cx="50" cy="50" r={RING} />
-      {venues.map(({ deg }) => <line class="spoke" x1="50" y1="50" x2={point(deg).x.toFixed(2)} y2={point(deg).y.toFixed(2)} />)}
-      <line class="flow flow-in" x1="13.46" y1="50" x2="50" y2="50" stroke="url(#orbitIn)" pathLength="1" />
-      <line class="flow flow-out" x1="50" y1="50" x2="86.54" y2="50" stroke="url(#orbitOut)" pathLength="1" />
+      {venues.map(({ x, y }, turn) => <line class="spoke" style={`--w:${turn}`} x1="50" y1="50" x2={x.toFixed(2)} y2={y.toFixed(2)} />)}
+      <line class="flow" x1="13.46" y1="50" x2="50" y2="50" stroke="url(#orbitIn)" />
+      <line class="flow" x1="50" y1="50" x2="86.54" y2="50" stroke="url(#orbitOut)" />
+      {venues.map(({ x, y }, index) => <circle class="quote" r="0.9" style={`--x:${x.toFixed(2)}px;--y:${y.toFixed(2)}px;--i:${index}`} />)}
+      <g class="packet packet-in"><circle r="4.3" /><image href="/logos/solana.svg" x="-3.3" y="-3.3" width="6.6" height="6.6" /></g>
+      <g class="packet packet-out"><circle r="4.3" /><image href="/logos/swap-story/usdc.svg" x="-3.3" y="-3.3" width="6.6" height="6.6" /></g>
     </svg>
 
-    <div class="hub"><img src="/logos/swap-story/ophis.svg" alt="Ophis" width="64" height="64" /></div>
+    <span class="hub"><img src="/logos/swap-story/ophis.svg" alt="Ophis" width="64" height="64" /></span>
 
-    <div class="node token" style={place(180, 0)}>
+    <span class="node token" style={place(180, 0)}>
       <span class="disc"><img src="/logos/solana.svg" alt="" width="66" height="66" /></span>
       <span class="name"><small>You sell</small>SOL</span>
-    </div>
+    </span>
     {venues.map(({ name, logo, deg, fill }, index) => (
-      <div class="node" style={place(deg, index + 1)}>
+      <span class="node venue" style={`${place(deg, index + 1)};--w:${index}`}>
         <span class="disc"><img class:list={[{ fill }]} src={logo} alt={`${name} logo`} width="56" height="56" /></span>
         <span class="name">{name}</span>
-      </div>
+      </span>
     ))}
-    <div class="node token" style={place(0, venues.length + 1)}>
-      <span class="disc"><img src="/logos/usdc.png" alt="" width="66" height="66" /></span>
+    <span class="node token receive" style={place(0, venues.length + 1)}>
+      <span class="disc"><img src="/logos/swap-story/usdc.svg" alt="" width="66" height="66" /></span>
       <span class="check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5 12 4 4 10-10" /></svg></span>
       <span class="name"><small>You receive</small>USDC</span>
-    </div>
-  </div>
-  <figcaption>The Ophis solver prices {SOLANA_VENUE_LIST} directly, and can route through Jupiter.</figcaption>
+    </span>
+  </label>
 </figure>
 
 <style>
-  .orbit { margin: 0; width: 100%; max-width: 540px; container-type: inline-size; }
-  .stage { position: relative; aspect-ratio: 1; }
+  .orbit { position: relative; margin: 0; width: 100%; max-width: 540px; container-type: inline-size; }
+  .stage { position: relative; display: block; aspect-ratio: 1; }
   .lines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-  .ring { fill: none; stroke: #cdb09c; stroke-width: 0.3; stroke-dasharray: 0.6 1.35; }
+  .ring { fill: none; stroke: #cdb09c; stroke-width: 0.3; stroke-dasharray: 0.6 1.35; transform-box: fill-box; transform-origin: center; }
   .spoke { stroke: #e4dad3; stroke-width: 0.23; }
   .flow { fill: none; stroke-width: 0.7; stroke-linecap: round; }
+  .quote { fill: #a86f50; opacity: 0; transform: translate(50px, 50px); }
+  .packet { opacity: 0; transform: translate(50px, 50px); }
+  .packet circle { fill: #fff; stroke: #dec9bc; stroke-width: 0.2; }
+  /* The pause control: a checkbox that is there for the keyboard and for assistive
+     technology, and the whole picture as its label. */
+  .pause { position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0; }
+  .motion-help { display: none; }
 
   /* Sizes: pixels for a browser without container units, then a share of the picture. */
   .hub { --hub: 122px; }
@@ -116,7 +127,6 @@ const venues = [
     background: #d9e9de; color: #345840;
   }
   .check svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
-  figcaption { margin: 4px auto 0; max-width: 46ch; text-align: center; font-size: 13.5px; line-height: 1.5; color: var(--ophis-fg-faded); }
 
   @container (max-width: 400px) {
     .name, .token .name { font-size: 11.5px; }
@@ -125,15 +135,66 @@ const venues = [
     .check svg { width: 12px; height: 12px; }
   }
 
-  /* One entrance: the nodes arrive around the ring, then the route draws itself.
-     Only `from` is keyed, so the resting picture is the plain markup above. */
+  /* The loop, one swap every --t: the order travels to the solver, quotes go out to the
+     six venues and come back, one venue wins (each in turn), USDC travels to the wallet
+     and is confirmed. Positions inside the drawing are in its own units (0 to 100). */
   @media (prefers-reduced-motion: no-preference) {
+    .orbit { --t: 5.2s; --start: 0.9s; }
+    .stage { cursor: pointer; }
+    .motion-help {
+      display: block; position: absolute; left: 0; right: 0; top: -14px; text-align: center;
+      font-size: 11px; color: var(--ophis-fg-faded); opacity: 0; transition: opacity 150ms ease; pointer-events: none;
+    }
+    .stage:hover .motion-help, .pause:focus-visible ~ .stage .motion-help, .pause:checked ~ .stage .motion-help { opacity: 1; }
+    .pause:focus-visible ~ .stage { outline: 2px solid var(--ophis-brown); outline-offset: 6px; border-radius: 24px; }
+
     .node { animation: orbit-pop 420ms cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: calc(var(--i) * 70ms + 120ms); }
-    .flow { stroke-dasharray: 1; animation: orbit-draw 520ms ease-out both; }
-    .flow-in { animation-delay: 760ms; }
-    .flow-out { animation-delay: 1280ms; }
-    .check { animation: orbit-pop 320ms ease-out both; animation-delay: 1800ms; }
+    .ring { animation: orbit-turn 90s linear infinite; }
+    .packet-in { animation: orbit-in var(--t) linear var(--start) infinite; }
+    .quote { animation: orbit-quote var(--t) ease-in-out calc(var(--start) + var(--i) * 45ms) infinite; }
+    .hub { animation: orbit-think var(--t) ease-in-out var(--start) infinite; }
+    .venue .disc { animation: orbit-win calc(var(--t) * 6) linear calc(var(--start) + var(--t) * var(--w)) infinite; }
+    .spoke { animation: orbit-route calc(var(--t) * 6) linear calc(var(--start) + var(--t) * var(--w)) infinite; }
+    .packet-out { animation: orbit-out var(--t) linear var(--start) infinite; }
+    .receive .disc { animation: orbit-land var(--t) ease-out var(--start) infinite; }
+    .check { animation: orbit-check var(--t) ease-out var(--start) infinite both; }
+    .pause:checked ~ .stage, .pause:checked ~ .stage * { animation-play-state: paused; }
   }
+  /* Nothing loops with reduced motion, so there is nothing to pause. */
+  @media (prefers-reduced-motion: reduce) { .pause { display: none; } }
   @keyframes orbit-pop { from { opacity: 0; scale: 0.8; } }
-  @keyframes orbit-draw { from { stroke-dashoffset: 1; } }
+  @keyframes orbit-turn { to { transform: rotate(360deg); } }
+  @keyframes orbit-in {
+    0% { transform: translate(13.46px, 50px); opacity: 0; }
+    4%, 19% { opacity: 1; }
+    21%, 100% { transform: translate(50px, 50px); opacity: 0; }
+  }
+  @keyframes orbit-quote {
+    0%, 21% { transform: translate(50px, 50px); opacity: 0; }
+    23% { opacity: 1; }
+    39%, 43% { transform: translate(var(--x), var(--y)); opacity: 1; }
+    57% { transform: translate(50px, 50px); opacity: 1; }
+    59%, 100% { transform: translate(50px, 50px); opacity: 0; }
+  }
+  @keyframes orbit-think { 0%, 21%, 60%, 100% { scale: 1; } 40% { scale: 1.05; } }
+  /* One sixth of this longer loop is a venue's own swap; it wins from about 60% to 92% of it. */
+  @keyframes orbit-win {
+    0%, 9.6%, 15.8%, 100% { box-shadow: 0 0 0 0 rgba(200, 150, 120, 0); }
+    10.2%, 15.2% { box-shadow: 0 0 0 3px var(--ophis-peach), 0 0 0 4.5px #c89678; }
+  }
+  @keyframes orbit-route {
+    0%, 9.6%, 15.8%, 100% { stroke: #e4dad3; stroke-width: 0.23; }
+    10.2%, 15.2% { stroke: #aa7152; stroke-width: 0.5; }
+  }
+  @keyframes orbit-out {
+    0%, 62% { transform: translate(50px, 50px); opacity: 0; }
+    64%, 80% { opacity: 1; }
+    82%, 100% { transform: translate(86.54px, 50px); opacity: 0; }
+  }
+  @keyframes orbit-land { 0%, 82%, 92%, 100% { translate: 0 0; } 86% { translate: 0 -5px; } }
+  @keyframes orbit-check {
+    0%, 82% { opacity: 0; scale: 0.6; }
+    86%, 97% { opacity: 1; scale: 1; }
+    100% { opacity: 0; scale: 1; }
+  }
 </style>

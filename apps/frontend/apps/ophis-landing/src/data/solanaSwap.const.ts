@@ -10,7 +10,7 @@ import {
 export const STEPS = [
   {
     name: 'Connect a Solana wallet',
-    text: 'Open the Solana swap and connect a browser wallet that supports the Wallet Standard, such as Phantom or Solflare. A mobile wallet can connect by QR code through WalletConnect.',
+    text: 'Open the Solana swap and connect a browser wallet that supports the Wallet Standard, such as Phantom, Solflare or Backpack. A mobile wallet can connect by QR code through WalletConnect.',
   },
   {
     name: 'Choose the tokens and the amount',
@@ -50,7 +50,7 @@ export const FAQS = [
   { q: 'What does a Solana swap cost on Ophis?', a: SOLANA_FEE_ANSWER },
   {
     q: 'Which wallets can I use to swap on Solana?',
-    a: 'Browser wallets that support the Wallet Standard connect directly, such as Phantom and Solflare. A mobile wallet can connect by QR code through WalletConnect. Your keys stay in your wallet: Ophis prepares the order and your wallet signs it.',
+    a: 'Browser wallets that support the Wallet Standard connect directly, such as Phantom, Solflare and Backpack. A mobile wallet can connect by QR code through WalletConnect. Your keys stay in your wallet: Ophis prepares the order and your wallet signs it.',
   },
   {
     q: 'What happens if my Solana order is not filled?',

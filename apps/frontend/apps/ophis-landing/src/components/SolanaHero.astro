@@ -1,7 +1,7 @@
 ---
 /* Top of /swap/solana/: breadcrumb and date, the headline with its two actions, the
-   wallets that connect, the picture, and four facts a visitor or an answer engine
-   gets without scrolling far. */
+   wallets that connect, the moving picture, and four facts a visitor or an answer
+   engine gets without scrolling far. */
 import SolanaOrbit from './SolanaOrbit.astro'
 import { SOLANA_SWAP_URL, SOLANA_VENUE_LIST as venues } from '../data/chains'
 
@@ -15,6 +15,7 @@ const fmtDate = new Intl.DateTimeFormat('en-US', { dateStyle: 'long', timeZone: 
 const wallets = [
   { name: 'Phantom', logo: '/logos/wallets/phantom.svg' },
   { name: 'Solflare', logo: '/logos/wallets/solflare.svg' },
+  { name: 'Backpack', logo: '/logos/wallets/backpack.png' },
   { name: 'WalletConnect', logo: '/logos/wallets/walletconnect.svg' },
 ]
 const facts = [
