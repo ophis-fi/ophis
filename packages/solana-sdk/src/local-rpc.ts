@@ -22,9 +22,10 @@ import {
 
 export const OPHIS_LOCAL_WALLET_RPC = 'http://127.0.0.1:18899';
 
-export async function matchingRpc(endpoint: string, genesis: string) {
+export async function matchingRpc(endpoint: string, genesis: string, abortSignal?: AbortSignal) {
   const rpc = createSolanaRpc(endpoint);
-  if ((await rpc.getGenesisHash().send()) !== genesis) throw Error('Solana RPC network mismatch.');
+  if ((await rpc.getGenesisHash().send({ abortSignal })) !== genesis)
+    throw Error('Solana RPC network mismatch.');
   return rpc;
 }
 

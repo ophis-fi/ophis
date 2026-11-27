@@ -2,11 +2,14 @@ import { atom } from 'jotai'
 
 import {
   type OphisWalletHolding,
+  fetchOphisMarketSellMints,
   fetchOphisWalletHoldings,
   fetchOphisOrderSolReserve,
   fetchOphisWalletSwapCosts,
   OPHIS_LOCAL_WALLET_RPC,
+  OPHIS_MAINNET_PROGRAM,
   SOLANA_NATIVE_ASSET,
+  WRAPPED_SOL_MINT,
   formatOphisSolanaAmount,
   parseOphisSolanaAmount,
   solanaAddress,
@@ -19,6 +22,7 @@ import { nativeSolanaFormAtom } from './trade.atoms'
 import {
   balanceEndpoint,
   fetchMainnetCatalog,
+  mainnetWalletRpc,
   nativeAsset,
   networkAssets,
   walletAssets,
@@ -49,6 +53,25 @@ export const solanaMainnetCatalogAtom = atomWithQuery(() => ({
   enabled: OPHIS_SOLANA_CONFIG?.chain === 'solana:mainnet',
 }))
 export const solanaCachedCatalogAtom = atomWithQuery(() => ({ ...catalogQuery, enabled: false }))
+
+export const marketSellMintsKey = ['solana-market-sell-mints'] as const
+export const solanaMarketSellMintsAtom = atomWithQuery(() => {
+  const config = OPHIS_SOLANA_CONFIG
+  const rpc = mainnetWalletRpc(config)
+  const solver = process.env.REACT_APP_OPHIS_SOLANA_MARKET_SOLVER
+  return {
+    queryKey: [...marketSellMintsKey, config?.api, config?.genesis, solver],
+    enabled: !!rpc && !!solver && config?.program === OPHIS_MAINNET_PROGRAM,
+    queryFn: async () => {
+      if (!config || !rpc || !solver || !(await nativeSolanaContext(config)).walletAtomic) return null
+      const mints = new Set<string>(await fetchOphisMarketSellMints(rpc, config.genesis, solanaAddress(solver)))
+      if (mints.has(WRAPPED_SOL_MINT)) mints.add('SOL')
+      return mints
+    },
+    staleTime: 30_000,
+    retry: false,
+  }
+})
 
 export const solanaHoldingsAtom = atomWithQuery<OphisWalletHolding[]>((get) => {
   const owner = get(solanaConnectionAtom)?.account.address
@@ -165,6 +188,16 @@ export const sellAmountStateAtom = atom((get) => {
     precision,
     reserve,
   }
+})
+
+export const solanaSellStateAtom = atom((get) => {
+  const { valid, exceeds, solShortfall, estimatingTokenOrder } = get(sellAmountStateAtom)
+  const { sellMint } = get(nativeSolanaFormAtom)
+  const market = get(solanaMarketSellMintsAtom)
+  const sellUnavailable = !market.isError && market.data?.has(sellMint) === false
+  const readyToSell =
+    valid && !exceeds && !solShortfall && !estimatingTokenOrder && !market.isLoading && !sellUnavailable
+  return { readyToSell, sellUnavailable, solShortfall }
 })
 
 function amountAvailability(

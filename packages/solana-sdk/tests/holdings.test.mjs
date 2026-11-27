@@ -7,6 +7,7 @@ import {
   fetchOphisOrderSolReserve,
   SOLANA_NATIVE_ASSET,
   fetchOphisWalletHoldings,
+  fetchOphisMarketSellMints,
   readOphisSellAllowance,
   verifyOphisMintMetadata,
   requestOphisLocalTestSol,
@@ -31,8 +32,13 @@ test('labels require an intact metadata prefix for the exact mint', () => {
   assert.equal(readHoldingLabel(data, owner), undefined);
   assert.equal(readHoldingLabel(data.subarray(0, 103), mint), undefined);
 });
-test('balances require matching genesis and only include initialized associated accounts', async (t) => {
+test('wallet balances and market sell readiness use initialized associated accounts, including empty solver accounts', async (t) => {
   const [ata] = await findAssociatedTokenPda({ owner, mint, tokenProgram: TOKEN_PROGRAM_ADDRESS });
+  const [emptyAta] = await findAssociatedTokenPda({
+    owner,
+    mint: owner,
+    tokenProgram: TOKEN_PROGRAM_ADDRESS,
+  });
   const methods = [];
   t.mock.method(globalThis, 'fetch', async (_url, init) => {
     const { id, method, params } = JSON.parse(init.body);
@@ -43,7 +49,13 @@ test('balances require matching genesis and only include initialized associated 
         id,
         error: { code: -1, message: 'metadata unavailable' },
       });
-    const tokenAccount = (pubkey, state) => ({
+    const tokenAccount = (
+      pubkey,
+      state,
+      accountMint = mint,
+      amount = '9007199254740993',
+      authority = owner,
+    ) => ({
       pubkey,
       account: {
         owner: TOKEN_PROGRAM_ADDRESS,
@@ -55,7 +67,12 @@ test('balances require matching genesis and only include initialized associated 
           program: 'spl-token',
           parsed: {
             type: 'account',
-            info: { owner, mint, state, tokenAmount: { amount: '9007199254740993', decimals: 6 } },
+            info: {
+              owner: authority,
+              mint: accountMint,
+              state,
+              tokenAmount: { amount, decimals: 6 },
+            },
           },
         },
       },
@@ -74,6 +91,8 @@ test('balances require matching genesis and only include initialized associated 
                       tokenAccount(ata, 'initialized'),
                       tokenAccount(owner, 'initialized'),
                       tokenAccount(ata, 'frozen'),
+                      tokenAccount(emptyAta, 'initialized', owner, '0'),
+                      tokenAccount(ata, 'initialized', mint, '123', genesis),
                     ],
           };
     return Response.json({ id, jsonrpc: '2.0', result });
@@ -84,12 +103,37 @@ test('balances require matching genesis and only include initialized associated 
   assert.equal(holdings.length, 2);
   assert.equal(holdings[0].atoms, 10n);
   assert.deepEqual(holdings[1], { mint, atoms: 9007199254740993n, decimals: 6 });
+  const before = methods.length;
+  assert.deepEqual(await fetchOphisMarketSellMints(endpoint, genesis, owner), [mint, owner]);
+  assert.deepEqual(methods.slice(before), ['getGenesisHash', 'getTokenAccountsByOwner']);
   await assert.rejects(
     requestOphisLocalTestSol('5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d', owner),
     /Local test network required/,
   );
   assert.ok(!methods.includes('requestAirdrop'));
 });
+
+for (const stalled of ['getGenesisHash', 'getTokenAccountsByOwner']) {
+  test(`sell availability times out when ${stalled} stalls`, { timeout: 2_000 }, async (t) => {
+    const deadline = new AbortController();
+    t.mock.method(AbortSignal, 'timeout', (milliseconds) => {
+      assert.ok(milliseconds > 0 && milliseconds <= 10_000);
+      return deadline.signal;
+    });
+    let fetchSignal;
+    t.mock.method(globalThis, 'fetch', async (_url, init) => {
+      const { id, method } = JSON.parse(init.body);
+      if (method !== stalled) return Response.json({ jsonrpc: '2.0', id, result: genesis });
+      fetchSignal = init.signal;
+      queueMicrotask(() => deadline.abort());
+      return new Promise((_, reject) =>
+        fetchSignal.addEventListener('abort', () => reject(fetchSignal.reason), { once: true }),
+      );
+    });
+    await assert.rejects(fetchOphisMarketSellMints(endpoint, genesis, owner));
+    assert.equal(fetchSignal?.aborted, true);
+  });
+}
 
 test('mint decimals and existing SPL allowance come from the configured cluster and canonical account', async (t) => {
   const [ata] = await findAssociatedTokenPda({ owner, mint, tokenProgram: TOKEN_PROGRAM_ADDRESS });
