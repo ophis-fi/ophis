@@ -6,6 +6,12 @@
   "targets": {
     "build": {
       "executor": "@nx/vite:build",
+      "inputs": [
+        "production",
+        "^production",
+        "!{projectRoot}/**/?(*.)+(spec|test).[jt]s?(x)?(.snap)",
+        { "runtime": "node -p \"require('../solana/deployment.mainnet.json').solverSigner\"" }
+      ],
       "outputs": ["{options.outputPath}"],
       "defaultConfiguration": "production",
       "dependsOn": ["i18n"],

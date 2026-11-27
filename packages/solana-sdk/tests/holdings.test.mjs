@@ -113,6 +113,28 @@ test('wallet balances and market sell readiness use initialized associated accou
   assert.ok(!methods.includes('requestAirdrop'));
 });
 
+for (const stalled of ['getGenesisHash', 'getTokenAccountsByOwner']) {
+  test(`sell availability times out when ${stalled} stalls`, { timeout: 2_000 }, async (t) => {
+    const deadline = new AbortController();
+    t.mock.method(AbortSignal, 'timeout', (milliseconds) => {
+      assert.ok(milliseconds > 0 && milliseconds <= 10_000);
+      return deadline.signal;
+    });
+    let fetchSignal;
+    t.mock.method(globalThis, 'fetch', async (_url, init) => {
+      const { id, method } = JSON.parse(init.body);
+      if (method !== stalled) return Response.json({ jsonrpc: '2.0', id, result: genesis });
+      fetchSignal = init.signal;
+      queueMicrotask(() => deadline.abort());
+      return new Promise((_, reject) =>
+        fetchSignal.addEventListener('abort', () => reject(fetchSignal.reason), { once: true }),
+      );
+    });
+    await assert.rejects(fetchOphisMarketSellMints(endpoint, genesis, owner));
+    assert.equal(fetchSignal?.aborted, true);
+  });
+}
+
 test('mint decimals and existing SPL allowance come from the configured cluster and canonical account', async (t) => {
   const [ata] = await findAssociatedTokenPda({ owner, mint, tokenProgram: TOKEN_PROGRAM_ADDRESS });
   const header = Buffer.alloc(115);

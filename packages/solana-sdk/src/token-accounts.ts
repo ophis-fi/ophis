@@ -9,6 +9,7 @@ export async function readAssociatedHoldings(
   owner: Address,
   tokenProgram: SolanaTokenProgram,
   includeEmpty: boolean,
+  abortSignal?: AbortSignal,
 ): Promise<OphisWalletHolding[]> {
   const { value } = await rpc
     .getTokenAccountsByOwner(
@@ -16,7 +17,7 @@ export async function readAssociatedHoldings(
       { programId: tokenProgram },
       { encoding: 'jsonParsed', commitment: 'confirmed' },
     )
-    .send();
+    .send({ abortSignal });
   const holdings = await Promise.all(
     value.map(async ({ pubkey, account }) => {
       if (account.executable || account.owner !== tokenProgram || !('parsed' in account.data))
@@ -43,7 +44,14 @@ export async function fetchOphisMarketSellMints(
   genesis: string,
   solver: Address,
 ): Promise<Address[]> {
-  const rpc = await matchingRpc(endpoint, genesis);
-  const accounts = await readAssociatedHoldings(rpc, solver, TOKEN_PROGRAM_ADDRESS, true);
+  const abortSignal = AbortSignal.timeout(5_000);
+  const rpc = await matchingRpc(endpoint, genesis, abortSignal);
+  const accounts = await readAssociatedHoldings(
+    rpc,
+    solver,
+    TOKEN_PROGRAM_ADDRESS,
+    true,
+    abortSignal,
+  );
   return accounts.map(({ mint }) => mint);
 }
