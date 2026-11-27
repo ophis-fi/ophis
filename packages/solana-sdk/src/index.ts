@@ -345,6 +345,7 @@ export {
 export { address as solanaAddress } from '@solana/kit';
 
 export { fetchOphisSolanaTrades, type OphisSolanaTrade } from './trades.js';
+export { fetchOphisMarketSellMints } from './token-accounts.js';
 
 export {
   fetchOphisWalletHoldings,

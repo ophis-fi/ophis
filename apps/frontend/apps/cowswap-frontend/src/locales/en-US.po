@@ -1562,6 +1562,10 @@ msgstr "Insufficient {nativeSymbol} for gas"
 msgid "Deprecated Network"
 msgstr "Deprecated Network"
 
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaForm.container.tsx
+msgid "Check again"
+msgstr "Check again"
+
 #: apps/cowswap-frontend/src/modules/twap/containers/SetupFallbackHandlerWarning/index.tsx
 msgid "Update fallback handler"
 msgstr "Update fallback handler"
@@ -1901,6 +1905,10 @@ msgstr "This accounts for the current price and the slippage tolerance ({allowed
 #: apps/cowswap-frontend/src/modules/ethFlow/pure/EthFlowBanner/index.tsx
 msgid "No fees for failed transactions"
 msgstr "No fees for failed transactions"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaForm.container.tsx
+msgid "This token is currently unavailable to sell. Choose another sell token."
+msgstr "This token is currently unavailable to sell. Choose another sell token."
 
 #: apps/cowswap-frontend/src/modules/limitOrders/pure/OrderType/index.tsx
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/ReceiptModal/ReceiptModal.modal.tsx
@@ -4058,6 +4066,10 @@ msgstr "Change trade alert settings here"
 msgid "Select input and output"
 msgstr "Select input and output"
 
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaForm.container.tsx
+msgid "Sell availability could not be checked. You can still get a quote."
+msgstr "Sell availability could not be checked. You can still get a quote."
+
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/OrdersTable/LoadMore/Button/LoadMoreOrdersButton.tsx
 msgid "Search older orders"
 msgstr "Search older orders"
@@ -5938,6 +5950,10 @@ msgstr "Tokens on this network"
 #: apps/cowswap-frontend/src/modules/tradeWidgetAddons/containers/HighFeeWarning/highFeeWarningHelpers.ts
 msgid "Swap costs are at least {formattedFeePercentage}% of the swap amount"
 msgstr "Swap costs are at least {formattedFeePercentage}% of the swap amount"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaForm.container.tsx
+msgid "Checking sell availability…"
+msgstr "Checking sell availability…"
 
 #: apps/cowswap-frontend/src/modules/nativeSolana/pure/AssetPicker.pure.tsx
 msgid "In your wallet"

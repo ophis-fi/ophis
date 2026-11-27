@@ -7043,3 +7043,19 @@ msgstr "Выберите токен для получения, чтобы рас
 #: apps/cowswap-frontend/src/modules/nativeSolana/containers/SolanaTradePanels.container.tsx
 msgid "Amount shortcuts need a fee and rent estimate."
 msgstr "Чтобы выбрать сумму в процентах, нужна оценка комиссий и депозитов счетов."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaForm.container.tsx
+msgid "Checking sell availability…"
+msgstr "Проверяем, можно ли продать этот токен…"
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaForm.container.tsx
+msgid "This token is currently unavailable to sell. Choose another sell token."
+msgstr "Сейчас этот токен нельзя продать. Выберите другой токен для продажи."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaForm.container.tsx
+msgid "Sell availability could not be checked. You can still get a quote."
+msgstr "Не удалось проверить, можно ли продать этот токен. Вы по-прежнему можете получить котировку."
+
+#: apps/cowswap-frontend/src/modules/nativeSolana/containers/NativeSolanaForm.container.tsx
+msgid "Check again"
+msgstr "Проверить ещё раз"

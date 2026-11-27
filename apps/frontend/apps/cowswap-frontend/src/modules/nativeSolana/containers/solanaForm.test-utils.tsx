@@ -16,12 +16,15 @@ jest.mock(
   () => ({
     SOLANA_NATIVE_ASSET: '11111111111111111111111111111111',
     WRAPPED_SOL_MINT: 'So11111111111111111111111111111111111111112',
+    OPHIS_MAINNET_PROGRAM: 'program',
     solanaAddress: (value: string) => {
       if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value)) throw Error('Invalid address')
       return value
     },
     fetchOphisSolanaChainContext: async () => ({ programAddress: 'program', genesisHash: 'mainnet' }),
     fetchOphisOrderSolReserve: jest.fn().mockResolvedValue(2646600n),
+    fetchOphisWalletSwapCosts: jest.fn().mockResolvedValue({ reserve: 10000n }),
+    fetchOphisMarketSellMints: jest.fn(),
     fetchOphisWalletHoldings: jest.fn().mockResolvedValue([
       { mint: '11111111111111111111111111111111', atoms: 2822552n, decimals: 9 },
       { mint: '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R', atoms: 123n, decimals: 2 },

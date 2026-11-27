@@ -4,6 +4,7 @@ import { ReactNode, useEffect, useRef, useState } from 'react'
 import { Trans } from '@lingui/react/macro'
 import { OPHIS_SOLANA_CONFIG, solanaConnectionAtom } from 'entities/solana'
 import { useAssetVerificationResolver } from 'entities/verifiedAsset'
+import { queryClientAtom } from 'jotai-tanstack-query'
 import { AssetSwapFieldsLayout } from 'ophis/components/AssetSwap/AssetSwapFields'
 
 import { NetworkSelector } from 'modules/networkSelector'
@@ -17,9 +18,11 @@ import * as styledEl from '../pure/SwapForm.styled'
 import { solanaAssetIdentity } from '../services/assets.service'
 import { privateSettlementEnabled } from '../services/privateSettlement.service'
 import {
-  sellAmountStateAtom,
+  marketSellMintsKey,
   solanaCachedCatalogAtom,
   solanaMainnetCatalogAtom,
+  solanaMarketSellMintsAtom,
+  solanaSellStateAtom,
   walletAssetListAtom,
   walletHoldingsMapAtom,
 } from '../state/assets.atoms'
@@ -63,8 +66,8 @@ export function NativeSolanaForm({ onReview }: { onReview(review: NativeSolanaRe
   const catalog = useAtomValue(picker ? solanaMainnetCatalogAtom : solanaCachedCatalogAtom)
   const assets = useAtomValue(walletAssetListAtom)
   const holdings = useAtomValue(walletHoldingsMapAtom)
-  const { valid, exceeds, solShortfall, estimatingTokenOrder } = useAtomValue(sellAmountStateAtom)
-  const canQuote = !!owner && !!form.buyMint && valid && !exceeds && !solShortfall && !estimatingTokenOrder && !busy
+  const { readyToSell, sellUnavailable, solShortfall } = useAtomValue(solanaSellStateAtom)
+  const canQuote = !!owner && !!form.buyMint && readyToSell && !busy
   useAutomaticSolanaQuote(canQuote)
   return (
     <styledEl.Swap
@@ -100,6 +103,7 @@ export function NativeSolanaForm({ onReview }: { onReview(review: NativeSolanaRe
             onClick: () => setForm({ ...form, sellMint: form.buyMint, buyMint: form.sellMint, amount: '' }),
           }}
         />
+        <SellAvailabilityNotice mint={form.sellMint} unavailable={sellUnavailable} />
         <LocalTestFunds />
         {!solShortfall && quoteError && <p role="alert">{quoteError}</p>}
         <SolanaWalletAction canQuote={canQuote} busy={busy} reviewReady={!!review} quoteFailed={!!quoteError} />
@@ -123,6 +127,33 @@ export function NativeSolanaForm({ onReview }: { onReview(review: NativeSolanaRe
         />
       )}
     </styledEl.Swap>
+  )
+}
+
+function SellAvailabilityNotice({ mint, unavailable }: { mint: string; unavailable: boolean }): ReactNode {
+  const market = useAtomValue(solanaMarketSellMintsAtom)
+  const client = useAtomValue(queryClientAtom)
+  useEffect(() => {
+    void client.refetchQueries({ queryKey: marketSellMintsKey, type: 'active', stale: true }, { cancelRefetch: false })
+  }, [client, mint])
+  if (market.isLoading)
+    return (
+      <styledEl.Helper role="status">
+        <Trans>Checking sell availability…</Trans>
+      </styledEl.Helper>
+    )
+  if (!unavailable && !market.isError) return null
+  return (
+    <styledEl.Helper role="status">
+      {unavailable ? (
+        <Trans>This token is currently unavailable to sell. Choose another sell token.</Trans>
+      ) : (
+        <Trans>Sell availability could not be checked. You can still get a quote.</Trans>
+      )}
+      <styledEl.SmallButton type="button" disabled={market.isFetching} onClick={() => void market.refetch()}>
+        <Trans>Check again</Trans>
+      </styledEl.SmallButton>
+    </styledEl.Helper>
   )
 }
 

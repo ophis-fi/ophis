@@ -12,6 +12,7 @@ import svgr from 'vite-plugin-svgr'
 import viteTsConfigPaths from 'vite-tsconfig-paths'
 
 import { execSync } from 'child_process'
+import { readFileSync } from 'node:fs'
 import * as path from 'path'
 
 import { acrossV5Proxy } from '../../tools/acrossV5Proxy'
@@ -25,6 +26,9 @@ import type { TemplateType } from 'rollup-plugin-visualizer/dist/plugin/template
 import type { PluginOption } from 'vite'
 
 const allNodeDeps = Object.keys(stdLibBrowser).map((key) => key.replace('node:', '')) as ModuleNameWithoutNodePrefix[]
+const solanaMainnet = JSON.parse(
+  readFileSync(path.resolve(__dirname, '../../../solana/deployment.mainnet.json'), 'utf8'),
+) as { solverSigner: string }
 
 // Trezor getAccountsAsync() requires crypto and stream (the module is lazy-loaded)
 const nodeDepsToInclude = ['crypto', 'stream']
@@ -138,6 +142,7 @@ export default defineConfig(({ mode }) => {
     base: '/',
     define: {
       ...getReactProcessEnv(mode),
+      'process.env.REACT_APP_OPHIS_SOLANA_MARKET_SOLVER': JSON.stringify(solanaMainnet.solverSigner),
       'process.env.REACT_APP_GIT_COMMIT_HASH': JSON.stringify(
         execSync('git rev-parse --short=7 HEAD').toString().trim(),
       ),

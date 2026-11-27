@@ -2,6 +2,7 @@ import { address, lamports, getBase64Encoder, type Address } from '@solana/kit';
 import { localWalletRpc, matchingRpc, waitForLocalConfirmation } from './local-rpc.js';
 import type { OphisSolanaMintMetadata } from './api.js';
 import { readHoldingLabels } from './holding-labels.js';
+import { readAssociatedHoldings } from './token-accounts.js';
 import { findAssociatedTokenPda, getTokenSize } from '@solana-program/token';
 import { getOrderAccountSize } from './settlement/generated/accounts/orderAccount.js';
 import {
@@ -28,39 +29,9 @@ export async function fetchOphisWalletHoldings(
   const commitment = 'confirmed';
   const [native, ...accounts] = await Promise.all([
     rpc.getBalance(owner, { commitment }).send(),
-    ...[TOKEN_PROGRAM_ADDRESS, TOKEN_2022_PROGRAM_ADDRESS].map(async (tokenProgram) => {
-      const { value } = await rpc
-        .getTokenAccountsByOwner(
-          owner,
-          { programId: tokenProgram },
-          { encoding: 'jsonParsed', commitment },
-        )
-        .send();
-      const holdings = await Promise.all(
-        value.map(async ({ pubkey, account }): Promise<OphisWalletHolding | null> => {
-          if (account.owner !== tokenProgram || !('parsed' in account.data)) return null;
-          const { parsed } = account.data;
-          if (parsed.type !== 'account') return null;
-          const info = parsed.info;
-          if (
-            info.owner !== owner ||
-            info.state !== 'initialized' ||
-            info.tokenAmount.amount === '0'
-          )
-            return null;
-          const mint = address(info.mint);
-          // Orders debit the associated account. Other accounts with the same mint cannot fund this order.
-          const [ata] = await findAssociatedTokenPda({ owner, mint, tokenProgram });
-          if (ata !== pubkey) return null;
-          return {
-            mint,
-            decimals: Number(info.tokenAmount.decimals),
-            atoms: BigInt(info.tokenAmount.amount),
-          };
-        }),
-      );
-      return holdings.filter((entry): entry is OphisWalletHolding => entry !== null);
-    }),
+    ...[TOKEN_PROGRAM_ADDRESS, TOKEN_2022_PROGRAM_ADDRESS].map((tokenProgram) =>
+      readAssociatedHoldings(rpc, owner, tokenProgram, false),
+    ),
   ] as const);
   const tokens = accounts.flat();
   const labels = await readHoldingLabels(
