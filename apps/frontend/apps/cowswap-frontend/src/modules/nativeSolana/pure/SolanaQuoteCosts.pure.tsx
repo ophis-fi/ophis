@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 
 import { Trans } from '@lingui/react/macro'
 import { formatOphisSolanaAmount } from '@ophis/solana-sdk'
-import { useAssetVerification, VerifiedAssetBadge } from 'entities/verifiedAsset'
+import { VerifiedAssetBadge, type Verification } from 'entities/verifiedAsset'
 import { ChevronDown } from 'react-feather'
 
 import * as amountStyles from 'common/pure/CurrencyAmountPreview/styled'
@@ -10,19 +10,21 @@ import * as amountStyles from 'common/pure/CurrencyAmountPreview/styled'
 import { AssetIcon } from './AssetPicker.pure'
 import * as styledEl from './NativeSolana.styled'
 
-import { solanaAssetIdentity, type SolanaAsset } from '../services/assets.service'
 import { minimumSolanaBuyAmount, type NativeSolanaReview } from '../services/trade.service'
+
+import type { SolanaAsset } from '../services/assets.service'
 
 export function SolanaQuoteAmount({
   label,
   asset,
   amount,
+  verified,
 }: {
   label: ReactNode
   asset: SolanaAsset
   amount: string
+  verified: Verification | undefined
 }): ReactNode {
-  const verified = useAssetVerification(solanaAssetIdentity(asset))
   return (
     <amountStyles.Container>
       <div>{label}</div>

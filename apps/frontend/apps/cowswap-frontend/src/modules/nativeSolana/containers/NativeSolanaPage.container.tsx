@@ -6,6 +6,7 @@ import { ButtonPrimary } from '@cowprotocol/ui'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { formatOphisSolanaAmount } from '@ophis/solana-sdk'
 import { OPHIS_SOLANA_CONFIG, solanaConnectionAtom } from 'entities/solana'
+import { useAssetVerification } from 'entities/verifiedAsset'
 import { Callout, PageShell } from 'ophis/ds'
 import { ArrowLeft } from 'react-feather'
 import { Navigate } from 'react-router'
@@ -20,7 +21,7 @@ import * as styledEl from '../pure/NativeSolana.styled'
 import { SolanaQuoteAmount, SolanaQuoteCosts } from '../pure/SolanaQuoteCosts.pure'
 import * as receiptStyles from '../pure/SolanaReceipt.styled'
 import * as formStyles from '../pure/SwapForm.styled'
-import { unknownAsset } from '../services/assets.service'
+import { solanaAssetIdentity, unknownAsset } from '../services/assets.service'
 import { privateModeAtom, privateSettlementEnabled } from '../services/privateSettlement.service'
 import { walletAssetListAtom } from '../state/assets.atoms'
 import { createNativeSolanaOrderAtom } from '../state/placeOrder.atoms'
@@ -30,6 +31,8 @@ import {
   nativeSolanaErrorAtom,
   nativeSolanaReviewAtom,
 } from '../state/trade.atoms'
+
+import type { NativeSolanaReview as ReviewedSwap } from '../services/trade.service'
 
 function PrivateOrderNotice({
   sellsNative,
@@ -89,16 +92,16 @@ function AllowanceNotice({
   )
 }
 
-function NativeSolanaReview({ onBack }: { onBack(): void }): ReactNode {
+function NativeSolanaReview({ review, onBack }: { review: ReviewedSwap; onBack(): void }): ReactNode {
   const { t } = useLingui()
-  const review = useAtomValue(nativeSolanaReviewAtom)
   const busy = useAtomValue(nativeSolanaBusyAtom)
-  const [acceptedReview, setAcceptedReview] = useState<typeof review>(null)
+  const [acceptedReview, setAcceptedReview] = useState<ReviewedSwap | null>(null)
   const create = useSetAtom(createNativeSolanaOrderAtom)
   const assets = useAtomValue(walletAssetListAtom)
-  if (!review) return null
   const sell = assets.find((asset) => asset.mint === review.form.sellMint) ?? unknownAsset(review.form.sellMint)
   const buy = assets.find((asset) => asset.mint === review.form.buyMint) ?? unknownAsset(review.form.buyMint)
+  const sellVerification = useAssetVerification(solanaAssetIdentity(sell))
+  const buyVerification = useAssetVerification(solanaAssetIdentity(buy))
   const { quote } = review.quote
   const sellAmount = formatOphisSolanaAmount(BigInt(quote.sellAmount) + BigInt(quote.feeAmount), review.sell.decimals)
   return (
@@ -112,11 +115,19 @@ function NativeSolanaReview({ onBack }: { onBack(): void }): ReactNode {
         </h2>
       </styledEl.Row>
       <SwapAmountPair
-        sell={<SolanaQuoteAmount label={<Trans>You sell</Trans>} asset={sell} amount={sellAmount} />}
+        sell={
+          <SolanaQuoteAmount
+            label={<Trans>You sell</Trans>}
+            asset={sell}
+            amount={sellAmount}
+            verified={sellVerification}
+          />
+        }
         buy={
           <SolanaQuoteAmount
             label={<Trans>You receive</Trans>}
             asset={buy}
+            verified={buyVerification}
             amount={formatOphisSolanaAmount(BigInt(quote.buyAmount), review.buy.decimals)}
           />
         }
@@ -173,6 +184,7 @@ export function NativeSolanaWidget(): ReactNode {
       <NativeSolanaOrders>
         {selected && selected === review ? (
           <NativeSolanaReview
+            review={selected}
             onBack={() => {
               clearError(null)
               setSelected(null)
