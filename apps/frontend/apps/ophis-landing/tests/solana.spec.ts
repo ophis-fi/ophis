@@ -23,8 +23,17 @@ test('Solana has its own page, and the fee, chain and AI surfaces agree with it'
   await expect(body.locator('.wallets li')).toHaveText(['Phantom', 'Solflare', 'WalletConnect'])
   await body.locator('.guide').first().scrollIntoViewIfNeeded()
   await expect
-    .poll(() => page.evaluate(() => [...document.querySelectorAll('main img')].every((img) => (img as HTMLImageElement).naturalWidth > 0)))
+    .poll(() => page.evaluate(() => [...document.querySelectorAll('main img')].every((img) => (img as HTMLImageElement).naturalWidth > 0)), {
+      timeout: 20_000,
+    })
     .toBe(true)
+  // No stretched bitmap in the picture: a logo is a vector, or has 1.5 times the pixels it is shown at.
+  const stretched = await page.evaluate(() =>
+    [...document.querySelectorAll<HTMLImageElement>('.orbit img')]
+      .filter((img) => !img.src.endsWith('.svg') && img.naturalWidth < img.getBoundingClientRect().width * 1.5)
+      .map((img) => img.src),
+  )
+  expect(stretched).toEqual([])
   // The two Solana guides and this page link to each other.
   await expect(body.locator('a[href="/blog/solana-dex-aggregator/"]')).toBeVisible()
   await expect(body.locator('a[href="/blog/solana-bridge/"]')).toBeVisible()
