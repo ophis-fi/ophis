@@ -1,10 +1,27 @@
+---
+export interface Props {
+  /** Heading: plain start, italic end. */
+  lead?: string
+  emphasis?: string
+  text?: string
+  primary?: { href: string; label: string }
+  secondary?: { href: string; label: string }
+}
+const {
+  lead = 'Your next move.',
+  emphasis = 'On your terms.',
+  text = 'Choose your assets. Check your limits. Take it from there.',
+  primary = { href: 'https://swap.ophis.fi/#/swap', label: 'Swap now' },
+  secondary = { href: 'https://docs.ophis.fi', label: 'Read the docs' },
+} = Astro.props
+---
 <section class="final" aria-labelledby="ctaTitle">
   <div class="final-inner reveal-up" data-reveal>
-    <h2 class="serif" id="ctaTitle">Your next move. <em>On your terms.</em></h2>
-    <p>Choose your assets. Check your limits. Take it from there.</p>
+    <h2 class="serif" id="ctaTitle">{lead} <em>{emphasis}</em></h2>
+    <p>{text}</p>
     <div class="ctas">
-      <a class="cta-primary" href="https://swap.ophis.fi/#/swap">Swap now</a>
-      <a class="cta-secondary" href="https://docs.ophis.fi">Read the docs</a>
+      <a class="cta-primary" href={primary.href}>{primary.label}</a>
+      <a class="cta-secondary" href={secondary.href}>{secondary.label}</a>
     </div>
   </div>
 </section>

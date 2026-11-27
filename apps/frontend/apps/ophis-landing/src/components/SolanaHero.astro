@@ -1,0 +1,132 @@
+---
+/* Top of /swap/solana/: breadcrumb and date, the headline with its two actions, the
+   wallets that connect, the picture, and four facts a visitor or an answer engine
+   gets without scrolling far. */
+import SolanaOrbit from './SolanaOrbit.astro'
+import { SOLANA_SWAP_URL, SOLANA_VENUE_LIST as venues } from '../data/chains'
+
+export interface Props {
+  updated: Date
+}
+const { updated } = Astro.props
+// timeZone UTC: the date is a date-only ISO string, see ContentPage.astro.
+const fmtDate = new Intl.DateTimeFormat('en-US', { dateStyle: 'long', timeZone: 'UTC' }).format(updated)
+
+const wallets = [
+  { name: 'Phantom', logo: '/logos/wallets/phantom.svg' },
+  { name: 'Solflare', logo: '/logos/wallets/solflare.svg' },
+  { name: 'WalletConnect', logo: '/logos/wallets/walletconnect.svg' },
+]
+const facts = [
+  { title: 'Fees from 0.01%', text: '0.01% on stablecoin pairs and on SOL against a stablecoin. 0.05% on other pairs.' },
+  { title: 'Six sources of liquidity', text: `${venues} priced directly, with Jupiter as a router.` },
+  { title: 'Your minimum, enforced', text: 'The Ophis program on Solana rejects any settlement below the minimum you accept.' },
+  { title: 'Your wallet, your keys', text: 'Ophis prepares the order and your wallet signs it, in one transaction.' },
+]
+---
+<div class="top">
+  <nav class="crumbs" aria-label="Breadcrumb">
+    <a href="/">Home</a>
+    <span class="sep" aria-hidden="true">/</span>
+    <span aria-current="page">Swap on Solana</span>
+  </nav>
+  <p class="updated">Last updated: <time datetime={updated.toISOString().slice(0, 10)}>{fmtDate}</time></p>
+</div>
+
+<section class="hero" aria-labelledby="heroTitle">
+  <div class="hero-copy">
+    <p class="eyebrow"><img src="/logos/solana.svg" alt="" width="20" height="20" />Native Solana swaps</p>
+    <h1 class="serif" id="heroTitle">Swap on Solana. <br /><em>On your terms.</em></h1>
+    <p class="lede">
+      Ophis swaps SOL and SPL tokens natively on Solana. Connect your wallet, review a quote with its
+      minimum received, and place one order. The Ophis solver fills it at that minimum or better.
+    </p>
+    <div class="ctas">
+      <a class="cta-primary" href={SOLANA_SWAP_URL}>Swap on Solana</a>
+      <a class="cta-secondary" href="#how">How it works</a>
+    </div>
+    <div class="wallets">
+      <span id="walletsLabel">Works with</span>
+      <ul aria-labelledby="walletsLabel">
+        {wallets.map(({ name, logo }) => (
+          <li><img src={logo} alt="" width="22" height="22" />{name}</li>
+        ))}
+      </ul>
+    </div>
+  </div>
+  <SolanaOrbit />
+</section>
+
+<section class="facts" aria-labelledby="factsTitle">
+  <h2 class="sr-only" id="factsTitle">Solana swaps at a glance</h2>
+  <ul>
+    {facts.map(({ title, text }) => (
+      <li>
+        <h3>{title}</h3>
+        <p>{text}</p>
+      </li>
+    ))}
+  </ul>
+</section>
+
+<style>
+  .top {
+    max-width: 1200px; margin: 0 auto; padding: 28px 24px 0;
+    display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px;
+    font-size: 13px; color: var(--ophis-fg-faded);
+  }
+  .crumbs a { color: inherit; text-decoration: none; }
+  .crumbs a:hover { color: var(--ophis-fg); }
+  .crumbs .sep { margin: 0 8px; }
+  .updated { margin: 0; }
+  .updated time { font-variant-numeric: tabular-nums; }
+
+  .hero {
+    max-width: 1200px; margin: 0 auto; padding: 16px 24px 0;
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px 56px;
+    align-items: center; justify-items: center;
+  }
+  .hero-copy { justify-self: start; }
+  .hero .eyebrow { display: inline-flex; align-items: center; gap: 8px; margin: 0 0 16px; }
+  .hero .eyebrow img { width: 20px; height: 20px; border-radius: 50%; display: block; }
+  h1 { font-size: clamp(42px, 5.3vw, 76px); letter-spacing: -0.025em; line-height: 1.08; margin: 0; }
+  .hero .lede { margin: 20px 0 0; max-width: 50ch; font-size: 18px; }
+  .ctas { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+  .cta-primary, .cta-secondary {
+    display: inline-flex; align-items: center; justify-content: center; white-space: nowrap;
+    min-height: 48px; padding: 12px 22px; border: 1px solid transparent; border-radius: 9999px;
+    font-size: 15px; font-weight: 500; text-decoration: none;
+  }
+  .cta-primary { background: var(--ophis-saffron-60); color: #fff; }
+  .cta-secondary { color: var(--ophis-fg); border-color: var(--ophis-border); }
+  .cta-secondary:hover { background: var(--ophis-surface); }
+
+  .wallets { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 28px; font-size: 14px; color: var(--ophis-fg-muted); }
+  .wallets ul { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; margin: 0; padding: 0; }
+  .wallets li {
+    display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px 6px 6px;
+    border-radius: 9999px; background: var(--ophis-surface); color: var(--ophis-fg); font-weight: 500;
+  }
+  .wallets img { width: 22px; height: 22px; border-radius: 6px; object-fit: contain; display: block; }
+
+  .facts { max-width: 1200px; margin: 0 auto; padding: 56px 24px 0; }
+  .facts ul { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; list-style: none; margin: 0; padding: 0; }
+  .facts li { border-top: 1px solid var(--ophis-fg); padding-top: 16px; }
+  .facts h3 { margin: 0 0 8px; font-size: 18px; font-weight: 500; letter-spacing: -0.01em; }
+  .facts p { margin: 0; font-size: 14px; color: var(--ophis-fg-muted); }
+  .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+  @media (max-width: 960px) {
+    .hero { grid-template-columns: minmax(0, 1fr); padding-top: 28px; }
+    h1 { font-size: clamp(42px, 7.4vw, 64px); }
+    .facts ul { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 640px) {
+    .top { padding: 20px 16px 0; }
+    .hero { padding: 24px 16px 0; }
+    .facts { padding: 40px 16px 0; }
+    .facts ul { gap: 20px 16px; }
+    .facts h3 { font-size: 16px; }
+    .facts p { font-size: 13.5px; }
+  }
+</style>

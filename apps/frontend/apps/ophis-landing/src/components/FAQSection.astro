@@ -20,7 +20,17 @@ import {
 } from '../data/chains'
 import { jsonLdSafe } from '../lib/jsonld'
 
-const faqs: { q: string; a: string }[] = [
+export interface Props {
+  /** Questions to show instead of the home page's; the markup and the schema read the same array. */
+  faqs?: { q: string; a: string }[]
+  /** @id of the FAQPage node. A page that shows the section passes its own. */
+  schemaId?: string
+  /** Heading: plain start, italic end. */
+  lead?: string
+  emphasis?: string
+}
+
+const homeFaqs: { q: string; a: string }[] = [
   {
     q: 'What is Ophis?',
     a: `Ophis is an intent-based, MEV-protected DEX aggregator for agents and tokenized markets. Traders can route supported stablecoins, Stock Tokens, tokenized stocks, and other onchain assets; builders can integrate through MCP, SDK, or API. Ophis batch-settles on supported EVM chains, swaps SOL and SPL tokens natively on Solana, and adds NEAR sources and destinations including ${nearNetworkList}. External-source swaps use a deposit flow in the standalone app. Standard swaps are non-custodial, and Ophis is a CoW Protocol fork.`,
@@ -63,10 +73,12 @@ const faqs: { q: string; a: string }[] = [
   },
 ]
 
+const { faqs = homeFaqs, schemaId = 'https://ophis.fi/#faq', lead = 'Common', emphasis = 'questions.' } = Astro.props
+
 const faqSchema = {
   '@context': 'https://schema.org',
   '@type': 'FAQPage',
-  '@id': 'https://ophis.fi/#faq',
+  '@id': schemaId,
   mainEntity: faqs.map((f) => ({
     '@type': 'Question',
     name: f.q,
@@ -79,14 +91,14 @@ const faqSchema = {
   <div class="faq-inner">
     <div class="label reveal-up" data-reveal>Questions</div>
     <h2 class="serif reveal-up" data-reveal>
-      Common <em>questions.</em>
+      {lead} <em>{emphasis}</em>
     </h2>
     <div class="faq-list stagger">
       {
         faqs.map((f) => (
           <details class="faq-item reveal-up" data-reveal>
             <summary>
-              <span class="faq-q">{f.q}</span>
+              <h3 class="faq-q">{f.q}</h3>
               <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="m6 9 6 6 6-6" />
               </svg>
@@ -145,7 +157,7 @@ const faqSchema = {
     outline: 2px solid var(--ophis-saffron-60);
     outline-offset: -2px;
   }
-  .faq-q { flex: 1; }
+  .faq-q { flex: 1; margin: 0; font: inherit; }
   .faq-chevron {
     width: 20px;
     height: 20px;
