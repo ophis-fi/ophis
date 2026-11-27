@@ -22,7 +22,7 @@ The result includes `instructions`, `intent`, `uid`, `orderPda`, `statePda` and 
 
 The user pays the token-account and order-account creation costs. Pass an explicit `payer` signer if the user's wallet/provider supports paying them instead; select it before collecting signatures. Ophis does not run a creation sponsor. Native SOL sells use `SOLANA_NATIVE_ASSET`; wrapping, delegation and creation are built into one wallet transaction. Native SOL buys use `SOLANA_NATIVE_ASSET`, omit `buyProgram` and pay the `receiver` wallet, defaulting to the owner.
 
-Wallet-paid swaps accept mint addresses from either SPL token program on either side. The orderbook checks the mint, available liquidity and the complete transaction before returning a verified quote. Transfer-fee and transfer-hook tokens require additional settlement support.
+Wallet-paid swaps accept mint addresses from either SPL token program on either side. The orderbook checks the mint, available liquidity and the complete transaction before returning a verified quote. The pending settlement upgrade supports ordinary Token-2022 transfers through Orca, including PYUSD and USDG under their tested mint settings. A transfer-fee extension is eligible when both fee schedules charge zero. A transfer-hook extension is eligible when it has no active program. The wallet pays network and Ophis fees in SOL, and the swap returns temporary storage deposits in the same transaction.
 
 `prepareOphisSolanaCancellation` takes the original intent and its owner's signer. It can also mark a missing order cancelled. `prepareOphisSolanaReclaim` requires the account's recorded `createdBy`; rent returns to that address, including an external wallet payer, and the onchain program checks the entitlement. A cancelled, unexpired order also requires its owner's signature.
 
@@ -34,7 +34,7 @@ To refresh the reused bindings, prepare/generate the pinned native client first,
 
 `prepareOphisSolanaOrderFromQuote` applies integer slippage to a fresh verified quote and includes its fee amount. `compileOphisSolanaWalletTransaction` binds unsigned v0 bytes to both the configured program and full genesis hash. `sendOphisSolanaWalletTransaction` checks the connected account, chain and v0 capability before invoking the wallet. Neither API selects CoW infrastructure.
 
-The raw builder's exact delegate allowance replaces the prior allowance on that token account. Callers managing concurrent open orders against the same sell account must manage that shared allowance; do not assume the token program adds allowances. Token-2022 fee/hook route execution, installed-wallet vendor QA and advertised Ophis rebate integration remain release work.
+The raw builder's exact delegate allowance replaces the prior allowance on that token account. Callers managing concurrent open orders against the same sell account must account for each new order replacing the shared allowance. Execution with active transfer fees or hooks, installed-wallet vendor QA and advertised Ophis rebate integration remain release work.
 
 Use `fetchOphisSolanaTrades(apiBase, owner, offset, limit)` for a wallet’s settled history. `protocolFee` is an atomic-unit decimal string and `feeMint` names the asset. Older or unmatched fills return null for both. A recorded zero fee is the string `"0"`. For a wallet-paid market swap, `feeMint` is native SOL (`11111111111111111111111111111111`), including token-to-token trades.
 
