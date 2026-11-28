@@ -190,6 +190,8 @@ test('owner history preserves unknown and exact settled fees and rejects a misma
     [null, '9007199254740993'],
   );
   assert.equal(history[0].slot, row.slot);
+  fee.feeMint = SOLANA_NATIVE_ASSET;
+  assert.equal((await fetchOphisSolanaTrades('http://localhost', owner))[1].feeMint, SOLANA_NATIVE_ASSET);
   fee.feeMint = owner;
   await assert.rejects(fetchOphisSolanaTrades('http://localhost', owner));
 });

@@ -11,6 +11,7 @@ import * as formStyles from './SwapForm.styled'
 
 import { type SolanaAsset } from '../services/assets.service'
 import {
+  returnedStorageDeposit,
   receiptTxLink,
   savedReceiptAmounts,
   type ReceiptAmounts,
@@ -103,6 +104,11 @@ function ReceiptDetails({
           )}
         </Detail>
       )}
+      {walletCosts?.maxProtocolFeeLamports !== undefined && !trade && status !== 'failed' && (
+        <Detail label={<Trans>Maximum Ophis fee</Trans>}>
+          {formatOphisSolanaAmount(BigInt(walletCosts.maxProtocolFeeLamports), 9)} SOL
+        </Detail>
+      )}
       {walletCosts && (status === 'fulfilled' || status === 'failed') && (
         <Detail label={<Trans>Solana network fee</Trans>}>
           {formatOphisSolanaAmount(BigInt(walletCosts.networkFee), 9)} SOL
@@ -110,7 +116,7 @@ function ReceiptDetails({
       )}
       {walletCosts && status === 'fulfilled' && (
         <Detail label={<Trans>Storage deposits returned</Trans>}>
-          {formatOphisSolanaAmount(BigInt(walletCosts.orderRent) + BigInt(walletCosts.nativeWrapRent ?? '0'), 9)} SOL
+          {formatOphisSolanaAmount(returnedStorageDeposit(walletCosts), 9)} SOL
         </Detail>
       )}
       {data?.creationDate && (

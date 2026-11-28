@@ -10,6 +10,7 @@ import {
   WRAPPED_SOL_MINT,
   TOKEN_PROGRAM_ADDRESS,
   TOKEN_2022_PROGRAM_ADDRESS,
+  type SolanaTokenProgram,
 } from './tokens.js';
 
 export interface OphisWalletHolding {
@@ -56,6 +57,48 @@ export async function fetchOphisOrderSolReserve(
     .reserve;
 }
 
+type WalletRpc = Awaited<ReturnType<typeof matchingRpc>>;
+
+/** Account extensions initialized by SPL Token-2022 for the corresponding mint extensions. */
+async function token2022AccountSize(
+  rpc: WalletRpc,
+  mint: Address,
+  minContextSlot: bigint,
+  associated: boolean,
+): Promise<number> {
+  const { context, value } = await rpc
+    .getAccountInfo(mint, { commitment: 'confirmed', minContextSlot, encoding: 'jsonParsed' })
+    .send();
+  const parsed = value && 'parsed' in value.data ? value.data.parsed : undefined;
+  const info = parsed?.info;
+  if (
+    context.slot < minContextSlot ||
+    value?.owner !== TOKEN_2022_PROGRAM_ADDRESS ||
+    parsed?.type !== 'mint' ||
+    !info ||
+    !('isInitialized' in info) ||
+    info.isInitialized !== true
+  )
+    throw Error('Could not verify the Token-2022 mint size.');
+  const entries = 'extensions' in info ? info.extensions : [];
+  if (!Array.isArray(entries)) throw Error('Could not read Token-2022 mint extensions.');
+  const mintExtensions = new Set<string>();
+  for (const entry of entries) {
+    if (!entry || typeof entry.extension !== 'string' || entry.extension === 'unparseableExtension')
+      throw Error('Could not read Token-2022 mint extensions.');
+    mintExtensions.add(entry.extension);
+  }
+  // SPL's get_required_init_account_extensions. ATAs additionally request ImmutableOwner.
+  const lengths: number[] = [];
+  if (associated || mintExtensions.has('nonTransferable')) lengths.push(0);
+  if (mintExtensions.has('nonTransferable')) lengths.push(0);
+  if (mintExtensions.has('transferFeeConfig')) lengths.push(8);
+  if (mintExtensions.has('transferHook')) lengths.push(1);
+  if (mintExtensions.has('pausableConfig')) lengths.push(0);
+  // Extended accounts have a one-byte account type and four-byte type/length per extension.
+  return getTokenSize() + (lengths.length ? 1 + lengths.reduce((sum, len) => sum + 4 + len, 0) : 0);
+}
+
 /** Peak wallet SOL needed, including the wallet minimum and transient storage during execution. */
 export async function fetchOphisWalletSwapCosts(
   endpoint: string,
@@ -64,9 +107,15 @@ export async function fetchOphisWalletSwapCosts(
   buyMint: Address,
   sellFromNativeSol: boolean,
   signatures: 1 | 2,
+  solverInput?: {
+    solver: Address;
+    sellMint: Address;
+    sellProgram?: SolanaTokenProgram;
+    buyProgram?: SolanaTokenProgram;
+  },
 ) {
   const rpc = await matchingRpc(endpoint, genesis);
-  const ata = async (mint: Address, tokenProgram: Address) =>
+  const ata = async (owner: Address, mint: Address, tokenProgram: Address) =>
     (await findAssociatedTokenPda({ owner, mint, tokenProgram }))[0];
   const nativeBuy = buyMint === SOLANA_NATIVE_ASSET;
   const atomicWrap = sellFromNativeSol && signatures === 2;
@@ -75,16 +124,22 @@ export async function fetchOphisWalletSwapCosts(
     address('SysvarRent111111111111111111111111111111111'),
     address('SysvarRecentB1ockHashes11111111111111111111'),
   ];
-  if (!nativeBuy)
-    accounts.push(
-      buyMint,
-      ...(await Promise.all([
-        ata(buyMint, TOKEN_PROGRAM_ADDRESS),
-        ata(buyMint, TOKEN_2022_PROGRAM_ADDRESS),
-      ])),
-    );
-  if (persistentWrap) accounts.push(await ata(WRAPPED_SOL_MINT, TOKEN_PROGRAM_ADDRESS));
-  const { value } = await rpc
+  const tokenAccounts = async (owner: Address, mint: Address) => [
+    mint,
+    ...(await Promise.all([
+      ata(owner, mint, TOKEN_PROGRAM_ADDRESS),
+      ata(owner, mint, TOKEN_2022_PROGRAM_ADDRESS),
+    ])),
+  ];
+  if (!nativeBuy) accounts.push(...(await tokenAccounts(owner, buyMint)));
+  const wrapIndex = accounts.length;
+  if (persistentWrap) accounts.push(await ata(owner, WRAPPED_SOL_MINT, TOKEN_PROGRAM_ADDRESS));
+  const solverIndex = accounts.length;
+  const sellMint =
+    solverInput?.sellMint === SOLANA_NATIVE_ASSET ? WRAPPED_SOL_MINT : solverInput?.sellMint;
+  if (solverInput && sellMint)
+    accounts.push(...(await tokenAccounts(solverInput.solver, sellMint)));
+  const { value, context } = await rpc
     .getMultipleAccounts(accounts, {
       commitment: 'confirmed',
       encoding: 'base64',
@@ -92,16 +147,10 @@ export async function fetchOphisWalletSwapCosts(
     })
     .send();
   if (value.length !== accounts.length) throw Error('Incomplete Solana order account data.');
-  const [rent, hashes, mint, classicAccount, extendedAccount] = value;
-  const wrappedAccount = persistentWrap ? value.at(-1) : null;
+  const [rent, hashes] = value;
+  const wrappedAccount = persistentWrap ? value[wrapIndex] : null;
   const sysvarOwner = 'Sysvar1111111111111111111111111111111111111';
-  if (
-    rent?.owner !== sysvarOwner ||
-    hashes?.owner !== sysvarOwner ||
-    (!nativeBuy &&
-      mint?.owner !== TOKEN_PROGRAM_ADDRESS &&
-      mint?.owner !== TOKEN_2022_PROGRAM_ADDRESS)
-  )
+  if (rent?.owner !== sysvarOwner || hashes?.owner !== sysvarOwner)
     throw Error('Order rent is unavailable.');
   const view = (data: string) => {
     const bytes = getBase64Encoder().encode(data);
@@ -115,31 +164,54 @@ export async function fetchOphisWalletSwapCosts(
   if ((threshold !== 1 && threshold !== 2) || !recent.getBigUint64(0, true))
     throw Error('Order rent or fee schedule is unavailable.');
   const rentPerByte = rentData.getBigUint64(0, true) * BigInt(threshold);
-  const buyAccount = mint?.owner === TOKEN_PROGRAM_ADDRESS ? classicAccount : extendedAccount;
-  if (
-    (wrappedAccount && wrappedAccount.owner !== TOKEN_PROGRAM_ADDRESS) ||
-    (buyAccount && buyAccount.owner !== mint?.owner)
-  )
+  if (wrappedAccount && wrappedAccount.owner !== TOKEN_PROGRAM_ADDRESS)
     throw Error('Unexpected Solana token account owner.');
-  if (!buyAccount && mint?.owner === TOKEN_2022_PROGRAM_ADDRESS)
-    throw Error('Cannot estimate rent for an unallocated Token-2022 account.');
+  const missingAccountRent = async (
+    mint: Address,
+    index: number,
+    associated: boolean,
+    expectedProgram?: SolanaTokenProgram,
+  ) => {
+    const program = value[index]?.owner;
+    if (
+      (program !== TOKEN_PROGRAM_ADDRESS && program !== TOKEN_2022_PROGRAM_ADDRESS) ||
+      (expectedProgram !== undefined && program !== expectedProgram)
+    )
+      throw Error('Could not verify the token mint owner.');
+    const account = value[index + (program === TOKEN_PROGRAM_ADDRESS ? 1 : 2)];
+    if (account?.owner === program) return 0n;
+    // A prefunded system account at the solver's ATA is never a usable token source.
+    if (account && (associated || account.owner !== SOLANA_NATIVE_ASSET))
+      throw Error('Unexpected Solana token account owner.');
+    const size =
+      program === TOKEN_PROGRAM_ADDRESS
+        ? getTokenSize()
+        : await token2022AccountSize(rpc, mint, context.slot, associated);
+    return rentPerByte * BigInt(storageOverhead + size);
+  };
   const storageOverhead = 128;
-  const missing = Number(persistentWrap && !wrappedAccount) + Number(!nativeBuy && !buyAccount);
   const orderRent = rentPerByte * BigInt(storageOverhead + getOrderAccountSize());
   const classicTokenAccountRent = rentPerByte * BigInt(storageOverhead + getTokenSize());
-  const tokenAccountRent = BigInt(missing) * classicTokenAccountRent;
+  const [buyAccountRent, solverInputRent] = await Promise.all([
+    nativeBuy ? 0n : missingAccountRent(buyMint, 2, true, solverInput?.buyProgram),
+    sellMint ? missingAccountRent(sellMint, solverIndex, false, solverInput?.sellProgram) : 0n,
+  ]);
+  const tokenAccountRent =
+    buyAccountRent + (persistentWrap && !wrappedAccount ? classicTokenAccountRent : 0n);
   const nativeWrapRent = atomicWrap ? classicTokenAccountRent : 0n;
   const networkFee = recent.getBigUint64(40, true) * BigInt(signatures);
   const reserve =
     rentPerByte * BigInt(storageOverhead) +
     orderRent +
     nativeWrapRent +
+    solverInputRent +
     tokenAccountRent +
     networkFee;
   if (reserve > 0xffff_ffff_ffff_ffffn) throw Error('Invalid Solana order costs.');
   return {
     orderRent,
     nativeWrapRent,
+    solverInputRent,
     tokenAccountRent,
     classicTokenAccountRent,
     networkFee,

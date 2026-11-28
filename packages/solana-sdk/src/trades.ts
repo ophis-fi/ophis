@@ -1,5 +1,6 @@
 import { signature, type Address, type Signature } from '@solana/kit';
 import { atoms, key, record, request, uid } from './api.js';
+import { SOLANA_NATIVE_ASSET } from './tokens.js';
 
 export interface OphisSolanaTrade {
   orderUid: string;
@@ -49,7 +50,7 @@ export async function fetchOphisSolanaTrades(
       typeof v.instructionIndex !== 'number' ||
       v.instructionIndex < 0 ||
       (fee === null) !== (feeMint === null) ||
-      (feeMint && feeMint !== sellToken && feeMint !== buyToken)
+      (feeMint && feeMint !== SOLANA_NATIVE_ASSET && feeMint !== sellToken && feeMint !== buyToken)
     )
       throw Error('Invalid trade attribution');
     return {

@@ -5,6 +5,7 @@ import { readHoldingLabel } from '../dist/holding-labels.js';
 import {
   fetchOphisNativeSellReserve,
   fetchOphisOrderSolReserve,
+  fetchOphisWalletSwapCosts,
   SOLANA_NATIVE_ASSET,
   fetchOphisWalletHoldings,
   fetchOphisMarketSellMints,
@@ -32,7 +33,7 @@ test('labels require an intact metadata prefix for the exact mint', () => {
   assert.equal(readHoldingLabel(data, owner), undefined);
   assert.equal(readHoldingLabel(data.subarray(0, 103), mint), undefined);
 });
-test('wallet balances and market sell readiness use initialized associated accounts, including empty solver accounts', async (t) => {
+test('wallet holdings and the legacy account inventory use initialized associated accounts', async (t) => {
   const [ata] = await findAssociatedTokenPda({ owner, mint, tokenProgram: TOKEN_PROGRAM_ADDRESS });
   const [emptyAta] = await findAssociatedTokenPda({
     owner,
@@ -191,7 +192,7 @@ test('mint decimals and existing SPL allowance come from the configured cluster 
 
 test('native Max reserves current rent only for the payer, order and missing token accounts', async (t) => {
   let hasWrapped = true;
-  let program = TOKEN_PROGRAM_ADDRESS;
+  const program = TOKEN_PROGRAM_ADDRESS;
   let hasBuy = true;
   const sysvar = (bytes) => ({
     owner: 'Sysvar1111111111111111111111111111111111111',
@@ -244,9 +245,115 @@ test('native Max reserves current rent only for the payer, order and missing tok
     await fetchOphisOrderSolReserve(endpoint, genesis, owner, mint, false),
     reserve + 1488440n,
   );
-  program = TOKEN_2022_PROGRAM_ADDRESS;
-  await assert.rejects(
-    fetchOphisNativeSellReserve(endpoint, genesis, owner, mint),
-    /unallocated Token-2022/,
+});
+
+test('wallet reserve sizes first-use input and receiving accounts for the actual mint programs', async (t) => {
+  const sellMint = address('11111111111111111111111111111112');
+  const buyMint = address('11111111111111111111111111111113');
+  const solver = address('11111111111111111111111111111114');
+  const ata = async (owner, mint, tokenProgram) =>
+    (await findAssociatedTokenPda({ owner, mint, tokenProgram }))[0];
+  const solvers = await Promise.all(
+    [TOKEN_PROGRAM_ADDRESS, TOKEN_2022_PROGRAM_ADDRESS].map((p) => ata(solver, sellMint, p)),
   );
+  const receiver = await ata(owner, buyMint, TOKEN_2022_PROGRAM_ADDRESS);
+  const rent = Buffer.alloc(17),
+    hashes = Buffer.alloc(48);
+  rent.writeBigUInt64LE(5080n);
+  rent.writeDoubleLE(1, 8);
+  hashes.writeBigUInt64LE(1n);
+  hashes.writeBigUInt64LE(5000n, 40);
+  const sysvar = (bytes) => ({
+    owner: 'Sysvar1111111111111111111111111111111111111',
+    data: [bytes.toString('base64'), 'base64'],
+  });
+  const accounts = {
+    SysvarRent111111111111111111111111111111111: sysvar(rent),
+    SysvarRecentB1ockHashes11111111111111111111: sysvar(hashes),
+    [sellMint]: { owner: TOKEN_PROGRAM_ADDRESS },
+    [buyMint]: { owner: TOKEN_2022_PROGRAM_ADDRESS },
+  };
+  let extensions = [];
+  t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    const { id, method, params } = JSON.parse(init.body);
+    let result;
+    if (method === 'getGenesisHash') result = genesis;
+    else if (method === 'getMultipleAccounts')
+      result = {
+        context: { slot: 10 },
+        value: params[0].map((key) => accounts[key] ?? null),
+      };
+    else {
+      assert.equal(method, 'getAccountInfo');
+      assert.ok([sellMint, buyMint].includes(params[0]));
+      assert.deepEqual(params[1], {
+        commitment: 'confirmed',
+        encoding: 'jsonParsed',
+        minContextSlot: 10,
+      });
+      result = {
+        context: { slot: 10 },
+        value: {
+          owner: TOKEN_2022_PROGRAM_ADDRESS,
+          data: {
+            program: 'spl-token-2022',
+            parsed: { type: 'mint', info: { isInitialized: true, extensions } },
+          },
+        },
+      };
+    }
+    return Response.json({ jsonrpc: '2.0', id, result });
+  });
+  const costs = () =>
+    fetchOphisWalletSwapCosts(endpoint, genesis, owner, buyMint, false, 2, { solver, sellMint });
+  const deposit = (size) => BigInt(128 + size) * 5080n;
+  const first = await costs();
+  await assert.rejects(
+    fetchOphisWalletSwapCosts(endpoint, genesis, owner, buyMint, false, 2, {
+      solver,
+      sellMint,
+      sellProgram: TOKEN_2022_PROGRAM_ADDRESS,
+      buyProgram: TOKEN_2022_PROGRAM_ADDRESS,
+    }),
+    /mint owner/,
+  );
+  await assert.rejects(
+    fetchOphisWalletSwapCosts(endpoint, genesis, owner, buyMint, false, 2, {
+      solver,
+      sellMint,
+      sellProgram: TOKEN_PROGRAM_ADDRESS,
+      buyProgram: TOKEN_PROGRAM_ADDRESS,
+    }),
+    /mint owner/,
+  );
+  assert.equal(first.solverInputRent, deposit(165));
+  assert.equal(first.tokenAccountRent, deposit(170));
+  assert.equal(
+    first.reserve,
+    deposit(0) + first.networkFee + first.orderRent + deposit(165) + deposit(170),
+  );
+  accounts[solvers[0]] = { owner: SOLANA_NATIVE_ASSET, lamports: 12345 };
+  assert.equal((await costs()).solverInputRent, deposit(165));
+  accounts[solvers[0]] = { owner: TOKEN_PROGRAM_ADDRESS };
+  assert.equal((await costs()).solverInputRent, 0n);
+  accounts[sellMint] = { owner: TOKEN_2022_PROGRAM_ADDRESS };
+  assert.equal((await costs()).solverInputRent, deposit(165)); // The classic ATA belongs to a different program.
+  extensions = [
+    { extension: 'metadataPointer' },
+    { extension: 'transferFeeConfig' },
+    { extension: 'transferHook' },
+    { extension: 'pausableConfig' },
+  ];
+  const extended = await costs();
+  assert.equal(extended.solverInputRent, deposit(165 + 1 + 12 + 5 + 4));
+  assert.equal(extended.tokenAccountRent, deposit(170 + 12 + 5 + 4));
+  accounts[receiver] = { owner: TOKEN_2022_PROGRAM_ADDRESS };
+  accounts[solvers[1]] = { owner: TOKEN_2022_PROGRAM_ADDRESS };
+  assert.equal((await costs()).tokenAccountRent, 0n);
+  assert.equal((await costs()).solverInputRent, 0n);
+  accounts[solvers[1]] = { owner: owner };
+  await assert.rejects(costs, /Unexpected Solana token account owner/);
+  delete accounts[solvers[1]];
+  extensions = [{ extension: 'unparseableExtension' }];
+  await assert.rejects(costs, /Could not read Token-2022 mint extensions/);
 });

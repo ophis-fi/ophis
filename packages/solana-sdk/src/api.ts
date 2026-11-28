@@ -13,10 +13,20 @@ export interface OphisSolanaQuoteRequest {
   buyToken: Address;
   receiver?: Address;
   executionMode?: 'walletAtomic';
+  /** Minimum received in the exact-input wallet preview uses this tolerance. */
+  slippageBps?: number;
   walletCreatesBuyTokenAccount?: boolean;
   side: { kind: 'sell'; sellAmountBeforeFee: bigint } | { kind: 'buy'; buyAmountAfterFee: bigint };
   validFor?: number;
   priceQuality?: 'fast' | 'optimal' | 'verified';
+}
+
+export interface NativeProtocolFee {
+  /** Value in SOL of the full quoted buy amount, expressed as a ratio of atomic units. */
+  rateLamports: string;
+  rateBuyAtoms: string;
+  estimatedLamports: string;
+  maxLamports: string;
 }
 
 export interface OphisSolanaQuote {
@@ -35,6 +45,7 @@ export interface OphisSolanaQuote {
     feeAmount: string;
     validTo: number;
     appData: string;
+    nativeProtocolFee?: NativeProtocolFee;
     feeTerms?: { baseBps: number; improvementShareBps: number; improvementCapBps: number };
     kind: 'sell' | 'buy';
     costs: {
@@ -61,36 +72,80 @@ const mainnetStables = new Set<string>([
   '2u1tszSeqZ3qBWF3uNGPFc8TzMk2tdiwknnRMWGWjGWH',
 ]);
 
+const isSol = (mint: Address) => mint === NATIVE_SOL || mint === WSOL;
+
+function feeTier(sell: Address, buy: Address) {
+  const stableSell = mainnetStables.has(sell);
+  const stableBuy = mainnetStables.has(buy);
+  const stablePair = stableSell && stableBuy;
+  const lowBase = stablePair || (stableSell && isSol(buy)) || (stableBuy && isSol(sell));
+  return { baseBps: lowBase ? 1 : 5, improvementCapBps: stablePair ? 20 : 99 };
+}
+
+/** Bound before a native SOL sell quote exists. The executable quote rounds first in buy atoms. */
+export function getOphisNativeSellFeeCap(sellLamports: bigint, buyMint: Address): bigint {
+  atoms(sellLamports.toString());
+  const tier = feeTier(NATIVE_SOL, buyMint);
+  const base = BigInt(tier.baseBps);
+  return (
+    (sellLamports * (10000n * base + (10000n - base) * BigInt(tier.improvementCapBps))) / 100000000n
+  );
+}
+
+export function readNativeProtocolFee(value: unknown): NativeProtocolFee {
+  const fee = record(value);
+  return {
+    rateLamports: atoms(fee.rateLamports, true),
+    rateBuyAtoms: atoms(fee.rateBuyAtoms, true),
+    estimatedLamports: atoms(fee.estimatedLamports),
+    maxLamports: atoms(fee.maxLamports),
+  };
+}
+
 export function checkedQuoteAppData(
   program: Address,
   quote: OphisSolanaQuote['quote'],
 ): Uint8Array {
   if (!/^0x[0-9a-fA-F]{64}$/.test(quote.appData)) throw Error('Invalid quote app data');
   const bytes = new Uint8Array(getBase16Encoder().encode(quote.appData.slice(2)));
-  if (program !== OPHIS_MAINNET_PROGRAM) return bytes;
+  if (program !== OPHIS_MAINNET_PROGRAM && !quote.nativeProtocolFee) return bytes;
 
   // Bytes 24–31 are an order nonce. The settlement program selects the fee tier from the two mints.
   const view = new DataView(bytes.buffer);
   const maxCost =
     BigInt(atoms(quote.costs.networkFees)) + BigInt(atoms(quote.costs.buyTokenAtaCosts));
-  const stableSell = mainnetStables.has(quote.sellToken),
-    stableBuy = mainnetStables.has(quote.buyToken);
-  const isSol = (mint: Address) => mint === NATIVE_SOL || mint === WSOL;
-  const lowBase =
-    (stableSell && stableBuy) ||
-    (stableSell && isSol(quote.buyToken)) ||
-    (stableBuy && isSol(quote.sellToken));
+  const tier = feeTier(quote.sellToken, quote.buyToken);
   const terms = quote.feeTerms;
+  const nativeFee = quote.nativeProtocolFee;
+  const gross = BigInt(atoms(quote.buyAmount, true));
+  if (nativeFee) {
+    const checked = readNativeProtocolFee(nativeFee);
+    const sol = BigInt(checked.rateLamports);
+    const base = (gross * BigInt(tier.baseBps)) / 10000n;
+    const improvementCap = ((gross - base) * BigInt(tier.improvementCapBps)) / 10000n;
+    if (
+      checked.rateBuyAtoms !== quote.buyAmount ||
+      (isSol(quote.buyToken) && sol !== gross) ||
+      (isSol(quote.sellToken) && checked.rateLamports !== quote.sellAmount) ||
+      BigInt(checked.estimatedLamports) !== (base * sol) / gross ||
+      BigInt(checked.maxLamports) !== ((base + improvementCap) * sol) / gross ||
+      maxCost !== 0n ||
+      quote.feeAmount !== '0' ||
+      quote.costs.protocolFee !== '0' ||
+      quote.costs.total !== '0'
+    )
+      throw Error('Invalid quoted Solana protocol fee.');
+  }
   if (
-    new TextDecoder().decode(bytes.subarray(0, 8)) !== 'OPHISPI3' ||
+    new TextDecoder().decode(bytes.subarray(0, 8)) !== (nativeFee ? 'OPHISPI5' : 'OPHISPI3') ||
     quote.kind !== 'sell' ||
     quote.partiallyFillable ||
     quote.costs.token !== quote.buyToken ||
-    view.getBigUint64(8, true) !== BigInt(atoms(quote.buyAmount, true)) ||
-    view.getBigUint64(16, true) !== maxCost ||
-    terms?.baseBps !== (lowBase ? 1 : 5) ||
+    view.getBigUint64(8, true) !== gross ||
+    view.getBigUint64(16, true) !== (nativeFee ? BigInt(nativeFee.maxLamports) : maxCost) ||
+    terms?.baseBps !== tier.baseBps ||
     terms.improvementShareBps !== 5000 ||
-    terms.improvementCapBps !== (stableSell && stableBuy ? 20 : 99)
+    terms.improvementCapBps !== tier.improvementCapBps
   )
     throw Error('Request a new quote with matching actual-output fee terms');
   return bytes;
@@ -174,6 +229,11 @@ export async function request(baseUrl: string, path: string, body?: unknown): Pr
   return response.json();
 }
 
+export function checkSlippageBps(bps: number): void {
+  if (!Number.isInteger(bps) || bps < 0 || bps > 5000)
+    throw Error('Slippage must be an integer from 0 to 5000 bps');
+}
+
 /** One explicit request; no retries, refresh loop or fallback host. Token amounts remain exact strings. */
 export async function fetchOphisSolanaQuote(
   baseUrl: string,
@@ -187,6 +247,11 @@ export async function fetchOphisSolanaQuote(
       !['fast', 'optimal', 'verified'].includes(input.priceQuality))
   )
     throw Error('Invalid native quote request');
+  if (input.slippageBps !== undefined) {
+    if (input.executionMode !== 'walletAtomic' || input.side.kind !== 'sell')
+      throw Error('A quote slippage limit requires an exact-input wallet swap');
+    checkSlippageBps(input.slippageBps);
+  }
   const amount =
     input.side.kind === 'sell' ? input.side.sellAmountBeforeFee : input.side.buyAmountAfterFee;
   if (typeof amount !== 'bigint') throw Error('Specify bigint token atoms');
@@ -203,6 +268,7 @@ export async function fetchOphisSolanaQuote(
       from,
       sellToken,
       ...(input.executionMode && { executionMode: input.executionMode }),
+      ...(input.slippageBps !== undefined && { slippageBps: input.slippageBps }),
       ...(input.sellToken === NATIVE_SOL ? { sellFromNativeSol: true } : {}),
       buyToken,
       ...(input.walletCreatesBuyTokenAccount === true
@@ -287,7 +353,7 @@ export async function fetchOphisSolanaQuote(
       improvementCapBps: terms.improvementCapBps,
     };
   }
-  return {
+  const result: OphisSolanaQuote = {
     ...(solver && {
       executionMode: input.executionMode,
       solver,
@@ -305,6 +371,7 @@ export async function fetchOphisSolanaQuote(
       validTo: quote.validTo,
       appData: quote.appData,
       ...(feeTerms && { feeTerms }),
+      ...(solver && { nativeProtocolFee: readNativeProtocolFee(quote.nativeProtocolFee) }),
       kind: input.side.kind,
       costs: {
         token: key(costs.token),
@@ -320,6 +387,8 @@ export async function fetchOphisSolanaQuote(
     verified: value.verified,
     funder: value.funder === null ? null : key(value.funder),
   };
+  if (solver) checkedQuoteAppData(OPHIS_MAINNET_PROGRAM, result.quote);
+  return result;
 }
 
 export async function fetchOphisSolanaOrder(

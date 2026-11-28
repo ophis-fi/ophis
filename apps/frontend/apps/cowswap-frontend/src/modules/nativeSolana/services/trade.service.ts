@@ -127,7 +127,7 @@ export async function loadNativeSolanaQuote(
   signal?.throwIfAborted()
   const quote = await fetchOphisSolanaQuote(config.api, {
     from: solanaAddress(connection.account.address),
-    ...(context.walletAtomic && { executionMode: 'walletAtomic' as const }),
+    ...(context.walletAtomic && { executionMode: 'walletAtomic' as const, slippageBps: form.slippageBps }),
     walletCreatesBuyTokenAccount: true,
     sellToken: sell.address,
     buyToken: buy.address,
@@ -177,11 +177,14 @@ const protocolErrorMessages: Record<string, string | undefined> = {
   VerifiedExactInputRequired:
     'Ophis could not verify a route for this swap. Your order has not been placed. Get a fresh quote.',
   SellAmountDoesNotCoverFee: 'The quoted amount is too small to cover the cost of this swap.',
+  NativeFeePriceUnavailable: 'Ophis could not price its fee in SOL for this swap. Try a different amount or token.',
+  InsufficientSolForFees: 'Your wallet needs more SOL for swap fees and deposits.',
   FeeQuoteUnavailable: 'Ophis could not verify the costs for this pair. Request a fresh quote or choose another pair.',
   InvalidMint: invalidMintMessage,
   MintNotFound: invalidMintMessage,
   UnknownMint: invalidMintMessage,
   UnsupportedMint: invalidMintMessage,
+  UnsupportedToken: 'This token’s transfer rules prevent Ophis from settling this swap.',
   PrivateWallet: 'For this private test, connect the authorized Backpack account (63ox…irnA).',
   ChainUnavailable: 'Solana chain data is temporarily unavailable. Request a fresh quote in a moment.',
   PrivateBudget: 'The private RPC test budget is low. New orders are paused.',

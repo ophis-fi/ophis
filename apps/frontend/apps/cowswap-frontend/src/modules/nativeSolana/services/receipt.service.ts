@@ -14,6 +14,14 @@ import type { OphisSolanaOrder, OphisSolanaTrade } from '@ophis/solana-sdk'
 export type ReceiptAmounts = Pick<OphisSolanaOrder, 'sellToken' | 'buyToken' | 'sellAmount' | 'buyAmount'>
 export type ReceiptStatus = SolanaOrderResult['status'] | 'pending' | 'closed'
 
+export function returnedStorageDeposit(costs: {
+  orderRent: string | bigint
+  nativeWrapRent?: string | bigint
+  solverInputRent?: string | bigint
+}): bigint {
+  return BigInt(costs.orderRent) + BigInt(costs.nativeWrapRent ?? 0n) + BigInt(costs.solverInputRent ?? 0n)
+}
+
 export function savedReceiptStatus(
   order: SavedNativeSolanaOrder,
   data?: SolanaOrderResult,

@@ -96,12 +96,31 @@ it('shows the signed benchmark and full cost cap in USDC, and requires review of
 it('distinguishes the paid network fee, returned order and wrap deposits, and a new receiving token account', () => {
   const store = createStore()
   const { nativeSolanaReviewAtom } = jest.requireMock('../state/trade.atoms')
-  const prior = store.get(nativeSolanaReviewAtom) as Record<string, unknown>
+  const prior = store.get(nativeSolanaReviewAtom) as import('../services/trade.service').NativeSolanaReview
   store.set(nativeSolanaReviewAtom, {
     ...prior,
     allowance: null,
+    quote: {
+      ...prior.quote,
+      quote: {
+        ...prior.quote.quote,
+        costs: { networkFees: '0', buyTokenAtaCosts: '0', protocolFee: '0', total: '0' },
+        nativeProtocolFee: {
+          estimatedLamports: '5000',
+          maxLamports: '45000',
+          rateLamports: '5000000',
+          rateBuyAtoms: '2000000',
+        },
+      },
+    },
     atomic: {
-      costs: { networkFee: 10_000n, orderRent: 1_991_360n, nativeWrapRent: 1_488_440n, tokenAccountRent: 1_488_440n },
+      costs: {
+        networkFee: 10_000n,
+        orderRent: 1_991_360n,
+        nativeWrapRent: 1_488_440n,
+        solverInputRent: 1_488_440n,
+        tokenAccountRent: 1_488_440n,
+      },
     },
   })
   render(
@@ -115,11 +134,53 @@ it('distinguishes the paid network fee, returned order and wrap deposits, and a 
   expect(screen.getByText('Solana network fee').nextElementSibling?.textContent).toBe('0.00001 SOL')
   const details = screen.getByText('Fee details').closest('details')
   expect(details?.open).toBe(false)
-  expect(details?.contains(screen.getByText('New wallet token account deposit'))).toBe(false)
+  expect(details?.contains(screen.getByText('New wallet token account deposit'))).toBe(true)
   expect(details?.contains(screen.getByText('Deposit returned in this swap'))).toBe(true)
-  expect(screen.getByText('Ophis base fee').nextElementSibling?.textContent).toBe('0.0002 USDC (0.01%)')
-  expect(screen.getByText('Deposit returned in this swap').nextElementSibling?.textContent).toBe('0.0034798 SOL')
+  expect(screen.getByText('Estimated Ophis fee').nextElementSibling?.textContent).toBe('0.000005 SOL')
+  expect(screen.getByText('Maximum Ophis fee').nextElementSibling?.textContent).toBe('0.000045 SOL')
+  expect(screen.queryByText('Ophis base fee')).toBeNull()
+  expect(screen.queryByText('Estimated SOL after the Ophis fee')).toBeNull()
+  expect(screen.getByText('Minimum received').nextElementSibling?.textContent).toBe('1.99 USDC')
+  expect(screen.getByText('Deposit returned in this swap').nextElementSibling?.textContent).toBe('0.00496824 SOL')
   expect(screen.getByText('New wallet token account deposit').nextElementSibling?.textContent).toBe('0.00148844 SOL')
   expect(screen.queryByText(/maximum settlement cost/i)).toBeNull()
   expect((screen.getByRole('button', { name: 'Confirm in wallet' }) as HTMLButtonElement).disabled).toBe(false)
+})
+
+it('shows the gross SOL payout and the wallet proceeds after the separate native fee', () => {
+  const store = createStore()
+  const { nativeSolanaReviewAtom } = jest.requireMock('../state/trade.atoms')
+  const review = store.get(nativeSolanaReviewAtom) as import('../services/trade.service').NativeSolanaReview
+  store.set(nativeSolanaReviewAtom, {
+    ...review,
+    allowance: null,
+    form: { ...review.form, sellMint: 'mint', buyMint: 'SOL' },
+    buy: { ...review.buy, decimals: 9 },
+    atomic: { costs: { networkFee: 10_000n, orderRent: 0n, tokenAccountRent: 0n } },
+    quote: {
+      ...review.quote,
+      quote: {
+        ...review.quote.quote,
+        buyAmount: '100000000',
+        nativeProtocolFee: {
+          estimatedLamports: '10000',
+          maxLamports: '1009900',
+          rateLamports: '100000000',
+          rateBuyAtoms: '100000000',
+        },
+      },
+    },
+  })
+  render(
+    <Provider store={store}>
+      <I18nProvider i18n={setupI18n({ locale: 'en', messages: { en: {} } })}>
+        <NativeSolanaWidget />
+      </I18nProvider>
+    </Provider>,
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Swap' }))
+  expect(screen.getByText('SOL', { exact: true }).closest('[title]')?.textContent).toBe('0.1 SOL')
+  expect(screen.getByText('Minimum received').nextElementSibling?.textContent).toBe('0.0995 SOL')
+  expect(screen.getByText('Estimated SOL after the Ophis fee').nextElementSibling?.textContent).toBe('0.09999 SOL')
+  expect(screen.getByText('Solana network fee').nextElementSibling?.textContent).toBe('0.00001 SOL')
 })

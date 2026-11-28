@@ -15,12 +15,20 @@ export function validAtomicOrder(order: Partial<SavedNativeSolanaOrder>): boolea
       !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(order.creationLifetime.blockhash))
   )
     return false
-  const costs = order.walletCosts
-  return (
-    !costs ||
-    [costs.networkFee, costs.orderRent, costs.nativeWrapRent ?? '0'].every(
-      (value) => typeof value === 'string' && /^\d{1,20}$/.test(value),
-    )
+  return validWalletCosts(order.walletCosts)
+}
+
+function validWalletCosts(costs: SavedNativeSolanaOrder['walletCosts']): boolean {
+  if (!costs) return true
+  const amounts = [
+    costs.networkFee,
+    costs.orderRent,
+    costs.nativeWrapRent ?? '0',
+    costs.solverInputRent ?? '0',
+    costs.maxProtocolFeeLamports ?? '0',
+  ]
+  return amounts.every(
+    (value) => typeof value === 'string' && /^\d{1,20}$/.test(value) && BigInt(value) <= 0xffff_ffff_ffff_ffffn,
   )
 }
 

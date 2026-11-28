@@ -94,6 +94,18 @@ async function checkPendingOrders(
   }
 }
 
+function reviewedWalletCosts(review: NativeSolanaReview): SavedNativeSolanaOrder['walletCosts'] {
+  if (!review.atomic) return undefined
+  const { networkFee, orderRent, nativeWrapRent, solverInputRent } = review.atomic.costs
+  return {
+    networkFee: String(networkFee),
+    orderRent: String(orderRent),
+    nativeWrapRent: String(nativeWrapRent),
+    solverInputRent: String(solverInputRent),
+    maxProtocolFeeLamports: review.quote.quote.nativeProtocolFee?.maxLamports,
+  }
+}
+
 async function prepareReceipt(
   config: OphisSolanaConfig,
   review: NativeSolanaReview,
@@ -109,16 +121,7 @@ async function prepareReceipt(
     createdBy: order.payer,
     intent: Array.from(getOrderIntentEncoder().encode(order.intent)),
     signature: null,
-    ...(review.atomic
-      ? {
-          executionMode: 'walletAtomic' as const,
-          walletCosts: {
-            networkFee: String(review.atomic.costs.networkFee),
-            orderRent: String(review.atomic.costs.orderRent),
-            nativeWrapRent: String(review.atomic.costs.nativeWrapRent),
-          },
-        }
-      : {}),
+    ...(review.atomic && { executionMode: 'walletAtomic' as const, walletCosts: reviewedWalletCosts(review) }),
     ...(config.chain === 'solana:localnet' && !review.atomic
       ? {}
       : {
