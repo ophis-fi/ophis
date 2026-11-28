@@ -5,9 +5,11 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { importSolanaFills, type SolanaRpc } from '../src/solana/fills.js';
 import { startPg, stopPg } from './fixtures/pgContainer.js';
+import marketReceipts from './fixtures/solana-wallet-market.json';
 
 let container: Awaited<ReturnType<typeof startPg>>['container'];
 let sql: postgres.Sql;
+let reader: postgres.Sql;
 const firstSlot = 473270143;
 const genesis = '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d';
 const anchor = base58.decode(
@@ -68,7 +70,7 @@ const rpc: SolanaRpc = async <T>(method: string, params: unknown[]) => {
     method === 'getTransaction'
       ? (receipts.get(String(params[0])) ?? null)
       : method === 'getSlot'
-        ? firstSlot + 99
+        ? Math.max(firstSlot + 99, ...marketReceipts.map((fill) => fill.receipt.slot))
         : method === 'getGenesisHash'
           ? genesis
           : method === 'getBlocks'
@@ -96,6 +98,13 @@ beforeAll(async () => {
     CREATE TABLE solana.executed_protocol_fees(tx_signature bytea,instruction_index int,order_uid bytea,protocol_fee numeric,fee_mint bytea);
     CREATE TABLE solana.order_quotes(order_uid bytea,signed_fee_reference boolean);
     CREATE TABLE solana.fee_policies(auction_id bigint,order_uid bytea,application_order int,kind text,volume_factor double precision,price_improvement_factor double precision,price_improvement_max_volume_factor double precision);`);
+  await sql.unsafe(`CREATE ROLE reporting_reader;
+    GRANT USAGE ON SCHEMA solana TO reporting_reader;
+    GRANT SELECT ON solana.orders,solana.settlements,solana.executed_protocol_fees,
+      solana.order_quotes,solana.fee_policies,solana.indexer_state TO reporting_reader;
+    GRANT SELECT(slot,tx_signature,instruction_index,order_uid,sell_amount,buy_amount)
+      ON solana.trades TO reporting_reader`);
+  reader = postgres(pg.connectionUri, { connection: { role: 'reporting_reader' } });
   await sql`insert into solana.indexer_state values(true,${firstSlot + 30},${firstSlot + 25})`;
   await sql`insert into solana.orders values(${uid},${trader},${pda},${Buffer.from(usdc)},${Buffer.from(wrapped)},'sell')`;
   await sql`insert into solana.order_quotes values(${uid},true)`;
@@ -111,6 +120,7 @@ beforeAll(async () => {
   await sql`insert into solana.trades values(${firstSlot},${sig(88)},0,${treasuryUid},1000000,40000)`;
 }, 120000);
 afterAll(async () => {
+  await reader?.end();
   await sql?.end();
   await stopPg(container);
 });
@@ -123,7 +133,7 @@ it('backfills partial fills, rejects invalid receipts, withholds unknown fees an
   const poison = receipt(3);
   poison.meta.preTokenBalances[0]!.owner = base58.encode(other);
   receipts.set(base58.encode(sig(3)), poison);
-  expect(await importSolanaFills(sql, sql, rpc, noPrices)).toBe(false);
+  expect(await importSolanaFills(reader, sql, rpc, noPrices)).toBe(false);
   expect(await count()).toBe(3);
   expect((await coverage()).covered_slot).toBeNull();
   const badAmounts = receipt(3);
@@ -131,13 +141,13 @@ it('backfills partial fills, rejects invalid receipts, withholds unknown fees an
   end.writeBigUInt64LE(41_000n, 4);
   badAmounts.transaction.message.instructions[1]!.data = base58.encode(end);
   receipts.set(base58.encode(sig(3)), badAmounts);
-  await importSolanaFills(sql, sql, rpc, noPrices);
+  await importSolanaFills(reader, sql, rpc, noPrices);
   expect(await count()).toBe(3);
 
   receipts.set(base58.encode(sig(3)), receipt(3));
-  expect(await importSolanaFills(sql, sql, rpc, noPrices)).toBe(true); // Catch-up schedules another page immediately.
+  expect(await importSolanaFills(reader, sql, rpc, noPrices)).toBe(true); // Catch-up schedules another page immediately.
   expect((await coverage()).covered_slot).toBeNull();
-  while (await importSolanaFills(sql, sql, rpc, noPrices)) {}
+  while (await importSolanaFills(reader, sql, rpc, noPrices)) {}
   expect(await count()).toBe(26);
   expect((await coverage()).covered_slot).toBe(String(firstSlot + 25));
   expect(new Date((await coverage()).covered_block_timestamp)).toEqual(
@@ -160,7 +170,7 @@ it('backfills partial fills, rejects invalid receipts, withholds unknown fees an
   await sql`insert into solana.settlements values(${key},0,48)`;
   // A retrospective source row behind the tail is recovered by the bounded repair scan.
   await sql`delete from solana.fee_policies where auction_id=0 and kind='volume'`;
-  for (let i = 0; i < 4; i++) await importSolanaFills(sql, sql, rpc, noPrices);
+  for (let i = 0; i < 4; i++) await importSolanaFills(reader, sql, rpc, noPrices);
   expect(await count()).toBe(27);
   expect(
     (
@@ -176,7 +186,7 @@ it('backfills partial fills, rejects invalid receipts, withholds unknown fees an
     priceTime = time;
     return 3;
   };
-  for (let i = 0; i < 4; i++) await importSolanaFills(sql, sql, rpc, recoveredPrice);
+  for (let i = 0; i < 4; i++) await importSolanaFills(reader, sql, rpc, recoveredPrice);
   expect(priceTime).toBe(blockTime(firstSlot));
   expect(
     (
@@ -190,7 +200,8 @@ it('verifies actual-output receipts before crediting volume or changing the elig
   // The original fixture runs against V21. V22 adds nullable realized amounts;
   // old trades carry NULL and keep using the paired fixed-payout instructions.
   await sql.unsafe(`ALTER TABLE solana.trades ADD actual_gross numeric, ADD execution_cost numeric,
-    ADD actual_base_fee numeric, ADD actual_improvement_fee numeric`);
+    ADD actual_base_fee numeric, ADD actual_improvement_fee numeric, ADD wallet_market_sold_native boolean;
+    GRANT SELECT(actual_gross,execution_cost,actual_base_fee,actual_improvement_fee) ON solana.trades TO reporting_reader`);
   const orderUid = Buffer.from(
     '475e7a4def248cd582e7fab8e419f2bc595c1e34acb01e15694d870dff958eaf',
     'hex',
@@ -289,7 +300,7 @@ it('verifies actual-output receipts before crediting volume or changing the elig
     sql`select value_usd::text,base_fee_atoms::text,base_fee_usd::text from solana_settled_fills where order_uid=${orderUid}`;
   const attempt = async (r: typeof good) => {
     receipts.set(base58.encode(signature), r);
-    await importSolanaFills(sql, sql, rpc, noPrice);
+    await importSolanaFills(reader, sql, rpc, noPrice);
   };
   const wrongProgramme = structuredClone(good);
   wrongProgramme.meta.returnData.programId = state;
@@ -347,12 +358,74 @@ it('verifies actual-output receipts before crediting volume or changing the elig
   const wrongNative = structuredClone(native);
   wrongNative.meta.innerInstructions[0]!.instructions[0]!.accounts[1] = 8;
   receipts.set(base58.encode(nativeSig), wrongNative);
-  await importSolanaFills(sql, sql, rpc, noPrice);
+  await importSolanaFills(reader, sql, rpc, noPrice);
   expect(await nativeImported()).toHaveLength(0);
   receipts.set(base58.encode(nativeSig), native);
-  await importSolanaFills(sql, sql, rpc, noPrice);
+  await importSolanaFills(reader, sql, rpc, noPrice);
   const [nativeRow] = await nativeImported();
   expect(Number(nativeRow?.value_usd)).toBe(40);
   expect(nativeRow?.base_fee_atoms).toBe('270');
   expect(Number(nativeRow?.base_fee_usd)).toBeCloseTo((40 * 270) / 2703187, 12);
 });
+
+it.each(marketReceipts)(
+  'reconciles the captured $source receipt and resumes coverage exactly once',
+  async (sample) => {
+    const { receipt, begin, sold, payout, gross, baseFee, improvementFee } = sample;
+    const { accountKeys, instructions } = receipt.transaction.message;
+    const { writable, readonly } = receipt.meta.loadedAddresses;
+    const keys = [...accountKeys, ...writable, ...readonly];
+    const bytes = (key: string) => Buffer.from(base58.decode(key));
+    const uid = Buffer.from(sample.uid, 'hex');
+    const sigText = receipt.transaction.signatures[0]!;
+    const signature = bytes(sigText);
+    const end = instructions.at(-1)!.accounts;
+    const nativeFees = sample.version === 5;
+    const protocolFee = baseFee + improvementFee;
+    await sql`insert into solana.orders values(${uid},${bytes(keys[0]!)},${bytes(keys[end[3]!]!)},
+    ${bytes(sample.sell)},${bytes(sample.buy)},'sell',${bytes(keys[end[10]!]!)},${bytes(keys[end[6]!]!)})`;
+    await sql`insert into solana.trades(slot,tx_signature,instruction_index,order_uid,sell_amount,buy_amount,
+    actual_gross,execution_cost,actual_base_fee,actual_improvement_fee)
+    values(${receipt.slot},${signature},${begin},${uid},${sold},${payout},${gross},0,${baseFee},${improvementFee})`;
+    await sql`insert into solana.settlements values(${signature},${begin},0)`;
+    await sql`insert into solana.executed_protocol_fees values(${signature},${begin},${uid},${protocolFee},
+    ${nativeFees ? Buffer.alloc(32) : bytes(sample.buy)})`;
+    await sql`update solana.indexer_state set slot=${receipt.slot},finalized_slot=${receipt.slot}`;
+    const solPrice = (atoms: bigint) => (Number(atoms) * 70) / 1e9;
+    const price = async (coin: string, atoms: bigint) =>
+      coin === 'solana:' + base58.encode(wrapped) ? solPrice(atoms) : 2.5;
+    const run = () => importSolanaFills(reader, sql, rpc, price);
+    const rows = () => sql`select sell_atoms, buy_atoms, value_usd, base_fee_atoms, base_fee_usd
+    from solana_settled_fills where order_uid=${uid}`;
+
+    const wrongRecipient = structuredClone(receipt);
+    wrongRecipient.meta.innerInstructions[0]!.instructions.at(-1)!.accounts[1] = end[7]!;
+    receipts.set(sigText, wrongRecipient);
+    await run();
+    expect(await rows()).toHaveLength(0);
+    const wrongReceipt = structuredClone(receipt);
+    const data = Buffer.from(wrongReceipt.meta.returnData.data[0]!, 'base64');
+    data.writeBigUInt64LE(1n, nativeFees ? 88 : 80);
+    wrongReceipt.meta.returnData.data[0] = data.toString('base64');
+    receipts.set(sigText, wrongReceipt);
+    await run();
+    expect(await rows()).toHaveLength(0);
+
+    receipts.set(sigText, receipt);
+    while (await run()) {}
+    await run();
+    const result = await rows();
+    expect(result).toHaveLength(1);
+    expect(result[0]?.sell_atoms).toBe(String(sold));
+    expect(result[0]?.buy_atoms).toBe(String(payout));
+    expect(result[0]?.base_fee_atoms).toBe(String(baseFee));
+    expect(Number(result[0]?.value_usd)).toBe(nativeFees ? 2.5 : sold / 1e6);
+    expect(Number(result[0]?.base_fee_usd)).toBeCloseTo(
+      nativeFees ? solPrice(BigInt(baseFee)) : ((sold / 1e6) * baseFee) / gross,
+      12,
+    );
+    expect((await sql`select covered_slot from solana_fill_sync`)[0]?.covered_slot).toBe(
+      String(receipt.slot),
+    );
+  },
+);
