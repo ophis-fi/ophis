@@ -436,7 +436,10 @@ GRANT USAGE ON SCHEMA solana TO ophis_rebate_reader;
 GRANT SELECT (singleton, slot, finalized_slot) ON solana.indexer_state TO ophis_rebate_reader;
 GRANT SELECT (slot, tx_signature, instruction_index, order_uid, sell_amount, buy_amount)
   ON solana.trades TO ophis_rebate_reader;
-GRANT SELECT (uid, owner, order_pda, sell_token, buy_token, kind)
+-- V22 and later record the amounts in the finalized settlement receipt.
+GRANT SELECT (actual_gross, execution_cost, actual_base_fee, actual_improvement_fee)
+  ON solana.trades TO ophis_rebate_reader;
+GRANT SELECT (uid, owner, order_pda, sell_token, buy_token, kind, sell_token_account, buy_token_account)
   ON solana.orders TO ophis_rebate_reader;
 GRANT SELECT (tx_signature, instruction_index, auction_id)
   ON solana.settlements TO ophis_rebate_reader;
@@ -457,6 +460,10 @@ at $1. Other pairs use historical DefiLlama prices at settlement. A missing
 price leaves the USD fields empty while the fill continues to count. Affiliate
 accounting uses the verified base portion of executed fees. Late prices and
 fee attribution are retried in a rotating historical pass.
+
+Wallet market receipts report the input spent after any change was returned.
+For SOL-denominated fees, the worker verifies the wallet's SOL transfer and
+values the base fee in SOL at settlement time.
 
 After restarting the indexer, compare the source and target with these read-only
 queries. Open `https://rebates.ophis.fi/stats?chain=solana` for the Solana row.

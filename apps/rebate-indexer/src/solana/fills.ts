@@ -17,6 +17,8 @@ const SOL = '11111111111111111111111111111111';
 const WSOL = 'So11111111111111111111111111111111111111112';
 const PAGE = 12;
 const SPL_TOKEN = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+const TOKEN_2022 = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb';
+const NATIVE_FEE_BUFFER = 'ALB46a7mLYBb6UGsp8FJ3JM9p1ZZyyFRdwzbAavBjGij';
 
 type Cursor = { slot: string; sig: string; ix: number; uid: string };
 type Fill = {
@@ -43,7 +45,12 @@ type Fill = {
   base_fee_atoms: string | null;
 };
 type TokenBalance = { accountIndex: number; mint: string; owner?: string };
-type CompiledIx = { programIdIndex: number; accounts: number[]; data: string };
+type CompiledIx = {
+  programIdIndex: number;
+  accounts: number[];
+  data: string;
+  stackHeight?: number | null;
+};
 type Receipt = {
   slot: number;
   blockTime: number | null;
@@ -99,6 +106,66 @@ function orderPdaMatches(uid: Buffer, pda: Buffer): boolean {
   return false;
 }
 
+function verifyMarketPlacement(
+  row: Fill,
+  instructions: CompiledIx[],
+  keys: string[],
+  end: CompiledIx,
+  finish: Buffer,
+  pulled: bigint,
+) {
+  const a = end.accounts;
+  const flags = finish[20] ?? 0;
+  const nativeFee = (flags & 8) !== 0;
+  const sell = base58.encode(row.sell_mint),
+    buy = base58.encode(row.buy_mint);
+  if (
+    a[8] !== 0 ||
+    keys[0] !== base58.encode(row.wallet) ||
+    ((flags & 1) !== 0 && sell !== WSOL) ||
+    (buy === SOL && a[6] !== a[8])
+  )
+    throw Error('Market wallet or native mint mismatch');
+  const placed = instructions.slice(0, row.instruction_index).some((ix, i) => {
+    if (keys[ix.programIdIndex] !== PROGRAM || ix.accounts[0] !== a[8] || ix.accounts[2] !== a[3])
+      return false;
+    const data = Buffer.from(base58.decode(ix.data));
+    if (data[0] === 2 && !nativeFee) {
+      const intent = data.subarray(1);
+      return (
+        ix.accounts[1] === a[8] &&
+        intent.length === 213 &&
+        createHash('sha256').update(intent).digest().equals(row.order_uid) &&
+        intent.subarray(0, 32).equals(row.wallet) &&
+        intent.subarray(32, 64).equals(row.user_source) &&
+        intent.subarray(64, 96).equals(row.sell_mint) &&
+        intent.subarray(96, 128).equals(row.user_destination) &&
+        intent.subarray(128, 160).equals(row.buy_mint) &&
+        intent.readBigUInt64LE(160) === pulled
+      );
+    }
+    return (
+      data[0] === 17 &&
+      i + 1 === row.instruction_index &&
+      ix.accounts.length === 13 &&
+      data.length === (nativeFee ? 62 : 54) &&
+      data[1] === (flags | (buy === SOL ? 4 : 0)) &&
+      data.readBigUInt64LE(2) === pulled &&
+      ix.accounts[1] === a[7] &&
+      ix.accounts[3] === a[10] &&
+      ix.accounts[4] === a[9] &&
+      ix.accounts[6] === a[6] &&
+      ix.accounts[8] === a[4] &&
+      keys[ix.accounts[5]!] === sell &&
+      keys[ix.accounts[7]!] === (buy === SOL ? WSOL : buy) &&
+      (!nativeFee ||
+        (data.readBigUInt64LE(18) === finish.readBigUInt64LE(21) &&
+          data.readBigUInt64LE(54) === finish.readBigUInt64LE(37)))
+    );
+  });
+  if (!placed) throw Error('Missing signed market placement');
+}
+
 function verifyActual(
   row: Fill,
   receipt: Receipt,
@@ -123,17 +190,14 @@ function verifyActual(
     finishIndex <= row.instruction_index ||
     finishIndex !== message.instructions.length - 1 ||
     !end ||
-    end.accounts.length !== 8 ||
     keys[end.programIdIndex] !== PROGRAM ||
     keys[end.accounts[1]!] !== STATE ||
-    keys[end.accounts[2]!] !== SPL_TOKEN ||
     end.accounts[0] !== ix.accounts[1] ||
     end.accounts[3] !== ix.accounts[5] ||
     end.accounts[4] !== ix.accounts.at(-1) ||
     end.accounts[7] !== ix.accounts[0] ||
     !row.user_source ||
     !row.user_destination ||
-    !row.fee_mint?.equals(row.buy_mint) ||
     keys[ix.accounts[6]!] !== base58.encode(row.user_source) ||
     keys[end.accounts[6]!] !== base58.encode(row.user_destination) ||
     keys[end.accounts[3]!] !== base58.encode(row.order_pda) ||
@@ -144,12 +208,32 @@ function verifyActual(
     throw Error('Unverified actual-output settlement');
   const finish = Buffer.from(base58.decode(end.data));
   const proof = Buffer.from(result.data[0], 'base64');
+  const a = end.accounts;
+  const market = a.length !== 8;
+  const nativeFee = a.length === 12 || a.length === 15;
+  const checked = a.length === 14 || a.length === 15;
+  const flags = finish[20] ?? 0;
+  const buy = base58.encode(row.buy_mint),
+    sell = base58.encode(row.sell_mint);
+  const buyProgram = keys[a[2]!];
+  const sellProgram = checked ? keys[a[13]!] : SPL_TOKEN;
   if (
-    finish.length !== 20 ||
+    ![8, 11, 12, 14, 15].includes(a.length) ||
+    (nativeFee
+      ? finish.length !== 45 || flags < 8 || flags > 11
+      : !(finish.length === 20 || (market && finish.length === 21 && flags >= 1 && flags <= 3))) ||
     finish[0] !== 14 ||
     finish.readUInt16LE(1) !== row.instruction_index ||
-    proof.length !== 80 ||
-    !proof.subarray(0, 8).equals(Buffer.from('OPHISRC3')) ||
+    proof.length !== (nativeFee ? 96 : market ? 88 : 80) ||
+    !proof
+      .subarray(0, 8)
+      .equals(Buffer.from(nativeFee ? 'OPHISRC5' : market ? 'OPHISRC4' : 'OPHISRC3')) ||
+    (buyProgram !== SPL_TOKEN && !(checked && buyProgram === TOKEN_2022)) ||
+    (sellProgram !== SPL_TOKEN && sellProgram !== TOKEN_2022) ||
+    (checked && (keys[a[11]!] !== sell || keys[a[12]!] !== (buy === SOL ? WSOL : buy))) ||
+    (nativeFee && (keys[a.at(-1)!] !== SOL || keys[a[5]!] !== NATIVE_FEE_BUFFER)) ||
+    !row.fee_mint ||
+    base58.encode(row.fee_mint) !== (nativeFee ? SOL : buy) ||
     !proof.subarray(8, 40).equals(row.order_pda)
   )
     throw Error('Unpaired actual-output receipt');
@@ -158,64 +242,123 @@ function verifyActual(
     base = proof.readBigUInt64LE(56),
     improvement = proof.readBigUInt64LE(64),
     payout = proof.readBigUInt64LE(72);
-  let sold = 0n;
-  for (let pull = 0; pull < nPulls; pull++) sold += begin.readBigUInt64LE(13 + 8 * pull);
+  let pulled = 0n;
+  for (let pull = 0; pull < nPulls; pull++) pulled += begin.readBigUInt64LE(13 + 8 * pull);
+  const sold = market ? proof.readBigUInt64LE(80) : pulled;
+  if (market) {
+    if (
+      nPulls !== 1 ||
+      cost !== 0n ||
+      sold === 0n ||
+      sold > pulled ||
+      a[10] !== ix.accounts[6] ||
+      a[9] !== ix.accounts[8]
+    )
+      throw Error('Invalid wallet market settlement');
+    verifyMarketPlacement(row, message.instructions, keys, end, finish, pulled);
+  }
+  let paidBase = base,
+    paidTotal = base + improvement;
+  if (nativeFee) {
+    const quoteBuy = finish.readBigUInt64LE(21),
+      quoteSol = finish.readBigUInt64LE(29),
+      cap = finish.readBigUInt64LE(37);
+    if (
+      quoteBuy === 0n ||
+      quoteSol === 0n ||
+      ((buy === SOL || buy === WSOL) && quoteSol !== quoteBuy) ||
+      (sell === WSOL && quoteSol !== pulled)
+    )
+      throw Error('Invalid SOL fee valuation');
+    const total = (paidTotal * quoteSol) / quoteBuy;
+    paidTotal = total < cap ? total : cap;
+    const convertedBase = (base * quoteSol) / quoteBuy;
+    paidBase = convertedBase < paidTotal ? convertedBase : paidTotal;
+    if (proof.readBigUInt64LE(88) !== paidTotal) throw Error('SOL fee differs from receipt');
+  }
   if (
-    gross !== cost + base + improvement + payout ||
+    gross !== (nativeFee ? payout : cost + base + improvement + payout) ||
     payout < finish.readBigUInt64LE(4) ||
     cost !== finish.readBigUInt64LE(12) ||
     gross.toString() !== row.actual_gross ||
     cost.toString() !== row.execution_cost ||
-    base.toString() !== row.actual_base_fee ||
-    base.toString() !== row.base_fee_atoms ||
-    improvement.toString() !== row.actual_improvement_fee ||
+    paidBase.toString() !== row.actual_base_fee ||
+    paidBase.toString() !== row.base_fee_atoms ||
+    (paidTotal - paidBase).toString() !== row.actual_improvement_fee ||
     payout.toString() !== row.buy_atoms ||
     sold.toString() !== row.sell_atoms ||
-    (base + improvement).toString() !== row.protocol_fee
+    paidTotal.toString() !== row.protocol_fee
   )
     throw Error('Realized amounts differ from finalized settlement');
   const source = meta.preTokenBalances?.find((b) => b.accountIndex === ix.accounts[6]);
-  const buy = base58.encode(row.buy_mint);
   if (
-    source?.owner !== base58.encode(row.wallet) ||
-    source.mint !== base58.encode(row.sell_mint) ||
+    ((source || !(flags & 1)) &&
+      (source?.owner !== base58.encode(row.wallet) || source.mint !== sell)) ||
     (buy !== SOL &&
       meta.postTokenBalances?.find((b) => b.accountIndex === end.accounts[6])?.mint !== buy)
   )
     throw Error('On-chain actual-output owner or mint mismatch');
-  // Classic token transfers at Finish debit only the fresh stage. For native
-  // output the program unwraps there and credits lamports directly; OPHISRC3
-  // records the payment after that credit and the rent refund have succeeded.
-  const actions =
-    meta.innerInstructions?.find((group) => group.index === finishIndex)?.instructions ?? [];
-  const paid = (index: number, to: number | undefined, amount: bigint) => {
-    const action = actions[index];
+  const inner = meta.innerInstructions?.find((group) => group.index === finishIndex);
+  const actions = (inner?.instructions ?? []).filter((action) => (action.stackHeight ?? 2) === 2);
+  let next = 0;
+  // Positions below refer to FinishActual's account list, including the two mint slots for checked transfers.
+  function take(program: string, ...positions: number[]) {
+    const action = actions[next++];
     if (
       !action ||
-      keys[action.programIdIndex] !== SPL_TOKEN ||
-      action.accounts[0] !== end.accounts[4] ||
-      action.accounts[1] !== to ||
-      action.accounts[2] !== end.accounts[3]
+      keys[action.programIdIndex] !== program ||
+      action.accounts.length !== positions.length ||
+      positions.some((position, i) => action.accounts[i] !== a[position])
     )
-      return false;
-    const data = Buffer.from(base58.decode(action.data));
-    return data.length === 9 && data[0] === 3 && data.readBigUInt64LE(1) === amount;
-  };
-  const close = actions.at(-1);
-  if (
-    !close ||
-    keys[close.programIdIndex] !== SPL_TOKEN ||
-    close.accounts[0] !== end.accounts[4] ||
-    close.accounts[1] !== end.accounts[buy === SOL ? 5 : 7] ||
-    close.accounts[2] !== end.accounts[3] ||
-    !Buffer.from(base58.decode(close.data)).equals(Buffer.from([9])) ||
-    (buy === SOL
-      ? actions.length !== 1
-      : actions.length !== 3 ||
-        !paid(0, end.accounts[6], payout) ||
-        !paid(1, end.accounts[5], gross - payout))
-  )
-    throw Error('Realized transfers differ from settlement receipt');
+      throw Error('Settlement transfer accounts differ from receipt');
+    return Buffer.from(base58.decode(action.data));
+  }
+  function transfer(
+    program: string,
+    from: number,
+    to: number,
+    authority: number,
+    mint: number,
+    amount: bigint,
+  ) {
+    const data = checked
+      ? take(program, from, mint, to, authority)
+      : take(program, from, to, authority);
+    if (
+      data.length !== (checked ? 10 : 9) ||
+      data[0] !== (checked ? 12 : 3) ||
+      data.readBigUInt64LE(1) !== amount
+    )
+      throw Error('Settlement token transfer differs from receipt');
+  }
+  function close(program: string, from: number, to: number, authority: number) {
+    if (!take(program, from, to, authority).equals(Buffer.from([9])))
+      throw Error('Missing token account close');
+  }
+  function transferSol(to: number, amount?: bigint) {
+    const data = take(SOL, 8, to);
+    if (
+      data.length !== 12 ||
+      data.readUInt32LE() !== 2 ||
+      (amount === undefined ? data.readBigUInt64LE(4) === 0n : data.readBigUInt64LE(4) !== amount)
+    )
+      throw Error('Settlement SOL transfer differs from receipt');
+  }
+  if (sold < pulled) transfer(sellProgram!, 9, 10, 7, 11, pulled - sold);
+  if (flags & 2) close(sellProgram!, 9, 8, 7);
+  if (flags & 1) close(SPL_TOKEN, 10, 8, 8);
+  if (buy === SOL) {
+    close(SPL_TOKEN, 4, nativeFee ? 8 : 5, 3);
+    if (nativeFee) transferSol(7); // Rent returned to the solver after unwrapping gross SOL into the wallet.
+  } else {
+    transfer(buyProgram!, 4, 6, 3, 12, payout);
+    // Earlier bought-token settlements also emitted a transfer when the fee rounded to zero.
+    if (gross > payout || (!nativeFee && actions.length - next === 2))
+      transfer(buyProgram!, 4, 5, 3, 12, gross - payout);
+    close(buyProgram!, 4, 7, 3);
+  }
+  if (nativeFee && paidTotal > 0n) transferSol(5, paidTotal);
+  if (next !== actions.length) throw Error('Unexpected settlement transfer');
 }
 
 function receiptTime(row: Fill, receipt: Receipt | null): number {
@@ -299,12 +442,20 @@ function receiptTime(row: Fill, receipt: Receipt | null): number {
   throw Error('Order PDA missing from settlement');
 }
 
-async function readPage(source: postgres.Sql, from: Cursor | null, until: string): Promise<Fill[]> {
+async function readPage(
+  source: postgres.Sql,
+  from: Cursor | null,
+  until: string,
+  hasActual: boolean,
+): Promise<Fill[]> {
+  // V21 predates these four columns. Never request the whole row from the column-scoped reader.
+  const realized = hasActual
+    ? source`t.actual_gross::text, t.execution_cost::text, t.actual_base_fee::text, t.actual_improvement_fee::text`
+    : source`NULL::text AS actual_gross, NULL::text AS execution_cost, NULL::text AS actual_base_fee, NULL::text AS actual_improvement_fee`;
   return source<Fill[]>`
     WITH page AS MATERIALIZED (
       SELECT t.slot,t.tx_signature,t.instruction_index,t.order_uid,t.sell_amount,t.buy_amount,
-             to_jsonb(t)->>'actual_gross' AS actual_gross,to_jsonb(t)->>'execution_cost' AS execution_cost,
-             to_jsonb(t)->>'actual_base_fee' AS actual_base_fee,to_jsonb(t)->>'actual_improvement_fee' AS actual_improvement_fee,
+             ${realized},
              o.sell_token_account AS user_source,o.buy_token_account AS user_destination,o.owner AS wallet, o.order_pda, o.sell_token AS sell_mint, o.buy_token AS buy_mint, o.kind, s.auction_id
       FROM solana.trades t LEFT JOIN solana.orders o ON o.uid=t.order_uid
       LEFT JOIN solana.settlements s USING (tx_signature,instruction_index)
@@ -343,7 +494,8 @@ async function prices(row: Fill, timestamp: number, price: Price) {
     buy = base58.encode(row.buy_mint);
   const sellAtoms = BigInt(row.sell_atoms),
     buyAtoms = BigInt(row.buy_atoms);
-  const feeMint = row.kind === 'sell' ? buy : sell;
+  const tradeFeeMint = row.kind === 'sell' ? buy : sell;
+  const feeMint = row.fee_mint ? base58.encode(row.fee_mint) : tradeFeeMint;
   const quote = (mint: string, atoms: bigint) =>
     price(`solana:${mint === SOL ? WSOL : mint}`, atoms, timestamp).catch(() => null);
   let pricedSell = true;
@@ -363,6 +515,8 @@ async function prices(row: Fill, timestamp: number, price: Price) {
   if (row.base_fee_atoms !== null) {
     if (isStable(feeMint)) baseFeeUsd = Number(row.base_fee_atoms) / 1e6;
     else if (row.base_fee_atoms === '0') baseFeeUsd = 0;
+    else if (feeMint !== tradeFeeMint)
+      baseFeeUsd = await quote(feeMint, BigInt(row.base_fee_atoms));
     else if (valueUsd !== null) {
       // A cross-mint valuation uses the realized exchange rate before Ophis fees.
       // The indexed sell amount is gross and the buy amount is net.
@@ -398,12 +552,16 @@ export async function importSolanaFills(
       Sync[]
     >`SELECT * FROM solana_fill_sync WHERE singleton FOR UPDATE SKIP LOCKED`;
     if (!sync) return false;
-    const [head] = await source<{ slot: string }[]>`
-      SELECT least(slot,finalized_slot)::text AS slot FROM solana.indexer_state WHERE singleton
+    const [head] = await source<{ slot: string; has_actual: boolean }[]>`
+      SELECT least(slot,finalized_slot)::text AS slot,
+        EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid='solana.trades'::regclass
+          AND attname='actual_gross' AND NOT attisdropped) AS has_actual
+      FROM solana.indexer_state WHERE singleton
         AND EXISTS (SELECT 1 FROM solana.trades WHERE slot=473270143 AND tx_signature=${Buffer.from(base58.decode(ANCHOR))})`;
     if (!head || BigInt(head.slot) < BigInt(sync.covered_slot ?? 0))
       throw Error('Solana reporting source has incomplete mainnet history');
     const hasNewCoverage = head.slot !== sync.covered_slot;
+    const hasActual = head.has_actual;
     const receipts = new Map<string, Receipt | null>();
     let verifiedGenesis = false;
     async function verifyCluster() {
@@ -413,7 +571,7 @@ export async function importSolanaFills(
     }
     async function processPage(from: Cursor | null, until: string) {
       let cursor = from;
-      const rows = await readPage(source, from, until);
+      const rows = await readPage(source, from, until, hasActual);
       for (const row of rows) {
         if (!row.order_pda || !row.wallet || row.auction_id === null)
           return { cursor, complete: false, stalled: true };
