@@ -24,7 +24,7 @@ export function AssetIcon({ asset }: { asset: SolanaAsset }): ReactNode {
   )
 }
 
-const maxRowsPerGroup = 50
+const pageSize = 50
 
 interface AssetPickerProps {
   verifyAsset(asset: SolanaAsset): Verification | undefined
@@ -63,6 +63,49 @@ function matchingAssets(assets: SolanaAsset[], other: string, term: string): Sol
     matches.sort((a, b) => exact(b) - exact(a))
   }
   return matches
+}
+
+function TokenGroup({
+  label,
+  rows,
+  holdings,
+  verifyAsset,
+  select,
+}: Pick<AssetPickerProps, 'holdings' | 'verifyAsset' | 'select'> & {
+  label: ReactNode
+  rows: SolanaAsset[]
+}): ReactNode {
+  const [visible, setVisible] = useState(pageSize)
+  if (!rows.length) return null
+  return (
+    <section>
+      <styledEl.Caption>{label}</styledEl.Caption>
+      {rows.slice(0, visible).map((asset) => {
+        const holding = holdings.get(asset.mint)
+        return (
+          <styledEl.Option key={asset.mint} type="button" title={asset.mint} onClick={() => select(asset)}>
+            <AssetIcon asset={asset} />
+            <span>
+              <strong>
+                {asset.symbol}
+                <VerifiedAssetBadge verified={verifyAsset(asset)} />
+              </strong>
+              <small>
+                {asset.name}
+                {asset.mint !== nativeAsset.mint && ' · ' + shortMint(asset.mint)}
+              </small>
+            </span>
+            {holding && <b>{formatOphisSolanaAmount(holding.atoms, holding.decimals)}</b>}
+          </styledEl.Option>
+        )
+      })}
+      {rows.length > visible && (
+        <styledEl.SmallButton type="button" onClick={() => setVisible((count) => count + pageSize)}>
+          <Trans>Show more tokens</Trans>
+        </styledEl.SmallButton>
+      )}
+    </section>
+  )
 }
 
 export function AssetPicker(props: AssetPickerProps): ReactNode {
@@ -106,41 +149,22 @@ export function AssetPicker(props: AssetPickerProps): ReactNode {
         spellCheck={false}
       />
       <styledEl.TokenList>
-        {[
-          { label: <Trans>In your wallet</Trans>, rows: held },
-          { label: <Trans>Tokens on this network</Trans>, rows: others },
-        ].map(
-          ({ label, rows }, i) =>
-            rows.length > 0 && (
-              <section key={i}>
-                <styledEl.Caption>{label}</styledEl.Caption>
-                {rows.slice(0, maxRowsPerGroup).map((asset) => {
-                  const holding = holdings.get(asset.mint)
-                  return (
-                    <styledEl.Option key={asset.mint} type="button" title={asset.mint} onClick={() => select(asset)}>
-                      <AssetIcon asset={asset} />
-                      <span>
-                        <strong>
-                          {asset.symbol}
-                          <VerifiedAssetBadge verified={verifyAsset(asset)} />
-                        </strong>
-                        <small>
-                          {asset.name}
-                          {asset.mint !== nativeAsset.mint && ' · ' + shortMint(asset.mint)}
-                        </small>
-                      </span>
-                      {holding && <b>{formatOphisSolanaAmount(holding.atoms, holding.decimals)}</b>}
-                    </styledEl.Option>
-                  )
-                })}
-              </section>
-            ),
-        )}
-        {(held.length > maxRowsPerGroup || others.length > maxRowsPerGroup) && (
-          <p>
-            <Trans>Search to narrow the list.</Trans>
-          </p>
-        )}
+        <TokenGroup
+          key={'held-' + query}
+          label={<Trans>In your wallet</Trans>}
+          rows={held}
+          holdings={holdings}
+          select={select}
+          verifyAsset={verifyAsset}
+        />
+        <TokenGroup
+          key={'network-' + query}
+          label={<Trans>Tokens on this network</Trans>}
+          rows={others}
+          holdings={holdings}
+          select={select}
+          verifyAsset={verifyAsset}
+        />
         {props.catalogLoading && (
           <p role="status">
             <Trans>Loading more Solana tokens…</Trans>

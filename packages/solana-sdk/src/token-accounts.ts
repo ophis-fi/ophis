@@ -38,7 +38,7 @@ export async function readAssociatedHoldings(
   return holdings.filter((holding) => holding !== null);
 }
 
-/** Wallet-paid market settlements use the solver's classic SPL input account, even when its balance is zero. */
+/** @deprecated Lists existing classic SPL accounts for diagnostics. Request a verified quote for tradability. */
 export async function fetchOphisMarketSellMints(
   endpoint: string,
   genesis: string,

@@ -1,5 +1,5 @@
 import type { Address, TransactionSigner } from '@solana/kit';
-import { checkedQuoteAppData, OPHIS_MAINNET_PROGRAM } from './api.js';
+import { checkedQuoteAppData, checkSlippageBps, OPHIS_MAINNET_PROGRAM } from './api.js';
 import type { OphisSolanaOrderInput } from './index.js';
 import {
   SOLANA_NATIVE_ASSET,
@@ -27,8 +27,7 @@ export function checkedQuoteOrderInput(input: {
     Date.parse(quote.expiration) <= Date.now()
   )
     throw Error('Request a fresh verified quote for this wallet');
-  if (!Number.isInteger(input.slippageBps) || input.slippageBps < 0 || input.slippageBps > 5000)
-    throw Error('Slippage must be an integer from 0 to 5000 bps');
+  checkSlippageBps(input.slippageBps);
   const sell = BigInt(value.sellAmount) + BigInt(value.feeAmount);
   const buy = BigInt(value.buyAmount);
   const sellAmount =
@@ -40,10 +39,11 @@ export function checkedQuoteOrderInput(input: {
   const appData = checkedQuoteAppData(input.programAddress, value);
   if (
     input.programAddress === OPHIS_MAINNET_PROGRAM &&
+    quote.executionMode !== 'walletAtomic' &&
     (input.sellProgram === TOKEN_2022_PROGRAM_ADDRESS ||
       input.buyProgram === TOKEN_2022_PROGRAM_ADDRESS)
   )
-    throw Error('Actual-output settlement requires classic SPL tokens or native SOL');
+    throw Error('Persistent mainnet orders require classic SPL tokens or native SOL');
   return {
     programAddress: input.programAddress,
     owner: input.owner,

@@ -2,10 +2,10 @@ import { atom } from 'jotai'
 
 import {
   type OphisWalletHolding,
-  fetchOphisMarketSellMints,
   fetchOphisWalletHoldings,
   fetchOphisOrderSolReserve,
   fetchOphisWalletSwapCosts,
+  getOphisNativeSellFeeCap,
   OPHIS_LOCAL_WALLET_RPC,
   OPHIS_MAINNET_PROGRAM,
   SOLANA_NATIVE_ASSET,
@@ -17,12 +17,11 @@ import {
 import { OPHIS_SOLANA_CONFIG, solanaConnectionAtom } from 'entities/solana'
 import { atomWithQuery } from 'jotai-tanstack-query'
 
-import { nativeSolanaFormAtom } from './trade.atoms'
+import { nativeSolanaFormAtom, nativeSolanaReviewAtom } from './trade.atoms'
 
 import {
   balanceEndpoint,
   fetchMainnetCatalog,
-  mainnetWalletRpc,
   nativeAsset,
   networkAssets,
   walletAssets,
@@ -30,7 +29,7 @@ import {
   walletMint,
 } from '../services/assets.service'
 import { privateAction, privateSettlementEnabled } from '../services/privateSettlement.service'
-import { nativeSolanaContext } from '../services/trade.service'
+import { minimumSolanaBuyAmount, nativeSolanaContext, type NativeSolanaReview } from '../services/trade.service'
 
 export const solanaNetworkAssetsAtom = atomWithQuery(() => ({
   queryKey: ['solana-market-tokens', OPHIS_SOLANA_CONFIG?.genesis],
@@ -53,25 +52,6 @@ export const solanaMainnetCatalogAtom = atomWithQuery(() => ({
   enabled: OPHIS_SOLANA_CONFIG?.chain === 'solana:mainnet',
 }))
 export const solanaCachedCatalogAtom = atomWithQuery(() => ({ ...catalogQuery, enabled: false }))
-
-export const marketSellMintsKey = ['solana-market-sell-mints'] as const
-export const solanaMarketSellMintsAtom = atomWithQuery(() => {
-  const config = OPHIS_SOLANA_CONFIG
-  const rpc = mainnetWalletRpc(config)
-  const solver = process.env.REACT_APP_OPHIS_SOLANA_MARKET_SOLVER
-  return {
-    queryKey: [...marketSellMintsKey, config?.api, config?.genesis, solver],
-    enabled: !!rpc && !!solver && config?.program === OPHIS_MAINNET_PROGRAM,
-    queryFn: async () => {
-      if (!config || !rpc || !solver || !(await nativeSolanaContext(config)).walletAtomic) return null
-      const mints = new Set<string>(await fetchOphisMarketSellMints(rpc, config.genesis, solanaAddress(solver)))
-      if (mints.has(WRAPPED_SOL_MINT)) mints.add('SOL')
-      return mints
-    },
-    staleTime: 30_000,
-    retry: false,
-  }
-})
 
 export const solanaHoldingsAtom = atomWithQuery<OphisWalletHolding[]>((get) => {
   const owner = get(solanaConnectionAtom)?.account.address
@@ -112,13 +92,26 @@ export const walletAssetListAtom = atom((get) =>
 export const walletHoldingsMapAtom = atom(
   (get) => new Map(get(solanaHoldingsAtom).data?.map((row) => [walletMint(row.mint), row])),
 )
+
+function atomicReserve(costs: Awaited<ReturnType<typeof fetchOphisWalletSwapCosts>>): {
+  fixed: bigint
+  returnedBeforeFee: bigint
+  walletAtomic: boolean
+} {
+  return { fixed: costs.reserve, returnedBeforeFee: costs.nativeWrapRent + costs.solverInputRent, walletAtomic: true }
+}
+
 export const orderSolReserveAtom = atomWithQuery((get) => {
   const config = OPHIS_SOLANA_CONFIG
   const rpc = balanceEndpoint(config)
   const owner = get(solanaConnectionAtom)?.account.address
   const { sellMint, buyMint } = get(nativeSolanaFormAtom)
+  const solver =
+    config?.chain === 'solana:mainnet' && config.program === OPHIS_MAINNET_PROGRAM
+      ? process.env.REACT_APP_OPHIS_SOLANA_MARKET_SOLVER
+      : undefined
   return {
-    queryKey: ['solana-order-reserve', config?.genesis, owner, sellMint === 'SOL', buyMint],
+    queryKey: ['solana-order-reserve', config?.genesis, owner, sellMint, buyMint, solver],
     enabled: !!(config && rpc && owner && buyMint && buyMint !== sellMint),
     queryFn: async () => {
       if (!config || !rpc || !owner) throw Error('Wallet balance service unavailable.')
@@ -130,9 +123,13 @@ export const orderSolReserveAtom = atomWithQuery((get) => {
         buyMint === 'SOL' ? SOLANA_NATIVE_ASSET : solanaAddress(buyMint),
         sellMint === 'SOL',
       ] as const
-      return context.walletAtomic
-        ? (await fetchOphisWalletSwapCosts(...args, 2)).reserve
-        : fetchOphisOrderSolReserve(...args)
+      if (!context.walletAtomic)
+        return { fixed: await fetchOphisOrderSolReserve(...args), returnedBeforeFee: 0n, walletAtomic: false }
+      const solverInput =
+        solver && sellMint
+          ? { solver: solanaAddress(solver), sellMint: sellMint === 'SOL' ? WRAPPED_SOL_MINT : solanaAddress(sellMint) }
+          : undefined
+      return atomicReserve(await fetchOphisWalletSwapCosts(...args, 2, solverInput))
     },
     staleTime: 30_000,
     retry: false,
@@ -142,6 +139,22 @@ export const orderSolReserveAtom = atomWithQuery((get) => {
 function spendableAfterReserve(balance?: bigint, reserve?: bigint): bigint | undefined {
   if (balance === undefined || reserve === undefined) return undefined
   return balance > reserve ? balance - reserve : 0n
+}
+
+function remainingFee(cap: bigint, credited: bigint): bigint {
+  return cap > credited ? cap - credited : 0n
+}
+
+function maxNativeSell(available: bigint, buy: ReturnType<typeof solanaAddress>, returnedBeforeFee: bigint): bigint {
+  // The cap scales with the amount sold. Deposits that return before collection can pay it.
+  let lower = 0n
+  let upper = available
+  while (lower < upper) {
+    const amount = (lower + upper + 1n) / 2n
+    if (amount + remainingFee(getOphisNativeSellFeeCap(amount, buy), returnedBeforeFee) <= available) lower = amount
+    else upper = amount - 1n
+  }
+  return lower
 }
 
 function holdingBalance(
@@ -164,47 +177,104 @@ function extraSolNeeded(required?: bigint, balance?: bigint): bigint | undefined
   return required !== undefined && balance !== undefined && required > balance ? required - balance : undefined
 }
 
-export const sellAmountStateAtom = atom((get) => {
-  const form = get(nativeSolanaFormAtom)
+function quotedNativeFees(
+  review: NativeSolanaReview | null,
+  returnedBeforeFee: bigint,
+): { cap?: bigint; upfront: bigint } {
+  const terms = review?.quote.quote.nativeProtocolFee
+  if (!review || !terms) return { upfront: 0n }
+  const cap = BigInt(terms.maxLamports)
+  // SOL proceeds arrive before Ophis collects its fee. Wrapped SOL stays in the token account.
+  const proceeds = review.form.buyMint === 'SOL' ? minimumSolanaBuyAmount(review) : 0n
+  return { cap, upfront: remainingFee(cap, proceeds + returnedBeforeFee) }
+}
+
+interface SellBudget {
+  spendable?: bigint
+  maximumForEnteredAmount?: bigint
+  reserve?: bigint
+  solShortfall?: bigint
+}
+
+function nativeSellBudget(
+  balance: bigint | undefined,
+  fixed: bigint | undefined,
+  buyWithNativeFee: string | undefined,
+  quotedCap: bigint | undefined,
+  returnedBeforeFee: bigint,
+): SellBudget {
+  if (fixed === undefined || balance === undefined)
+    return { reserve: fixed, maximumForEnteredAmount: spendableAfterReserve(balance, 1n) }
+  const available = balance > fixed ? balance - fixed : 0n
+  const spendable = buyWithNativeFee
+    ? maxNativeSell(available, solanaAddress(buyWithNativeFee), returnedBeforeFee)
+    : available
+  const reserve = fixed + (quotedCap === undefined ? available - spendable : remainingFee(quotedCap, returnedBeforeFee))
+  return { reserve, spendable, maximumForEnteredAmount: spendableAfterReserve(balance, reserve) }
+}
+
+function tokenSellBudget(
+  tokenBalance: bigint | undefined,
+  nativeBalance: bigint | undefined,
+  fixed: bigint | undefined,
+  upfrontFee: bigint,
+): SellBudget {
+  const required = fixed === undefined ? undefined : fixed + upfrontFee
+  return {
+    spendable: tokenBalance,
+    maximumForEnteredAmount: tokenBalance,
+    solShortfall: extraSolNeeded(required, nativeBalance),
+  }
+}
+
+const inputBalancesAtom = atom((get) => {
+  const { sellMint } = get(nativeSolanaFormAtom)
   const balances = get(solanaHoldingsAtom)
   const holdings = get(walletHoldingsMapAtom)
-  const holding = holdings.get(form.sellMint)
   const balanceKnown = !!balances.data && !balances.isError
-  const native = form.sellMint === 'SOL'
-  const { balance, precision, atoms } = holdingBalance(holding, balanceKnown, native)
-  const estimate = get(orderSolReserveAtom)
-  const solReserve = estimate.isError ? undefined : estimate.data
-  const reserve = native ? solReserve : 0n
-  const nativeBalance = holdings.get('SOL')?.atoms
-  const solShortfall = !native && balanceKnown ? extraSolNeeded(solReserve, nativeBalance) : undefined
-  const spendable = spendableAfterReserve(atoms, reserve)
   return {
-    ...amountAvailability(form.amount, precision, atoms, reserve ?? 1n),
-    solShortfall,
-    estimatingTokenOrder: !native && estimate.isLoading,
+    sale: holdingBalance(holdings.get(sellMint), balanceKnown, sellMint === 'SOL'),
+    nativeBalance: holdingBalance(holdings.get('SOL'), balanceKnown, true).atoms,
     balanceKnown,
-    balance,
-    spendable,
-    precision,
-    reserve,
   }
 })
 
-export const solanaSellStateAtom = atom((get) => {
-  const { valid, exceeds, solShortfall, estimatingTokenOrder } = get(sellAmountStateAtom)
-  const { sellMint } = get(nativeSolanaFormAtom)
-  const market = get(solanaMarketSellMintsAtom)
-  const sellUnavailable = !market.isError && market.data?.has(sellMint) === false
-  const readyToSell =
-    valid && !exceeds && !solShortfall && !estimatingTokenOrder && !market.isLoading && !sellUnavailable
-  return { readyToSell, sellUnavailable, solShortfall }
+const currentReserveAtom = atom((get) => {
+  const prepared = get(nativeSolanaReviewAtom)?.atomic
+  if (prepared) return atomicReserve(prepared.costs)
+  const estimate = get(orderSolReserveAtom)
+  return estimate.isError ? undefined : estimate.data
+})
+
+export const sellAmountStateAtom = atom((get) => {
+  const form = get(nativeSolanaFormAtom)
+  const { sale, nativeBalance, balanceKnown } = get(inputBalancesAtom)
+  const native = form.sellMint === 'SOL'
+  const estimate = get(orderSolReserveAtom)
+  const review = get(nativeSolanaReviewAtom)
+  const estimated = get(currentReserveAtom)
+  const fixed = estimated?.fixed
+  const returnedBeforeFee = estimated?.returnedBeforeFee ?? 0n
+  const fee = quotedNativeFees(review, returnedBeforeFee)
+  const buyWithNativeFee = estimated?.walletAtomic ? form.buyMint : undefined
+  const budget = native
+    ? nativeSellBudget(sale.atoms, fixed, buyWithNativeFee, fee.cap, returnedBeforeFee)
+    : tokenSellBudget(sale.atoms, nativeBalance, fixed, fee.upfront)
+  return {
+    ...amountAvailability(form.amount, sale.precision, sale.atoms, budget.maximumForEnteredAmount),
+    ...budget,
+    balance: sale.balance,
+    precision: sale.precision,
+    balanceKnown,
+    estimatingTokenOrder: !native && estimate.isLoading,
+  }
 })
 
 function amountAvailability(
   text: string,
   decimals: number | undefined,
   balance: bigint | undefined,
-  reserve: bigint,
+  spendable: bigint | undefined,
 ): { valid: boolean; exceeds: boolean; needsSolForFees?: boolean } {
   if (decimals === undefined) {
     // A mint entered manually gets its actual precision when the quote is requested.
@@ -214,7 +284,6 @@ function amountAvailability(
   try {
     const amount = parseOphisSolanaAmount(text, decimals)
     const exceeds = balance !== undefined && amount > balance
-    const spendable = spendableAfterReserve(balance, reserve)
     const needsSolForFees = !exceeds && spendable !== undefined && amount > spendable
     return {
       valid: amount > 0n && !needsSolForFees,

@@ -300,6 +300,8 @@ export {
 export type { OrderIntent };
 
 export {
+  getOphisNativeSellFeeCap,
+  type NativeProtocolFee,
   checkedQuoteAppData,
   OPHIS_MAINNET_PROGRAM,
   fetchOphisSolanaQuote,
