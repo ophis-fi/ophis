@@ -419,9 +419,11 @@ it.each(marketReceipts)(
     expect(result[0]?.sell_atoms).toBe(String(sold));
     expect(result[0]?.buy_atoms).toBe(String(payout));
     expect(result[0]?.base_fee_atoms).toBe(String(baseFee));
-    expect(Number(result[0]?.value_usd)).toBe(nativeFees ? 2.5 : sold / 1e6);
+    expect(Number(result[0]?.value_usd)).toBe(sold / 1e6); // Each captured swap sold USDC.
     expect(Number(result[0]?.base_fee_usd)).toBeCloseTo(
-      nativeFees ? solPrice(BigInt(baseFee)) : ((sold / 1e6) * baseFee) / gross,
+      nativeFees && !bytes(sample.buy).equals(Buffer.alloc(32))
+        ? solPrice(BigInt(baseFee))
+        : ((sold / 1e6) * baseFee) / gross,
       12,
     );
     expect((await sql`select covered_slot from solana_fill_sync`)[0]?.covered_slot).toBe(
