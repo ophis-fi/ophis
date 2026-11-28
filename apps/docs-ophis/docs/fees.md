@@ -57,7 +57,7 @@ Arc follows the same rules as the other Ophis-operated chains, and USDC/EURC cou
 | Ophis base fee | 1 bp (0.01%) | 1 bp (0.01%) | 5 bp (0.05%) |
 | Share of improvement over the quoted output | 50%, capped at 0.20% of the trade | 50%, capped at 0.99% of the trade | 50%, capped at 0.99% of the trade |
 
-Ophis calculates price improvement from the actual swap output after settlement costs and the base fee. You keep the improvement above Ophis’s capped share. The quote shows the base fee in the token you receive.
+Your wallet pays the Ophis fee in SOL, including when you swap two other tokens. Before you sign, the quote shows the estimated fee and the maximum SOL that Ophis can collect. Settlement uses the actual swap output to calculate Ophis’s capped share of price improvement. You receive the full buy-token output, and the SOL fee is a separate charge in the same transaction.
 
 Your wallet pays the Solana network fee, including when an included transaction fails. A successful market swap returns temporary storage deposits in the same transaction. If your wallet needs a new token account to hold what you receive, its separate SOL deposit stays in that account until you empty and close it.
 

@@ -60,7 +60,9 @@ Open [Solana in the swap app](https://swap.ophis.fi/#/swap?network=solana) to tr
 
 Temporary storage deposits return to your wallet in the same market swap. Older orders that still have a separate order account keep their **Cancel order** or **Reclaim account rent** actions in the receipt.
 
-Finding a token in search does not guarantee an executable quote. To move between Solana and another network, use a [NEAR Intents swap](#externally-funded-swaps-through-near-intents).
+You can buy or sell by mint address when Ophis finds enough liquidity for your amount. Orca routes support ordinary Token-2022 transfers, including PYUSD and USDG while their transfer fees are zero and their transfer hooks are inactive. Mints that charge a transfer fee or invoke a custom transfer program are currently unavailable.
+
+To move between Solana and another network, use a [NEAR Intents swap](#externally-funded-swaps-through-near-intents).
 
 ## NEAR Intents swaps {/* #externally-funded-swaps-through-near-intents */}
 
